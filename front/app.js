@@ -36,7 +36,7 @@
     point: null, tapePoint: null, tab: "now",
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null, measure: false,
-    alerts: false, storms: false, sat: false,
+    alerts: false, storms: false, sat: false, barbs: false,
   };
   let map, wind, catalog, playTimer = null, marker = null;
 
@@ -230,7 +230,8 @@
 
     renderLegend();
     $("#play").onclick = togglePlay;
-    $("#particles-toggle").onclick = () => { state.particles = !state.particles; $("#particles-toggle").classList.toggle("on", state.particles); wind.setEnabled(state.particles); };
+    $("#particles-toggle").onclick = () => { state.particles = !state.particles; $("#particles-toggle").classList.toggle("on", state.particles); if (state.particles) { state.barbs = false; $("#barbs-toggle").classList.remove("on"); wind.setMode("particles"); } wind.setEnabled(state.particles || state.barbs); };
+    $("#barbs-toggle").onclick = () => { state.barbs = !state.barbs; $("#barbs-toggle").classList.toggle("on", state.barbs); if (state.barbs) { state.particles = false; $("#particles-toggle").classList.remove("on"); wind.setEnabled(true); wind.setMode("barbs"); } else { wind.setMode("particles"); wind.setEnabled(state.particles); } };
     $("#units-toggle").textContent = speedUnit();
     $("#units-toggle").onclick = () => {
       state.units = { kmh: "kt", kt: "ms", ms: "kmh" }[state.units];

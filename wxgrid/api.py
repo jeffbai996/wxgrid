@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 from wxgrid import render
 from wxgrid.config import CACHE_DIR, FRONT_DIR, GRID_LAT_N, GRID_LON_N, PUBLIC
-from wxgrid.models import LEVELS, MODELS
+from wxgrid.models import LEVEL_EVERY, LEVELS, MODELS
 from wxgrid.store import RunReader, list_runs, parse_run_id, run_path, store_summary
 
 log = logging.getLogger("wxgrid.api")
@@ -118,6 +118,15 @@ def _norm_layer(layer: str) -> str:
     return layer
 
 
+def _level_step(r: RunReader, step: int, needs_levels: bool) -> int:
+    """Pressure levels live on 6 h steps; for a 3 h surface step, aloft
+    products come from the nearest 6 h step that exists in the run."""
+    if not needs_levels or step % LEVEL_EVERY == 0:
+        return step
+    cands = [x for x in r.steps if x % LEVEL_EVERY == 0]
+    return min(cands, key=lambda x: abs(x - step)) if cands else step
+
+
 def _norm_level(level: int | None, layer: str) -> int | None:
     if level is None or level == 0:
         return None
@@ -151,6 +160,7 @@ def api_layer(model: str, run: str, step: int, layer: str, level: int | None = N
     r = _reader(model, run)
     if step not in r.steps or not _available(r, layer, level):
         raise HTTPException(404, "step, layer or level not in run")
+    step = _level_step(r, step, level is not None or layer == "frz")
     tag = f"{layer}{'' if level is None else '-' + str(level)}"
     path = CACHE_DIR / model / r.rid / f"{step:03d}-{tag}.png"
     if not path.exists():
@@ -176,6 +186,7 @@ def api_wind(model: str, run: str, step: int, level: int | None = None):
     r = _reader(model, run)
     if step not in r.steps or not _available(r, "wind", level):
         raise HTTPException(404, "step or level not in run")
+    step = _level_step(r, step, level is not None)
     tag = "wind" if level is None else f"wind-{level}"
     path = CACHE_DIR / model / r.rid / f"{step:03d}-{tag}.json"
     if not path.exists():
@@ -186,6 +197,26 @@ def api_wind(model: str, run: str, step: int, level: int | None = None):
         tmp.replace(path)
     return FileResponse(path, media_type="application/json",
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+def _fill_gaps(vals: list) -> list:
+    """Linear fill of None runs between known values (ends stay None)."""
+    out = list(vals)
+    n = len(out)
+    i = 0
+    while i < n:
+        if out[i] is None:
+            j = i
+            while j < n and out[j] is None:
+                j += 1
+            if 0 < i and j < n:
+                a, b = out[i - 1], out[j]
+                for k in range(i, j):
+                    out[k] = round(a + (b - a) * (k - i + 1) / (j - i + 1), 2)
+            i = j
+        else:
+            i += 1
+    return out
 
 
 def _clean(vals: np.ndarray, nd: int = 2) -> list:
@@ -231,6 +262,12 @@ def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge
     t0 = parse_run_id(r.rid)
     n = len(r.steps)
     series: dict[str, list] = {var: _clean(r.point(var, lat, lon)) for var in r.variables}
+    # Levels are stored on 6 h steps; the surface tier can be 3 h. Fill the
+    # in-between steps by linear interpolation so aloft/freezing-level read
+    # at every column of the tape.
+    for var in list(series):
+        if var.split("_")[0] in ("u", "v", "t", "gh") and "_" in var:
+            series[var] = _fill_gaps(series[var])
     if "u10" in series and "v10" in series:
         series["wind"], series["wdir"] = _wind_pair(series["u10"], series["v10"])
     levels = _levels_for(r)
@@ -265,6 +302,7 @@ def api_isolines(model: str, run: str, step: int, var: str, level: int | None = 
     r = _reader(model, run)
     if step not in r.steps:
         raise HTTPException(404, "step not in run")
+    step = _level_step(r, step, level is not None or var in ("frz", "gh_500"))
     tag = f"{var}{'' if level is None else '-' + str(level)}"
     path = CACHE_DIR / model / r.rid / f"{step:03d}-iso-{tag}.json"
     if not path.exists():
@@ -361,6 +399,9 @@ def api_profile(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., 
     n = len(r.steps)
     need = ["t2m", "u10", "v10", "tp6", "sf6"] + [f"{p}_{l}" for l in levels for p in ("t", "u", "v", "gh")]
     series = {var: _clean(r.point(var, lat, lon)) for var in need if var in r.variables}
+    for var in list(series):
+        if "_" in var and var.split("_")[0] in ("u", "v", "t", "gh"):
+            series[var] = _fill_gaps(series[var])
     t0 = parse_run_id(r.rid)
     bands = []
     fl = _freezing_level(series, levels, n)

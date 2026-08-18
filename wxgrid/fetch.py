@@ -17,7 +17,7 @@ from typing import Callable
 import requests
 
 from wxgrid.config import GRIB_DIR
-from wxgrid.models import Model
+from wxgrid.models import LEVEL_EVERY, Model
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ def fetch_ecmwf(model: Model, run: datetime, root: Path = GRIB_DIR,
         sfc = out_dir / f"step{step:03d}-sfc.grib2"
         if _ecmwf_get(client, model, run, step, sfc, dict(param=list(model.sfc_params))):
             paths.append(sfc)
-        if model.pl_params:
+        if model.pl_params and step % LEVEL_EVERY == 0:
             pl = out_dir / f"step{step:03d}-pl.grib2"
             if _ecmwf_get(client, model, run, step, pl,
                           dict(levtype="pl", levelist=list(model.levels), param=list(model.pl_params))):
@@ -135,7 +135,7 @@ def fetch_gfs(model: Model, run: datetime, root: Path = GRIB_DIR,
     for step in model.steps:
         target = out_dir / f"step{step:03d}.grib2"
         if not target.exists() or target.stat().st_size == 0:
-            ok = _download(s, gfs_step_url(run, step, model.levels), target)
+            ok = _download(s, gfs_step_url(run, step, model.levels if step % LEVEL_EVERY == 0 else ()), target)
             if not ok:
                 continue
         got.append((step, [target]))

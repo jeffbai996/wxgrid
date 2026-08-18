@@ -21,6 +21,7 @@
       this.ctx = canvas.getContext("2d", { alpha: true });
       this.field = null;
       this.enabled = true;
+      this.mode = "particles";
       this.particles = [];
       this.raf = 0;
       this.dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -30,7 +31,7 @@
       window.addEventListener("resize", this._resize);
       map.on("move", this._wipe);
       map.on("resize", this._resize);
-      map.on("moveend", () => this.reseed());
+      map.on("moveend", () => { this.reseed(); if (this.mode === "barbs") this.drawBarbs(); });
       this.resize();
     }
 
@@ -47,12 +48,57 @@
     setField(field) {
       this.field = field;
       this.reseed();
-      this.start();
+      if (this.mode === "barbs") this.drawBarbs(); else this.start();
     }
 
     setEnabled(on) {
       this.enabled = on;
       if (on) this.start(); else { this.stop(); this.wipe(); }
+    }
+
+    // "particles" (animated) or "barbs" (static station-model barbs on a grid).
+    setMode(mode) {
+      this.mode = mode;
+      this.wipe();
+      if (mode === "barbs") { this.stop(); this.drawBarbs(); }
+      else this.start();
+    }
+
+    // Wind barbs in knots on a screen grid: half barb 5, full 10, pennant 50.
+    // Staff points INTO the wind (toward where it comes from), like a chart.
+    drawBarbs() {
+      if (!this.field || this.mode !== "barbs") return;
+      const ctx = this.ctx, w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      this.wipe();
+      const light = document.documentElement.dataset.theme === "light";
+      ctx.strokeStyle = light ? "rgba(20,30,50,0.85)" : "rgba(255,255,255,0.9)";
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.lineWidth = 1.4; ctx.lineCap = "round"; ctx.lineJoin = "round";
+      const gap = 64, len = 22;
+      for (let y = gap / 2; y < h; y += gap) {
+        for (let x = gap / 2; x < w; x += gap) {
+          const ll = this.map.unproject([x, y]);
+          if (ll.lat > 85 || ll.lat < -85) continue;
+          const uv = this.sample(ll.lng, ll.lat);
+          if (!uv) continue;
+          const [u, v] = uv;
+          const kt = Math.hypot(u, v) * 1.943844;
+          if (kt < 2) { ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.stroke(); continue; }
+          const dirFrom = Math.atan2(-u, -v);           // radians, 0 = north, clockwise; wind FROM
+          const dx = Math.sin(dirFrom), dy = -Math.cos(dirFrom);
+          const ex = x + dx * len, ey = y + dy * len;   // staff end (upwind)
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+          // barbs go on the right side of the staff (looking downwind) in the northern hemisphere
+          const side = ll.lat >= 0 ? 1 : -1;
+          const px = -dy * side, py = dx * side;        // perpendicular
+          let remaining = Math.round(kt / 5) * 5, pos = 0;
+          const step = 4.2, bl = 8;
+          const at = (t) => [ex - dx * t, ey - dy * t];
+          while (remaining >= 50) { const [ax, ay] = at(pos), [bx, by] = at(pos + step); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + px * bl, ay + py * bl); ctx.lineTo(bx, by); ctx.closePath(); ctx.fill(); pos += step + 1.5; remaining -= 50; }
+          while (remaining >= 10) { const [ax, ay] = at(pos); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + px * bl + dx * 2, ay + py * bl + dy * 2); ctx.stroke(); pos += step; remaining -= 10; }
+          if (remaining >= 5) { const [ax, ay] = at(pos === 0 ? step : pos); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + px * bl / 2 + dx, ay + py * bl / 2 + dy); ctx.stroke(); }
+        }
+      }
     }
 
     wipe() {
@@ -108,7 +154,7 @@
     }
 
     start() {
-      if (this.raf || !this.enabled || !this.field) return;
+      if (this.raf || !this.enabled || !this.field || this.mode === "barbs") return;
       const loop = (t) => { this.raf = requestAnimationFrame(loop); this.frame(t); };
       this.raf = requestAnimationFrame(loop);
     }

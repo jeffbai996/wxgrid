@@ -26,7 +26,7 @@ class Field:
     level_type: str = ""
     level: int = 0
     units: str = ""
-
+    start_step: int = 0    # accumulation start (hours) for accum fields; == step for instant
 
 def _normalise(values: np.ndarray, lat0: float, lon0: float, lat_n: int, lon_n: int,
                scan_south_to_north: bool) -> np.ndarray:
@@ -65,11 +65,15 @@ def iter_fields(path: str | Path) -> Iterator[Field]:
                 level_type = str(eccodes.codes_get(gid, "typeOfLevel"))
                 level = int(eccodes.codes_get(gid, "level"))
                 units = str(eccodes.codes_get(gid, "units"))
+                try:
+                    start_step = int(eccodes.codes_get(gid, "startStep"))
+                except Exception:
+                    start_step = step
                 values = eccodes.codes_get_values(gid)
                 missing = eccodes.codes_get(gid, "missingValue")
                 grid = _normalise(values, lat0, lon0, lat_n, lon_n, south_north)
                 if missing is not None:
                     grid[grid == np.float32(missing)] = np.nan
-                yield Field(short, step, grid, level_type, level, units)
+                yield Field(short, step, grid, level_type, level, units, start_step)
             finally:
                 eccodes.codes_release(gid)
