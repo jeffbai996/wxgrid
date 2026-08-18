@@ -20,11 +20,16 @@ NOAA NOMADS (GFS)            ├─ wxgrid.ingest ─▶ data/store/<model>/<run
 
 ## Models
 
-| key  | model            | source            | steps        | surface variables                     | aloft (925/850/700/500/300/250 hPa) |
-|------|------------------|-------------------|--------------|---------------------------------------|-------------------------------------|
-| ifs  | ECMWF IFS 0.25°  | ecmwf-opendata    | 0–240 h / 6h | u10 v10 t2m msl tp6 gust tcc cape     | u v t gh                            |
-| aifs | ECMWF AIFS (AI)  | ecmwf-opendata    | 0–240 h / 6h | u10 v10 t2m msl tp6 tcc               | u v t gh                            |
-| gfs  | NOAA GFS 0.25°   | NOMADS filter CGI | 0–240 h / 6h | u10 v10 t2m msl tp6 gust tcc cape     | u v t gh                            |
+| key  | model            | source            | surface steps                 | surface variables                                    | aloft (925/850/700/500/300/250 hPa, 6 h) |
+|------|------------------|-------------------|-------------------------------|------------------------------------------------------|------------------------------------------|
+| ifs  | ECMWF IFS 0.25°  | ecmwf-opendata    | 3 h to 144 h, then 6 h to 240 | u10 v10 t2m d2m msl tp sf sd gust tcc cape           | u v t gh                                 |
+| aifs | ECMWF AIFS (AI)  | ecmwf-opendata    | 6 h to 240 h                  | u10 v10 t2m d2m msl tp sf tcc                        | u v t gh                                 |
+| gfs  | NOAA GFS 0.25°   | NOMADS filter CGI | 3 h to 240 h                  | u10 v10 t2m d2m msl tp sf(derived) sd gust tcc cape  | u v t gh                                 |
+
+Precipitation and snowfall are stored as the amount since the previous stored
+step (`tp6`/`sf6` — the names predate the 3-hourly tier); snow depth is `sd_cm`.
+Pressure levels are fetched on 6 h steps and linearly filled between them for
+point products.
 
 All free and keyless. ECMWF data is CC BY 4.0 (attribute ECMWF); GFS is public
 domain. `tp6` is precipitation over the previous 6 h in mm for every model
@@ -55,19 +60,45 @@ that never serves `front/private/` — the place for an operator's own fonts or
 theme overlay that shouldn't leave the house. Put it behind any reverse proxy
 or tunnel.
 
+## Overlays and external feeds
+
+All free, all keyless, proxied by `wxgrid/ext.py` (server-side cache, mirrored
+to `data/cache/ext.json`) unless marked *direct*:
+
+- **Radar** — RainViewer composite (past 2 h + nowcast), *direct* tiles
+- **Satellite** — GOES-East/West GeoColor from NASA GIBS, latest frame, *direct* tiles
+- **Alerts** — NWS active alerts (polygons + point lookup) and Environment Canada's ALERTS WMS layer (*direct*)
+- **Storms** — NHC/CPHC active tropical cyclones: position, cone, forecast track (KMZ → GeoJSON)
+- **Avalanche** — Avalanche Canada (point product + regions) and avalanche.org (zones + products)
+- **Observations** — nearest METAR + TAF via aviationweather.gov
+- **Air quality / UV** — Open-Meteo air-quality API
+- **Tides** — DFO (Canada) and NOAA CO-OPS (US) nearest station, next highs/lows
+- **Places** — Nominatim search + reverse (1 req/s honoured), Open-Meteo elevation
+- **Ski resorts** — OpenStreetMap via Overpass (catalog + lifts + boundary), DEM for base/summit when OSM has none
+
 ## Front end
 
-`front/` is static: MapLibre GL (vendored) on OpenFreeMap's dark style, one
+`front/` is static — `app.js` (boot, state, controls, point card shell),
+`overlays.js` (radar/isolines/avalanche/resorts/alerts/storms/satellite/measure),
+`tape.js` (the Windy-style forecast table), `search.js`, `panes.js` (card
+panes), `particles.js` (wind particles + barbs), `static-api.js` (Pages
+shim). MapLibre GL (vendored) on OpenFreeMap's dark style (positron in the
+light theme; dark theme is OLED black), one
 `image` source draped over the world in Web Mercator (the server reprojects
 the lat/lon grid so the drape is exact), a 2-D canvas particle layer above it
 (cambecc/earth lineage), a Windy-style weather tape + scrubber (← → keys,
 space to play), a model picker that keeps the *valid time* when you switch,
 altitude picker for wind/temp (surface, 925…250 hPa), live radar overlay with
 its own timeline (RainViewer, last 2 h + nowcast), place search (Nominatim),
-and a tap-anywhere point card: Now (meteogram), Aloft (winds/temps per level,
-freezing level, cloud, CAPE, QNH), Outdoors (precip type, 24 h rain, snow
-level, gusts, wind chill). Layers: wind, temp, gusts, rain, clouds, pressure,
-CAPE. Units toggle km/h · kt · m/s. Fonts: Inter / Plus Jakarta Sans / Geist
+and a tap-anywhere point card: Now (hero, alerts, air quality, station obs,
+meteogram), Aloft (winds/temps per level, freezing level, cloud, CAPE, QNH,
+TAF), Airgram, Winter (new snow, snow depth, freezing/snow level, ridge wind,
+rain-on-snow, avalanche forecast), Outdoors (precip type, 24 h rain, gusts,
+wind chill/humidex, dry windows, tides), Compare (all models on the same valid
+times), Resort (elevation-band forecast + lifts). Layers: wind, temp, gusts,
+rain, new snow, snow depth, clouds, pressure, dew point, freezing level, CAPE;
+altitude picker for wind/temp; isolines; wind barbs. Units km/h · kt · m/s,
+permalinks in the URL hash, measure tool. Fonts: Inter / Plus Jakarta Sans / Geist
 Mono (OFL, see `front/fonts/LICENSES.md`).
 
 ## For Python consumers
@@ -82,16 +113,27 @@ spread(["ifs", "aifs", "gfs"], "t2m", 49.3, -123.1)       # per-model + mean + r
 `pip install -e ~/local-projects/wxgrid` from the consumer's venv, or copy
 `wxgrid/reader.py` + `store.py` + `config.py`.
 
+## Static demo (GitHub Pages)
+
+`scripts/publish_pages.sh` builds `dist-pages/` with `wxgrid.static_demo`
+(one model, 12-hourly, coarse point tiles, prebuilt resort details) and
+force-pushes it to `gh-pages`. `deploy/wxgrid-pages.timer` does it twice a
+day. The front detects the snapshot and answers point/profile queries from
+the tiles; feeds that need a server (METAR, other-model compare, new resort
+lifts) degrade quietly.
+
 ## Roadmap
 
 - WeatherNext 2 (DeepMind FGN ensemble) via BigQuery once the data-request
   form clears — needs a GCP project. Ensembles generally: AIFS-ens, GEFS →
   spread/plume layers.
-- Waves (WW3), HRRR 3 km for the PNW, ICON, radar (RainViewer).
-- Isobars/isotherms (marching squares client-side), model split-screen.
-- Self-hosted AI model on the 3090 via ECMWF `ai-models` (Aurora / GraphCast-small).
+- Waves (WW3), HRRR 3 km, ICON; hourly GFS surface tier.
+- Model split-screen; favourites; webcams (needs a keyed API).
+- Self-hosted AI model via ECMWF `ai-models` (Aurora / GraphCast-small).
 
 ## Tests
 
 `pytest -q` — render (Mercator, colour, wind JSON), store roundtrip/prune,
-GRIB grid normalisation, API contract. Tests use a scratch data dir.
+GRIB grid normalisation, API contract (layers, levels, point, profile,
+isolines), external-feed parsers (METAR pick, avalanche, NWS, KMZ), resorts,
+static builder. Tests use a scratch data dir and stub every network call.

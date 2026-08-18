@@ -26,9 +26,22 @@ _session.headers["User-Agent"] = UA
 
 
 class _Cache:
-    def __init__(self) -> None:
+    """TTL cache; mirrored to disk so a restart doesn't re-hit every upstream
+    (station lists alone are megabytes). Written at most every 30 s."""
+
+    def __init__(self, path: "Path | None" = None) -> None:
         self._d: dict[str, tuple[float, Any]] = {}
         self._lock = threading.Lock()
+        self._path = path
+        self._dirty = False
+        self._last_flush = 0.0
+        if path and path.exists():
+            try:
+                import json
+                raw = json.loads(path.read_text())
+                self._d = {k: (v[0], v[1]) for k, v in raw.items()}
+            except Exception:
+                self._d = {}
 
     def get(self, key: str, ttl: float, fn: Callable[[], Any]) -> Any:
         now = time.time()
@@ -39,13 +52,29 @@ class _Cache:
         val = fn()
         with self._lock:
             self._d[key] = (now, val)
+            self._dirty = True
             if len(self._d) > 4000:            # crude bound; oldest first
                 for k in sorted(self._d, key=lambda k: self._d[k][0])[:1000]:
                     self._d.pop(k, None)
+            if self._path and now - self._last_flush > 30:
+                self._flush(now)
         return val
 
+    def _flush(self, now: float) -> None:
+        import json
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._path.with_suffix(".part")
+            tmp.write_text(json.dumps({k: [t, v] for k, (t, v) in self._d.items() if now - t < 7 * 24 * 3600}))
+            tmp.replace(self._path)
+            self._last_flush, self._dirty = now, False
+        except Exception as exc:               # a cache that fails to persist is still a cache
+            log.debug("ext cache flush failed: %s", exc)
 
-cache = _Cache()
+
+from pathlib import Path as _Path
+from wxgrid.config import CACHE_DIR as _CACHE_DIR
+cache = _Cache(_Path(_CACHE_DIR) / "ext.json")
 _nominatim_lock = threading.Lock()
 _nominatim_last = 0.0
 

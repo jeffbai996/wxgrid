@@ -50,9 +50,13 @@
   // and answers the JSON endpoints from files. Live builds pass straight through.
   const U = (u) => (window.WXStatic ? window.WXStatic.url(u) : u);
   const apiJson = (u) => window.WXStatic ? window.WXStatic.api(u) : fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
-  window.WX = { state, speed, speedUnit, arrowRot, f, arrow, LEVEL_FT, LEVEL_M, AVY_COLORS, API,
+  window.WX = { state, speed, speedUnit, arrowRot, f, arrow, LEVEL_FT, LEVEL_M, AVY_COLORS, API, LAYER_ALPHA, $, $$,
                 get map() { return map; }, get catalog() { return catalog; }, toast, modelEntry: () => modelEntry(), openPoint, closePoint,
                 get validDate() { return validDate(); }, get stepHours() { return stepHours(); }, api: apiJson, url: U };
+  // Functions the split-out modules (overlays.js, tape.js, search.js) call back into.
+  window.WX.fn = { applyStep: (...a) => applyStep(...a), openPoint: (...a) => openPoint(...a), setStep: (...a) => setStep(...a), toast, firstSymbolId: () => firstSymbolId(),
+                   renderPoint: () => renderPoint(), refreshPoint: () => refreshPoint(), closePoint: () => closePoint(), placeMarker: (...a) => placeMarker(...a),
+                   stepHours: () => stepHours(), steps: () => steps(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d) };
 
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
@@ -67,7 +71,7 @@
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
     map.on("moveend", () => {
       localStorage.setItem("wxgrid.view", JSON.stringify({ center: map.getCenter().toArray(), zoom: map.getZoom() }));
-      if (!state.point) refreshTapePoint();
+      if (!state.point) WX.tape.refreshTapePoint();
       pushHash();
     });
     wind = new WindLayer(map, $("#particles"));
@@ -88,10 +92,10 @@
     map.on("load", () => {
       ensureWxLayer();
       map.on("click", (e) => {
-        if (state.measure) { measureClick(e.lngLat); return; }
+        if (state.measure) { WX.ov.measureClick(e.lngLat); return; }
         const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter((l) => map.getLayer(l)) });
         const resort = feats.find((x) => x.layer.id === "resort-pts");
-        if (resort) { selectResort(resort.properties.id); return; }
+        if (resort) { WX.ov.selectResort(resort.properties.id); return; }
         openPoint(e.lngLat.lat, e.lngLat.lng);
         const avy = feats.find((x) => x.layer.id === "avy-fill");
         if (avy) { state.tab = "winter"; }
@@ -101,7 +105,7 @@
       renderControls();
       applyStep();
       loadWind();
-      refreshTapePoint();
+      WX.tape.refreshTapePoint();
       if (hash && hash.pt) openPoint(hash.pt[0], hash.pt[1]);
     });
   }
@@ -115,14 +119,14 @@
   // After a basemap swap every custom source is gone; put back whatever was on.
   function restoreLayers() {
     ensureWxLayer(); applyStep();
-    if (state.radar && state.radarFrames.length) applyRadarFrame();
-    if (state.iso) loadIso();
-    if (state.avy) loadAvy();
-    if (state.resorts) loadResorts();
-    if (state.resort) selectResort(state.resort.resort.id);
-    if (state.alerts) loadAlerts();
-    if (state.storms) loadStorms();
-    if (state.sat) loadSat();
+    if (state.radar && state.radarFrames.length) WX.ov.applyRadarFrame();
+    if (state.iso) WX.ov.loadIso();
+    if (state.avy) WX.ov.loadAvy();
+    if (state.resorts) WX.ov.loadResorts();
+    if (state.resort) WX.ov.selectResort(state.resort.resort.id);
+    if (state.alerts) WX.ov.loadAlerts();
+    if (state.storms) WX.ov.loadStorms();
+    if (state.sat) WX.ov.loadSat();
     if (marker) marker.addTo(map);
   }
   function applyTheme(theme, swapMap = true) {
@@ -158,27 +162,6 @@
     }, 250);
   }
 
-  // ── measure tool: two taps → distance (km / nm) and true bearing ──────
-  let measurePts = [];
-  function measureClick(ll) {
-    measurePts.push([ll.lng, ll.lat]);
-    if (measurePts.length > 2) measurePts = [[ll.lng, ll.lat]];
-    const gj = { type: "FeatureCollection", features: measurePts.length === 2 ? [{ type: "Feature", geometry: { type: "LineString", coordinates: measurePts } }] : [] };
-    if (map.getSource("measure")) map.getSource("measure").setData(gj);
-    else { map.addSource("measure", { type: "geojson", data: gj }); map.addLayer({ id: "measure-line", type: "line", source: "measure", paint: { "line-color": "#ffb454", "line-width": 2, "line-dasharray": [1.5, 1.5] } }); }
-    const box = $("#measure"); box.hidden = false;
-    if (measurePts.length < 2) { box.textContent = "tap the second point"; return; }
-    const [a, b] = measurePts;
-    const R = 6371, toR = Math.PI / 180;
-    const dLat = (b[1] - a[1]) * toR, dLon = (b[0] - a[0]) * toR;
-    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * toR) * Math.cos(b[1] * toR) * Math.sin(dLon / 2) ** 2;
-    const km = 2 * R * Math.asin(Math.sqrt(h));
-    const y = Math.sin(dLon) * Math.cos(b[1] * toR), x = Math.cos(a[1] * toR) * Math.sin(b[1] * toR) - Math.sin(a[1] * toR) * Math.cos(b[1] * toR) * Math.cos(dLon);
-    const brg = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-    box.innerHTML = `<b>${km.toFixed(km < 100 ? 1 : 0)} km</b> · ${(km / 1.852).toFixed(km < 100 ? 1 : 0)} nm · ${(km * 0.621371).toFixed(0)} mi · true bearing <b>${brg.toFixed(0).padStart(3, "0")}°</b>`;
-  }
-  function clearMeasure() { measurePts = []; $("#measure").hidden = true; if (map.getLayer("measure-line")) map.removeLayer("measure-line"); if (map.getSource("measure")) map.removeSource("measure"); }
-
   // ── catalog helpers ───────────────────────────────────────────────────
   const modelEntry = () => catalog.models.find((m) => m.key === state.model);
   const runEntry = () => modelEntry().runs.find((r) => r.run === state.run) || modelEntry().runs[0];
@@ -208,7 +191,7 @@
     rail.querySelectorAll("button").forEach((b) => b.onclick = () => {
       state.layer = b.dataset.layer; localStorage.setItem("wxgrid.layer", state.layer);
       if (!hasLevel()) state.level = 0;
-      renderControls(); applyStep(); loadWind(); if (state.iso) loadIso(); });
+      renderControls(); applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); });
 
     const lv = $("#levels");
     const levels = runEntry().levels || [];
@@ -219,7 +202,7 @@
       if (!opts.includes(state.level)) state.level = 0;
       // Native title tooltips: hover a level for a beat and the metres/FL show.
       lv.innerHTML = opts.map((l) => `<button data-level="${l}" class="${l === state.level ? "on" : ""}" title="${l ? `${l} hPa · ${LEVEL_M[l]} · ${LEVEL_FT[l]}` : "surface · 10 m wind · 2 m temperature"}">${l ? l : "sfc"}</button>`).join("");
-      lv.querySelectorAll("button").forEach((b) => b.onclick = () => { state.level = Number(b.dataset.level); renderControls(); applyStep(); loadWind(); if (state.iso) loadIso(); });
+      lv.querySelectorAll("button").forEach((b) => b.onclick = () => { state.level = Number(b.dataset.level); renderControls(); applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); });
     }
 
     const slider = $("#step");
@@ -237,22 +220,22 @@
       state.units = { kmh: "kt", kt: "ms", ms: "kmh" }[state.units];
       localStorage.setItem("wxgrid.units", state.units);
       $("#units-toggle").textContent = speedUnit();
-      renderLegend(); renderPoint(); renderTape();
+      renderLegend(); renderPoint(); WX.tape.renderTape();
     };
-    $("#radar-toggle").onclick = toggleRadar;
-    $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) loadAlerts(); else clearAlerts(); };
-    $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) loadStorms(); else clearStorms(); };
-    $("#sat-toggle").onclick = () => { state.sat = !state.sat; $("#sat-toggle").classList.toggle("on", state.sat); if (state.sat) loadSat(); else clearSat(); };
+    $("#radar-toggle").onclick = () => WX.ov.toggleRadar();
+    $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
+    $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) WX.ov.loadStorms(); else WX.ov.clearStorms(); };
+    $("#sat-toggle").onclick = () => { state.sat = !state.sat; $("#sat-toggle").classList.toggle("on", state.sat); if (state.sat) WX.ov.loadSat(); else WX.ov.clearSat(); };
     $("#theme-toggle").onclick = () => applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
-    $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); if (!state.measure) clearMeasure(); else toast("Measure: tap two points"); };
-    $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) loadIso(); else clearIso(); };
-    $("#avy-toggle").onclick = () => { state.avy = !state.avy; $("#avy-toggle").classList.toggle("on", state.avy); if (state.avy) loadAvy(); else clearAvy(); };
-    $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) loadResorts(); else clearResorts(); };
+    $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); if (!state.measure) WX.ov.clearMeasure(); else toast("Measure: tap two points"); };
+    $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) WX.ov.loadIso(); else WX.ov.clearIso(); };
+    $("#avy-toggle").onclick = () => { state.avy = !state.avy; $("#avy-toggle").classList.toggle("on", state.avy); if (state.avy) WX.ov.loadAvy(); else WX.ov.clearAvy(); };
+    $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) WX.ov.loadResorts(); else WX.ov.clearResorts(); };
     $("#locate").onclick = () => navigator.geolocation && navigator.geolocation.getCurrentPosition(
       (p) => { map.flyTo({ center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), 7) }); openPoint(p.coords.latitude, p.coords.longitude); },
       () => toast("Location unavailable"));
     $("#point-close").onclick = closePoint;
-    wireSearch();
+    WX.search.wireSearch();
     $$(".menu .menu-btn").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const m = b.parentElement; const open = m.classList.contains("open"); $$(".menu.open").forEach((x) => x.classList.remove("open")); if (!open) m.classList.add("open"); });
     document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) $$(".menu.open").forEach((x) => x.classList.remove("open")); });
     $$(".point-tabs button").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; renderPoint(); });
@@ -261,7 +244,7 @@
       if (e.key === "ArrowRight") nudge(1);
       else if (e.key === "ArrowLeft") nudge(-1);
       else if (e.key === " ") { e.preventDefault(); togglePlay(); }
-      else if (e.key === "Escape") { closePoint(); hideResults(); }
+      else if (e.key === "Escape") { closePoint(); WX.search.hideResults(); }
     });
   }
 
@@ -275,15 +258,15 @@
     let best = 0, bestErr = Infinity;
     steps().forEach((h, i) => { const err = Math.abs(base + h * 3600e3 - target); if (err < bestErr) { bestErr = err; best = i; } });
     state.stepIdx = best;
-    renderControls(); applyStep(); loadWind(); refreshPoint(); refreshTapePoint(); if (state.iso) loadIso();
+    renderControls(); applyStep(); loadWind(); refreshPoint(); WX.tape.refreshTapePoint(); if (state.iso) WX.ov.loadIso();
   }
 
   function clampStep() { state.stepIdx = Math.min(state.stepIdx, steps().length - 1); }
   function nudge(d) {
-    if (state.radar && state.radarFrames.length) { state.radarIdx = (state.radarIdx + d + state.radarFrames.length) % state.radarFrames.length; applyRadarFrame(); return; }
-    state.stepIdx = (state.stepIdx + d + steps().length) % steps().length; $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) loadIso();
+    if (state.radar && state.radarFrames.length) { state.radarIdx = (state.radarIdx + d + state.radarFrames.length) % state.radarFrames.length; WX.ov.applyRadarFrame(); return; }
+    state.stepIdx = (state.stepIdx + d + steps().length) % steps().length; $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) WX.ov.loadIso();
   }
-  function setStep(i) { state.stepIdx = Math.max(0, Math.min(steps().length - 1, i)); $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) loadIso(); }
+  function setStep(i) { state.stepIdx = Math.max(0, Math.min(steps().length - 1, i)); $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); }
 
   function applyStep(prefetch = true) {
     pushHash();
@@ -295,7 +278,7 @@
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
     $("#lead").textContent = `+${stepHours()}h`;
     if (prefetch) { const img = new Image(); img.src = layerUrl(steps()[(state.stepIdx + 1) % steps().length]); }
-    renderTapeSelection();
+    WX.tape.renderTapeSelection();
     if (state.point) renderPoint();
   }
 
@@ -332,314 +315,6 @@
     $(".legend-ticks").innerHTML = ticks.map((t, i) => `<span>${i === 2 ? `<b>${name}</b> ` : ""}${conv(t)}${i === 4 ? " " + unit : ""}</span>`).join("");
   }
 
-  // ── isolines overlay ──────────────────────────────────────────────────
-  let isoReq = 0;
-  function isoVar() {
-    if (state.layer === "temp") return state.level ? `temp?level=${state.level}` : "temp";
-    if (state.layer === "frz") return "frz";
-    if (state.layer === "wind" && state.level === 500) return "gh_500";
-    return "msl";
-  }
-  async function loadIso() {
-    const my = ++isoReq;
-    const v = isoVar();
-    const url = U(`${API}/isolines/${state.model}/${state.run}/${stepHours()}/${v.includes("?") ? v.replace("?", ".json?") : v + ".json"}`);
-    try {
-      const gj = await WX.api(url);
-      if (my !== isoReq || !state.iso) return;
-      if (map.getSource("iso")) map.getSource("iso").setData(gj);
-      else {
-        map.addSource("iso", { type: "geojson", data: gj });
-        map.addLayer({ id: "iso-line", type: "line", source: "iso", paint: { "line-color": "rgba(255,255,255,0.55)", "line-width": ["case", ["==", ["%", ["get", "value"], ["*", 4, gj.interval || 4]], 0], 1.4, 0.7] } }, firstSymbolId());
-        map.addLayer({ id: "iso-label", type: "symbol", source: "iso", layout: { "symbol-placement": "line", "text-field": ["get", "label"], "text-size": 10, "text-font": ["Noto Sans Regular"], "symbol-spacing": 320 }, paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.7)", "text-halo-width": 1.2 } });
-      }
-    } catch (e) { toast("Isolines unavailable for this layer"); }
-  }
-  function clearIso() { ["iso-label", "iso-line"].forEach((l) => map.getLayer(l) && map.removeLayer(l)); if (map.getSource("iso")) map.removeSource("iso"); }
-
-  // ── avalanche regions overlay ─────────────────────────────────────────
-  async function loadAvy() {
-    try {
-      const gj = await WX.api(`${API}/avy/layer`);
-      if (!state.avy) return;
-      if (map.getSource("avy")) map.getSource("avy").setData(gj);
-      else {
-        map.addSource("avy", { type: "geojson", data: gj });
-        map.addLayer({ id: "avy-fill", type: "fill", source: "avy", paint: { "fill-color": ["get", "color"], "fill-opacity": ["case", [">", ["get", "danger_level"], 0], 0.32, 0.12] } }, firstSymbolId());
-        map.addLayer({ id: "avy-line", type: "line", source: "avy", paint: { "line-color": ["get", "color"], "line-width": 1.2, "line-opacity": 0.8 } }, firstSymbolId());
-      }
-      const rated = gj.features.filter((x) => x.properties.danger_level > 0).length;
-      toast(rated ? `Avalanche regions: ${rated} with a current rating` : "Avalanche regions loaded — off season, no current ratings (forecasts resume ~November)", 5000);
-    } catch (e) { toast("Avalanche layer unavailable"); state.avy = false; $("#avy-toggle").classList.remove("on"); }
-  }
-  function clearAvy() { ["avy-line", "avy-fill"].forEach((l) => map.getLayer(l) && map.removeLayer(l)); if (map.getSource("avy")) map.removeSource("avy"); }
-
-  // ── ski resorts overlay ───────────────────────────────────────────────
-  let resortsCatalog = null;
-  async function loadResorts() {
-    try {
-      if (!resortsCatalog) resortsCatalog = (await WX.api(`${API}/resorts/all`)).resorts;
-      if (!state.resorts) return;
-      const gj = { type: "FeatureCollection", features: resortsCatalog.map((r) => ({ type: "Feature", properties: { id: r.id, name: r.name }, geometry: { type: "Point", coordinates: [r.lon, r.lat] } })) };
-      if (map.getSource("resorts")) map.getSource("resorts").setData(gj);
-      else {
-        map.addSource("resorts", { type: "geojson", data: gj });
-        map.addLayer({ id: "resort-pts", type: "circle", source: "resorts", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 2.5, 8, 6], "circle-color": "#ffb454", "circle-stroke-color": "#0b0d10", "circle-stroke-width": 1.2, "circle-opacity": 0.9 } });
-        map.addLayer({ id: "resort-lbl", type: "symbol", source: "resorts", minzoom: 7, layout: { "text-field": ["get", "name"], "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top", "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1.2 } });
-      }
-    } catch (e) { toast("Resort catalog unavailable"); }
-  }
-  function clearResorts() { ["resort-lbl", "resort-pts"].forEach((l) => map.getLayer(l) && map.removeLayer(l)); if (map.getSource("resorts")) map.removeSource("resorts"); }
-
-  async function selectResort(id) {
-    try {
-      const d = await WX.api(`${API}/resorts/${id}`);
-      state.resort = d;
-      const r = d.resort;
-      // lifts + boundary on the map
-      const lifts = d.lifts || { type: "FeatureCollection", features: [] };
-      if (map.getSource("lifts")) map.getSource("lifts").setData(lifts);
-      else {
-        map.addSource("lifts", { type: "geojson", data: lifts });
-        map.addLayer({ id: "lifts-line", type: "line", source: "lifts", paint: { "line-color": "#ffb454", "line-width": 2, "line-opacity": 0.9 } });
-        map.addLayer({ id: "lifts-lbl", type: "symbol", source: "lifts", minzoom: 11, layout: { "symbol-placement": "line", "text-field": ["get", "name"], "text-size": 10, "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1 } });
-      }
-      const bnd = d.boundary ? { type: "FeatureCollection", features: [d.boundary] } : { type: "FeatureCollection", features: [] };
-      if (map.getSource("bnd")) map.getSource("bnd").setData(bnd);
-      else { map.addSource("bnd", { type: "geojson", data: bnd }); map.addLayer({ id: "bnd-line", type: "line", source: "bnd", paint: { "line-color": "#ffb454", "line-width": 1.2, "line-dasharray": [2, 2], "line-opacity": 0.8 } }, firstSymbolId()); }
-      map.flyTo({ center: [r.lon, r.lat], zoom: Math.max(map.getZoom(), 10.5), duration: 900 });
-      state.tab = "resort";
-      openPoint(r.lat, r.lon, r.name);
-    } catch (e) { toast("Resort detail unavailable"); }
-  }
-  WX.selectResort = selectResort;
-
-  // ── alerts: NWS polygons (GeoJSON) + Environment Canada (GeoMet WMS) ─
-  async function loadAlerts() {
-    try {
-      const gj = await WX.api(`${API}/alerts/layer`);
-      if (!state.alerts) return;
-      if (map.getSource("alerts")) map.getSource("alerts").setData(gj);
-      else {
-        map.addSource("alerts", { type: "geojson", data: gj });
-        map.addLayer({ id: "alerts-fill", type: "fill", source: "alerts", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.28 } }, firstSymbolId());
-        map.addLayer({ id: "alerts-line", type: "line", source: "alerts", paint: { "line-color": ["get", "color"], "line-width": 1.6 } }, firstSymbolId());
-        map.on("click", "alerts-fill", (e) => { const p = e.features[0].properties; toast(`${p.event} · ${p.area}`.slice(0, 160), 6000); });
-      }
-      if (!map.getSource("ec-alerts")) {
-        map.addSource("ec-alerts", { type: "raster", tileSize: 256, attribution: "Alerts © Environment Canada",
-          tiles: ["https://geo.weather.gc.ca/geomet?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ALERTS&CRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=true&STYLES="] });
-        map.addLayer({ id: "ec-alerts", type: "raster", source: "ec-alerts", paint: { "raster-opacity": 0.55, "raster-fade-duration": 0 } }, firstSymbolId());
-      }
-      toast(`Alerts: ${gj.features.length} NWS polygon alerts + Environment Canada layer`, 4000);
-    } catch (e) { toast("Alerts unavailable"); state.alerts = false; $("#alerts-toggle").classList.remove("on"); }
-  }
-  function clearAlerts() { ["alerts-line", "alerts-fill", "ec-alerts"].forEach((l) => map.getLayer(l) && map.removeLayer(l)); ["alerts", "ec-alerts"].forEach((sname) => map.getSource(sname) && map.removeSource(sname)); }
-
-  // ── tropical systems (NHC): cone, track, current position ─────────────
-  async function loadStorms() {
-    try {
-      const gj = await WX.api(`${API}/storms`);
-      if (!state.storms) return;
-      if (map.getSource("storms")) map.getSource("storms").setData(gj);
-      else {
-        map.addSource("storms", { type: "geojson", data: gj });
-        map.addLayer({ id: "storm-cone", type: "fill", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "fill-color": "#ffb454", "fill-opacity": 0.18 } }, firstSymbolId());
-        map.addLayer({ id: "storm-cone-line", type: "line", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "line-color": "#ffb454", "line-width": 1.2 } }, firstSymbolId());
-        map.addLayer({ id: "storm-track", type: "line", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "LineString"]], paint: { "line-color": "#fff", "line-width": 2 } });
-        map.addLayer({ id: "storm-pts", type: "circle", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "Point"]], paint: { "circle-radius": 4, "circle-color": "#fff", "circle-stroke-color": "#000", "circle-stroke-width": 1 } });
-        map.addLayer({ id: "storm-now", type: "circle", source: "storms", filter: ["==", ["get", "kind"], "current"], paint: { "circle-radius": 9, "circle-color": "#ef786f", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
-        map.addLayer({ id: "storm-lbl", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"], layout: { "text-field": ["concat", ["get", "class"], " ", ["get", "name"], "\n", ["get", "intensity_kt"], " kt"], "text-size": 12, "text-offset": [0, 1.4], "text-anchor": "top", "text-font": ["Noto Sans Bold"] }, paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.4 } });
-        map.on("click", "storm-now", (e) => { const p = e.features[0].properties; toast(`${p.class} ${p.name} · ${p.intensity_kt} kt · ${p.pressure_mb} mb · moving ${p.movement} · adv ${p.advisory}`, 8000); });
-      }
-      const names = (gj.storms || []).map((x) => `${x.class} ${x.name}`).join(", ");
-      toast(names ? `Active: ${names}` : "No active tropical systems (NHC/CPHC)", 5000);
-      if (gj.storms && gj.storms.length && !state.point) { const st = gj.storms[0]; const f = gj.features.find((x) => x.properties.kind === "current" && x.properties.id === st.id); if (f) map.flyTo({ center: f.geometry.coordinates, zoom: Math.max(3.5, Math.min(map.getZoom(), 5)), duration: 1200 }); }
-    } catch (e) { toast("Storm feed unavailable"); state.storms = false; $("#storms-toggle").classList.remove("on"); }
-  }
-  function clearStorms() { ["storm-lbl", "storm-now", "storm-pts", "storm-track", "storm-cone-line", "storm-cone"].forEach((l) => map.getLayer(l) && map.removeLayer(l)); if (map.getSource("storms")) map.removeSource("storms"); }
-
-  // ── satellite: GOES GeoColor via NASA GIBS (timeless URL = latest) ────
-  function loadSat() {
-    for (const [id, name] of [["sat-east", "GOES-East_ABI_GeoColor"], ["sat-west", "GOES-West_ABI_GeoColor"]]) {
-      if (map.getSource(id)) continue;
-      map.addSource(id, { type: "raster", tileSize: 256, maxzoom: 7, attribution: "Satellite: NASA GIBS / NOAA GOES",
-        tiles: [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${name}/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png?t=${Math.floor(Date.now() / 6e5)}`] });
-      map.addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, "wx");
-    }
-    if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", Math.min(0.5, LAYER_ALPHA[state.layer]));
-    toast("Satellite: GOES-East/West GeoColor, latest available (~1 h lag). Americas + Pacific.", 5000);
-  }
-  function clearSat() { ["sat-east", "sat-west"].forEach((l) => { if (map.getLayer(l)) map.removeLayer(l); if (map.getSource(l)) map.removeSource(l); }); applyStep(); }
-
-  // ── radar (RainViewer) ────────────────────────────────────────────────
-  async function toggleRadar() {
-    state.radar = !state.radar;
-    $("#radar-toggle").classList.toggle("on", state.radar);
-    if (!state.radar) {
-      if (map.getLayer("radar")) map.removeLayer("radar");
-      if (map.getSource("radar")) map.removeSource("radar");
-      state.radarFrames = [];
-      renderTape(); applyStep();
-      return;
-    }
-    try {
-      const j = await (await fetch(RAINVIEWER, { cache: "no-store" })).json();
-      state.radarHost = j.host;
-      state.radarFrames = [...j.radar.past.map((x) => ({ ...x, kind: "past" })), ...j.radar.nowcast.map((x) => ({ ...x, kind: "nowcast" }))];
-      state.radarIdx = j.radar.past.length - 1;
-      applyRadarFrame();
-      renderTape();
-      toast("Radar: RainViewer composite, last 2 h + 30 min nowcast. Coverage where radars exist.", 5000);
-    } catch (e) { toast("Radar unavailable right now"); state.radar = false; $("#radar-toggle").classList.remove("on"); }
-  }
-  function radarTiles(fr) { return [`${state.radarHost}${fr.path}/256/{z}/{x}/{y}/2/1_1.png`]; }
-  function applyRadarFrame() {
-    const fr = state.radarFrames[state.radarIdx];
-    if (!fr) return;
-    if (map.getSource("radar")) map.getSource("radar").setTiles(radarTiles(fr));
-    else {
-      map.addSource("radar", { type: "raster", tiles: radarTiles(fr), tileSize: 256, attribution: "Radar © RainViewer" });
-      map.addLayer({ id: "radar", type: "raster", source: "radar", paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, firstSymbolId());
-    }
-    if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", Math.min(0.45, LAYER_ALPHA[state.layer]));
-    const t = new Date(fr.time * 1000);
-    $("#valid-local").textContent = t.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) + (fr.kind === "nowcast" ? " · nowcast" : " · radar");
-    $("#valid-utc").textContent = t.toISOString().slice(11, 16) + "Z";
-    const ageMin = Math.round((Date.now() / 1000 - fr.time) / 60);
-    $("#lead").textContent = ageMin >= 0 ? `−${ageMin}m` : `+${-ageMin}m`;
-    renderTapeSelection();
-  }
-
-  // ── weather tape ──────────────────────────────────────────────────────
-  let tapeReq = 0;
-  async function refreshTapePoint() {
-    const c = map.getCenter();
-    const my = ++tapeReq;
-    try {
-      const d = await WX.api(`${API}/point?lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}&model=${state.model}&run=${state.run}`);
-      if (my !== tapeReq) return;
-      state.tapePoint = d;
-      renderTape();
-    } catch (e) { /* keep last */ }
-  }
-  function tapeData() { return (state.point && state.point.data) || state.tapePoint; }
-
-  // Windy-style tape: a table whose columns are forecast steps grouped under
-  // day headers and whose rows are variables (icon, temp, feels like, rain,
-  // wind, gusts, direction). Click a column to jump.
-  function renderTape() {
-    const tape = $("#tape");
-    tape.classList.toggle("radar", state.radar && state.radarFrames.length > 0);
-    if (state.radar && state.radarFrames.length) {
-      let html = "", lastDay = null;
-      state.radarFrames.forEach((fr, i) => {
-        const t = new Date(fr.time * 1000), day = t.toDateString();
-        if (day !== lastDay) { if (lastDay !== null) html += "</div></div>"; html += `<div class="tape-day"><div class="tape-dayname">${t.toLocaleDateString(undefined, { weekday: "short" })} · radar</div><div class="tape-cols">`; lastDay = day; }
-        html += `<div class="tape-col ${fr.kind}" data-radar="${i}"><span class="tape-hour">${t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })}</span><span class="tape-glyph" style="color:${fr.kind === "nowcast" ? "var(--warm)" : "var(--rain)"};text-align:center">${fr.kind === "nowcast" ? "◌" : "●"}</span></div>`;
-      });
-      tape.innerHTML = html + "</div></div>";
-      tape.querySelectorAll(".tape-col").forEach((c) => c.onclick = () => { state.radarIdx = Number(c.dataset.radar); applyRadarFrame(); });
-      $("#tape-where").textContent = "";
-      renderTapeSelection();
-      return;
-    }
-    const d = tapeData();
-    if (!d) { tape.innerHTML = ""; return; }
-    const s = d.series, n = d.steps.length;
-    const dates = d.valid.map((iso) => new Date(iso));
-    // day header cells: colspan per day
-    const days = [];
-    dates.forEach((dt, i) => { const k = dt.toDateString(); if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, span: 0 }); days[days.length - 1].span++; });
-    const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day">${dy.start.toLocaleDateString(undefined, { weekday: "long", day: "numeric" })}</th>`).join("");
-    const cell = (i, inner, cls = "") => `<td class="${cls} ${dates[i].getHours() < 6 || dates[i].getHours() >= 21 ? "night" : ""}" data-i="${i}">${inner}</td>`;
-    const hourRow = dates.map((dt, i) => cell(i, `<span class="hr">${dt.toLocaleTimeString(undefined, { hour: "numeric" }).replace(":00", "").replace(/\s/, "<small>") + (/[ap]m/i.test(dt.toLocaleTimeString(undefined, { hour: "numeric" })) ? "</small>" : "")}</span>`, "hour")).join("");
-    const iconRow = dates.map((_, i) => cell(i, glyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), s.t2m ? s.t2m[i] : null, dates[i].getHours() < 6 || dates[i].getHours() >= 21), "ico")).join("");
-    const tempRow = dates.map((_, i) => cell(i, s.t2m && s.t2m[i] != null ? `${Math.round(s.t2m[i] - 273.15)}°` : "—", "temp")).join("");
-    const feels = (i) => { const t = s.t2m ? s.t2m[i] - 273.15 : null, w = s.wind ? s.wind[i] : null; if (t == null) return null; if (w != null && t <= 10 && w * 3.6 >= 4.8) { const v = Math.pow(w * 3.6, 0.16); return 13.12 + 0.6215 * t - 11.37 * v + 0.3965 * t * v; } if (s.d2m && s.d2m[i] != null && t >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / s.d2m[i])); return t + 0.5555 * (e - 10); } return t; };
-    const feelsRow = dates.map((_, i) => { const v = feels(i); return cell(i, v == null ? "—" : `${Math.round(v)}°`, "feels"); }).join("");
-    const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `<span class="snow">${sn.toFixed(sn < 10 ? 1 : 0)}</span>`, "rain"); return cell(i, r >= 0.1 ? `<span>${r.toFixed(r < 10 ? 1 : 0)}</span>` : "", "rain"); }).join("");
-    const windCol = (v) => { const kmh = v * 3.6; const p = Math.min(1, kmh / 70); return `background: rgba(${Math.round(60 + 180 * p)}, ${Math.round(160 - 60 * p)}, ${Math.round(220 - 200 * p)}, ${0.15 + 0.6 * p})`; };
-    const windRow = dates.map((_, i) => { const v = s.wind ? s.wind[i] : null; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("");
-    const gustRow = s.gust ? dates.map((_, i) => { const v = s.gust[i]; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("") : "";
-    const dirRow = dates.map((_, i) => cell(i, s.wdir && s.wdir[i] != null ? `<i class="dirarrow" style="${arrowRot(s.wdir[i])}"></i>` : "", "dir")).join("");
-    const label = (t, u) => `<th class="lab">${t}${u ? `<small>${u}</small>` : ""}</th>`;
-    tape.innerHTML = `<table class="wtape"><thead><tr><th class="lab corner"></th>${dayRow}</tr></thead><tbody>
-      <tr class="r-hour">${label("Hours")}${hourRow}</tr>
-      <tr class="r-icon">${label("")}${iconRow}</tr>
-      <tr class="r-temp">${label("Temp", "°C")}${tempRow}</tr>
-      <tr class="r-feels">${label("Feels like", "°C")}${feelsRow}</tr>
-      <tr class="r-rain">${label("Rain / snow", "mm · cm")}${rainRow}</tr>
-      <tr class="r-wind">${label("Wind", speedUnit())}${windRow}</tr>
-      ${gustRow ? `<tr class="r-wind">${label("Gusts", speedUnit())}${gustRow}</tr>` : ""}
-      <tr class="r-dir">${label("Wind dir.")}${dirRow}</tr>
-    </tbody></table>`;
-    tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => setStep(Number(c.dataset.i)));
-    $("#tape-where").textContent = state.point ? (state.point.name || `${state.point.lat.toFixed(2)}, ${state.point.lon.toFixed(2)}`) : "map centre";
-    renderTapeSelection();
-  }
-
-  function renderTapeSelection() {
-    const tape = $("#tape");
-    const radar = state.radar && state.radarFrames.length;
-    let on = null;
-    tape.querySelectorAll(radar ? ".tape-col" : "td[data-i]").forEach((c) => {
-      const isOn = radar ? Number(c.dataset.radar) === state.radarIdx : Number(c.dataset.i) === state.stepIdx;
-      c.classList.toggle("on", isOn); if (isOn && !on) on = c;
-    });
-    // Scroll the tape itself, never scrollIntoView: that walks every scrollable
-    // ancestor and drags the whole page sideways under an overflow:hidden body.
-    if (on) { const r = on.getBoundingClientRect(), tr = tape.getBoundingClientRect(); if (r.left < tr.left + 60 || r.right > tr.right - 60) tape.scrollTo({ left: tape.scrollLeft + (r.left + r.width / 2) - (tr.left + tr.width / 2), behavior: "smooth" }); }
-  }
-
-  function glyph(cloud, precip, tK, night) {
-    const c = cloud == null ? 0 : cloud;
-    const snow = tK != null && tK - 273.15 < 1 && precip > 0.2;
-    const body = night ? `<circle cx="7" cy="7" r="4" fill="#cfd6e3"/>` : `<circle cx="7" cy="7" r="4" fill="#ffd166"/>`;
-    const cl = c > 0.25 ? `<path d="M6 12h9a3 3 0 0 0 0-6 4 4 0 0 0-7.6-1A3.5 3.5 0 0 0 6 12z" fill="rgba(210,218,230,${0.35 + 0.65 * c})"/>` : "";
-    const rn = precip > 0.2 ? (snow ? `<text x="9" y="15" font-size="6" fill="#dfe8ff">✱</text>` : `<path d="M8 12.5v2M12 12.5v2M16 12.5v2" stroke="#6cb6ff" stroke-width="1.4" stroke-linecap="round"/>`) : "";
-    return `<svg class="tape-glyph" viewBox="0 0 20 16">${c < 0.9 ? body : ""}${cl}${rn}</svg>`;
-  }
-
-  // ── search: places + resorts ──────────────────────────────────────────
-  let searchTimer = null, searchSel = -1, searchHits = [];
-  function wireSearch() {
-    const q = $("#q");
-    q.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => runSearch(q.value.trim()), 350); };
-    q.onkeydown = (e) => {
-      if (e.key === "ArrowDown") { e.preventDefault(); searchSel = Math.min(searchHits.length - 1, searchSel + 1); paintResults(); }
-      else if (e.key === "ArrowUp") { e.preventDefault(); searchSel = Math.max(0, searchSel - 1); paintResults(); }
-      else if (e.key === "Escape") hideResults();
-    };
-    $("#search").onsubmit = (e) => { e.preventDefault(); clearTimeout(searchTimer); if (searchHits.length) pickResult(searchHits[Math.max(0, searchSel)]); else runSearch(q.value.trim(), true); };
-    document.addEventListener("click", (e) => { if (!e.target.closest("#search") && !e.target.closest("#search-results")) hideResults(); });
-  }
-  async function runSearch(text, go = false) {
-    if (text.length < 2) { hideResults(); return; }
-    try {
-      const [geo, res] = await Promise.all([WX.api(`${API}/geo?q=${encodeURIComponent(text)}&limit=5`).catch(() => ({ hits: [] })), WX.api(`${API}/resorts?q=${encodeURIComponent(text)}&limit=5`).catch(() => ({ resorts: [] }))]);
-      searchHits = [...res.resorts.map((r) => ({ kind: "resort", name: r.name, sub: `${r.region || ""} ${r.country || ""}`.trim(), lat: r.lat, lon: r.lon, id: r.id })),
-                    ...geo.hits.map((h) => ({ kind: "place", name: h.name, sub: h.display.split(",").slice(1, 3).join(",").trim(), lat: h.lat, lon: h.lon }))];
-      searchSel = searchHits.length ? 0 : -1;
-      if (go && searchHits.length) { pickResult(searchHits[0]); return; }
-      paintResults();
-    } catch (e) { toast("Search unavailable"); }
-  }
-  function paintResults() {
-    const box = $("#search-results");
-    if (!searchHits.length) { box.hidden = true; return; }
-    box.hidden = false;
-    box.innerHTML = searchHits.map((h, i) => `<button class="${i === searchSel ? "sel" : ""}" data-i="${i}"><span class="kind ${h.kind}">${h.kind}</span><span>${h.name}</span><span class="sub">${h.sub}</span></button>`).join("");
-    box.querySelectorAll("button").forEach((b) => b.onclick = () => pickResult(searchHits[Number(b.dataset.i)]));
-  }
-  function hideResults() { $("#search-results").hidden = true; }
-  function pickResult(h) {
-    hideResults(); $("#q").blur();
-    if (h.kind === "resort") { selectResort(h.id); return; }
-    map.flyTo({ center: [h.lon, h.lat], zoom: Math.max(map.getZoom(), 7), duration: 900 });
-    openPoint(h.lat, h.lon, h.name);
-  }
-
   // ── point card ────────────────────────────────────────────────────────
   let pointReq = 0;
   async function openPoint(lat, lon, name) {
@@ -658,18 +333,18 @@
       const d = await WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}&model=${state.model}&run=${state.run}`);
       if (my !== pointReq) return;
       state.point.data = d;
-      renderPoint(); renderTape();
+      renderPoint(); WX.tape.renderTape();
       $("#point-foot").textContent = `${modelEntry().attribution} · run ${d.run}Z · nearest 0.25° gridpoint`;
     } catch (e) { $("#point-now").textContent = "point forecast unavailable"; }
     // local context arrives lazily and re-renders as it lands
-    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; renderTape(); } renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; WX.tape.renderTape(); } renderPoint(); } }).catch(() => {});
     WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.obs = r; renderPoint(); } }).catch(() => {});
     WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.alerts = r.alerts || []; renderPoint(); } }).catch(() => {});
     WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.air = r; renderPoint(); } }).catch(() => {});
     WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.tides = r; renderPoint(); } }).catch(() => { if (my === pointReq) state.point.tides = false; });
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
-  function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; if (marker) { marker.remove(); marker = null; } renderTape(); refreshTapePoint(); }
+  function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
   function placeMarker(lat, lon) {
     if (!marker) { const el = document.createElement("div"); el.className = "wx-marker"; marker = new maplibregl.Marker({ element: el, anchor: "center" }); }
     marker.setLngLat([lon, lat]).addTo(map);

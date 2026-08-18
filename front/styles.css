@@ -156,16 +156,9 @@ button:focus:not(:focus-visible) { outline: none; }
 .tape-col { width: 46px; flex: 0 0 46px; padding: 2px 0 3px; display: flex; flex-direction: column; align-items: center; gap: 1px; cursor: pointer; border-radius: 7px; position: relative; }
 .tape-col:hover { background: rgba(255,255,255,.05); }
 .tape-col.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(108,182,255,.45); }
-.tape-col.night { opacity: .78; }
 .tape-hour { font: 500 10px var(--font-mono); color: var(--dim); }
-.tape-temp { font: 700 12.5px var(--font-display); }
-.tape-wind { font: 500 10px var(--font-mono); color: var(--fg-2); display: flex; align-items: center; gap: 2px; }
-.tape-wind i { display: inline-block; width: 8px; height: 8px; border-left: 1.5px solid currentColor; border-top: 1.5px solid currentColor; transform-origin: center; }
-.tape-rain { width: 30px; height: 6px; border-radius: 2px; background: rgba(255,255,255,.06); overflow: hidden; }
-.tape-rain b { display: block; height: 100%; background: var(--rain); }
 .tape-glyph { width: 20px; height: 14px; }
 input#step { width: 100%; accent-color: var(--accent); height: 14px; margin: 2px 0 0; }
-.tape.radar .tape-col { width: 34px; flex-basis: 34px; }
 
 /* ── point card ──────────────────────────────────────────────────────── */
 #point {
@@ -217,9 +210,6 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 }
 
 /* ── v3 additions ────────────────────────────────────────────────────── */
-.levels button { display: flex; flex-direction: column; align-items: center; line-height: 1.05; padding: 3px 8px !important; }
-.levels button small { font: 500 9px var(--font-mono); opacity: .75; letter-spacing: 0; }
-.levels button.on small { opacity: .85; }
 
 .results { position: absolute; z-index: 8; top: calc(var(--top-h) - 2px); left: 12px; width: 340px; max-height: 50vh; overflow: auto;
   background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 12px; padding: 4px; box-shadow: 0 18px 50px rgba(0,0,0,.5); }
