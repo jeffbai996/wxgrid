@@ -19,11 +19,18 @@ def test_mercator_preserves_columns_and_maps_equator_to_middle_row():
     assert np.all(np.diff(m[:, 0]) <= 0)       # monotone north → south
 
 
-def test_colorize_emits_rgba_png_of_mercator_size():
+def test_colorize_emits_palette_png_of_mercator_size():
     field = np.full((render.MERC_H, GRID_LON_N), 20.0, dtype=np.float32)
     png = render.colorize(field, "t2m")
     img = Image.open(io.BytesIO(png))
-    assert img.mode == "RGBA" and img.size == (GRID_LON_N, render.MERC_H)
+    assert img.mode == "P" and img.size == (GRID_LON_N, render.MERC_H)
+    assert np.asarray(img.convert("RGBA"))[0, 0, 3] == int(0.78 * 255)
+
+
+def test_all_missing_field_is_fully_transparent():
+    field = np.full((render.MERC_H, GRID_LON_N), np.nan, dtype=np.float32)
+    img = Image.open(io.BytesIO(render.colorize(field, "gust")))
+    assert np.asarray(img)[..., 3].max() == 0
 
 
 def test_rain_is_transparent_where_dry():

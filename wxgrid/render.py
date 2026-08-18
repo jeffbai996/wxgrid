@@ -98,19 +98,31 @@ _LUTS = {k: _lut(v) for k, v in RAMPS.items()}
 
 
 def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78) -> bytes:
-    """RGBA PNG for a Mercator-projected field already in display units."""
+    """PNG for a Mercator-projected field already in display units.
+
+    Constant-alpha layers go out as 8-bit palette PNGs (256 colours is exactly
+    the LUT, ~4x smaller than RGBA on the wire); rain, whose alpha varies with
+    the value, stays RGBA. A field that is entirely missing (a step the model
+    did not publish for this variable) becomes a fully transparent image, so
+    the map shows nothing rather than a stale previous step."""
     ramp, lut = RAMPS[layer], _LUTS[layer]
     lo, hi = ramp["lo"], ramp["hi"]
+    buf = io.BytesIO()
+    if np.all(np.isnan(field_display)):
+        Image.new("RGBA", (field_display.shape[1], field_display.shape[0]), (0, 0, 0, 0)).save(buf, format="PNG")
+        return buf.getvalue()
     x = np.nan_to_num(field_display, nan=lo)
     idx = np.clip((x - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
-    rgba = lut[idx].copy()
-    a = np.full(idx.shape, int(alpha * 255), dtype=np.uint8)
     if layer == "tp6":
+        rgba = lut[idx].copy()
         # Rain: transparent where dry, ramping in over the first millimetre.
-        a = (np.clip(x / 1.0, 0, 1) * alpha * 255).astype(np.uint8)
-    rgba[..., 3] = a
-    buf = io.BytesIO()
-    Image.fromarray(rgba, "RGBA").save(buf, format="PNG", optimize=False, compress_level=6)
+        rgba[..., 3] = (np.clip(x / 1.0, 0, 1) * alpha * 255).astype(np.uint8)
+        Image.fromarray(rgba, "RGBA").save(buf, format="PNG", optimize=False, compress_level=6)
+        return buf.getvalue()
+    img = Image.fromarray(idx, "P")
+    img.putpalette(lut[:, :3].astype(np.uint8).ravel().tolist())
+    img.info["transparency"] = bytes([int(alpha * 255)] * 256)
+    img.save(buf, format="PNG", optimize=False, compress_level=6, transparency=bytes([int(alpha * 255)] * 256))
     return buf.getvalue()
 
 
