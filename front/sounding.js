@@ -346,6 +346,21 @@
       }
     }
 
+    // ── the observed ascent, when a radiosonde is in reach ──────────────
+    // A balloon is the ground truth the model is trying to guess. Drawn thin
+    // and cool-coloured so the model traces stay the loud ones.
+    const obs = opts && opts.observed;
+    if (obs && obs.levels && obs.levels.length > 4) {
+      const ok = (l) => l && l.p != null && l.p >= PTOP && l.p <= 1050;
+      const tPts = obs.levels.filter((l) => ok(l) && l.t != null).map((l) => [F.X(l.t, l.p), F.Y(l.p)]);
+      const dPts = obs.levels.filter((l) => ok(l) && l.td != null).map((l) => [F.X(l.td, l.p), F.Y(l.p)]);
+      ctx.save();
+      ctx.lineWidth = 1.4; ctx.globalAlpha = 0.9;
+      if (tPts.length > 1) { ctx.strokeStyle = P.fg; ctx.setLineDash([]); polyline(ctx, tPts); }
+      if (dPts.length > 1) { ctx.strokeStyle = P.rain || "#6cb6ff"; ctx.setLineDash([3, 2]); polyline(ctx, dPts); ctx.setLineDash([]); }
+      ctx.restore();
+    }
+
     // dew-point trace: the surface point always, the profile only when the run
     // carries humidity aloft
     if (prof.dew.length) {
@@ -424,6 +439,11 @@
     if (par) notes.push(`Parcel lifted from the surface: dry to the LCL, pseudoadiabatic above. CAPE/CIN estimated across ${prof.env.length} levels — coarse, and blind to any inversion between them.`);
     else notes.push("No surface dew point in this run, so no parcel, no LCL and no CAPE estimate.");
     if (modelCape != null) notes.push("CAPE (model) is the run's own field and is the number to trust.");
+    if (obs && obs.levels && obs.levels.length > 4) {
+      const when = obs.time ? new Date(obs.time).toUTCString().replace(/^\w+, /, "").replace(":00 GMT", "Z") : "";
+      const st = obs.station || {};
+      notes.unshift(`Observed ascent from ${st.name || st.id || "the nearest station"}${st.distance_km != null ? `, ${Math.round(st.distance_km)} km` : ""}, ${when}: temperature in white, dew point dashed blue. The orange and green traces are the model.`);
+    }
     const caption = notes.join(" ");
     ctx.fillStyle = P.dim; ctx.font = `500 9px ${P.mono}`; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     const short = prof.hasDewAloft ? "T (orange), Td (green), parcel (dashed), barbs in kt"

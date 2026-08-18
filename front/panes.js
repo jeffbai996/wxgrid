@@ -298,6 +298,14 @@
   const uvWord = (u) => u < 3 ? "low" : u < 6 ? "moderate" : u < 8 ? "high" : u < 11 ? "very high" : "extreme";
   function renderSkewT(pt, d, i) {
     if (!window.WXSounding) return;
+    // the observed ascent arrives late and re-renders; `false` means we asked
+    // and there is nothing in reach, so we do not ask again for this point
+    if (pt && pt.sonde === undefined) {
+      pt.sonde = null;
+      W().api(`${W().API}/sonde/nearest?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}`)
+        .then((r) => { pt.sonde = (r && r.sounding) ? r.sounding : false; if (W().state.point === pt && W().state.tab === "skewt") W().renderPoint(); })
+        .catch(() => { pt.sonde = false; });
+    }
     // the diagram draws in the canvas's own pixel space, so size the element
     // to the card before every draw instead of letting a 640 px chart get
     // squeezed by CSS
@@ -305,7 +313,8 @@
     const w = Math.max(300, Math.round(host.clientWidth));
     const h = Math.round(Math.min(520, Math.max(300, w * 1.05)));
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; c.style.width = w + "px"; c.style.height = h + "px"; }
-    const r = window.WXSounding.draw(c, d, i, { elevation_m: ((pt && pt.local) || {}).elevation_m });
+    const r = window.WXSounding.draw(c, d, i, { elevation_m: ((pt && pt.local) || {}).elevation_m,
+                                                observed: pt && pt.sonde ? pt.sonde : null });
     $("#skewt-note").textContent = (r && r.caption) || "";
   }
 
