@@ -1,22 +1,90 @@
 # wxgrid
 
-Self-hosted, Windy-style weather map on free model data. Global weather-model
-grids, one store, two consumers: a map in the browser (wind particles, layers
-at the surface and aloft, live radar, a weather tape, aviation and outdoors
-readouts) and Python readers for signal engines downstream. MIT.
+**Windy, except it's yours.** A global weather map on free model data, self-hosted, no API keys, MIT.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776ab)](https://www.python.org/)
+[![API keys: none](https://img.shields.io/badge/API%20keys-none-brightgreen)](#overlays-and-external-feeds)
+[![Models: IFS · AIFS · GFS · GEM · GEFS](https://img.shields.io/badge/models-IFS%20%C2%B7%20AIFS%20%C2%B7%20GFS%20%C2%B7%20GEM%20%C2%B7%20GEFS-ff8a3d)](#models)
+[![Live demo](https://img.shields.io/badge/demo-jeffbai996.github.io%2Fwxgrid-ff8a3d)](https://jeffbai996.github.io/wxgrid/)
+
+![wxgrid](docs/img/01-hero.jpg)
+
+Every weather app worth using is somebody else's server, somebody else's rate
+limit, and somebody else's idea of which layers you're allowed to see. The raw
+model data those apps run on is free — ECMWF, NOAA and Environment Canada all
+publish it, keyless, several times a day. wxgrid pulls it, stores it once, and
+draws it.
+
+Five models on one grid, ten pressure levels, particles, radar, warnings from
+four agencies, wildfires with the incident data attached, cross-sections,
+soundings. Runs on one box. The whole thing is a Zarr store, a FastAPI app and
+a folder of static JavaScript — no build step, no bundler, no node_modules.
 
 ```
-ECMWF open data (IFS, AIFS) ─┐
-NOAA NOMADS (GFS)            ├─ wxgrid.ingest ─▶ data/store/<model>/<run>.zarr
-                             ┘        (GRIB2 → common 0.25° grid → Zarr, one step per chunk)
+ECMWF open data (IFS, AIFS, waves) ─┐
+NOAA NOMADS (GFS, GEFS mean, GEFS-Aerosol) ├─ wxgrid.ingest ─▶ data/store/<model>/<run>.zarr
+ECCC dd.weather.gc.ca (GEM GDPS) ───┘        (GRIB2 → common 0.25° grid → Zarr, one step per chunk,
+                                              plus a point cube for fast column reads)
                                              │
               ┌──────────────────────────────┴──────────────────────────┐
      wxgrid.api (FastAPI :8097)                                 wxgrid.reader (xarray)
-     /api/layer  Mercator RGBA PNG per model/run/step/layer       open_run · series · region_mean · spread
-     /api/wind   coarse u/v for particles
-     /api/point  every variable at every step, nearest gridpoint
-     front/      MapLibre + canvas particle layer + meteogram
+     /api/layer      Mercator PNG per model/run/step/layer        open_run · series · region_mean · spread
+     /api/wind       coarse u/v for the particle layer
+     /api/point      every variable at every step, one gridpoint
+     /api/xsection   vertical slice between two points
+     front/          MapLibre + canvas particles + the weather tape
 ```
+
+## What you get
+
+**Tap anywhere.** Hero conditions, a 7-day strip, the nearest station's actual
+METAR, air quality, warnings in force, and a meteogram — then tabs for aloft
+winds, an airgram, a Skew-T, winter, outdoors, and every model side by side on
+the same valid times.
+
+![point card](docs/img/02-card.jpg)
+
+**Cross-sections.** Drag a line, get the atmosphere between the two ends:
+temperature field, the 0 °C line, wind barbs at every level, precipitation
+along the bottom. This is what the ten pressure levels are for.
+
+![cross section](docs/img/03-xsection.jpg)
+
+**Wildfires with the paperwork.** Not just satellite hotspots — active
+incidents and perimeters from CIFFC, CWFIS and NIFC/WFIGS, with the agency's
+own fire number, size in hectares, stage of control, containment and a link
+to their incident page.
+
+![wildfires](docs/img/04-fires.jpg)
+
+**Aerosols, globally.** PM2.5, PM10, dust and optical depth from NOAA's
+GEFS-Aerosol at 0.25° — the Saharan dust belt and every smoke plume from every
+fire on the map above.
+
+![air quality](docs/img/05-air.jpg)
+
+**A real sounding.** Skew-T log-P with isotherms, dry and moist adiabats,
+mixing-ratio lines, the parcel path, LCL, and CAPE both estimated from the
+profile and as the model reports it. It tells you which number to trust.
+
+![skew-t](docs/img/06-skewt.jpg)
+
+**Light theme, and a phone that isn't an afterthought.** Same layers, same
+overlays, same card.
+
+<p>
+<img src="docs/img/08-light.jpg" width="62%" align="top">
+<img src="docs/img/07-mobile.jpg" width="19%" align="top">
+</p>
+
+Also in there: live radar with its own timeline, GOES satellite, isolines,
+official warnings from NWS / Environment Canada / MeteoAlarm / BoM, tropical
+cyclones from the NHC, SIGMET and AIRMET hazard areas, earthquakes, avalanche
+forecasts, 1,000-odd ski resorts with lifts and elevation-band forecasts,
+tides, a measure tool, saved places, permalinks, and a value readout under the
+cursor that costs no extra request — it reads the layer image the map is
+already showing.
 
 ## Models
 
@@ -107,7 +175,9 @@ to `data/cache/ext.json`) unless marked *direct*:
 - **Storms** — NHC/CPHC active tropical cyclones: position, cone, forecast track (KMZ → GeoJSON)
 - **Avalanche** — Avalanche Canada (point product + regions) and avalanche.org (zones + products)
 - **Observations** — nearest METAR + TAF via aviationweather.gov
-- **Air quality / UV** — Open-Meteo air-quality API
+- **Air quality** — NOAA GEFS-Aerosol (GOCART) PM2.5, PM10, dust and AOD as 0.25° layers; Open-Meteo (CAMS underneath) for the gas phase and AQI at a point. UV index is estimated from solar elevation and model cloud, not measured.
+- **Aviation hazards** — SIGMET, international SIGMET and G-AIRMET areas from aviationweather.gov
+- **Wildfires** — CIFFC (Canadian incidents, agency fire numbers and stage of control), CWFIS M3 perimeters, NIFC/WFIGS (US incidents and interagency perimeters), drawn over the CWFIS hotspot raster
 - **Tides** — DFO (Canada) and NOAA CO-OPS (US) nearest station, next highs/lows
 - **Places** — Nominatim search + reverse (1 req/s honoured), Open-Meteo elevation
 - **Ski resorts** — OpenStreetMap via Overpass (catalog + lifts + boundary), DEM for base/summit when OSM has none; with a snow layer showing, pins are coloured by the next 72 h of forecast snowfall (`/api/resorts/snow`)
@@ -132,11 +202,19 @@ meteogram), Aloft (winds/temps per level, freezing level, cloud, CAPE, QNH,
 TAF), Airgram, Winter (new snow, snow depth, freezing/snow level, ridge wind,
 rain-on-snow, avalanche forecast), Outdoors (precip type, 24 h rain, gusts,
 wind chill/humidex, dry windows, tides), Compare (all models on the same valid
-times), Resort (elevation-band forecast + lifts). Layers: wind, temp, gusts,
-rain, new snow, snow depth, clouds, pressure, dew point, freezing level, CAPE;
-altitude picker for wind/temp; isolines; wind barbs. Units km/h · kt · m/s,
+times), Resort (elevation-band forecast + lifts). Layers: wind, temp, gusts, rain (6/24/72 h), new
+snow (6/24/72 h), snow depth, clouds, pressure, humidity (RH or dew point),
+CAPE, UV index, freezing level, waves (height or period), and the aerosol set;
+altitude picker for wind/temp; isolines; wind barbs; cross-sections; a value
+probe under the cursor. Units km/h · kt · m/s,
 permalinks in the URL hash, measure tool. Fonts: Inter / Urbanist / Geist
 Mono (OFL, see `front/fonts/LICENSES.md`).
+
+The met-service badge names whoever forecasts for the country under the
+cursor. This build draws its own **monogram** in the service's brand colour —
+their actual logos are trademarks, and an approximation of a trademark is
+worse than none. An operator's private overlay can supply the real marks for
+a private instance (see `front/private/`).
 
 ## For Python consumers
 
