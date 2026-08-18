@@ -44,7 +44,7 @@
       searchSel = searchHits.length ? 0 : -1;
       if (go && searchHits.length) { pickResult(searchHits[0]); return; }
       paintResults();
-    } catch (e) { WX.fn.toast("Search unavailable"); }
+    } catch (e) { WX.fn.toast("Search unavailable", 4000, "error"); }
   }
   function paintResults() {
     const box = $("#search-results");

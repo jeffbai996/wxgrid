@@ -27,7 +27,7 @@
         M().addLayer({ id: "iso-line", type: "line", source: "iso", paint: { "line-color": "rgba(255,255,255,0.55)", "line-width": ["case", ["==", ["%", ["get", "value"], ["*", 4, gj.interval || 4]], 0], 1.4, 0.7] } }, WX.fn.firstSymbolId());
         M().addLayer({ id: "iso-label", type: "symbol", source: "iso", layout: { "symbol-placement": "line", "text-field": ["get", "label"], "text-size": 10, "text-font": ["Noto Sans Regular"], "symbol-spacing": 320 }, paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.7)", "text-halo-width": 1.2 } });
       }
-    } catch (e) { WX.fn.toast("Isolines unavailable for this layer"); }
+    } catch (e) { WX.fn.toast("Isolines unavailable for this layer", 4000, "error"); }
   }
   function clearIso() { ["iso-label", "iso-line"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("iso")) M().removeSource("iso"); }
 
@@ -44,7 +44,7 @@
       }
       const rated = gj.features.filter((x) => x.properties.danger_level > 0).length;
       WX.fn.toast(rated ? `Avalanche regions: ${rated} with a current rating` : "Avalanche regions loaded — off season, no current ratings (forecasts resume ~November)", 5000);
-    } catch (e) { WX.fn.toast("Avalanche layer unavailable"); state.avy = false; $("#avy-toggle").classList.remove("on"); }
+    } catch (e) { WX.fn.toast("Avalanche layer unavailable", 4000, "error"); state.avy = false; $("#avy-toggle").classList.remove("on"); }
   }
   function clearAvy() { ["avy-line", "avy-fill"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("avy")) M().removeSource("avy"); }
 
@@ -84,7 +84,7 @@
       M().setPaintProperty("resort-pts", "circle-opacity", 0.92);
       M().setLayerZoomRange("resort-lbl", snowMode ? 4 : 7, 24);
       M().setPaintProperty("resort-lbl", "text-color", snowMode ? "#dfe8ff" : "#ffd39a");
-    } catch (e) { WX.fn.toast("Resort catalog unavailable"); }
+    } catch (e) { WX.fn.toast("Resort catalog unavailable", 4000, "error"); }
   }
   function clearResorts() { ["resort-lbl", "resort-pts"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("resorts")) M().removeSource("resorts"); }
 
@@ -107,7 +107,7 @@
       M().flyTo({ center: [r.lon, r.lat], zoom: Math.max(M().getZoom(), 10.5), duration: 900 });
       state.tab = "resort";
       WX.fn.openPoint(r.lat, r.lon, r.name);
-    } catch (e) { WX.fn.toast("Resort detail unavailable"); }
+    } catch (e) { WX.fn.toast("Resort detail unavailable", 4000, "error"); }
   }
   WX.selectResort = selectResort;
 
@@ -129,7 +129,7 @@
         M().addLayer({ id: "ec-alerts", type: "raster", source: "ec-alerts", paint: { "raster-opacity": 0.55, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
       }
       WX.fn.toast(`Alerts: ${gj.features.length} NWS polygon alerts + Environment Canada layer`, 4000);
-    } catch (e) { WX.fn.toast("Alerts unavailable"); state.alerts = false; $("#alerts-toggle").classList.remove("on"); }
+    } catch (e) { WX.fn.toast("Alerts unavailable", 4000, "error"); state.alerts = false; $("#alerts-toggle").classList.remove("on"); }
   }
   function clearAlerts() { ["alerts-line", "alerts-fill", "ec-alerts"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); ["alerts", "ec-alerts"].forEach((sname) => M().getSource(sname) && M().removeSource(sname)); }
 
@@ -152,7 +152,7 @@
       const names = (gj.storms || []).map((x) => `${x.class} ${x.name}`).join(", ");
       WX.fn.toast(names ? `Active: ${names}` : "No active tropical systems (NHC/CPHC)", 5000);
       if (gj.storms && gj.storms.length && !state.point) { const st = gj.storms[0]; const f = gj.features.find((x) => x.properties.kind === "current" && x.properties.id === st.id); if (f) M().flyTo({ center: f.geometry.coordinates, zoom: Math.max(3.5, Math.min(M().getZoom(), 5)), duration: 1200 }); }
-    } catch (e) { WX.fn.toast("Storm feed unavailable"); state.storms = false; $("#storms-toggle").classList.remove("on"); }
+    } catch (e) { WX.fn.toast("Storm feed unavailable", 4000, "error"); state.storms = false; $("#storms-toggle").classList.remove("on"); }
   }
   function clearStorms() { ["storm-lbl", "storm-now", "storm-pts", "storm-track", "storm-cone-line", "storm-cone"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("storms")) M().removeSource("storms"); }
 
@@ -188,7 +188,7 @@
       applyRadarFrame();
       WX.tape.renderTape();
       WX.fn.toast("Radar: RainViewer composite, last 2 h + 30 min nowcast. Coverage where radars exist.", 5000);
-    } catch (e) { WX.fn.toast("Radar unavailable right now"); state.radar = false; $("#radar-toggle").classList.remove("on"); }
+    } catch (e) { WX.fn.toast("Radar unavailable right now", 4000, "error"); state.radar = false; $("#radar-toggle").classList.remove("on"); }
   }
   function radarTiles(fr) { return [`${state.radarHost}${fr.path}/256/{z}/{x}/{y}/2/1_1.png`]; }
   function applyRadarFrame() {
@@ -256,7 +256,7 @@
         M().on("click", "quakes", (e) => { const p = e.features[0].properties; toast(`M${p.mag} · ${p.place} · ${new Date(p.time).toLocaleString()}`, 7000); });
       }
       toast(`Quakes: ${gj.features.length} events M2.5+ in the past day (USGS)`, 4000);
-    } catch (e) { toast("USGS feed unavailable"); }
+    } catch (e) { toast("USGS feed unavailable", 4000, "error"); }
   }
   function clearQuakes() { if (M().getLayer("quakes")) M().removeLayer("quakes"); if (M().getSource("quakes")) M().removeSource("quakes"); }
 

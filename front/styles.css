@@ -222,6 +222,17 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
   position: absolute; z-index: 9; top: 64px; left: 50%; transform: translateX(-50%);
   background: rgba(20,24,30,.95); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-size: 12.5px;
 }
+#toast.error { border-color: rgba(239,120,111,.55); color: #ffb3ad; background: rgba(60,18,16,.95); }
+:root[data-theme="light"] #toast { background: rgba(255,255,255,.97); }
+:root[data-theme="light"] #toast.error { background: #fff1f0; color: #a3261e; }
+#fatal { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0,0,0,.55); backdrop-filter: blur(6px); padding: 20px; }
+.fatal-card { width: min(440px, 100%); background: var(--panel-solid); border: 1px solid rgba(239,120,111,.5); border-radius: var(--radius); padding: 18px 20px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.fatal-head { display: flex; align-items: center; gap: 10px; font: 800 16px var(--font-display); color: var(--fg); }
+.fatal-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 12px var(--bad); }
+.fatal-card p { margin: 10px 0 12px; color: var(--fg-2); line-height: 1.5; font-size: 13.5px; }
+.fatal-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fatal-actions .chip { background: var(--bad); border-color: var(--bad); color: #fff; }
+.fatal-actions .mono { font-size: 11px; }
 
 @media (max-width: 820px) {
   #topbar { flex-wrap: wrap; gap: 6px; }

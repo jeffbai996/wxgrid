@@ -282,7 +282,7 @@
     $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) WX.ov.loadResorts(); else WX.ov.clearResorts(); };
     $("#locate").onclick = () => navigator.geolocation && navigator.geolocation.getCurrentPosition(
       (p) => { map.flyTo({ center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), 7) }); openPoint(p.coords.latitude, p.coords.longitude); },
-      () => toast("Location unavailable"));
+      () => toast("Location unavailable", 4000, "error"));
     $("#point-close").onclick = closePoint;
     $("#point-fav").onclick = () => { if (!state.point) return; const on = WX.search.toggleFav(state.point.lat, state.point.lon, state.point.name); $("#point-fav").textContent = on ? "★" : "☆"; $("#point-fav").classList.toggle("on", on); toast(on ? "Saved. Focus the search box to see your places." : "Removed", 2500); };
     WX.search.wireSearch();
@@ -416,11 +416,23 @@
 
   // ── misc ──────────────────────────────────────────────────────────────
   let toastTimer = null;
-  function toast(msg, ms = 3000) {
-    const t = $("#toast"); t.textContent = msg; t.hidden = false;
+  function toast(msg, ms = 3000, kind = "") {
+    const t = $("#toast"); t.textContent = msg; t.hidden = false; t.className = kind;
     clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), ms);
+  }
+  // Boot failure: a proper panel, not a toast. Says what is wrong in words
+  // and offers a retry; the raw error stays available underneath.
+  function fatal(err) {
+    const msg = String(err && err.message || err);
+    const offline = /Load failed|Failed to fetch|NetworkError|network/i.test(msg);
+    const why = offline ? "The wxgrid server did not answer. It may be restarting, or this device is off the network it lives on."
+      : /^(5\d\d)$/.test(msg) ? "The server answered with an error while loading the model catalog." : "Something broke while starting.";
+    let box = $("#fatal");
+    if (!box) { box = document.createElement("div"); box.id = "fatal"; document.body.appendChild(box); }
+    box.innerHTML = `<div class="fatal-card" role="alert"><div class="fatal-head"><span class="fatal-dot"></span><b>wxgrid can't start</b></div><p>${why}</p><div class="fatal-actions"><button id="fatal-retry" class="chip">Try again</button><span class="dim mono">${msg.replace(/[<>&]/g, "")}</span></div></div>`;
+    $("#fatal-retry").onclick = () => location.reload();
   }
 
   window.addEventListener("unhandledrejection", (e) => { if (e.reason && e.reason.name === "AbortError") e.preventDefault(); });
-  boot().catch((e) => { console.error(e); toast("wxgrid failed to start: " + e.message, 10000); });
+  boot().catch((e) => { console.error(e); fatal(e); });
 })();
