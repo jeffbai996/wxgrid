@@ -70,6 +70,25 @@ profile and as the model reports it. It tells you which number to trust.
 
 ![skew-t](docs/img/06-skewt.jpg)
 
+**Radar from the agency that owns the radars.** ECCC's 1 km mosaic over Canada,
+NOAA MRMS over the US, RainViewer everywhere else — and it changes source by
+itself as you pan across the border, with a badge naming whichever one you are
+looking at. Individual cells, not a smoothed global composite.
+
+![radar](docs/img/09-radar.jpg)
+
+**Units are a system.** Set °F, inches, miles and inHg once and the tape, the
+card, the legend, the cursor readout and the cross-section all change together.
+The clock can run on your zone, on UTC, or on the zone of the place you are
+looking at.
+
+![settings](docs/img/10-settings.jpg)
+
+**Right-click anything.** Forecast here, cross-section from here, measure from
+here, save it, copy the coordinates. Long-press does the same on a phone.
+
+![context menu](docs/img/11-menu.jpg)
+
 **Light theme, and a phone that isn't an afterthought.** Same layers, same
 overlays, same card.
 
