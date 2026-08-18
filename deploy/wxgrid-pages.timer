@@ -2,7 +2,7 @@
 Description=wxgrid static demo publish, twice daily after the 00Z/12Z runs land
 
 [Timer]
-OnCalendar=*-*-* 08:30,20:30:00
+OnCalendar=*-*-* 08,20:30:00
 RandomizedDelaySec=10min
 Persistent=true
 
