@@ -27,12 +27,16 @@
   <div class="seg" id="models" role="tablist" aria-label="Model"></div>
   <select id="run" class="run" title="Model run (UTC)"></select>
   <div class="spacer"></div>
-  <div class="seg small" id="levels" hidden aria-label="Altitude"></div>
+  <div class="seg small levels" id="levels" hidden aria-label="Altitude"></div>
   <button id="radar-toggle" class="chip" title="Live radar (RainViewer)">radar</button>
+  <button id="iso-toggle" class="chip" title="Isolines (isobars / isotherms)">isolines</button>
+  <button id="avy-toggle" class="chip" title="Avalanche forecast regions">avalanche</button>
+  <button id="resorts-toggle" class="chip" title="Ski resorts">resorts</button>
   <button id="particles-toggle" class="chip on" title="Wind particles">particles</button>
   <button id="units-toggle" class="chip mono" title="Wind units">km/h</button>
   <button id="locate" class="icon" title="My location">◎</button>
 </header>
+<div id="search-results" class="results" hidden></div>
 
 <nav id="layers" class="rail" aria-label="Layers"></nav>
 
@@ -59,17 +63,22 @@
   <div class="point-head">
     <span id="point-title"></span>
     <span class="point-tabs seg small">
-      <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="out">Outdoors</button>
+      <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="air">Airgram</button><button data-tab="winter">Winter</button><button data-tab="out">Outdoors</button><button data-tab="cmp">Compare</button><button data-tab="resort" hidden>Resort</button>
     </span>
     <button id="point-close" class="icon" title="Close">×</button>
   </div>
+  <div id="point-local" class="dim"></div>
   <div id="point-body">
     <section data-pane="now">
       <div id="point-now"></div>
       <canvas id="meteogram" width="640" height="220"></canvas>
     </section>
     <section data-pane="aloft" hidden><div id="aloft"></div></section>
+    <section data-pane="air" hidden><canvas id="airgram" width="640" height="260"></canvas><div id="airgram-note" class="note"></div></section>
+    <section data-pane="winter" hidden><div id="winter"></div></section>
     <section data-pane="out" hidden><div id="outdoors"></div></section>
+    <section data-pane="cmp" hidden><div id="compare"></div></section>
+    <section data-pane="resort" hidden><div id="resort"></div></section>
   </div>
   <div id="point-foot" class="dim"></div>
 </div>
@@ -79,5 +88,6 @@
 <script src="vendor/maplibre-gl.js"></script>
 <script src="particles.js"></script>
 <script src="app.js"></script>
+<script src="panes.js"></script>
 </body>
 </html>

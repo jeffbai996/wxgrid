@@ -1,8 +1,7 @@
-// wxgrid front end. State: model/run/layer/level/step + optional live radar.
-// One MapLibre image source for the model layer, one raster-tile source for
-// radar, a canvas particle layer, a bottom weather tape, and a point card with
-// Now / Aloft / Outdoors panes. Everything comes from /api (and RainViewer
-// for radar).
+// wxgrid front end — core: map, controls, layers/overlays, time bar + tape,
+// place/resort search, tapped-point marker. The point card's panes live in
+// panes.js and hang off window.WX. Everything comes from /api (plus
+// RainViewer tiles for radar and OpenFreeMap for the basemap).
 (function () {
   "use strict";
 
@@ -10,43 +9,54 @@
   const $$ = (s) => Array.from(document.querySelectorAll(s));
   const API = "api";
   const WORLD = [[-180, 85.05112878], [180, 85.05112878], [180, -85.05112878], [-180, -85.05112878]];
-  const LAYERS = ["wind", "temp", "gust", "tp6", "tcc", "msl", "cape"];
-  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", msl: "Pressure", tp6: "Rain", tcc: "Clouds", cape: "CAPE" };
+  const LAYERS = ["wind", "temp", "gust", "tp6", "sf6", "sd_cm", "tcc", "msl", "d2m", "frz", "cape"];
+  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", msl: "Pressure", tp6: "Rain", sf6: "New snow", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", frz: "Freezing lvl" };
+  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, sf6: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, frz: 0.7 };
   const LAYER_ICON = {
     wind: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 5.5h7a2 2 0 1 0-2-2M2 9h10a2 2 0 1 1-2 2M2 12.5h5"/></svg>',
     temp: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 9.5V3a2 2 0 0 1 4 0v6.5a3 3 0 1 1-4 0z"/><path d="M8 7v4"/></svg>',
     gust: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 5h6M2 8h9M2 11h6M11 4l3 4-3 4"/></svg>',
     tp6: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 8h8a3 3 0 0 0-.5-6 4 4 0 0 0-7.4 1A2.5 2.5 0 0 0 4 8z"/><path d="M5 11v2M8 11v2M11 11v2"/></svg>',
+    sf6: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v12M3 5l10 6M3 11l10-6M8 2l-2 2M8 2l2 2M8 14l-2-2M8 14l2-2"/></svg>',
+    sd_cm: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 12h12M3 12l3-5 3 4 2-3 3 4"/><path d="M2 14.5h12" opacity=".5"/></svg>',
     tcc: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 12h7a3 3 0 0 0 0-6 4 4 0 0 0-7.6-1A3.5 3.5 0 0 0 4.5 12z"/></svg>',
     msl: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2"/><circle cx="8" cy="8" r="5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg>',
+    d2m: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 2s-4 4.5-4 7.5a4 4 0 0 0 8 0C12 6.5 8 2 8 2z"/></svg>',
+    frz: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 12l4-6 3 4 2-3 3 5"/><path d="M2 8h12" stroke-dasharray="2 2"/></svg>',
     cape: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5 4 9h4l-1 5.5L12 7H8z"/></svg>',
   };
-  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tcc: 0.9, cape: 0.85 };
-  const LEVEL_LABEL = { 0: "Sfc", 925: "925", 850: "850", 700: "700", 500: "500", 300: "300", 250: "250" };
   const LEVEL_FT = { 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 500: "FL180", 300: "FL300", 250: "FL340" };
+  const LEVEL_M = { 925: "≈750 m", 850: "≈1.5 km", 700: "≈3 km", 500: "≈5.5 km", 300: "≈9 km", 250: "≈10.5 km" };
   const RAINVIEWER = "https://api.rainviewer.com/public/weather-maps.json";
+  const AVY_COLORS = { 0: "#8a8f98", 1: "#50b848", 2: "#fff200", 3: "#f7941e", 4: "#ed1c24", 5: "#231f20" };
 
   const state = {
     model: null, run: null, layer: "wind", level: 0, stepIdx: 0,
     playing: false, particles: true, units: localStorage.getItem("wxgrid.units") || "kmh",
+    tapeRes: localStorage.getItem("wxgrid.tapeRes") || "6h",
     point: null, tapePoint: null, tab: "now",
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
+    iso: false, avy: false, resorts: false, resort: null,
   };
-  let map, wind, catalog, playTimer = null;
+  let map, wind, catalog, playTimer = null, marker = null;
 
-  // ── units ─────────────────────────────────────────────────────────────
+  // ── shared helpers (used by panes.js) ────────────────────────────────
   const speed = (ms) => ms == null ? null : state.units === "kt" ? ms * 1.943844 : state.units === "ms" ? ms : ms * 3.6;
   const speedUnit = () => ({ kmh: "km/h", kt: "kt", ms: "m/s" }[state.units]);
   const arrowRot = (deg) => `transform: rotate(${(deg + 180 + 45) % 360}deg)`;   // chevron points TO where wind goes
+  const f = (v, fn) => (v == null ? "—" : fn(v));
+  const arrow = (deg) => "↓↙←↖↑↗→↘"[Math.round(((deg % 360) / 45)) % 8];
+  window.WX = { state, speed, speedUnit, arrowRot, f, arrow, LEVEL_FT, LEVEL_M, AVY_COLORS, API,
+                get map() { return map; }, get catalog() { return catalog; }, toast, modelEntry: () => modelEntry(), openPoint, closePoint,
+                get validDate() { return validDate(); }, get stepHours() { return stepHours(); }, api: (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }) };
 
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
     const saved = JSON.parse(localStorage.getItem("wxgrid.view") || "null");
     map = new maplibregl.Map({
-      container: "map",
-      style: "https://tiles.openfreemap.org/styles/dark",
+      container: "map", style: "https://tiles.openfreemap.org/styles/dark",
       center: saved ? saved.center : [-123, 47], zoom: saved ? saved.zoom : 4,
-      minZoom: 1.2, maxZoom: 10, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
+      minZoom: 1.2, maxZoom: 11, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
     });
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
     map.on("moveend", () => {
@@ -54,11 +64,10 @@
       if (!state.point) refreshTapePoint();
     });
     wind = new WindLayer(map, $("#particles"));
-    // Panels sit on top of the time bar, whose height depends on the tape.
     new ResizeObserver(() => document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px")).observe($("#timebar"));
     new ResizeObserver(() => document.documentElement.style.setProperty("--top-h", $("#topbar").offsetHeight + "px")).observe($("#topbar"));
 
-    catalog = await (await fetch(`${API}/models`, { cache: "no-store" })).json();
+    catalog = await WX.api(`${API}/models?ts=${Date.now()}`);
     const withRuns = catalog.models.filter((m) => m.runs.length);
     if (!withRuns.length) { toast("No model runs in the store yet — ingest is still running.", 8000); return; }
     const pref = localStorage.getItem("wxgrid.model");
@@ -69,17 +78,25 @@
 
     map.on("load", () => {
       map.addSource("wx", { type: "image", url: layerUrl(), coordinates: WORLD });
-      const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol");
       map.addLayer({ id: "wx", type: "raster", source: "wx",
-                     paint: { "raster-opacity": LAYER_ALPHA[state.layer], "raster-fade-duration": 0, "raster-resampling": "linear" } },
-                   firstSymbol ? firstSymbol.id : undefined);
-      map.on("click", (e) => openPoint(e.lngLat.lat, e.lngLat.lng));
+                     paint: { "raster-opacity": LAYER_ALPHA[state.layer], "raster-fade-duration": 0, "raster-resampling": "linear" } }, firstSymbolId());
+      map.on("click", (e) => {
+        const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter((l) => map.getLayer(l)) });
+        const resort = feats.find((x) => x.layer.id === "resort-pts");
+        if (resort) { selectResort(resort.properties.id); return; }
+        openPoint(e.lngLat.lat, e.lngLat.lng);
+        const avy = feats.find((x) => x.layer.id === "avy-fill");
+        if (avy) { state.tab = "winter"; }
+      });
+      map.on("mouseenter", "resort-pts", () => map.getCanvas().style.cursor = "pointer");
+      map.on("mouseleave", "resort-pts", () => map.getCanvas().style.cursor = "");
       renderControls();
       applyStep();
       loadWind();
       refreshTapePoint();
     });
   }
+  const firstSymbolId = () => { const l = map.getStyle().layers.find((x) => x.type === "symbol"); return l ? l.id : undefined; };
 
   // ── catalog helpers ───────────────────────────────────────────────────
   const modelEntry = () => catalog.models.find((m) => m.key === state.model);
@@ -88,7 +105,8 @@
   const stepHours = () => steps()[state.stepIdx];
   const runDate = () => new Date(runEntry().valid_from);
   const validDate = () => new Date(runDate().getTime() + stepHours() * 3600e3);
-  const levelQ = () => (state.level && ["wind", "temp"].includes(state.layer)) ? `?level=${state.level}` : "";
+  const hasLevel = () => ["wind", "temp"].includes(state.layer);
+  const levelQ = () => (state.level && hasLevel()) ? `?level=${state.level}` : "";
   const layerUrl = (h = stepHours()) => `${API}/layer/${state.model}/${state.run}/${h}/${state.layer}.png${levelQ()}`;
   const windUrl = (h = stepHours()) => `${API}/wind/${state.model}/${state.run}/${h}.json${state.level ? `?level=${state.level}` : ""}`;
 
@@ -103,24 +121,23 @@
     rs.value = state.run;
     rs.onchange = () => { state.run = rs.value; clampStep(); renderControls(); applyStep(); loadWind(); refreshPoint(); };
 
-    const chips = $("#layers");
-    chips.innerHTML = LAYERS.map((l) =>
-      `<button class="${l === state.layer ? "on" : ""}" data-layer="${l}" ${runEntry().layers.includes(l) ? "" : "disabled"}>${LAYER_ICON[l]}<span>${LAYER_LABEL[l]}</span></button>`).join("");
-    chips.querySelectorAll("button").forEach((b) => b.onclick = () => {
+    const rail = $("#layers");
+    rail.innerHTML = LAYERS.map((l) =>
+      `<button class="${l === state.layer ? "on" : ""}" data-layer="${l}" ${runEntry().layers.includes(l) ? "" : "disabled"} title="${LAYER_LABEL[l]}">${LAYER_ICON[l]}<span>${LAYER_LABEL[l]}</span></button>`).join("");
+    rail.querySelectorAll("button").forEach((b) => b.onclick = () => {
       state.layer = b.dataset.layer; localStorage.setItem("wxgrid.layer", state.layer);
-      if (!["wind", "temp"].includes(state.layer)) state.level = 0;
-      renderControls(); applyStep(); loadWind(); });
+      if (!hasLevel()) state.level = 0;
+      renderControls(); applyStep(); loadWind(); if (state.iso) loadIso(); });
 
-    // altitude: only for wind/temp and only levels this run has
     const lv = $("#levels");
     const levels = runEntry().levels || [];
-    const showLevels = ["wind", "temp"].includes(state.layer) && levels.length;
+    const showLevels = hasLevel() && levels.length;
     lv.hidden = !showLevels;
     if (showLevels) {
       const opts = [0, ...levels];
       if (!opts.includes(state.level)) state.level = 0;
-      lv.innerHTML = opts.map((l) => `<button data-level="${l}" class="${l === state.level ? "on" : ""}" title="${l ? `${l} hPa ≈ ${LEVEL_FT[l]}` : "surface (10 m wind / 2 m temp)"}">${LEVEL_LABEL[l]}</button>`).join("");
-      lv.querySelectorAll("button").forEach((b) => b.onclick = () => { state.level = Number(b.dataset.level); renderControls(); applyStep(); loadWind(); });
+      lv.innerHTML = opts.map((l) => `<button data-level="${l}" class="${l === state.level ? "on" : ""}" title="${l ? `${l} hPa · ${LEVEL_M[l]} · ${LEVEL_FT[l]}` : "surface: 10 m wind, 2 m temperature"}">${l ? `${l}<small>${LEVEL_FT[l]}</small>` : `sfc<small>10 m</small>`}</button>`).join("");
+      lv.querySelectorAll("button").forEach((b) => b.onclick = () => { state.level = Number(b.dataset.level); renderControls(); applyStep(); loadWind(); if (state.iso) loadIso(); });
     }
 
     const slider = $("#step");
@@ -131,11 +148,7 @@
 
     renderLegend();
     $("#play").onclick = togglePlay;
-    $("#particles-toggle").onclick = () => {
-      state.particles = !state.particles;
-      $("#particles-toggle").classList.toggle("on", state.particles);
-      wind.setEnabled(state.particles);
-    };
+    $("#particles-toggle").onclick = () => { state.particles = !state.particles; $("#particles-toggle").classList.toggle("on", state.particles); wind.setEnabled(state.particles); };
     $("#units-toggle").textContent = speedUnit();
     $("#units-toggle").onclick = () => {
       state.units = { kmh: "kt", kt: "ms", ms: "kmh" }[state.units];
@@ -144,19 +157,23 @@
       renderLegend(); renderPoint(); renderTape();
     };
     $("#radar-toggle").onclick = toggleRadar;
+    $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) loadIso(); else clearIso(); };
+    $("#avy-toggle").onclick = () => { state.avy = !state.avy; $("#avy-toggle").classList.toggle("on", state.avy); if (state.avy) loadAvy(); else clearAvy(); };
+    $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) loadResorts(); else clearResorts(); };
     $("#locate").onclick = () => navigator.geolocation && navigator.geolocation.getCurrentPosition(
       (p) => { map.flyTo({ center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), 7) }); openPoint(p.coords.latitude, p.coords.longitude); },
       () => toast("Location unavailable"));
     $("#point-close").onclick = closePoint;
-    $("#search").onsubmit = (e) => { e.preventDefault(); geocode($("#q").value.trim()); };
+    wireSearch();
     $$(".point-tabs button").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; renderPoint(); });
     document.addEventListener("keydown", (e) => {
       if (["SELECT", "INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
       if (e.key === "ArrowRight") nudge(1);
       else if (e.key === "ArrowLeft") nudge(-1);
       else if (e.key === " ") { e.preventDefault(); togglePlay(); }
-      else if (e.key === "Escape") closePoint();
+      else if (e.key === "Escape") { closePoint(); hideResults(); }
     });
+    renderTapeResBar();
   }
 
   function switchModel(key) {
@@ -169,14 +186,15 @@
     let best = 0, bestErr = Infinity;
     steps().forEach((h, i) => { const err = Math.abs(base + h * 3600e3 - target); if (err < bestErr) { bestErr = err; best = i; } });
     state.stepIdx = best;
-    renderControls(); applyStep(); loadWind(); refreshPoint(); refreshTapePoint();
+    renderControls(); applyStep(); loadWind(); refreshPoint(); refreshTapePoint(); if (state.iso) loadIso();
   }
 
   function clampStep() { state.stepIdx = Math.min(state.stepIdx, steps().length - 1); }
   function nudge(d) {
     if (state.radar && state.radarFrames.length) { state.radarIdx = (state.radarIdx + d + state.radarFrames.length) % state.radarFrames.length; applyRadarFrame(); return; }
-    state.stepIdx = (state.stepIdx + d + steps().length) % steps().length; $("#step").value = state.stepIdx; applyStep(); loadWind();
+    state.stepIdx = (state.stepIdx + d + steps().length) % steps().length; $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) loadIso();
   }
+  function setStep(i) { state.stepIdx = Math.max(0, Math.min(steps().length - 1, i)); $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) loadIso(); }
 
   function applyStep(prefetch = true) {
     const src = map.getSource("wx");
@@ -196,9 +214,9 @@
     if (!runEntry().layers.includes("wind")) { wind.setField(null); return; }
     const my = ++windReq;
     try {
-      const f = await (await fetch(windUrl())).json();
+      const fld = await WX.api(windUrl());
       if (my !== windReq) return;
-      wind.setField(f);
+      wind.setField(fld);
       fetch(windUrl(steps()[(state.stepIdx + 1) % steps().length])).catch(() => {});
     } catch (e) { /* keep the previous field */ }
   }
@@ -219,10 +237,92 @@
     const isSpeed = ["wind", "gust"].includes(state.layer);
     const conv = (v) => isSpeed ? Math.round(speed(v)) : Math.round(v);
     const unit = isSpeed ? speedUnit() : lg.units;
-    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => lg.lo + (lg.hi - lg.lo) * f);
-    const name = LAYER_LABEL[state.layer] + (state.level && ["wind", "temp"].includes(state.layer) ? ` ${state.level}` : "");
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map((q) => lg.lo + (lg.hi - lg.lo) * q);
+    const name = LAYER_LABEL[state.layer] + (state.level && hasLevel() ? ` ${state.level}` : "");
     $(".legend-ticks").innerHTML = ticks.map((t, i) => `<span>${i === 2 ? `<b>${name}</b> ` : ""}${conv(t)}${i === 4 ? " " + unit : ""}</span>`).join("");
   }
+
+  // ── isolines overlay ──────────────────────────────────────────────────
+  let isoReq = 0;
+  function isoVar() {
+    if (state.layer === "temp") return state.level ? `temp?level=${state.level}` : "temp";
+    if (state.layer === "frz") return "frz";
+    if (state.layer === "wind" && state.level === 500) return "gh_500";
+    return "msl";
+  }
+  async function loadIso() {
+    const my = ++isoReq;
+    const v = isoVar();
+    const url = `${API}/isolines/${state.model}/${state.run}/${stepHours()}/${v.includes("?") ? v.replace("?", ".json?") : v + ".json"}`;
+    try {
+      const gj = await WX.api(url);
+      if (my !== isoReq || !state.iso) return;
+      if (map.getSource("iso")) map.getSource("iso").setData(gj);
+      else {
+        map.addSource("iso", { type: "geojson", data: gj });
+        map.addLayer({ id: "iso-line", type: "line", source: "iso", paint: { "line-color": "rgba(255,255,255,0.55)", "line-width": ["case", ["==", ["%", ["get", "value"], ["*", 4, gj.interval || 4]], 0], 1.4, 0.7] } }, firstSymbolId());
+        map.addLayer({ id: "iso-label", type: "symbol", source: "iso", layout: { "symbol-placement": "line", "text-field": ["get", "label"], "text-size": 10, "text-font": ["Noto Sans Regular"], "symbol-spacing": 320 }, paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.7)", "text-halo-width": 1.2 } });
+      }
+    } catch (e) { toast("Isolines unavailable for this layer"); }
+  }
+  function clearIso() { ["iso-label", "iso-line"].forEach((l) => map.getLayer(l) && map.removeLayer(l)); if (map.getSource("iso")) map.removeSource("iso"); }
+
+  // ── avalanche regions overlay ─────────────────────────────────────────
+  async function loadAvy() {
+    try {
+      const gj = await WX.api(`${API}/avy/layer`);
+      if (!state.avy) return;
+      if (map.getSource("avy")) map.getSource("avy").setData(gj);
+      else {
+        map.addSource("avy", { type: "geojson", data: gj });
+        map.addLayer({ id: "avy-fill", type: "fill", source: "avy", paint: { "fill-color": ["get", "color"], "fill-opacity": ["case", [">", ["get", "danger_level"], 0], 0.32, 0.12] } }, firstSymbolId());
+        map.addLayer({ id: "avy-line", type: "line", source: "avy", paint: { "line-color": ["get", "color"], "line-width": 1.2, "line-opacity": 0.8 } }, firstSymbolId());
+      }
+      const rated = gj.features.filter((x) => x.properties.danger_level > 0).length;
+      toast(rated ? `Avalanche regions: ${rated} with a current rating` : "Avalanche regions loaded — off season, no current ratings (forecasts resume ~November)", 5000);
+    } catch (e) { toast("Avalanche layer unavailable"); state.avy = false; $("#avy-toggle").classList.remove("on"); }
+  }
+  function clearAvy() { ["avy-line", "avy-fill"].forEach((l) => map.getLayer(l) && map.removeLayer(l)); if (map.getSource("avy")) map.removeSource("avy"); }
+
+  // ── ski resorts overlay ───────────────────────────────────────────────
+  let resortsCatalog = null;
+  async function loadResorts() {
+    try {
+      if (!resortsCatalog) resortsCatalog = (await WX.api(`${API}/resorts/all`)).resorts;
+      if (!state.resorts) return;
+      const gj = { type: "FeatureCollection", features: resortsCatalog.map((r) => ({ type: "Feature", properties: { id: r.id, name: r.name }, geometry: { type: "Point", coordinates: [r.lon, r.lat] } })) };
+      if (map.getSource("resorts")) map.getSource("resorts").setData(gj);
+      else {
+        map.addSource("resorts", { type: "geojson", data: gj });
+        map.addLayer({ id: "resort-pts", type: "circle", source: "resorts", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 2.5, 8, 6], "circle-color": "#ffb454", "circle-stroke-color": "#0b0d10", "circle-stroke-width": 1.2, "circle-opacity": 0.9 } });
+        map.addLayer({ id: "resort-lbl", type: "symbol", source: "resorts", minzoom: 7, layout: { "text-field": ["get", "name"], "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top", "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1.2 } });
+      }
+    } catch (e) { toast("Resort catalog unavailable"); }
+  }
+  function clearResorts() { ["resort-lbl", "resort-pts"].forEach((l) => map.getLayer(l) && map.removeLayer(l)); if (map.getSource("resorts")) map.removeSource("resorts"); }
+
+  async function selectResort(id) {
+    try {
+      const d = await WX.api(`${API}/resorts/${id}`);
+      state.resort = d;
+      const r = d.resort;
+      // lifts + boundary on the map
+      const lifts = d.lifts || { type: "FeatureCollection", features: [] };
+      if (map.getSource("lifts")) map.getSource("lifts").setData(lifts);
+      else {
+        map.addSource("lifts", { type: "geojson", data: lifts });
+        map.addLayer({ id: "lifts-line", type: "line", source: "lifts", paint: { "line-color": "#ffb454", "line-width": 2, "line-opacity": 0.9 } });
+        map.addLayer({ id: "lifts-lbl", type: "symbol", source: "lifts", minzoom: 11, layout: { "symbol-placement": "line", "text-field": ["get", "name"], "text-size": 10, "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1 } });
+      }
+      const bnd = d.boundary ? { type: "FeatureCollection", features: [d.boundary] } : { type: "FeatureCollection", features: [] };
+      if (map.getSource("bnd")) map.getSource("bnd").setData(bnd);
+      else { map.addSource("bnd", { type: "geojson", data: bnd }); map.addLayer({ id: "bnd-line", type: "line", source: "bnd", paint: { "line-color": "#ffb454", "line-width": 1.2, "line-dasharray": [2, 2], "line-opacity": 0.8 } }, firstSymbolId()); }
+      map.flyTo({ center: [r.lon, r.lat], zoom: Math.max(map.getZoom(), 10.5), duration: 900 });
+      state.tab = "resort";
+      openPoint(r.lat, r.lon, r.name);
+    } catch (e) { toast("Resort detail unavailable"); }
+  }
+  WX.selectResort = selectResort;
 
   // ── radar (RainViewer) ────────────────────────────────────────────────
   async function toggleRadar() {
@@ -238,31 +338,27 @@
     try {
       const j = await (await fetch(RAINVIEWER, { cache: "no-store" })).json();
       state.radarHost = j.host;
-      state.radarFrames = [...j.radar.past.map((f) => ({ ...f, kind: "past" })), ...j.radar.nowcast.map((f) => ({ ...f, kind: "nowcast" }))];
-      state.radarIdx = j.radar.past.length - 1;                 // latest observed frame
+      state.radarFrames = [...j.radar.past.map((x) => ({ ...x, kind: "past" })), ...j.radar.nowcast.map((x) => ({ ...x, kind: "nowcast" }))];
+      state.radarIdx = j.radar.past.length - 1;
       applyRadarFrame();
       renderTape();
       toast("Radar: RainViewer composite, last 2 h + 30 min nowcast. Coverage where radars exist.", 5000);
     } catch (e) { toast("Radar unavailable right now"); state.radar = false; $("#radar-toggle").classList.remove("on"); }
   }
-
-  function radarTiles(f) { return [`${state.radarHost}${f.path}/256/{z}/{x}/{y}/2/1_1.png`]; }
-
+  function radarTiles(fr) { return [`${state.radarHost}${fr.path}/256/{z}/{x}/{y}/2/1_1.png`]; }
   function applyRadarFrame() {
-    const f = state.radarFrames[state.radarIdx];
-    if (!f) return;
-    if (map.getSource("radar")) {
-      map.getSource("radar").setTiles(radarTiles(f));
-    } else {
-      map.addSource("radar", { type: "raster", tiles: radarTiles(f), tileSize: 256, attribution: "Radar © RainViewer" });
-      const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol");
-      map.addLayer({ id: "radar", type: "raster", source: "radar", paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, firstSymbol ? firstSymbol.id : undefined);
+    const fr = state.radarFrames[state.radarIdx];
+    if (!fr) return;
+    if (map.getSource("radar")) map.getSource("radar").setTiles(radarTiles(fr));
+    else {
+      map.addSource("radar", { type: "raster", tiles: radarTiles(fr), tileSize: 256, attribution: "Radar © RainViewer" });
+      map.addLayer({ id: "radar", type: "raster", source: "radar", paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, firstSymbolId());
     }
     if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", Math.min(0.45, LAYER_ALPHA[state.layer]));
-    const t = new Date(f.time * 1000);
-    $("#valid-local").textContent = t.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) + (f.kind === "nowcast" ? " · nowcast" : " · radar");
+    const t = new Date(fr.time * 1000);
+    $("#valid-local").textContent = t.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) + (fr.kind === "nowcast" ? " · nowcast" : " · radar");
     $("#valid-utc").textContent = t.toISOString().slice(11, 16) + "Z";
-    const ageMin = Math.round((Date.now() / 1000 - f.time) / 60);
+    const ageMin = Math.round((Date.now() / 1000 - fr.time) / 60);
     $("#lead").textContent = ageMin >= 0 ? `−${ageMin}m` : `+${-ageMin}m`;
     renderTapeSelection();
   }
@@ -270,28 +366,50 @@
   // ── weather tape ──────────────────────────────────────────────────────
   let tapeReq = 0;
   async function refreshTapePoint() {
-    // With no picked point the tape describes the map centre.
     const c = map.getCenter();
     const my = ++tapeReq;
     try {
-      const d = await (await fetch(`${API}/point?lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}&model=${state.model}&run=${state.run}`)).json();
+      const d = await WX.api(`${API}/point?lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}&model=${state.model}&run=${state.run}`);
       if (my !== tapeReq) return;
       state.tapePoint = d;
       renderTape();
     } catch (e) { /* keep last */ }
   }
-
   function tapeData() { return (state.point && state.point.data) || state.tapePoint; }
+
+  function renderTapeResBar() {
+    let bar = $("#tape-res");
+    if (!bar) {
+      bar = document.createElement("span"); bar.id = "tape-res"; bar.className = "seg small";
+      $("#tape-where").before(bar);
+    }
+    bar.innerHTML = ["6h", "12h", "day"].map((r) => `<button data-res="${r}" class="${state.tapeRes === r ? "on" : ""}">${r}</button>`).join("");
+    bar.querySelectorAll("button").forEach((b) => b.onclick = () => { state.tapeRes = b.dataset.res; localStorage.setItem("wxgrid.tapeRes", state.tapeRes); renderTapeResBar(); renderTape(); });
+  }
+
+  // Group native 6 h steps into the tape's resolution. Each group carries the
+  // indices it covers; temps as min/max, wind as max, precip as the sum.
+  function tapeGroups(d) {
+    const groups = [];
+    const key = (dt) => state.tapeRes === "day" ? dt.toDateString() : state.tapeRes === "12h" ? `${dt.toDateString()}-${dt.getHours() < 12 ? "am" : "pm"}` : String(dt.getTime());
+    let cur = null;
+    d.valid.forEach((iso, i) => {
+      const dt = new Date(iso), k = key(dt);
+      if (!cur || cur.key !== k) { cur = { key: k, idx: [], start: dt }; groups.push(cur); }
+      cur.idx.push(i);
+    });
+    return groups;
+  }
 
   function renderTape() {
     const tape = $("#tape");
     tape.classList.toggle("radar", state.radar && state.radarFrames.length > 0);
     if (state.radar && state.radarFrames.length) {
       let html = "", lastDay = null;
-      state.radarFrames.forEach((f, i) => {
-        const t = new Date(f.time * 1000), day = t.toDateString();
+      state.radarFrames.forEach((fr, i) => {
+        const t = new Date(fr.time * 1000), day = t.toDateString();
         if (day !== lastDay) { if (lastDay !== null) html += "</div></div>"; html += `<div class="tape-day"><div class="tape-dayname">${t.toLocaleDateString(undefined, { weekday: "short" })} · radar</div><div class="tape-cols">`; lastDay = day; }
-        html += `<div class="tape-col ${f.kind}" data-radar="${i}"><span class="tape-hour">${t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })}</span><span class="tape-glyph" style="color:${f.kind === "nowcast" ? "var(--warm)" : "var(--rain)"};text-align:center">${f.kind === "nowcast" ? "◌" : "●"}</span></div>`;
+        html += `<div class="tape-col ${fr.kind}" data-radar="${i}"><span class="tape-hour">${t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })}</span><span class="tape-glyph" style="color:${fr.kind === "nowcast" ? "var(--warm)" : "var(--rain)"};text-align:center">${fr.kind === "nowcast" ? "◌" : "●"}</span></div>`;
       });
       tape.innerHTML = html + "</div></div>";
       tape.querySelectorAll(".tape-col").forEach((c) => c.onclick = () => { state.radarIdx = Number(c.dataset.radar); applyRadarFrame(); });
@@ -302,209 +420,140 @@
     const d = tapeData();
     if (!d) { tape.innerHTML = ""; return; }
     const s = d.series;
+    const groups = tapeGroups(d);
     let html = "", lastDay = null;
-    const rainMax = Math.max(4, ...(s.tp6 || []).filter((v) => v != null));
-    d.valid.forEach((iso, i) => {
-      const t = new Date(iso), day = t.toDateString();
+    groups.forEach((g) => {
+      const t = g.start, day = t.toDateString();
       if (day !== lastDay) {
         if (lastDay !== null) html += "</div></div>";
         html += `<div class="tape-day"><div class="tape-dayname">${t.toLocaleDateString(undefined, { weekday: "short", day: "numeric" })}</div><div class="tape-cols">`;
         lastDay = day;
       }
-      const hr = t.getHours(), night = hr < 6 || hr >= 21;
-      const temp = s.t2m && s.t2m[i] != null ? `${Math.round(s.t2m[i] - 273.15)}°` : "—";
-      const w = s.wind && s.wind[i] != null ? Math.round(speed(s.wind[i])) : "—";
-      const dir = s.wdir && s.wdir[i] != null ? `<i style="${arrowRot(s.wdir[i])}"></i>` : "";
-      const rain = s.tp6 && s.tp6[i] != null ? s.tp6[i] : 0;
-      const cloud = s.tcc && s.tcc[i] != null ? s.tcc[i] : null;
-      html += `<div class="tape-col ${night ? "night" : ""} ${i === state.stepIdx ? "on" : ""}" data-i="${i}" title="${new Date(iso).toLocaleString()}">
-        <span class="tape-hour">${t.toLocaleTimeString(undefined, { hour: "numeric" }).replace(":00", "").replace(" ", "")}</span>
-        ${glyph(cloud, rain, s.t2m ? s.t2m[i] : null, night)}
+      const pick = (arr, fn) => { const v = arr ? g.idx.map((i) => arr[i]).filter((x) => x != null) : []; return v.length ? fn(v) : null; };
+      const tmax = pick(s.t2m, (v) => Math.max(...v)), tmin = pick(s.t2m, (v) => Math.min(...v));
+      const wmax = pick(s.wind, (v) => Math.max(...v));
+      const iMax = s.wind ? g.idx.reduce((a, b) => ((s.wind[b] ?? -1) > (s.wind[a] ?? -1) ? b : a), g.idx[0]) : g.idx[0];
+      const rain = pick(s.tp6, (v) => v.reduce((a, b) => a + b, 0)) || 0;
+      const snow = pick(s.sf6, (v) => v.reduce((a, b) => a + b, 0)) || 0;
+      const cloud = pick(s.tcc, (v) => v.reduce((a, b) => a + b, 0) / v.length);
+      const hr = t.getHours(), night = state.tapeRes === "6h" && (hr < 6 || hr >= 21);
+      const label = state.tapeRes === "day" ? "" : state.tapeRes === "12h" ? (hr < 12 ? "am" : "pm") : t.toLocaleTimeString(undefined, { hour: "numeric" }).replace(":00", "").replace(" ", "");
+      const temp = tmax == null ? "—" : state.tapeRes === "6h" ? `${Math.round(tmax - 273.15)}°` : `${Math.round(tmax - 273.15)}°<small>/${Math.round(tmin - 273.15)}°</small>`;
+      const dir = s.wdir && s.wdir[iMax] != null ? `<i style="${arrowRot(s.wdir[iMax])}"></i>` : "";
+      const w = wmax == null ? "—" : Math.round(speed(wmax));
+      const precip = snow >= 0.3 ? `<span class="tape-p snow">${snow.toFixed(snow < 10 ? 1 : 0)}<small>cm</small></span>` : rain >= 0.1 ? `<span class="tape-p rain">${rain.toFixed(rain < 10 ? 1 : 0)}<small>mm</small></span>` : `<span class="tape-p none">·</span>`;
+      const on = g.idx.includes(state.stepIdx);
+      html += `<div class="tape-col ${night ? "night" : ""} ${on ? "on" : ""} res-${state.tapeRes}" data-i="${g.idx[0]}" data-idx="${g.idx.join(",")}" title="${t.toLocaleString()}">
+        <span class="tape-hour">${label || "&nbsp;"}</span>
+        ${glyph(cloud, rain + snow, tmax, night)}
         <span class="tape-temp">${temp}</span>
         <span class="tape-wind">${dir}${w}</span>
-        <span class="tape-rain"><b style="width:${Math.min(100, rain / rainMax * 100)}%"></b></span>
+        ${precip}
       </div>`;
     });
     tape.innerHTML = html + "</div></div>";
-    tape.querySelectorAll(".tape-col").forEach((c) => c.onclick = () => { state.stepIdx = Number(c.dataset.i); $("#step").value = state.stepIdx; applyStep(); loadWind(); });
-    $("#tape-where").textContent = state.point ? `at ${state.point.lat.toFixed(2)}, ${state.point.lon.toFixed(2)}` : "map centre";
+    tape.querySelectorAll(".tape-col").forEach((c) => c.onclick = () => setStep(Number(c.dataset.i)));
+    $("#tape-where").textContent = state.point ? (state.point.name || `${state.point.lat.toFixed(2)}, ${state.point.lon.toFixed(2)}`) : "map centre";
     renderTapeSelection();
   }
 
   function renderTapeSelection() {
     const tape = $("#tape");
-    const key = state.radar && state.radarFrames.length ? "radar" : "i";
-    const idx = key === "radar" ? state.radarIdx : state.stepIdx;
+    const radar = state.radar && state.radarFrames.length;
     let on = null;
-    tape.querySelectorAll(".tape-col").forEach((c) => { const isOn = Number(c.dataset[key]) === idx; c.classList.toggle("on", isOn); if (isOn) on = c; });
+    tape.querySelectorAll(".tape-col").forEach((c) => {
+      const isOn = radar ? Number(c.dataset.radar) === state.radarIdx : (c.dataset.idx || c.dataset.i || "").split(",").map(Number).includes(state.stepIdx);
+      c.classList.toggle("on", isOn); if (isOn) on = c;
+    });
     if (on) { const r = on.getBoundingClientRect(), tr = tape.getBoundingClientRect(); if (r.left < tr.left + 40 || r.right > tr.right - 40) on.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); }
   }
 
-  // Tiny weather glyph: sun/moon, cloud amount, rain/snow. Inline SVG, no assets.
-  function glyph(cloud, rain, tK, night) {
+  function glyph(cloud, precip, tK, night) {
     const c = cloud == null ? 0 : cloud;
-    const snow = tK != null && tK - 273.15 < 1 && rain > 0.2;
+    const snow = tK != null && tK - 273.15 < 1 && precip > 0.2;
     const body = night ? `<circle cx="7" cy="7" r="4" fill="#cfd6e3"/>` : `<circle cx="7" cy="7" r="4" fill="#ffd166"/>`;
     const cl = c > 0.25 ? `<path d="M6 12h9a3 3 0 0 0 0-6 4 4 0 0 0-7.6-1A3.5 3.5 0 0 0 6 12z" fill="rgba(210,218,230,${0.35 + 0.65 * c})"/>` : "";
-    const rn = rain > 0.2 ? (snow ? `<text x="9" y="15" font-size="6" fill="#dfe8ff">✱</text>` : `<path d="M8 12.5v2M12 12.5v2M16 12.5v2" stroke="#6cb6ff" stroke-width="1.4" stroke-linecap="round"/>`) : "";
+    const rn = precip > 0.2 ? (snow ? `<text x="9" y="15" font-size="6" fill="#dfe8ff">✱</text>` : `<path d="M8 12.5v2M12 12.5v2M16 12.5v2" stroke="#6cb6ff" stroke-width="1.4" stroke-linecap="round"/>`) : "";
     return `<svg class="tape-glyph" viewBox="0 0 20 16">${c < 0.9 ? body : ""}${cl}${rn}</svg>`;
+  }
+
+  // ── search: places + resorts ──────────────────────────────────────────
+  let searchTimer = null, searchSel = -1, searchHits = [];
+  function wireSearch() {
+    const q = $("#q");
+    q.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => runSearch(q.value.trim()), 350); };
+    q.onkeydown = (e) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); searchSel = Math.min(searchHits.length - 1, searchSel + 1); paintResults(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); searchSel = Math.max(0, searchSel - 1); paintResults(); }
+      else if (e.key === "Escape") hideResults();
+    };
+    $("#search").onsubmit = (e) => { e.preventDefault(); if (searchHits.length) pickResult(searchHits[Math.max(0, searchSel)]); else runSearch(q.value.trim(), true); };
+    document.addEventListener("click", (e) => { if (!e.target.closest("#search") && !e.target.closest("#search-results")) hideResults(); });
+  }
+  async function runSearch(text, go = false) {
+    if (text.length < 2) { hideResults(); return; }
+    try {
+      const [geo, res] = await Promise.all([WX.api(`${API}/geo?q=${encodeURIComponent(text)}&limit=5`).catch(() => ({ hits: [] })), WX.api(`${API}/resorts?q=${encodeURIComponent(text)}&limit=5`).catch(() => ({ resorts: [] }))]);
+      searchHits = [...res.resorts.map((r) => ({ kind: "resort", name: r.name, sub: `${r.region || ""} ${r.country || ""}`.trim(), lat: r.lat, lon: r.lon, id: r.id })),
+                    ...geo.hits.map((h) => ({ kind: "place", name: h.name, sub: h.display.split(",").slice(1, 3).join(",").trim(), lat: h.lat, lon: h.lon }))];
+      searchSel = searchHits.length ? 0 : -1;
+      if (go && searchHits.length) { pickResult(searchHits[0]); return; }
+      paintResults();
+    } catch (e) { toast("Search unavailable"); }
+  }
+  function paintResults() {
+    const box = $("#search-results");
+    if (!searchHits.length) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = searchHits.map((h, i) => `<button class="${i === searchSel ? "sel" : ""}" data-i="${i}"><span class="kind ${h.kind}">${h.kind}</span><span>${h.name}</span><span class="sub">${h.sub}</span></button>`).join("");
+    box.querySelectorAll("button").forEach((b) => b.onclick = () => pickResult(searchHits[Number(b.dataset.i)]));
+  }
+  function hideResults() { $("#search-results").hidden = true; }
+  function pickResult(h) {
+    hideResults(); $("#q").blur();
+    if (h.kind === "resort") { selectResort(h.id); return; }
+    map.flyTo({ center: [h.lon, h.lat], zoom: Math.max(map.getZoom(), 7), duration: 900 });
+    openPoint(h.lat, h.lon, h.name);
   }
 
   // ── point card ────────────────────────────────────────────────────────
   let pointReq = 0;
   async function openPoint(lat, lon, name) {
     const my = ++pointReq;
-    state.point = { lat, lon, data: null, name: name || (state.point && state.point.name && Math.abs(state.point.lat - lat) < 1e-6 ? state.point.name : null) };
+    const keepResort = state.resort && Math.abs(state.resort.resort.lat - lat) < 1e-4 && Math.abs(state.resort.resort.lon - lon) < 1e-4;
+    if (!keepResort) { state.resort = null; if (state.tab === "resort") state.tab = "now"; }
+    state.point = { lat, lon, data: null, name: name || null, local: null, obs: null, avy: null, profile: null, cmp: null };
     $("#point").hidden = false;
-    $("#point-title").textContent = `${state.point.name ? state.point.name + " · " : ""}${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
+    $("#point-title").textContent = `${name ? name + " · " : ""}${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
+    $("#point-local").textContent = "";
     $("#point-now").textContent = "…";
+    $$(".point-tabs button[data-tab=resort]").forEach((b) => b.hidden = !state.resort);
+    placeMarker(lat, lon);
     try {
-      const d = await (await fetch(`${API}/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}&model=${state.model}&run=${state.run}`)).json();
+      const d = await WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}&model=${state.model}&run=${state.run}`);
       if (my !== pointReq) return;
       state.point.data = d;
       renderPoint(); renderTape();
       $("#point-foot").textContent = `${modelEntry().attribution} · run ${d.run}Z · nearest 0.25° gridpoint`;
     } catch (e) { $("#point-now").textContent = "point forecast unavailable"; }
+    // local context arrives lazily and re-renders as it lands
+    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = `${r.place.name} · ${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`; renderTape(); } renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.obs = r; renderPoint(); } }).catch(() => {});
   }
-  function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon); }
-  function closePoint() { state.point = null; $("#point").hidden = true; renderTape(); refreshTapePoint(); }
-
+  function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
+  function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; if (marker) { marker.remove(); marker = null; } renderTape(); refreshTapePoint(); }
+  function placeMarker(lat, lon) {
+    if (!marker) { const el = document.createElement("div"); el.className = "wx-marker"; marker = new maplibregl.Marker({ element: el, anchor: "center" }); }
+    marker.setLngLat([lon, lat]).addTo(map);
+  }
   function renderPoint() {
-    const d = state.point && state.point.data; if (!d) return;
+    const d = state.point && state.point.data; if (!d || !window.WXPanes) return;
     $$(".point-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === state.tab));
     $$("#point-body section").forEach((s) => s.hidden = s.dataset.pane !== state.tab);
-    const i = Math.min(state.stepIdx, d.steps.length - 1);
-    if (state.tab === "now") renderNow(d, i);
-    else if (state.tab === "aloft") renderAloft(d, i);
-    else renderOutdoors(d, i);
+    window.WXPanes.render(state.tab, state.point, Math.min(state.stepIdx, d.steps.length - 1));
   }
-
-  const f = (v, fn) => (v == null ? "—" : fn(v));
-  const arrow = (deg) => "↓↙←↖↑↗→↘"[Math.round(((deg % 360) / 45)) % 8];
-
-  function renderNow(d, i) {
-    const s = d.series, parts = [];
-    if (s.t2m) parts.push(`<span><b>${f(s.t2m[i], (v) => (v - 273.15).toFixed(0))}°</b> C</span>`);
-    if (s.wind) parts.push(`<span><b>${f(s.wind[i], (v) => speed(v).toFixed(0))}</b> ${speedUnit()} ${f(s.wdir && s.wdir[i], arrow)}</span>`);
-    if (s.gust) parts.push(`<span>gust <b>${f(s.gust[i], (v) => speed(v).toFixed(0))}</b></span>`);
-    if (s.tp6) parts.push(`<span>rain <b>${f(s.tp6[i], (v) => v.toFixed(1))}</b> mm/6h</span>`);
-    if (s.tcc) parts.push(`<span>cloud <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
-    if (s.msl) parts.push(`<span><b>${f(s.msl[i], (v) => (v / 100).toFixed(0))}</b> hPa</span>`);
-    $("#point-now").innerHTML = parts.join("");
-    drawMeteogram(d);
-  }
-
-  function renderAloft(d, i) {
-    const rows = (d.levels || []).slice().sort((a, b) => b - a).map((lvl) => {
-      const a = d.aloft[String(lvl)];
-      const gh = a.gh && a.gh[i] != null ? a.gh[i] : null;
-      return `<tr><td class="mono">${lvl} hPa</td><td>${gh != null ? `${Math.round(gh)} m · ${Math.round(gh * 3.281 / 100) * 100} ft` : LEVEL_FT[lvl]}</td>
-        <td class="dir">${a.wdir[i] != null ? `<i style="${arrowRot(a.wdir[i])}"></i>${String(a.wdir[i]).padStart(3, "0")}°` : "—"}</td>
-        <td>${f(a.wind[i], (v) => speed(v).toFixed(0))} ${speedUnit()}</td>
-        <td>${f(a.temp[i], (v) => (v - 273.15).toFixed(0))}°C</td></tr>`;
-    }).join("");
-    const s = d.series;
-    const fl = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[i] : null;
-    const sfc = s.wind ? `<tr><td class="mono">sfc</td><td>10 m</td><td class="dir">${s.wdir[i] != null ? `<i style="${arrowRot(s.wdir[i])}"></i>${String(s.wdir[i]).padStart(3, "0")}°` : "—"}</td><td>${f(s.wind[i], (v) => speed(v).toFixed(0))} ${speedUnit()}${s.gust ? ` <span class="dim">G${f(s.gust[i], (v) => speed(v).toFixed(0))}</span>` : ""}</td><td>${f(s.t2m && s.t2m[i], (v) => (v - 273.15).toFixed(0))}°C</td></tr>` : "";
-    $("#aloft").innerHTML = `<table class="aloft"><thead><tr><th>Level</th><th>Height</th><th>Dir</th><th>Speed</th><th>Temp</th></tr></thead><tbody>${rows}${sfc}</tbody></table>
-      <dl class="kv">
-        <dt>Freezing level</dt><dd>${fl != null ? `${fl} m · ${Math.round(fl * 3.281 / 100) * 100} ft` : (d.levels && d.levels.length ? "below 925 hPa or above 250" : "—")}</dd>
-        <dt>Total cloud</dt><dd>${f(s.tcc && s.tcc[i], (v) => (v * 100).toFixed(0) + "%")}</dd>
-        <dt>CAPE</dt><dd class="${capeClass(s.cape && s.cape[i])}">${f(s.cape && s.cape[i], (v) => v.toFixed(0) + " J/kg")}${s.cape ? "" : " <span class=dim>(model has none)</span>"}</dd>
-        <dt>QNH (MSL)</dt><dd>${f(s.msl && s.msl[i], (v) => (v / 100).toFixed(1) + " hPa · " + (v / 100 * 0.02953).toFixed(2) + " inHg")}</dd>
-      </dl>
-      <div class="note">Model winds are 0.25° gridpoint values, not a TAF and not METAR. Directions are true, FROM. Heights are geopotential; freezing level is interpolated between stored levels.</div>`;
-  }
-  const capeClass = (v) => v == null ? "" : v < 300 ? "good" : v < 1000 ? "meh" : "bad";
-
-  function renderOutdoors(d, i) {
-    const s = d.series;
-    const fl = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[i] : null;
-    const t = s.t2m ? s.t2m[i] - 273.15 : null;
-    const w = s.wind ? s.wind[i] : null, g = s.gust ? s.gust[i] : null, rain = s.tp6 ? s.tp6[i] : null, cloud = s.tcc ? s.tcc[i] : null;
-    // Wind chill (Environment Canada formula, valid ≤10 °C and wind ≥ 4.8 km/h)
-    let chill = null;
-    if (t != null && w != null && t <= 10 && w * 3.6 >= 4.8) { const v = Math.pow(w * 3.6, 0.16); chill = 13.12 + 0.6215 * t - 11.37 * v + 0.3965 * t * v; }
-    const snowLevel = fl != null ? Math.max(0, fl - 300) : null;      // ~300 m below the 0 °C isotherm
-    const ptype = rain != null && rain > 0.2 ? (t != null && t < 1 ? "snow" : t != null && t < 3 ? "rain/snow" : "rain") : "dry";
-    const j0 = i, j1 = Math.min(d.steps.length - 1, i + 4);
-    const rain24 = s.tp6 ? s.tp6.slice(j0 + 1, j1 + 1).reduce((a, b) => a + (b || 0), 0) : null;
-    const gusts = s.gust ? s.gust.slice(j0, j1 + 1).filter((v) => v != null) : [];
-    const gustMax24 = gusts.length ? Math.max(...gusts) : null;
-    const calm = state.units === "kt" ? 12 : state.units === "ms" ? 6 : 22, gusty = state.units === "kt" ? 25 : state.units === "ms" ? 13 : 46;
-    const rows = [
-      ["Precip now", `${ptype}${rain != null && rain > 0 ? ` · ${rain.toFixed(1)} mm/6h` : ""}`, ptype === "dry" ? "good" : ptype === "snow" ? "meh" : ""],
-      ["Next 24 h rain", rain24 != null ? `${rain24.toFixed(1)} mm` : "—", rain24 == null ? "" : rain24 < 1 ? "good" : rain24 < 10 ? "meh" : "bad"],
-      ["Freezing level", fl != null ? `${fl} m` : "—", ""],
-      ["Snow level (≈)", snowLevel != null ? `${Math.round(snowLevel / 50) * 50} m` : "—", ""],
-      ["Wind / gust", w != null ? `${speed(w).toFixed(0)}${g != null ? ` G${speed(g).toFixed(0)}` : ""} ${speedUnit()}` : "—", w == null ? "" : speed(w) < calm ? "good" : "meh"],
-      ["Max gust 24 h", gustMax24 != null ? `${speed(gustMax24).toFixed(0)} ${speedUnit()}` : "—", gustMax24 == null ? "" : speed(gustMax24) < gusty ? "good" : "bad"],
-      ["Feels like", chill != null ? `${chill.toFixed(0)}° (wind chill)` : t != null ? `${t.toFixed(0)}°` : "—", chill != null && chill < -10 ? "bad" : ""],
-      ["Cloud", cloud != null ? `${(cloud * 100).toFixed(0)}%` : "—", cloud == null ? "" : cloud < 0.3 ? "good" : ""],
-      ["Thunder risk (CAPE)", s.cape && s.cape[i] != null ? `${s.cape[i].toFixed(0)} J/kg` : "n/a", capeClass(s.cape && s.cape[i])],
-    ];
-    $("#outdoors").innerHTML = `<dl class="kv">${rows.map(([k, v, cls]) => `<dt>${k}</dt><dd class="${cls}">${v}</dd>`).join("")}</dl>
-      <div class="note">Hiking / skiing / paddling read: snow level ≈ freezing level − 300 m; gusts are the model's 10 m gust where it ships one (IFS, GFS); tap the tape to move the day. Terrain is unresolved at 0.25° — a valley or a ridge will differ.</div>`;
-  }
-
-  function drawMeteogram(d) {
-    const c = $("#meteogram"), ctx = c.getContext("2d");
-    const W = c.width, H = c.height, padL = 34, padR = 40, padT = 12, padB = 26;
-    ctx.clearRect(0, 0, W, H);
-    const n = d.steps.length, xs = d.steps.map((_, i) => padL + (W - padL - padR) * i / (n - 1));
-    const t = (d.series.t2m || []).map((v) => v == null ? null : v - 273.15);
-    const rain = d.series.tp6 || [];
-    const windS = (d.series.wind || []).map((v) => v == null ? null : speed(v));
-    const rMax = Math.max(5, ...rain.filter((v) => v != null));
-    ctx.fillStyle = "rgba(108,182,255,0.55)";
-    rain.forEach((v, i) => { if (v == null) return; const h = (H - padT - padB) * v / rMax; const bw = Math.max(2, (W - padL - padR) / n - 2); ctx.fillRect(xs[i] - bw / 2, H - padB - h, bw, h); });
-    const tv = t.filter((v) => v != null);
-    if (tv.length) {
-      const lo = Math.floor(Math.min(...tv) / 5) * 5 - 2, hi = Math.ceil(Math.max(...tv) / 5) * 5 + 2;
-      const y = (v) => padT + (H - padT - padB) * (1 - (v - lo) / (hi - lo));
-      ctx.strokeStyle = "rgba(255,180,84,0.3)"; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
-      for (let g = lo; g <= hi; g += 5) { ctx.beginPath(); ctx.moveTo(padL, y(g)); ctx.lineTo(W - padR, y(g)); ctx.stroke(); }
-      ctx.setLineDash([]);
-      ctx.strokeStyle = "#ffb454"; ctx.lineWidth = 2; ctx.beginPath();
-      t.forEach((v, i) => { if (v == null) return; i === 0 ? ctx.moveTo(xs[i], y(v)) : ctx.lineTo(xs[i], y(v)); });
-      ctx.stroke();
-      ctx.fillStyle = "#ffb454"; ctx.font = "600 11px 'Geist Mono', ui-monospace, monospace"; ctx.textAlign = "right";
-      ctx.fillText(`${hi.toFixed(0)}°`, padL - 4, y(hi) + 4); ctx.fillText(`${lo.toFixed(0)}°`, padL - 4, y(lo) + 4);
-    }
-    const wv = windS.filter((v) => v != null);
-    if (wv.length) {
-      const hi = Math.max(state.units === "ms" ? 6 : 20, Math.ceil(Math.max(...wv) / 10) * 10);
-      const y = (v) => padT + (H - padT - padB) * (1 - v / hi);
-      ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 1.2; ctx.beginPath();
-      windS.forEach((v, i) => { if (v == null) return; i === 0 ? ctx.moveTo(xs[i], y(v)) : ctx.lineTo(xs[i], y(v)); });
-      ctx.stroke();
-      ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.textAlign = "left"; ctx.font = "600 11px 'Geist Mono', ui-monospace, monospace";
-      ctx.fillText(`${hi} ${speedUnit()}`, W - padR + 4, y(hi) + 4);
-      ctx.fillStyle = "rgba(108,182,255,0.9)"; ctx.fillText(`${rMax.toFixed(0)} mm`, W - padR + 4, padT + 18);
-    }
-    ctx.fillStyle = "#7f8794"; ctx.font = "500 10.5px 'Geist Mono', ui-monospace, monospace"; ctx.textAlign = "left";
-    let lastDay = null;
-    d.valid.forEach((iso, i) => {
-      const dt = new Date(iso), day = dt.toDateString();
-      if (day !== lastDay) { lastDay = day; ctx.fillRect(xs[i], padT, 1, H - padT - padB); ctx.fillText(dt.toLocaleDateString(undefined, { weekday: "short" }), xs[i] + 3, H - 8); }
-    });
-    const i = Math.min(state.stepIdx, n - 1);
-    ctx.fillStyle = "rgba(108,182,255,0.9)"; ctx.fillRect(xs[i] - 1, padT, 2, H - padT - padB);
-  }
-
-  // ── place search (OpenStreetMap Nominatim; 1 req/s etiquette) ────────
-  async function geocode(q) {
-    if (!q) return;
-    try {
-      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`, { headers: { "Accept-Language": navigator.language || "en" } });
-      const hits = await r.json();
-      if (!hits.length) { toast(`Nothing found for “${q}”`); return; }
-      const h = hits[0], lat = parseFloat(h.lat), lon = parseFloat(h.lon);
-      map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 7), duration: 900 });
-      openPoint(lat, lon, h.display_name.split(",").slice(0, 2).join(",").trim());
-      $("#q").blur();
-    } catch (e) { toast("Search unavailable"); }
-  }
+  WX.renderPoint = renderPoint;
+  WX.setStep = setStep;
 
   // ── misc ──────────────────────────────────────────────────────────────
   let toastTimer = null;

@@ -71,6 +71,18 @@ RAMPS: dict[str, dict] = {
         (15, (240, 220, 40)), (25, (240, 120, 30)), (40, (200, 20, 60))]},
     "tcc": {"units": "%", "lo": 0, "hi": 100, "stops": [
         (0, (20, 30, 50)), (30, (90, 110, 140)), (60, (170, 180, 195)), (100, (245, 245, 250))]},
+    "sf6": {"units": "cm/6h", "lo": 0, "hi": 30, "stops": [
+        (0, (150, 170, 220)), (1, (120, 150, 230)), (3, (80, 120, 230)), (8, (140, 90, 220)),
+        (15, (200, 80, 200)), (30, (240, 60, 120))]},
+    "sd_cm": {"units": "cm", "lo": 0, "hi": 300, "stops": [
+        (0, (40, 60, 90)), (5, (90, 130, 190)), (30, (140, 190, 240)), (100, (220, 235, 250)),
+        (200, (250, 250, 255)), (300, (200, 180, 255))]},
+    "d2m": {"units": "°C", "lo": -30, "hi": 30, "stops": [
+        (-30, (120, 60, 30)), (-10, (200, 150, 70)), (0, (200, 210, 120)), (10, (100, 190, 150)),
+        (20, (40, 130, 200)), (30, (90, 30, 160))]},
+    "frz": {"units": "m", "lo": 0, "hi": 5000, "stops": [
+        (0, (240, 240, 255)), (500, (170, 200, 240)), (1000, (100, 160, 220)), (1500, (60, 190, 170)),
+        (2000, (110, 210, 100)), (3000, (240, 220, 70)), (4000, (240, 130, 40)), (5000, (200, 30, 40))]},
     "cape": {"units": "J/kg", "lo": 0, "hi": 4000, "stops": [
         (0, (30, 30, 60)), (250, (60, 90, 190)), (700, (40, 170, 120)), (1500, (240, 220, 40)),
         (2500, (240, 120, 30)), (4000, (200, 20, 60))]},
@@ -85,6 +97,10 @@ DISPLAY = {
     "wind": lambda ms: ms,
     "tcc": lambda frac: frac * 100.0,
     "cape": lambda j: j,
+    "sf6": lambda mm_we: mm_we,      # ramp is labelled cm at a 10:1 ratio: 1 mm w.e. ≈ 1 cm fresh snow
+    "sd_cm": lambda cm: cm,
+    "d2m": lambda k: k - 273.15,
+    "frz": lambda m: m,
 }
 
 
@@ -120,11 +136,15 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78) -> byte
         return buf.getvalue()
     x = np.nan_to_num(field_display, nan=lo)
     idx = np.clip((x - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
-    if layer in ("tp6", "cape", "tcc"):
+    if layer in ("tp6", "cape", "tcc", "sf6", "sd_cm"):
         rgba = lut[idx].copy()
         if layer == "tp6":
             # Rain: transparent where dry, ramping in over the first millimetre.
             a = np.clip(x / 1.0, 0, 1)
+        elif layer == "sf6":
+            a = np.clip(x / 0.5, 0, 1)
+        elif layer == "sd_cm":
+            a = np.clip(x / 2.0, 0, 1)
         elif layer == "cape":
             a = np.clip(x / 300.0, 0, 1)            # nothing to see under ~300 J/kg
         else:

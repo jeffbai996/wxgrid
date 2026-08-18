@@ -58,31 +58,51 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
 
     writer = RunWriter(model.key, rid, model.steps, model.store_variables(),
                        attribution=model.attribution, root=store_root)
-    prev_accum: np.ndarray | None = None      # ECMWF tp is accumulated since t0
-    prev_step: int | None = None
+    # ECMWF ships precipitation and snowfall accumulated since t0; we store the
+    # previous-6 h bucket, so remember the last accumulation per variable.
+    prev_accum: dict[str, tuple[int, np.ndarray]] = {}
 
     def on_step(step: int, paths: list[Path]) -> None:
-        nonlocal prev_accum, prev_step
+        got: dict[str, np.ndarray] = {}
         for f in (fld for p in paths for fld in iter_fields(p)):
             canon = model.canonical(f.short_name, f.level_type, f.level)
             if canon is None:
                 continue
+            vals = f.values
             if canon == "tcc" and f.units.strip() == "%":
-                f.values = f.values / 100.0                              # GFS TCDC is percent
-            if canon != "tp":
-                writer.write(canon, step, f.values)
+                vals = vals / 100.0                                        # GFS TCDC is percent
+            if canon in ("tp", "sf") and f.units.strip().startswith("m"):      # "m" or "m of water equivalent"
+                vals = vals * 1000.0                                       # IFS tp/sf in metres → mm
+            got[canon] = vals
+        # accumulations → 6 h buckets
+        for canon, out in (("tp", "tp6"), ("sf", "sf6")):
+            if canon not in got:
                 continue
             if model.precip_mode == "bucket6":
-                writer.write("tp6", step, np.nan_to_num(f.values))       # already mm / 6 h
+                writer.write(out, step, np.nan_to_num(got[canon]))
+                continue
+            prev = prev_accum.get(canon)
+            if step == 0:
+                bucket = np.zeros_like(got[canon])
+            elif prev is None or step - prev[0] != 6:
+                bucket = np.full_like(got[canon], np.nan)
             else:
-                # IFS ships tp in metres, AIFS in kg m-2 (= mm); trust the GRIB.
-                accum_mm = f.values * (1000.0 if f.units.strip() == "m" else 1.0)
-                if prev_accum is None or prev_step is None or step - prev_step != 6:
-                    tp6 = np.zeros_like(accum_mm) if step == 0 else np.full_like(accum_mm, np.nan)
-                else:
-                    tp6 = np.clip(accum_mm - prev_accum, 0.0, None)
-                writer.write("tp6", step, tp6)
-                prev_accum, prev_step = accum_mm, step
+                bucket = np.clip(got[canon] - prev[1], 0.0, None)
+            writer.write(out, step, bucket)
+            prev_accum[canon] = (step, got[canon])
+        # GFS has no snowfall field: snow = the 6 h precip bucket where the
+        # categorical-snow flag is on.
+        if "csnow" in got and "tp" in got and model.precip_mode == "bucket6":
+            writer.write("sf6", step, np.where(got["csnow"] >= 0.5, np.nan_to_num(got["tp"]), 0.0))
+        if "sd" in got:
+            # ECMWF sd is metres of water equivalent (×400 → cm at 250 kg/m³);
+            # GFS SNOD is physical depth in metres (×100 → cm).
+            factor = 100.0 if model.precip_mode == "bucket6" else 400.0
+            writer.write("sd_cm", step, np.nan_to_num(got["sd"]) * factor)
+        for canon, vals in got.items():
+            if canon in ("tp", "sf", "sd", "csnow"):
+                continue
+            writer.write(canon, step, vals)
         log.info("%s %s step %03d written", model.key, rid, step)
 
     if model.source == "ecmwf":

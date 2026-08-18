@@ -8,6 +8,9 @@ Canonical SURFACE variables (every model normalises onto these):
   gust      10 m wind gust, m/s                       (only models that ship it)
   tcc       total cloud cover, 0–1 (GFS ships %, converted)
   cape      CAPE, J/kg                                (only models that ship it)
+  d2m       2 m dew point, K
+  sf6       snowfall over the PREVIOUS 6 h, mm water-equivalent (derived)
+  sd_cm     snow depth, cm (ECMWF ships m w.e. → ×400 assumes 250 kg/m³; GFS ships depth)
 
 Canonical PRESSURE-LEVEL variables, one per level in LEVELS (hPa):
   u_<lvl>, v_<lvl>  wind, m/s      t_<lvl>  temperature, K     gh_<lvl>  geopotential height, m
@@ -55,7 +58,11 @@ class Model:
     def store_variables(self) -> list[str]:
         out = []
         for canon in self.sfc_params.values():
-            out.append("tp6" if canon == "tp" else canon)
+            if canon == "csnow":
+                continue                        # only used to derive sf6
+            out.append({"tp": "tp6", "sf": "sf6", "sd": "sd_cm"}.get(canon, canon))
+        if "csnow" in self.sfc_params.values() and "tp" in self.sfc_params.values():
+            out.append("sf6")
         for prefix in self.pl_params.values():
             out.extend(f"{prefix}_{lvl}" for lvl in self.levels)
         return out
@@ -67,14 +74,15 @@ MODELS: dict[str, Model] = {
     "ifs": Model(
         key="ifs", label="ECMWF IFS", short="IFS", source="ecmwf", ecmwf_model="ifs",
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "msl": "msl", "tp": "tp",
-                    "10fg": "gust", "tcc": "tcc", "mucape": "cape"},
+                    "10fg": "gust", "tcc": "tcc", "mucape": "cape", "2d": "d2m", "sf": "sf", "sd": "sd"},
         pl_params=_ECMWF_PL,
         precip_mode="since_start",
         attribution="ECMWF open data, CC BY 4.0",
     ),
     "aifs": Model(
         key="aifs", label="ECMWF AIFS (AI)", short="AIFS", source="ecmwf", ecmwf_model="aifs-single",
-        sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "msl": "msl", "tp": "tp", "tcc": "tcc"},
+        sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "msl": "msl", "tp": "tp", "tcc": "tcc",
+                    "2d": "d2m", "sf": "sf"},
         pl_params=_ECMWF_PL,
         precip_mode="since_start",
         attribution="ECMWF open data (AIFS), CC BY 4.0",
@@ -82,7 +90,7 @@ MODELS: dict[str, Model] = {
     "gfs": Model(
         key="gfs", label="NOAA GFS", short="GFS", source="nomads",
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "prmsl": "msl", "tp": "tp",
-                    "gust": "gust", "tcc": "tcc", "cape": "cape"},
+                    "gust": "gust", "tcc": "tcc", "cape": "cape", "2d": "d2m", "sde": "sd", "csnow": "csnow"},
         pl_params=_ECMWF_PL,
         precip_mode="bucket6",
         attribution="NOAA NCEP GFS via NOMADS, public domain",

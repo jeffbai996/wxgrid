@@ -27,7 +27,7 @@ def test_models_layers_levels_and_point():
     c = TestClient(api.app)
     m = c.get("/api/models").json()
     aifs = next(x for x in m["models"] if x["key"] == "aifs")
-    assert aifs["runs"][0]["layers"] == ["wind", "temp"]      # no msl/tp6/gust seeded
+    assert aifs["runs"][0]["layers"] == ["wind", "temp", "frz"]   # frz derives from the two seeded levels
     assert aifs["runs"][0]["levels"] == [850, 700]
     p = c.get("/api/point", params={"lat": 49.28, "lon": -123.12, "model": "aifs"}).json()
     assert p["series"]["wind"] == [1.0, 2.0] and p["series"]["wdir"] == [270, 270]
@@ -39,3 +39,19 @@ def test_models_layers_levels_and_point():
     assert c.get("/api/layer/aifs/latest/6/t2m.png").status_code == 200   # legacy alias
     assert c.get("/api/layer/aifs/latest/6/msl.png").status_code == 404
     assert c.get("/api/wind/aifs/2026-01-01T00/0.json?level=700").json()["u"][0] == 20.0
+
+
+def test_freezing_level_layer_profile_and_isolines():
+    _seed()
+    c = TestClient(api.app)
+    assert c.get("/api/layer/aifs/latest/6/frz.png").status_code == 200
+    p = c.get("/api/profile", params={"lat": 49.28, "lon": -123.12, "model": "aifs", "elevs": "1500,2250,3000"}).json()
+    assert p["freezing_level_m"] == [2250, 2250]
+    bands = {b["elev_m"]: b for b in p["bands"]}
+    assert bands[1500.0]["temp"][0] == 278.15 and bands[3000.0]["temp"][0] == 268.15
+    assert abs(bands[2250.0]["temp"][0] - 273.15) < 0.01          # halfway between the two levels
+    assert bands[2250.0]["wind"][0] == 15.0                       # 10 m/s at 850 → 20 m/s at 700
+    iso = c.get("/api/isolines/aifs/latest/6/temp.json").json()
+    assert iso["unit"] == "°C" and "features" in iso              # a flat field has no lines; shape only
+    frz_iso = c.get("/api/isolines/aifs/latest/6/frz.json")
+    assert frz_iso.status_code == 200
