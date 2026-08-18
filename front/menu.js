@@ -1,6 +1,5 @@
-// Right-click (or long-press) anywhere on the map. Windy has one of these and
-// it is the fastest way to do the thing you actually wanted with a spot you
-// just found.
+// Right-click (or long-press) anywhere on the map: the fastest way to do the
+// thing you actually wanted with a spot you just found.
 (function () {
   "use strict";
   const WX = window.WX;

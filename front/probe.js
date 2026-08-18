@@ -1,4 +1,5 @@
-// Value under the cursor for the layer on screen (Windy's picker-on-hover).
+// Value under the cursor for the layer on screen: a picker that follows the
+// mouse.
 // No extra request: the layer PNG the map already shows is decoded once into
 // an offscreen canvas and read back through the legend's colour ramp; wind
 // and waves come straight from the particle field. Hover only — touch

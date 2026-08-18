@@ -3,7 +3,7 @@
 A point forecast answers "what is it like there, later". A route forecast
 answers "what will it be like where I am, when I am there" — you walk the path
 forward in time, and at every sample you read the run at the step you would
-arrive on. Windy sells this; the maths is a haversine and a linear
+arrive on. The maths is a haversine and a linear
 interpolation.
 
     plan(path, depart, speed_kmh=…)   → samples: position, distance, ETA
@@ -146,9 +146,11 @@ def plan(path: list[tuple[float, float]], depart: datetime, *,
         span = cum[seg + 1] - cum[seg]
         f = 0.0 if span <= 0 else min(1.0, max(0.0, (d - cum[seg]) / span))
         lon, lat = _gc_interp(path[seg], path[seg + 1], f)
-        hours = tcum[seg] + (tcum[seg + 1] - tcum[seg]) * f
+        # Round the hours first and derive the ETA from the rounded value, so
+        # a client that plots `hours` and labels `eta` never disagrees with itself.
+        hours = round(tcum[seg] + (tcum[seg + 1] - tcum[seg]) * f, 4)
         out.append(Sample(lon=round(lon, 4), lat=round(lat, 4), dist_km=round(d, 2),
-                          hours=round(hours, 4), eta=depart + timedelta(hours=hours)))
+                          hours=hours, eta=depart + timedelta(hours=hours)))
     # Each sample stands for the half-interval either side of it — that is the
     # weight its precipitation rate gets in the route total.
     for k, s in enumerate(out):
@@ -385,7 +387,7 @@ def forecast(reader: RunReader, samples: list[Sample], *, elevs: list | None = N
     return {
         "model": reader.model, "run": reader.rid,
         "depart": samples[0].eta.isoformat(), "arrive": samples[-1].eta.isoformat(),
-        "length_km": samples[-1].dist_km, "duration_h": round(samples[-1].hours, 3),
+        "length_km": samples[-1].dist_km, "duration_h": samples[-1].hours,
         "run_valid_to": (t0 + timedelta(hours=steps[-1])).isoformat(),
         "samples": out_samples,
         "summary": summarize(out_samples, alerts),

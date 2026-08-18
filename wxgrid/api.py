@@ -365,8 +365,8 @@ def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge
 def api_thunder(model: str, run: str, step: int):
     """Points where the model has convective energy AND precipitation at the
     step: CAPE ≥ 800 J/kg and ≥ 0.5 mm in the bucket, sampled every 1°.
-    A cheap thunderstorm mask (Windy's lightning marks are observations; this
-    is the forecast analogue)."""
+    A cheap thunderstorm mask: the forecast analogue of a lightning-strike
+    map, which shows observations."""
     r = _reader(model, run)
     if step not in r.steps or "cape" not in r.variables or "tp6" not in r.variables:
         raise HTTPException(404, "model has no CAPE")

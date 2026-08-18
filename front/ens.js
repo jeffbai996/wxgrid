@@ -13,7 +13,9 @@
 // private overlay stay in charge.
 (function () {
   "use strict";
-  const WX = window.WX || {};
+  // Looked up lazily, not captured at load: this file must not care whether
+  // its <script> tag lands before or after the one that creates window.WX.
+  const WX = () => window.WX || {};
 
   const css = (n, fb) => ((getComputedStyle(document.documentElement).getPropertyValue(n) || "").trim() || fb);
 
@@ -43,14 +45,14 @@
   };
 
   function converter(kind) {
-    const U = WX.units;
+    const W = WX(), U = W.units;
     if (kind === "temp") return U && U.temp ? (v) => U.temp(v, 1) : FALLBACK.temp;
     if (kind === "press") return U && U.press ? (v) => U.press(v, 0) : FALLBACK.press;
     if (kind === "precip") return U && U.precip ? (v) => U.precip(v) : FALLBACK.precip;
     if (kind === "dist") return U && U.dist ? (v) => U.dist(v) : FALLBACK.dist;
     if (kind === "speed") {
-      return WX.speed && WX.speedUnit
-        ? (v) => ({ v: v == null ? null : WX.speed(v), unit: WX.speedUnit() })
+      return W.speed && W.speedUnit
+        ? (v) => ({ v: v == null ? null : W.speed(v), unit: W.speedUnit() })
         : FALLBACK.speed;
     }
     return (v) => ({ v: v, unit: "" });
@@ -122,7 +124,7 @@
 
   function dayLabel(iso) {
     const d = new Date(iso);
-    const U = WX.units;
+    const U = WX().units;
     const opts = { weekday: "short", hour: "numeric" };
     return U && U.timeOpts ? d.toLocaleString(undefined, U.timeOpts(opts)) : d.toLocaleString(undefined, opts);
   }
@@ -155,7 +157,13 @@
     const span = extent([S.p10, S.p90, S.mean].concat(members || []));
     if (!span) return;
     const pad = (span[1] - span[0]) * 0.12 || 1;
-    const t = ticks(span[0] - pad, span[1] + pad);
+    // A quantity with a floor (rain, wind speed) must not get a negative axis
+    // just because the headroom padding reached below zero. The floor arrives
+    // in store units, so convert it the same way as everything else.
+    const floor = data.floor == null ? null : cv(data.floor);
+    let lo = span[0] - pad;
+    if (floor != null && span[0] >= floor) lo = Math.max(floor, lo);
+    const t = ticks(lo, span[1] + pad);
 
     const padL = opts.padL != null ? opts.padL : 46;
     const padR = 10, padT = 10, padB = 22;
@@ -174,7 +182,12 @@
     x.strokeStyle = line; x.lineWidth = 1;
     x.fillStyle = dim; x.font = `500 10px ${mono}`;
     x.textAlign = "right"; x.textBaseline = "middle";
-    const decimals = t.step < 1 ? (t.step < 0.2 ? 2 : 1) : 0;
+    // Enough decimals to keep two neighbouring ticks distinguishable. The
+    // interval is always 1, 2, 2.5 or 5 × a power of ten, and only the 2.5
+    // case needs one digit more than its magnitude implies.
+    const mag = Math.floor(Math.log10(t.step));
+    const mant = t.step / Math.pow(10, mag);
+    const decimals = Math.max(0, Math.min(3, -mag + (Math.abs(mant - 2.5) < 1e-9 ? 1 : 0)));
     for (let v = t.lo; v <= t.hi + 1e-9; v += t.step) {
       const y = Math.round(yOf(v)) + 0.5;
       x.beginPath(); x.moveTo(padL, y); x.lineTo(padL + gw, y); x.stroke();

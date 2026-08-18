@@ -1,4 +1,4 @@
-// The Windy-style forecast tape under the map (and the radar frame strip).
+// The forecast tape under the map (and the radar frame strip).
 // Loaded after app.js; exposes WX.tape.
 (function () {
   "use strict";
@@ -19,7 +19,7 @@
   }
   function tapeData() { return (state.point && state.point.data) || state.tapePoint; }
 
-  // Windy-style tape: a table whose columns are forecast steps grouped under
+  // The tape: a table whose columns are forecast steps grouped under
   // day headers and whose rows are variables (icon, temp, feels like, rain,
   // wind, gusts, direction). Click a column to jump.
   function renderTape() {

@@ -1,6 +1,6 @@
 # wxgrid
 
-**Windy, except it's yours.** A global weather map on free model data, self-hosted, no API keys, MIT.
+**A global weather map you host yourself.** Free model data, no API keys, MIT.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776ab)](https://www.python.org/)
@@ -11,8 +11,8 @@
 ![wxgrid](docs/img/01-hero.jpg)
 
 Every weather app worth using is somebody else's server, somebody else's rate
-limit, and somebody else's idea of which layers you're allowed to see. The raw
-model data those apps run on is free — ECMWF, NOAA and Environment Canada all
+limit, and somebody else's idea of which layers you are allowed to see. The raw
+model data all of them run on is free — ECMWF, NOAA and Environment Canada
 publish it, keyless, several times a day. wxgrid pulls it, stores it once, and
 draws it.
 
@@ -187,13 +187,13 @@ to `data/cache/ext.json`) unless marked *direct*:
 
 `front/` is static — `app.js` (boot, state, controls, point card shell),
 `overlays.js` (radar/isolines/avalanche/resorts/alerts/storms/satellite/measure),
-`tape.js` (the Windy-style forecast table), `search.js`, `panes.js` (card
+`tape.js` (the forecast table), `search.js`, `panes.js` (card
 panes), `particles.js` (wind particles + barbs), `static-api.js` (Pages
 shim). MapLibre GL (vendored) on OpenFreeMap's dark style (positron in the
 light theme; dark theme is OLED black), one
 `image` source draped over the world in Web Mercator (the server reprojects
 the lat/lon grid so the drape is exact), a 2-D canvas particle layer above it
-(cambecc/earth lineage), a Windy-style weather tape + scrubber (← → keys,
+(cambecc/earth lineage), a weather tape + scrubber (← → keys,
 space to play), a model picker that keeps the *valid time* when you switch,
 altitude picker for wind/temp (surface, 925…250 hPa), live radar overlay with
 its own timeline (RainViewer, last 2 h + nowcast), place search (Nominatim),

@@ -1,5 +1,6 @@
 """Forecast uncertainty: spread arithmetic, the `_sd` store family, and the
 /api/ens routes. No network — the one GRIB decode is stubbed."""
+import shutil
 from datetime import datetime, timezone
 
 import numpy as np
@@ -12,7 +13,7 @@ from wxgrid.config import GRID_LAT_N, GRID_LON_N, STORE_DIR
 from wxgrid.ens_api import router as ens_router
 from wxgrid.grib import Field
 from wxgrid.models import get_model
-from wxgrid.store import RunWriter
+from wxgrid.store import RunWriter, run_path
 
 RUN = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
 
@@ -316,3 +317,28 @@ def test_sources_advertises_gefs_and_carries_the_member_cost_measurement():
     assert s["members"]["gefs"] == []
     assert s["cost"]["aifs_ens"]["affordable"] is False
     assert s["vars"]["t2m_sd"]["kind"] == "temp"
+
+
+def test_latest_is_resolved_before_the_cache_is_keyed():
+    """Keying the cache on the literal word "latest" would keep serving the
+    previous cycle for a whole TTL after a new run lands — which is exactly
+    when someone looks. The cache is NOT cleared between the two seeds here."""
+    _seed_gefs()
+    c = _client()
+    first = c.get("/api/ens/plume", params={"lat": 49.25, "lon": -123.25}).json()
+    assert first["run"] == "2026-08-18T12"
+
+    w = RunWriter("gefs", "2026-08-18T18", [0, 6],
+                  ["u10", "v10", "t2m", "t2m_sd"], root=STORE_DIR)
+    for step in (0, 6):
+        w.write("u10", step, _full(3.0)); w.write("v10", step, _full(0.0))
+        w.write("t2m", step, _full(300.0)); w.write("t2m_sd", step, _full(1.0))
+    w.finish()
+
+    try:
+        second = c.get("/api/ens/plume", params={"lat": 49.25, "lon": -123.25}).json()
+        assert second["run"] == "2026-08-18T18" and second["mean"] == [300.0, 300.0]
+    finally:
+        # do not leave a newer run behind for whatever runs next
+        shutil.rmtree(run_path("gefs", "2026-08-18T18", STORE_DIR), ignore_errors=True)
+        ens.cache()._d.clear()

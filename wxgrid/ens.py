@@ -39,7 +39,6 @@ run. Point reads hit the same Zarr point cube as everything else.
 from __future__ import annotations
 
 import logging
-import math
 from datetime import timedelta
 from pathlib import Path
 
@@ -245,6 +244,7 @@ def spread_point(model: str, run: str = "latest", lat: float = 0.0, lon: float =
     got = spread_vars_in(r)
     if not got:
         raise LookupError(f"{model}/{r.rid} carries no ensemble spread")
+    lat, lon = _snap(lat, lon)      # echo back the gridpoint actually read, as /plume does
     series = {}
     for sd_var in got:
         spec = SPREAD_VARS[sd_var]
@@ -266,6 +266,8 @@ def _mean_series(r: RunReader, mean_var: str, lat: float, lon: float) -> np.ndar
         v = r.point("v10", lat, lon)
         return np.hypot(u, v)
     if mean_var not in r.variables:
+        log.info("%s/%s has %s but not %s: plume will have a band and no centre",
+                 r.model, r.rid, _BY_MEAN.get(mean_var, "?"), mean_var)
         return np.full(len(r.steps), np.nan, dtype=np.float32)
     return r.point(mean_var, lat, lon)
 
@@ -284,12 +286,15 @@ def plume(model: str = "gefs", run: str = "latest", lat: float = 0.0, lon: float
         raise LookupError(f"no uncertainty for {var!r}; have {sorted(_BY_MEAN)}")
     spec = SPREAD_VARS[sd_var]
     lat_s, lon_s = _snap(lat, lon)
-    key = f"plume:{model}:{run}:{sd_var}:{lat_s}:{lon_s}"
+    # Resolve "latest" to the run id BEFORE keying the cache: keying on the
+    # literal word would keep serving the previous cycle for a whole TTL after
+    # a new run lands, which is precisely the moment anyone looks.
+    r = _reader(model, run, root)
+    if sd_var not in r.variables:
+        raise LookupError(f"{model}/{r.rid} has no {sd_var}")
+    key = f"plume:{model}:{r.rid}:{sd_var}:{lat_s}:{lon_s}"
 
     def build() -> dict:
-        r = _reader(model, run, root)
-        if sd_var not in r.variables:
-            raise LookupError(f"{model}/{r.rid} has no {sd_var}")
         t0 = parse_run_id(r.rid)
         mean = np.asarray(_mean_series(r, spec["mean"], lat_s, lon_s), dtype=np.float64)
         sd = np.asarray(r.point(sd_var, lat_s, lon_s), dtype=np.float64)
@@ -303,7 +308,7 @@ def plume(model: str = "gefs", run: str = "latest", lat: float = 0.0, lon: float
         out = {
             "model": model, "run": r.rid, "lat": lat_s, "lon": lon_s,
             "var": spec["mean"], "sd_var": sd_var, "label": spec["label"],
-            "unit": spec["unit"], "kind": spec["kind"],
+            "unit": spec["unit"], "kind": spec["kind"], "floor": spec["floor"],
             "steps": r.steps,
             "valid": [(t0 + timedelta(hours=h)).isoformat() for h in r.steps],
             "members": None,
@@ -319,26 +324,6 @@ def plume(model: str = "gefs", run: str = "latest", lat: float = 0.0, lon: float
         return out
 
     return cache().get(key, CACHE_TTL, build)
-
-
-def plume_from_members(members: np.ndarray, steps: list[int], t0, label: str = "",
-                       unit: str = "", kind: str = "") -> dict:
-    """The other basis, for when a member source is ever cheap enough to ship.
-
-    Kept because the shape of a members-backed response is part of the API
-    contract — the front end draws thin member lines when `members` is not
-    null — and because a contract with no implementation rots.
-    """
-    members = np.asarray(members, dtype=np.float64)
-    bands = percentiles_from_members(members)
-    out = {"steps": list(steps), "valid": [(t0 + timedelta(hours=h)).isoformat() for h in steps],
-           "members": [_finite(m) for m in members],
-           "mean": _finite(np.nanmean(members, axis=0)),
-           "sd": _finite(np.nanstd(members, axis=0, ddof=1)),
-           "basis": "members", "label": label, "unit": unit, "kind": kind,
-           "note": "Percentiles taken across members; no distributional assumption."}
-    out.update({name: _finite(vals) for name, vals in bands.items()})
-    return out
 
 
 def member_sources(model: str) -> list[str]:
@@ -360,12 +345,3 @@ def cost_report() -> dict:
         },
         "shipped": "gaussian-from-spread, GEFS gespr",
     }
-
-
-def sd_to_band_label(sd: float, kind: str) -> str:
-    """'±1.3 K' style summary for a legend. Trivial, but every caller was
-    about to write it slightly differently."""
-    if sd is None or not math.isfinite(sd):
-        return "—"
-    unit = {"temp": "K", "press": "Pa", "precip": "mm", "speed": "m/s"}.get(kind, "")
-    return f"±{sd:.1f} {unit}".strip()

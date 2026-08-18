@@ -402,7 +402,7 @@ table.bands td.name small { display: block; font: 500 10px var(--font-mono); col
 .point-tabs::-webkit-scrollbar { display: none; }
 @media (max-width: 820px) { .results { left: 8px; right: 8px; width: auto; } .point-tabs { max-width: 62%; } }
 
-/* ── Windy-style tape table ──────────────────────────────────────────── */
+/* ── tape table ──────────────────────────────────────────────────────── */
 .tape { border-top: 0; padding-top: 0; }
 table.wtape { border-collapse: separate; border-spacing: 0; font: 500 11px var(--font-mono); color: var(--fg-2); }
 table.wtape th, table.wtape td { padding: 0; text-align: center; white-space: nowrap; }

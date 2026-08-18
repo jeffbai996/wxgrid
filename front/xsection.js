@@ -1,4 +1,4 @@
-// Vertical cross-section along a drawn line (Windy's "cross section"): drag
+// Vertical cross-section along a drawn line: drag
 // two points on the map, get a slice of the atmosphere between them —
 // temperature shading, wind barbs, geopotential-height contours, freezing
 // level and the surface trace underneath. Everything comes from /api/xsection
