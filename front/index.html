@@ -40,6 +40,9 @@
       <button id="alerts-toggle" class="chip warn" title="Weather alerts (NWS polygons + Environment Canada)">alerts</button>
       <button id="storms-toggle" class="chip warn" title="Active tropical cyclones (NHC/CPHC)">storms</button>
       <button id="sat-toggle" class="chip" title="GOES GeoColor satellite (NASA GIBS, latest ~1 h)">satellite</button>
+      <button id="smoke-toggle" class="chip" title="Surface PM2.5 / wildfire smoke forecast (ECCC RAQDPS)">smoke</button>
+      <button id="fires-toggle" class="chip warn" title="Wildfire hotspots, last 24 h (NRCan CWFIS)">fires</button>
+      <button id="quakes-toggle" class="chip" title="Earthquakes M2.5+, past day (USGS)">quakes</button>
     </div>
   </div>
   <div class="menu" id="tools-menu">
@@ -98,6 +101,7 @@
 </div>
 
 <div id="measure" class="measure" hidden></div>
+<div id="provider" class="provider" aria-live="polite"><span class="dot"></span><span class="txt"></span></div>
 <div id="toast" hidden></div>
 
 <script src="vendor/maplibre-gl.js"></script>
@@ -106,6 +110,7 @@
 <script src="overlays.js"></script>
 <script src="tape.js"></script>
 <script src="search.js"></script>
+<script src="provider.js"></script>
 <script src="panes.js"></script>
 </body>
 </html>

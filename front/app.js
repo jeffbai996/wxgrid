@@ -36,7 +36,7 @@
     point: null, tapePoint: null, tab: "now",
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null, measure: false,
-    alerts: false, storms: false, sat: false, barbs: false,
+    alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false,
   };
   let map, wind, catalog, playTimer = null, marker = null;
 
@@ -100,6 +100,9 @@
         const avy = feats.find((x) => x.layer.id === "avy-fill");
         if (avy) { state.tab = "winter"; }
       });
+      map.on("mousemove", (e) => WX.provider && WX.provider.hover(e.lngLat));
+      map.on("mouseout", () => WX.provider && WX.provider.hover(null));
+      map.on("moveend", () => { if (!matchMedia("(hover: hover)").matches && WX.provider) WX.provider.hover(map.getCenter()); });
       map.on("mouseenter", "resort-pts", () => map.getCanvas().style.cursor = "pointer");
       map.on("mouseleave", "resort-pts", () => map.getCanvas().style.cursor = "");
       renderControls();
@@ -127,6 +130,9 @@
     if (state.alerts) WX.ov.loadAlerts();
     if (state.storms) WX.ov.loadStorms();
     if (state.sat) WX.ov.loadSat();
+    if (state.smoke) WX.ov.loadSmoke();
+    if (state.fires) WX.ov.loadFires();
+    if (state.quakes) WX.ov.loadQuakes();
     if (marker) marker.addTo(map);
   }
   function applyTheme(theme, swapMap = true) {
@@ -226,6 +232,9 @@
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
     $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) WX.ov.loadStorms(); else WX.ov.clearStorms(); };
     $("#sat-toggle").onclick = () => { state.sat = !state.sat; $("#sat-toggle").classList.toggle("on", state.sat); if (state.sat) WX.ov.loadSat(); else WX.ov.clearSat(); };
+    for (const [k, load, clear] of [["smoke", "loadSmoke", "clearSmoke"], ["fires", "loadFires", "clearFires"], ["quakes", "loadQuakes", "clearQuakes"]]) {
+      $(`#${k}-toggle`).onclick = () => { state[k] = !state[k]; $(`#${k}-toggle`).classList.toggle("on", state[k]); if (state[k]) WX.ov[load](); else WX.ov[clear](); };
+    }
     $("#theme-toggle").onclick = () => applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
     $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); if (!state.measure) WX.ov.clearMeasure(); else toast("Measure: tap two points"); };
     $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) WX.ov.loadIso(); else WX.ov.clearIso(); };
@@ -237,6 +246,8 @@
     $("#point-close").onclick = closePoint;
     WX.search.wireSearch();
     $$(".menu .menu-btn").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const m = b.parentElement; const open = m.classList.contains("open"); $$(".menu.open").forEach((x) => x.classList.remove("open")); if (!open) m.classList.add("open"); });
+    // menu buttons show a tick when any of their toggles is on
+    new MutationObserver(() => $$(".menu").forEach((m) => m.querySelector(".menu-btn").classList.toggle("has-on", !!m.querySelector(".menu-pop .chip.on")))).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
     document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) $$(".menu.open").forEach((x) => x.classList.remove("open")); });
     $$(".point-tabs button").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; renderPoint(); });
     document.addEventListener("keydown", (e) => {

@@ -69,7 +69,7 @@
       <tr class="r-dir">${label("Wind dir.")}${dirRow}</tr>
     </tbody></table>`;
     tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => WX.fn.setStep(Number(c.dataset.i)));
-    $("#tape-where").textContent = state.point ? (state.point.name || `${state.point.lat.toFixed(2)}, ${state.point.lon.toFixed(2)}`) : "M() centre";
+    $("#tape-where").textContent = state.point ? (state.point.name || `${state.point.lat.toFixed(2)}, ${state.point.lon.toFixed(2)}`) : "map centre";
     renderTapeSelection();
   }
 
