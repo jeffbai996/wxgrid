@@ -476,9 +476,7 @@ def _thin(ring: list, maxpts: int = 48) -> list:
     """Drop points evenly to at most `maxpts` and round to ~100 m. Source
     boundaries carry 1000+ vertices each; at map zooms this is invisible and
     it is the difference between a 40 MB index and a 1.3 MB one."""
-    ring = [[round(float(x), 3), round(float(y), 3)] for x, y in ring]
-    if len(ring) > maxpts:
-        ring = ring[:: len(ring) // maxpts + 1]
+    ring = _simplify_ring([[round(float(x), 3), round(float(y), 3)] for x, y in ring], len(ring) // maxpts + 1)
     if len(ring) >= 3 and ring[0] != ring[-1]:
         ring.append(ring[0])
     return ring
@@ -618,7 +616,8 @@ def _ma_parse(xml: str) -> list[dict]:
         end_dt = _iso(ends)
         if end_dt and end_dt < now:
             continue
-        m = _MA_TITLE.match(_kid(e, "title").text or "" if _kid(e, "title") is not None else "")
+        title = _txt(e, "title")
+        m = _MA_TITLE.match(title)
         colour = (m.group(1) if m else "").lower()
         awareness = (m.group(2) if m else "").lower()
         country = m.group(3) if m else ""
@@ -646,7 +645,7 @@ def _ma_parse(xml: str) -> list[dict]:
             continue
         seen[key] = {
             "id": f"{_txt(e, 'identifier')}:{code or area}", "event": event, "severity": _SEV_NAME.get(sev, "Unknown"),
-            "sev": sev, "color": _SEV_COLOR[sev], "headline": (_kid(e, "title").text or "").strip() if _kid(e, "title") is not None else "",
+            "sev": sev, "color": _SEV_COLOR[sev], "headline": title,
             "area": f"{area}, {country}".strip(", "), "onset": _txt(e, "onset") or _txt(e, "effective"), "ends": ends,
             "sender": None, "source": "MeteoAlarm", "url": cap_url, "code": code,
             "geometry": _rings_geom(rings), "_sent": sent,

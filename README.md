@@ -22,14 +22,25 @@ NOAA NOMADS (GFS)            ├─ wxgrid.ingest ─▶ data/store/<model>/<run
 
 | key  | model            | source            | surface steps                 | surface variables                                    | aloft (925/850/700/500/300/250 hPa, 6 h) |
 |------|------------------|-------------------|-------------------------------|------------------------------------------------------|------------------------------------------|
-| ifs  | ECMWF IFS 0.25°  | ecmwf-opendata    | 3 h to 144 h, then 6 h to 240 | u10 v10 t2m d2m msl tp sf sd gust tcc cape           | u v t gh                                 |
+| ifs  | ECMWF IFS 0.25°  | ecmwf-opendata    | 3 h to 144 h, then 6 h to 240 | u10 v10 t2m d2m msl tp sf sd gust tcc cape + waves swh mwd mwp (6 h) | u v t gh                                 |
 | aifs | ECMWF AIFS (AI)  | ecmwf-opendata    | 6 h to 240 h                  | u10 v10 t2m d2m msl tp sf tcc                        | u v t gh                                 |
 | gfs  | NOAA GFS 0.25°   | NOMADS filter CGI | 3 h to 240 h                  | u10 v10 t2m d2m msl tp sf(derived) sd gust tcc cape  | u v t gh                                 |
 
 Precipitation and snowfall are stored as the amount since the previous stored
 step (`tp6`/`sf6` — the names predate the 3-hourly tier); snow depth is `sd_cm`.
 Pressure levels are fetched on 6 h steps and linearly filled between them for
-point products.
+point products. IFS also carries the ECMWF **wave** stream (significant
+height, mean direction, mean period) on 6 h steps.
+
+Derived layers need no extra data: relative humidity (from t2m/d2m),
+24 h / 72 h rain and snow accumulations (sum of the buckets after the selected
+step), freezing level, and wave-propagation vectors for the particle layer.
+
+After a run lands, ingest re-chunks it into a **point cube** (`pt/<var>`,
+all steps × 24×24-gridpoint tiles) so a point series decompresses one small
+chunk instead of every step (~50 ms instead of seconds). Runs ingested before
+this existed: `python -m wxgrid.ingest --model <m> --point-cube`; older IFS
+runs can pick up waves with `--augment-waves`.
 
 All free and keyless. ECMWF data is CC BY 4.0 (attribute ECMWF); GFS is public
 domain. `tp6` is precipitation over the previous 6 h in mm for every model
@@ -67,14 +78,15 @@ to `data/cache/ext.json`) unless marked *direct*:
 
 - **Radar** — RainViewer composite (past 2 h + nowcast), *direct* tiles
 - **Satellite** — GOES-East/West GeoColor from NASA GIBS, latest frame, *direct* tiles
-- **Alerts** — NWS (US), MeteoAlarm (Europe, Atom/CAP + EMMA_ID regions) and BoM (Australia, CAP-AU + AMOC districts) merged into one polygon layer and point lookup, plus Environment Canada's ALERTS WMS layer (*direct*)
+- **Alerts** — NWS (US), MeteoAlarm (Europe, Atom/CAP + EMMA_ID regions; attribution required, redistribution per meteoalarm.org terms) and BoM (Australia, CAP-AU over anonymous FTP + AMOC district shapes; © Commonwealth of Australia) merged into one polygon layer and point lookup, plus Environment Canada's ALERTS WMS layer (*direct*)
 - **Storms** — NHC/CPHC active tropical cyclones: position, cone, forecast track (KMZ → GeoJSON)
 - **Avalanche** — Avalanche Canada (point product + regions) and avalanche.org (zones + products)
 - **Observations** — nearest METAR + TAF via aviationweather.gov
 - **Air quality / UV** — Open-Meteo air-quality API
 - **Tides** — DFO (Canada) and NOAA CO-OPS (US) nearest station, next highs/lows
 - **Places** — Nominatim search + reverse (1 req/s honoured), Open-Meteo elevation
-- **Ski resorts** — OpenStreetMap via Overpass (catalog + lifts + boundary), DEM for base/summit when OSM has none
+- **Ski resorts** — OpenStreetMap via Overpass (catalog + lifts + boundary), DEM for base/summit when OSM has none; with a snow layer showing, pins are coloured by the next 72 h of forecast snowfall (`/api/resorts/snow`)
+- **Private overlay** — `front/private/` (gitignored) may carry `theme.css` and `theme.js`; the latter can supply agency marks for the met-service badge (`window.WX_PRIVATE.logos`). Absent, the app shows wordmarks. `WXGRID_PUBLIC=1` never serves the directory.
 
 ## Front end
 
@@ -127,8 +139,8 @@ lifts) degrade quietly.
 - WeatherNext 2 (DeepMind FGN ensemble) via BigQuery once the data-request
   form clears — needs a GCP project. Ensembles generally: AIFS-ens, GEFS →
   spread/plume layers.
-- Waves (WW3), HRRR 3 km, ICON; hourly GFS surface tier.
-- Model split-screen; favourites; webcams (needs a keyed API).
+- HRRR 3 km, ICON; hourly GFS surface tier; GFS waves (WW3).
+- Model split-screen; webcams (needs a keyed API).
 - Self-hosted AI model via ECMWF `ai-models` (Aurora / GraphCast-small).
 
 ## Tests
