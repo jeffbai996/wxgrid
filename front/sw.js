@@ -45,20 +45,38 @@ const RUNTIME_MAX = 220;
 const BASE = new URL("./", self.registration.scope);
 const at = (p) => new URL(p, BASE).href;
 
-// The shell. Anything the app cannot start without.
-const SHELL_URLS = [
-  "", "index.html", "manifest.webmanifest", "styles.css",
-  "app.js", "particles.js", "overlays.js", "panes.js", "tape.js", "search.js",
-  "probe.js", "provider.js", "sounding.js", "xsection.js", "fires.js", "sigmet.js",
-  "cams.js", "route.js",
-  "vendor/maplibre-gl.js", "vendor/maplibre-gl.css",
+// The shell. Anything the app cannot start without — but the module list is
+// read out of index.html at install time rather than kept here by hand: this
+// app grows a new front/*.js most weeks, and a precache list that has to be
+// remembered is a precache list that goes stale and takes the offline build
+// with it. These are only the files index.html does NOT name: the fonts
+// (referenced from styles.css) and the icons (referenced from the manifest).
+const SHELL_EXTRA = [
+  "", "index.html", "manifest.webmanifest",
   "fonts/inter.woff2", "fonts/GeistMono-Variable.woff2", "fonts/Urbanist-Variable.woff2",
   "logo.svg", "icon-32.png", "icon-180.png", "icon-512.png",
-].map(at);
-// Present in some builds only: the private theme overlay is not shipped in a
-// public deployment, static-api.js only exists in the Pages snapshot. Missing
-// ones must not fail the install.
-const OPTIONAL_URLS = ["private/theme.css", "private/theme.js", "static-api.js"].map(at);
+];
+// Used only if index.html cannot be read at install time.
+const SHELL_FALLBACK = ["styles.css", "app.js", "units.js", "particles.js", "overlays.js", "panes.js",
+  "tape.js", "search.js", "menu.js", "settings.js", "probe.js", "provider.js", "sounding.js",
+  "xsection.js", "fires.js", "sigmet.js", "cams.js", "route.js", "vendor/maplibre-gl.js",
+  "vendor/maplibre-gl.css"];
+
+async function shellUrls() {
+  const rel = new Set([...SHELL_EXTRA, ...SHELL_FALLBACK]);
+  try {
+    const html = await (await fetch(at("index.html"), { cache: "reload" })).text();
+    for (const m of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
+      const u = m[1];
+      // Skip absolute URLs, data:, and in-page anchors; keep everything the
+      // page loads from beside itself.
+      if (!/^(https?:|data:|blob:|mailto:|#|\/\/|\/)/.test(u)) rel.add(u);
+    }
+  } catch (err) {
+    // No index.html, no update to the list — the fallback still installs.
+  }
+  return [...rel].map(at);
+}
 
 const IMMUTABLE = /^api\/(layer|wind|isolines|thunder)\//;
 
@@ -68,8 +86,9 @@ self.addEventListener("install", (e) => {
   e.waitUntil((async () => {
     const cache = await caches.open(SHELL);
     // One request each, not cache.addAll: addAll is atomic, so a single 404
-    // (a build without the private overlay) would throw away the whole shell.
-    await Promise.allSettled(SHELL_URLS.concat(OPTIONAL_URLS).map(async (u) => {
+    // (a build without the private theme overlay, or without static-api.js)
+    // would throw away the whole shell.
+    await Promise.allSettled((await shellUrls()).map(async (u) => {
       const res = await fetch(u, { cache: "reload" });
       if (res.ok) await cache.put(u, res);
     }));

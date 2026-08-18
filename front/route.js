@@ -14,13 +14,23 @@
   const M = () => WX.map;
 
   // ── units ──────────────────────────────────────────────────────────────
-  // WX.units is being added by the app in this pass; until it lands (or when a
-  // build ships without it) fall back to the SI-ish defaults the API returns.
+  // Everything numeric goes through WX.units when it is there. It is resolved
+  // per call, not captured at load: units.js may be a later script tag, and a
+  // build could ship without it — in which case these fall back to the SI-ish
+  // units the API itself returns.
   const U = () => window.WX && window.WX.units;
-  const uTemp = (k) => (k == null ? null : (U() && U().temp ? U().temp(k) : { v: k - 273.15, unit: "°C" }));
-  const uDist = (km) => (km == null ? null : (U() && U().dist ? U().dist(km) : { v: km, unit: "km" }));
-  const uPrecip = (mm) => (mm == null ? null : (U() && U().precip ? U().precip(mm) : { v: mm, unit: "mm" }));
+  const uTemp = (k, d) => (k == null ? null : (U() && U().temp ? U().temp(k, d) : { v: k - 273.15, unit: "°C" }));
+  const uDist = (km, d) => (km == null ? null : (U() && U().dist ? U().dist(km, d) : { v: km, unit: "km" }));
+  const uPrecip = (mm, d) => (mm == null ? null : (U() && U().precip ? U().precip(mm, d) : { v: mm, unit: "mm" }));
   const uPress = (pa) => (pa == null ? null : (U() && U().press ? U().press(pa) : { v: pa / 100, unit: "hPa" }));
+  const uAlt = (m) => (m == null ? null : (U() && U().alt ? U().alt(m) : { v: Math.round(m), unit: "m" }));
+  // Snowfall arrives as mm water-equivalent; the app's snow unit is cm at the
+  // same 10:1 the sf6 ramp uses, so the number passes through unscaled.
+  const uSnow = (mmwe) => (mmwe == null ? null : (U() && U().snow ? U().snow(mmwe) : { v: mmwe, unit: "cm" }));
+  const uTime = (iso, extra) => (U() && U().time ? U().time(iso, extra)
+    : new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", ...(extra || {}) }));
+  const uWhen = (iso) => (U() && U().dateTime ? U().dateTime(iso, { weekday: "short", hour: "numeric", minute: "2-digit" })
+    : new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }));
   const spd = (ms) => (ms == null ? null : WX.speed(ms));
   const spdUnit = () => WX.speedUnit();
   // Travel speed is typed in whatever unit the wind is shown in; the API wants
@@ -306,8 +316,8 @@
     const gust = s.worst_gust && s.worst_gust.value != null ? `${Math.round(spd(s.worst_gust.value))} ${spdUnit()}` : null;
     if (gust) out.push([`gust ${gust}`, s.worst_gust.value >= data.thresholds.gust_ms ? "bad" : ""]);
     if (s.total_precip_mm > 0.05) { const p = uPrecip(s.total_precip_mm); out.push([`${n1(p.v)} ${p.unit} en route`, ""]); }
-    if (s.total_snow_mm > 0.05) { const p = uPrecip(s.total_snow_mm); out.push([`${n1(p.v)} ${p.unit} snow`, "warn"]); }
-    if (s.min_vis_km && s.min_vis_km.value != null && s.min_vis_km.value < 10) out.push([`vis ${n1(s.min_vis_km.value)} km`, s.min_vis_km.value <= data.thresholds.vis_km ? "bad" : "warn"]);
+    if (s.total_snow_mm > 0.05) { const p = uSnow(s.total_snow_mm); out.push([`${n1(p.v)} ${p.unit} snow`, "warn"]); }
+    if (s.min_vis_km && s.min_vis_km.value != null && s.min_vis_km.value < 10) { const d = uDist(s.min_vis_km.value); out.push([`vis ${n1(d.v)} ${d.unit}`, s.min_vis_km.value <= data.thresholds.vis_km ? "bad" : "warn"]); }
     if (s.flags.length) out.push([s.flags.map((f) => HAZ_LABEL[f] || f).join(", "), s.hazard >= 2 ? "bad" : "warn"]);
     (s.alerts || []).slice(0, 2).forEach((a) => out.push([`⚠ ${a.event}`, (a.sev || 0) >= 3 ? "bad" : "warn"]));
     if (s.outside_run) out.push([`${s.outside_run} past the run`, "warn"]);
@@ -441,10 +451,10 @@
     x.beginPath(); x.moveTo(g.padL, g.yRain + g.hRain + 0.5); x.lineTo(w - g.padR, g.yRain + g.hRain + 0.5); x.stroke();
     if (rmax > 0.6) {
       const p = uPrecip(rmax);
-      x.fillStyle = rain; x.textAlign = "left"; x.textBaseline = "top";
-      // The right gutter is narrow on a phone: number only, the bars are
-      // obviously precipitation.
-      x.fillText(g.compact ? `${n1(p.v)}` : `${n1(p.v)} ${p.unit}/h`, w - g.padR + 4, g.yRain);
+      // Right-aligned to the canvas edge, not left-aligned off the plot: the
+      // gutter is 36-44 px and "2.2 mm/h" is wider than that.
+      x.fillStyle = rain; x.textAlign = "right"; x.textBaseline = "top";
+      x.fillText(g.compact ? `${n1(p.v)}` : `${n1(p.v)} ${p.unit}/h`, w - 2, g.yRain);
     }
 
     // ── terrain band: the ground you drive over, and the freezing level over it
@@ -468,8 +478,9 @@
           x.fillStyle = rain; x.textAlign = "left"; x.textBaseline = "top";
           x.fillText("0°", w - g.padR + 4, g.yTerr);
         }
+        const top = uAlt(hiZ);
         x.fillStyle = dim; x.textAlign = "right"; x.textBaseline = "top";
-        x.fillText(`${Math.round(hiZ)} m`, g.padL - 4, g.yTerr);
+        x.fillText(`${Math.round(top.v)}${g.compact ? "" : " " + top.unit}`, g.padL - 4, g.yTerr);
       }
     }
 
@@ -478,8 +489,7 @@
     const ticks = g.compact ? 3 : 5;
     for (let k = 0; k <= ticks; k++) {
       const i = Math.round((n - 1) * k / ticks), s = ss[i];
-      const t = new Date(s.eta);
-      const lab = t.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      const lab = uTime(s.eta);
       const d = uDist(s.dist_km);
       x.fillText(g.compact ? lab : `${lab}  ${n1(d.v)}${d.unit}`, Math.min(w - g.padR, Math.max(g.padL, xOf(i))), h - g.padB + 2);
     }
@@ -512,17 +522,17 @@
       return;
     }
     const s = data.samples[i];
-    if (s.outside_run) { out.innerHTML = `<b>${new Date(s.eta).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}</b> · past the end of this run`; return; }
+    if (s.outside_run) { out.innerHTML = `<b>${esc(uWhen(s.eta))}</b> · past the end of this run`; return; }
     const t = uTemp(s.t2m), d = uDist(s.dist_km), bits = [];
-    bits.push(`<b>${new Date(s.eta).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}</b>`);
+    bits.push(`<b>${esc(uWhen(s.eta))}</b>`);
     bits.push(`${n1(d.v)} ${d.unit}`);
     if (t) bits.push(`<b>${n1(t.v)}${t.unit}</b>`);
     if (s.wind != null) bits.push(`${WX.arrow(s.wdir)} ${Math.round(spd(s.wind))}${s.gust != null ? `/${Math.round(spd(s.gust))}` : ""} ${spdUnit()}`);
     if (s.precip_mm_h) { const p = uPrecip(s.precip_mm_h); bits.push(`${s.ptype || "precip"} ${n1(p.v)} ${p.unit}/h`); }
     if (s.cloud != null) bits.push(`cloud ${Math.round(s.cloud * 100)}%`);
-    if (s.vis_km != null) bits.push(`vis ${n1(s.vis_km)} km`);
-    if (s.freezing_level_m != null) bits.push(`0° ${s.freezing_level_m} m`);
-    if (s.elev_m != null) bits.push(`ground ${Math.round(s.elev_m)} m`);
+    if (s.vis_km != null) { const v = uDist(s.vis_km); bits.push(`vis ${n1(v.v)} ${v.unit}`); }
+    if (s.freezing_level_m != null) { const z = uAlt(s.freezing_level_m); bits.push(`0° ${Math.round(z.v)} ${z.unit}`); }
+    if (s.elev_m != null) { const z = uAlt(s.elev_m); bits.push(`ground ${Math.round(z.v)} ${z.unit}`); }
     if (s.msl != null) { const p = uPress(s.msl); bits.push(`${n1(p.v)} ${p.unit}`); }
     if (s.flags.length) bits.push(`<span class="f">${s.flags.map((f) => HAZ_LABEL[f] || f).join(" · ")}</span>`);
     out.innerHTML = bits.join(" · ");
@@ -560,6 +570,7 @@
     M().on("styledata", styleWatch);
     WX.fn.toast("Route: tap the map to drop points along your way", 4500);
     render();
+    if (pts.length) load();          // a route closed and reopened comes back
   }
   function stop() {
     active = false;
@@ -599,6 +610,9 @@
   };
 
   window.addEventListener("resize", () => { if (active && data) draw(); });
+  // units.js announces a preference change; every number on the strip is
+  // rendered through it, so the whole panel just redraws.
+  document.addEventListener("wx-units", () => { if (active) { const el = $("#wxr"); if (el) el.querySelector(".wxr-speed").value = Math.round(fromKmh(speedKmh)); render(); } });
 
   // ══ PWA bootstrap ═══════════════════════════════════════════════════════
   // Registration + the offline banner. Self-contained and guarded, so lifting

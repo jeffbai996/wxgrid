@@ -123,17 +123,23 @@ def _parse_igra(text: str, min_last_year: int) -> list[dict]:
     return out
 
 
+# Tokens that are abbreviations rather than shouting, and stay as they are.
+_KEEP_UPPER = {"USA", "UK", "UAE", "AFB", "INTL", "UA", "AWS", "RAF", "AB", "BC", "MB", "NB",
+               "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"}
+
+
 def _title(name: str) -> str:
-    """IGRA and IEM both shout their station names. Title-case them but leave
-    short all-caps tokens (state and country abbreviations) alone."""
+    """IGRA and IEM both shout their station names. Title-case the words and
+    leave the abbreviations — "QUILLAYUTE; WA., USA" is a place, "Quillayute,
+    Wa., Usa" is a typo."""
     parts = []
     for word in re.split(r"(\s+)", name):
-        if word.isspace() or not word:
-            parts.append(word)
-        elif len(word.strip(".,")) <= 3 and word.isupper():
+        core = word.strip(".,;:()[]")
+        if not word or word.isspace() or not word.isupper() or len(core) <= 2 \
+                or not core.isalpha() or core in _KEEP_UPPER:
             parts.append(word)
         else:
-            parts.append(word.capitalize() if word.isupper() else word)
+            parts.append(word.title())
     return re.sub(r"\s+", " ", "".join(parts)).strip()
 
 
@@ -203,7 +209,7 @@ def stations() -> list[dict]:
         merged = _merge_stations(igra, iem)
         log.info("sonde station list: %d igra + %d iem → %d", len(igra), len(iem), len(merged))
         return merged
-    return _cached("sonde:stations:v1", STATION_TTL, fetch) or []
+    return _cached("sonde:stations:v2", STATION_TTL, fetch) or []
 
 
 def _index() -> dict[str, dict]:
@@ -313,7 +319,8 @@ def _num(v, digits: int):
 _UWYO_H1 = re.compile(r"<H1>\s*Observations for Station\s+(\S+)\s+at\s+(\d{1,2})\s+UTC\s+(\d{1,2})\s+(\w{3})\s+(\d{4})", re.I)
 _UWYO_H3 = re.compile(r"<H3>(.*?)</H3>", re.I | re.S)
 _UWYO_PRE = re.compile(r"<PRE>(.*?)</PRE>", re.I | re.S)
-_UWYO_ROW = re.compile(r"<TR>\s*<TD>(.*?)</TD>\s*<TD>(.*?)</TD>\s*<TD[^>]*>(.*?)</TD>", re.I | re.S)
+_UWYO_IDX = re.compile(r"Sounding Indices\s*</H3>\s*<TABLE>(.*?)</TABLE>", re.I | re.S)
+_UWYO_ROW = re.compile(r"<TR>\s*<TD>\s*([A-Z0-9]{2,8})\s*</TD>\s*<TD>[^<]*</TD>\s*<TD[^>]*>([^<]*)</TD>", re.I | re.S)
 _MONTHS = {m: i for i, m in enumerate(
     ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 1)}
 # Wyoming's own column names → ours. Anything else in the table is ignored.
@@ -381,7 +388,8 @@ def _parse_uwyo(page: str) -> dict | None:
     hour, day, mon, year = int(h1.group(2)), int(h1.group(3)), h1.group(4), int(h1.group(5))
     when = datetime(year, _MONTHS.get(mon.title(), 1), day, hour, tzinfo=timezone.utc)
     idx = {}
-    for code, _label, value in _UWYO_ROW.findall(page):
+    table = _UWYO_IDX.search(page)
+    for code, value in _UWYO_ROW.findall(table.group(1) if table else ""):
         try:
             idx[_html.unescape(code).strip()] = float(_html.unescape(value).strip())
         except ValueError:
@@ -408,7 +416,7 @@ def _fetch_uwyo(wmo: str, when: datetime) -> dict | None:
                 time.sleep(wait)
             _uwyo_last = time.time()
             r = _session.get(UWYO_SOUNDING, params=params, timeout=60)
-        if r.status_code == 404:
+        if 400 <= r.status_code < 500:      # 404 at most stations, 400 at some: both mean "nothing here"
             return None
         r.raise_for_status()
         return _parse_uwyo(r.text)
@@ -652,7 +660,7 @@ def sounding(station_id: str, when: str = "latest", max_levels: int = MAX_LEVELS
     if st is None:
         return None
     want = (when or "latest").strip().lower()
-    key = f"sonde:obs:v1:{st['id']}:{want}:{max_levels}"
+    key = f"sonde:obs:v2:{st['id']}:{want}:{max_levels}"
 
     def fetch() -> dict | None:
         if want in ("latest", "", "now"):

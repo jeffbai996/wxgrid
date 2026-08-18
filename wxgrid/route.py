@@ -24,12 +24,30 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from wxgrid.api import _clean, _fill_gaps, _freezing_level, _levels_for, _wind_pair, _wrap_lon
 from wxgrid.config import GRID_LON_N, GRID_RES
 from wxgrid.ext import _bbox_hit, _in_geom
 from wxgrid.store import RunReader, parse_run_id
 
 log = logging.getLogger("wxgrid.route")
+
+_api = None
+
+
+def _h():
+    """wxgrid.api's leaf helpers (`_clean`, `_wind_pair`, `_freezing_level` …),
+    fetched on first use rather than imported at module scope.
+
+    wxgrid.api ends its own module body by importing wxgrid.route_api, which
+    imports this module — so a module-scope `import wxgrid.api` here closes a
+    three-way cycle that breaks or doesn't depending on which of the three
+    gets imported first. Asking for them when a route is actually computed
+    makes every import order work, and costs one dict lookup per call.
+    """
+    global _api
+    if _api is None:
+        from wxgrid import api
+        _api = api
+    return _api
 
 EARTH_R_KM = 6371.0088
 # Surface variables a route sample wants. A model that lacks one simply
@@ -104,7 +122,8 @@ def plan(path: list[tuple[float, float]], depart: datetime, *,
     travel, which is what makes "the weather when I am there" legible on a
     strip chart without hammering the store.
     """
-    path = [(float(_wrap_lon(x)), float(y)) for x, y in path][:MAX_PATH_POINTS]
+    wrap = _h()._wrap_lon
+    path = [(float(wrap(x)), float(y)) for x, y in path][:MAX_PATH_POINTS]
     if len(path) < 2:
         raise ValueError("a route needs at least two points")
     total, cum = path_length_km(path)
@@ -129,6 +148,10 @@ def plan(path: list[tuple[float, float]], depart: datetime, *,
         raise ValueError("route has zero duration")
 
     if every_km and every_km > 0:
+        # A 4000 km route with every_km=0.001 is four million store reads.
+        # Widen the spacing rather than refusing: the caller asked for
+        # "roughly this often", and this is as often as we go.
+        every_km = max(float(every_km), total / (MAX_SAMPLES - 1))
         n = int(total // every_km) + 1
         ds = [min(k * every_km, total) for k in range(n)]
         if ds[-1] < total - 1e-6:
@@ -258,15 +281,15 @@ def _series(reader: RunReader, lat: float, lon: float, levels: list[int]) -> dic
     """Every series a route sample needs at one gridpoint, plus the derived
     freezing level. Mirrors /api/point's handling: aloft variables live on 6 h
     steps and get gap-filled so they read at every step."""
-    n = len(reader.steps)
+    h, n = _h(), len(reader.steps)
     want = list(SURFACE_VARS) + [f"{p}_{l}" for l in levels for p in ("t", "gh")]
-    out = {v: _clean(reader.point(v, lat, lon)) for v in want if v in reader.variables}
+    out = {v: h._clean(reader.point(v, lat, lon)) for v in want if v in reader.variables}
     for var in list(out):
         if "_" in var and var.split("_")[0] in ("t", "gh"):
-            out[var] = _fill_gaps(out[var])
-    out["freezing_level_m"] = _freezing_level(out, levels, n) if levels else [None] * n
+            out[var] = h._fill_gaps(out[var])
+    out["freezing_level_m"] = h._freezing_level(out, levels, n) if levels else [None] * n
     if "u10" in out and "v10" in out:
-        out["wind"], out["wdir"] = _wind_pair(out["u10"], out["v10"])
+        out["wind"], out["wdir"] = h._wind_pair(out["u10"], out["v10"])
     return out
 
 
@@ -309,7 +332,7 @@ def forecast(reader: RunReader, samples: list[Sample], *, elevs: list | None = N
     thr = {**THRESHOLDS, **(thresholds or {})}
     t0 = parse_run_id(reader.rid)
     steps = reader.steps
-    levels = _levels_for(reader)
+    levels = _h()._levels_for(reader)
     cache: dict[tuple[int, int], dict] = {}
     if elevs is not None and len(elevs) != len(samples):
         elevs = None
@@ -351,7 +374,7 @@ def forecast(reader: RunReader, samples: list[Sample], *, elevs: list | None = N
         u, v = at("u10"), at("v10")
         wind = wdir = None
         if u is not None and v is not None:
-            spd, dirs = _wind_pair([u], [v])
+            spd, dirs = _h()._wind_pair([u], [v])
             wind, wdir = spd[0], dirs[0]
         ptype = precip_type(rate, snow_rate, t2m, frz, s.elev_m)
         wx = {

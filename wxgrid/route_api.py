@@ -22,7 +22,12 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from wxgrid import ext, route
-from wxgrid.api import _reader
+
+# wxgrid.api's `_reader` is fetched inside _run(), not imported here: api.py
+# ends by importing THIS module to mount the router, so importing it back at
+# module scope would mean `import wxgrid.route_api` first finds a half-built
+# wxgrid.api (or vice versa). Every other router in the app sidesteps this by
+# never needing anything from api; this one needs the run-reader cache.
 
 log = logging.getLogger("wxgrid.route_api")
 router = APIRouter(prefix="/api/route")
@@ -77,10 +82,13 @@ def _parse_path(raw: str) -> list[list[float]]:
     return pts[:route.MAX_PATH_POINTS]
 
 
+EPOCH = datetime(2000, 1, 1, tzinfo=timezone.utc)   # plan() wants a departure; terrain does not care
+TERRAIN_POINTS = 96                                 # one Open-Meteo batch (their cap is 100)
+
+
 def _elevations(points: list[tuple[float, float]]) -> list:
-    """Ground height at every sample, batched through Open-Meteo and parked in
-    the ext cache — a route redrawn at a different speed re-reads the same
-    terrain, and terrain does not move."""
+    """Ground height at a set of points, batched through Open-Meteo and parked
+    in the ext cache. Terrain does not move, so the TTL is a month."""
     key = "route:elev:" + hashlib.sha1(
         ";".join(f"{la:.3f},{lo:.3f}" for la, lo in points).encode()).hexdigest()[:16]
     def fetch():
@@ -92,7 +100,43 @@ def _elevations(points: list[tuple[float, float]]) -> list:
     return ext.cache.get(key, 30 * 24 * 3600, fetch)
 
 
+def _lerp_profile(xs: list[float], ys: list, at: float):
+    """Linear interpolation of a (distance, height) profile, skipping gaps."""
+    if not xs:
+        return None
+    if at <= xs[0]:
+        return ys[0]
+    for k in range(1, len(xs)):
+        if at <= xs[k]:
+            a, b = ys[k - 1], ys[k]
+            if a is None or b is None:
+                return b if a is None else a
+            span = xs[k] - xs[k - 1]
+            return a if span <= 0 else a + (b - a) * (at - xs[k - 1]) / span
+    return ys[-1]
+
+
+def _terrain(path: list[list[float]], samples: list) -> list:
+    """The ground profile under the PATH, sampled on a fixed spacing and then
+    interpolated onto wherever the timing put the samples.
+
+    Keyed on the path alone, so changing the speed or the departure — which
+    moves every sample — costs nothing: the elevation call is the slow part of
+    a route request (one Open-Meteo round trip), and the terrain under a road
+    does not depend on how fast you drive it.
+    """
+    total = samples[-1].dist_km
+    if total <= 0:
+        return [None] * len(samples)
+    spacing = max(0.5, total / (TERRAIN_POINTS - 1))
+    probe = route.plan([(p[0], p[1]) for p in path], EPOCH, speed_kmh=1.0, every_km=spacing)
+    zs = _elevations([(p.lat, p.lon) for p in probe])
+    xs = [p.dist_km for p in probe]
+    return [_lerp_profile(xs, zs, s.dist_km) for s in samples]
+
+
 def _run(req: RouteRequest) -> dict:
+    from wxgrid.api import _reader          # see the note by the imports
     reader = _reader(req.model, req.run)
     depart = _parse_depart(req.depart)
     try:
@@ -103,7 +147,7 @@ def _run(req: RouteRequest) -> dict:
         raise HTTPException(400, str(exc))
     elevs = req.elevs if req.elevs and len(req.elevs) == len(pts) else None
     if elevs is None and req.terrain:
-        elevs = _elevations([(p.lat, p.lon) for p in pts])
+        elevs = _terrain(req.path, pts)
     alerts = None
     if req.alerts:
         try:

@@ -120,13 +120,37 @@ def test_uwyo_parser_converts_knots_when_the_units_row_says_so():
     assert levels[4]["wspd"] == pytest.approx(10.3, abs=0.05)    # 20 kt
 
 
+def test_uwyo_parser_ignores_tables_outside_the_indices_block():
+    """The page's masthead is built from <tr><td> too. A loose scan swallowed
+    it and shipped 190 KB of Wyoming's own HTML as "source indices"."""
+    page = UWYO_PAGE.replace("<H1>", """<TABLE><TR><TD>1</TD><TD>x</TD><TD>99</TD></TR></TABLE><H1>""")
+    got = sonde._parse_uwyo(page)
+    assert set(got["source_indices"]) == {"PWAT"}
+
+
+def test_uwyo_parser_survives_a_page_with_no_indices_table():
+    page = UWYO_PAGE.split("<H3>Sounding Indices")[0] + "</BODY></HTML>"
+    got = sonde._parse_uwyo(page)
+    assert got["source_indices"] == {} and got["station_lat"] is None and len(got["levels"]) == 7
+
+
+def test_station_names_keep_abbreviations_and_lose_the_shouting():
+    assert sonde._title("QUILLAYUTE, WA., USA") == "Quillayute, WA., USA"
+    assert sonde._title("CASTOR BAY") == "Castor Bay"
+    assert sonde._title("STONY PLAIN UA, ALTA") == "Stony Plain UA, Alta"
+    assert sonde._title("Yarmouth  NC/CN") == "Yarmouth NC/CN"
+
+
 def test_uwyo_parser_rejects_a_page_with_no_profile():
     assert sonde._parse_uwyo("<HTML><BODY>nothing here</BODY></HTML>") is None
 
 
-def test_uwyo_missing_slot_is_a_miss_not_an_error(monkeypatch):
+@pytest.mark.parametrize("status", [400, 404])
+def test_uwyo_missing_slot_is_a_miss_not_an_error(monkeypatch, status):
+    """Some stations answer 404 for an empty slot and some answer 400. Both
+    mean the balloon did not fly, and neither is worth an exception."""
     monkeypatch.setattr(sonde, "UWYO_MIN_GAP", 0.0)
-    monkeypatch.setattr(sonde._session, "get", lambda *a, **k: _Resp(404, UWYO_MISSING))
+    monkeypatch.setattr(sonde._session, "get", lambda *a, **k: _Resp(status, UWYO_MISSING))
     from datetime import datetime, timezone
     assert sonde._fetch_uwyo("03953", datetime(2026, 8, 18, 13, tzinfo=timezone.utc)) is None
 

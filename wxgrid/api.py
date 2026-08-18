@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -213,7 +213,7 @@ def api_models() -> dict:
 
 
 @app.get("/api/layer/{model}/{run}/{step}/{layer}.png")
-def api_layer(model: str, run: str, step: int, layer: str, level: int | None = None):
+def api_layer(request: Request, model: str, run: str, step: int, layer: str, level: int | None = None):
     layer = _norm_layer(layer)
     level = _norm_level(level, layer)
     r = _reader(model, run)
@@ -221,16 +221,20 @@ def api_layer(model: str, run: str, step: int, layer: str, level: int | None = N
         raise HTTPException(404, "step, layer or level not in run")
     step = _level_step(r, step, level is not None or layer in _SIX_HOURLY)
     tag = f"{layer}{'' if level is None else '-' + str(level)}"
-    path = CACHE_DIR / model / r.rid / f"{step:03d}-{tag}.png"
+    # WebP where the client takes it (~22 % smaller overall, up to 40 % on the
+    # alpha layers), PNG otherwise. `Vary: Accept` is load-bearing: without it
+    # a shared cache hands a WebP to a client that asked for PNG.
+    name, fmt, media = render.layer_cache_name(step, tag, request.headers.get("accept"))
+    path = CACHE_DIR / model / r.rid / name
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         field = field_for(r, layer, level, step)
         disp = render.DISPLAY[layer](render.to_mercator(field))
         tmp = _tmp_for(path)
-        tmp.write_bytes(render.colorize(disp, layer))
+        tmp.write_bytes(render.colorize(disp, layer, fmt=fmt))
         tmp.replace(path)
-    return FileResponse(path, media_type="image/png",
-                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    return FileResponse(path, media_type=media,
+                        headers={"Cache-Control": "public, max-age=31536000, immutable", "Vary": "Accept"})
 
 
 @app.get("/api/wind/{model}/{run}/{step}.json")

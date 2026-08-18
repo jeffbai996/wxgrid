@@ -99,6 +99,13 @@ def test_plan_honours_an_explicit_sample_spacing():
     assert pts[-1].dist_km == pytest.approx(route.path_length_km([(0.0, 0.0), (2.0, 0.0)])[0], abs=0.01)
 
 
+def test_a_tiny_spacing_widens_instead_of_exploding():
+    """every_km=1 m over a long route would be millions of store reads."""
+    pts = route.plan([(-125.0, 49.0), (-70.0, 45.0)], T0, speed_kmh=100.0, every_km=0.001)
+    assert len(pts) <= route.MAX_SAMPLES + 1
+    assert len(route.plan([(0.0, 0.0), (1.0, 0.0)], T0, speed_kmh=50.0, samples=10_000)) == route.MAX_SAMPLES
+
+
 # ── derived weather (pure) ────────────────────────────────────────────────
 
 def test_visibility_proxy_falls_with_humidity_and_falls_faster_in_snow():
