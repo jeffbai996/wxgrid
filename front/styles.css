@@ -374,8 +374,8 @@ table.wtape tr.r-dir td { height: 20px; }
 .provider.show { opacity: 1; transform: translateY(0); }
 .provider .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px currentColor; }
 .provider small { font: 600 10px var(--font-mono); color: var(--dim); margin-left: 4px; }
-.provider .dot.logo { width: auto; height: 22px; border-radius: 0; box-shadow: none; display: flex; align-items: center; }
-.provider .dot.logo img { height: 22px; width: auto; max-width: 96px; display: block; }
-.provider .dot.logo img.chip { background: #fff; border-radius: 4px; padding: 2px 4px; height: 22px; box-sizing: border-box; }
+.provider .dot.logo { width: auto; height: 26px; border-radius: 0; box-shadow: none; display: flex; align-items: center; }
+.provider .dot.logo img { height: 26px; width: auto; max-width: 120px; display: block; }
+.provider .dot.logo img.chip { background: #fff; border-radius: 4px; padding: 2px 5px; height: 26px; box-sizing: border-box; }
 #point:not([hidden]) ~ .provider { left: auto; right: 12px; }
 @media (max-width: 820px) { .provider { display: none; } }
