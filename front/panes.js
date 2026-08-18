@@ -35,7 +35,10 @@
     return `rgb(${a[1].map((x, k) => Math.round(x + (b[1][k] - x) * q)).join(",")})`;
   }
   const tempColor = (c) => lerpStops(TEMP_STOPS, c);
-  const windColor = (ms) => { const p = Math.min(1, (ms * 3.6) / 70); return `rgba(${Math.round(60 + 180 * p)}, ${Math.round(160 - 60 * p)}, ${Math.round(220 - 200 * p)}, ${0.35 + 0.55 * p})`; };
+  const windColor = (ms) => {
+    const p = Math.min(1, (ms * 3.6) / 60);
+    return `rgba(${Math.round(40 + 215 * Math.pow(p, 0.85))}, ${Math.round(175 - 130 * p)}, ${Math.round(245 - 215 * Math.pow(p, 0.7))}, ${0.32 + 0.55 * p})`;
+  };
   const bigGlyph = (cloud, precip, tK, night) => {
     const c = cloud == null ? 0 : cloud, snow = tK != null && tK - K < 1 && precip > 0.2;
     const body = night ? `<circle cx="16" cy="16" r="9" fill="#cfd6e3"/>` : `<circle cx="16" cy="16" r="9" fill="#ffd166"/><g stroke="#ffd166" stroke-width="2" stroke-linecap="round">${[0,45,90,135,180,225,270,315].map((a)=>`<line x1="${16+12*Math.cos(a*Math.PI/180)}" y1="${16+12*Math.sin(a*Math.PI/180)}" x2="${16+14.5*Math.cos(a*Math.PI/180)}" y2="${16+14.5*Math.sin(a*Math.PI/180)}"/>`).join("")}</g>`;

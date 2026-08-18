@@ -57,7 +57,15 @@
     const feels = (i) => { const t = s.t2m ? s.t2m[i] - 273.15 : null, w = s.wind ? s.wind[i] : null; if (t == null) return null; if (w != null && t <= 10 && w * 3.6 >= 4.8) { const v = Math.pow(w * 3.6, 0.16); return 13.12 + 0.6215 * t - 11.37 * v + 0.3965 * t * v; } if (s.d2m && s.d2m[i] != null && t >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / s.d2m[i])); return t + 0.5555 * (e - 10); } return t; };
     const feelsRow = dates.map((_, i) => { const v = feels(i); return cell(i, v == null ? "—" : `${WX.units.tempC(v).v}°`, "feels"); }).join("");
     const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `<span class="snow">${WX.units.snow(sn).v}</span>`, "rain"); return cell(i, r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : "", "rain"); }).join("");
-    const windCol = (v) => { const kmh = v * 3.6; const p = Math.min(1, kmh / 70); return `background: rgba(${Math.round(60 + 180 * p)}, ${Math.round(160 - 60 * p)}, ${Math.round(220 - 200 * p)}, ${0.15 + 0.6 * p})`; };
+    // wind cell tint: calm reads blue, a gale reads red. Stronger separation
+    // than the first pass had — the numbers should be scannable at a glance.
+    const windCol = (v) => {
+      const kmh = v * 3.6, p = Math.min(1, kmh / 60);
+      const r = Math.round(40 + 215 * Math.pow(p, 0.85));
+      const g = Math.round(175 - 130 * p);
+      const b = Math.round(245 - 215 * Math.pow(p, 0.7));
+      return `background: rgba(${r}, ${g}, ${b}, ${0.22 + 0.62 * p}); color: ${p > 0.55 ? "#1a0d04" : "var(--fg)"}`;
+    };
     const windRow = dates.map((_, i) => { const v = s.wind ? s.wind[i] : null; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("");
     const gustRow = s.gust ? dates.map((_, i) => { const v = s.gust[i]; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("") : "";
     const dirRow = dates.map((_, i) => cell(i, s.wdir && s.wdir[i] != null ? `<i class="dirarrow" style="${arrowRot(s.wdir[i])}"></i>` : "", "dir")).join("");
