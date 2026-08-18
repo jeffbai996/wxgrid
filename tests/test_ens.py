@@ -4,15 +4,26 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from wxgrid import api, ens, fetch, ingest
+from wxgrid import ens, fetch, ingest
 from wxgrid.config import GRID_LAT_N, GRID_LON_N, STORE_DIR
+from wxgrid.ens_api import router as ens_router
 from wxgrid.grib import Field
 from wxgrid.models import get_model
 from wxgrid.store import RunWriter
 
 RUN = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
+
+
+def _client() -> TestClient:
+    """The router on a bare app: what wxgrid.api mounts is the parent app's
+    business, and these tests should not fail because of where the include
+    line ended up relative to the StaticFiles mount."""
+    app = FastAPI()
+    app.include_router(ens_router)
+    return TestClient(app)
 
 
 # ── wind: components → speed ──────────────────────────────────────────────
@@ -237,8 +248,7 @@ def _seed_gefs():
 
 def test_plume_returns_a_symmetric_band_labelled_as_synthesised():
     _seed_gefs()
-    c = TestClient(api.app)
-    api.app.include_router(__import__("wxgrid.ens_api", fromlist=["router"]).router)
+    c = _client()
     p = c.get("/api/ens/plume", params={"lat": 49.25, "lon": -123.25, "model": "gefs", "var": "t2m"}).json()
     assert p["basis"] == "gaussian-from-spread" and p["members"] is None
     assert p["unit"] == "K" and p["kind"] == "temp"
@@ -254,7 +264,7 @@ def test_plume_returns_a_symmetric_band_labelled_as_synthesised():
 
 def test_plume_accepts_either_the_map_name_or_the_store_name():
     _seed_gefs()
-    c = TestClient(api.app)
+    c = _client()
     a = c.get("/api/ens/plume", params={"lat": 49.25, "lon": -123.25, "var": "wind"}).json()
     b = c.get("/api/ens/plume", params={"lat": 49.25, "lon": -123.25, "var": "wind_sd"}).json()
     assert a["sd_var"] == b["sd_var"] == "wind_sd"
@@ -264,7 +274,7 @@ def test_plume_accepts_either_the_map_name_or_the_store_name():
 
 def test_precipitation_plume_is_floored_and_declares_its_accumulation_window():
     _seed_gefs()
-    c = TestClient(api.app)
+    c = _client()
     p = c.get("/api/ens/plume", params={"lat": 49.25, "lon": -123.25, "var": "tp6"}).json()
     assert p["p10"] == [0.0, 0.0, 0.0]                          # mean - 1.28*2mm is negative
     assert p["window_h"] == [0, 6, 6]
@@ -273,7 +283,7 @@ def test_precipitation_plume_is_floored_and_declares_its_accumulation_window():
 
 def test_longitudes_on_a_repeated_world_copy_wrap():
     _seed_gefs()
-    c = TestClient(api.app)
+    c = _client()
     a = c.get("/api/ens/plume", params={"lat": 49.25, "lon": -123.25}).json()
     b = c.get("/api/ens/plume", params={"lat": 49.25, "lon": 236.75}).json()
     assert a["lon"] == b["lon"] == -123.25
@@ -281,7 +291,7 @@ def test_longitudes_on_a_repeated_world_copy_wrap():
 
 def test_spread_route_lists_every_stored_sd_series_with_its_mean():
     _seed_gefs()
-    c = TestClient(api.app)
+    c = _client()
     s = c.get("/api/ens/spread", params={"lat": 49.25, "lon": -123.25, "model": "gefs"}).json()
     assert set(s["vars"]) == {"t2m_sd", "wind_sd", "msl_sd", "tp6_sd"}
     assert s["vars"]["msl_sd"]["unit"] == "Pa"
@@ -292,7 +302,7 @@ def test_spread_route_lists_every_stored_sd_series_with_its_mean():
 
 def test_unknown_variable_and_deterministic_model_both_404():
     _seed_gefs()
-    c = TestClient(api.app)
+    c = _client()
     assert c.get("/api/ens/plume", params={"lat": 49.25, "lon": -123.25, "var": "cape"}).status_code == 404
     assert c.get("/api/ens/plume", params={"lat": 49.25, "lon": -123.25, "model": "gem"}).status_code == 404
     assert c.get("/api/ens/spread", params={"lat": 49.25, "lon": -123.25, "model": "gem"}).status_code == 404
@@ -300,7 +310,7 @@ def test_unknown_variable_and_deterministic_model_both_404():
 
 def test_sources_advertises_gefs_and_carries_the_member_cost_measurement():
     _seed_gefs()
-    c = TestClient(api.app)
+    c = _client()
     s = c.get("/api/ens/sources").json()
     assert set(s["spread"]["gefs"]) == {"t2m_sd", "wind_sd", "msl_sd", "tp6_sd"}
     assert s["members"]["gefs"] == []

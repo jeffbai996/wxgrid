@@ -169,43 +169,155 @@
   }
   function clearSat() { ["sat-east", "sat-west"].forEach((l) => { if (M().getLayer(l)) M().removeLayer(l); if (M().getSource(l)) M().removeSource(l); }); WX.fn.applyStep(); }
 
-  // ── radar (RainViewer) ────────────────────────────────────────────────
+  // ── corner badges ─────────────────────────────────────────────────────
+  // A keyed stack of small chips bottom-left, above the met-service badge:
+  // "which radar am I looking at", "which aurora nowcast". Injected rather
+  // than added to styles.css so each module carries its own presentation;
+  // the values are the app's own tokens, so it follows the theme.
+  const BADGE_CSS = `
+  #wx-badges { position: absolute; z-index: 5; left: 62px; bottom: calc(var(--tb-h, 150px) + 58px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; align-items: flex-start; gap: 5px; pointer-events: none; }
+  .wx-badge { display: inline-flex; align-items: baseline; gap: 7px; max-width: min(46vw, 420px);
+    padding: 5px 11px; border-radius: 999px; background: var(--panel, rgba(12,14,18,.72)); border: 1px solid var(--line, rgba(255,255,255,.09));
+    backdrop-filter: blur(8px); font: 700 11.5px var(--font-display, system-ui, sans-serif); color: var(--fg-2, #c3cad6); letter-spacing: .01em; }
+  .wx-badge i { font-style: normal; width: 8px; height: 8px; border-radius: 50%; align-self: center; flex: 0 0 8px; box-shadow: 0 0 10px currentColor; }
+  .wx-badge small { font: 600 10px var(--font-mono, ui-monospace, monospace); color: var(--dim, #7c8492); }
+  .wx-badge b { color: var(--fg, #eef1f5); font-weight: 700; }
+  @media (max-width: 820px) { #wx-badges { left: 12px; bottom: calc(var(--tb-h, 150px) + 22px + env(safe-area-inset-bottom)); } }
+  `;
+  function badgeBox() {
+    let box = $("#wx-badges");
+    if (!box) {
+      const st = document.createElement("style"); st.id = "wx-badges-css"; st.textContent = BADGE_CSS;
+      document.head.appendChild(st);
+      box = document.createElement("div"); box.id = "wx-badges";
+      (document.querySelector("#map") || document.body).appendChild(box);
+    }
+    return box;
+  }
+  // badge(key, html, color) — html null removes it. Keys keep the stack stable
+  // so the radar chip doesn't jump when the aurora chip appears.
+  function badge(key, html, color) {
+    const box = badgeBox();
+    let el = box.querySelector(`[data-badge="${key}"]`);
+    if (html == null) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement("div"); el.className = "wx-badge"; el.dataset.badge = key; box.appendChild(el); }
+    el.innerHTML = `<i style="color:${color || "var(--accent, #ff8a3d)"};background:currentColor"></i>${html}`;
+  }
+
+  // ── radar ─────────────────────────────────────────────────────────────
+  // Agency composites where they exist, RainViewer everywhere else. The API
+  // hands us every source with its frame timestamps and tile-URL templates
+  // plus the id this map centre should prefer; we walk its fallback chain
+  // until one has frames, so a dead upstream degrades instead of breaking the
+  // toggle. Frames keep RainViewer's shape ({time, kind}) because tape.js
+  // renders the strip straight off state.radarFrames.
+  const RADAR_MAX_SUBLAYERS = 4;          // ECCC needs two (rain + snow)
+  let radarReq = 0, radarMoveTimer = null;
+
   async function toggleRadar() {
     state.radar = !state.radar;
     $("#radar-toggle").classList.toggle("on", state.radar);
-    if (!state.radar) {
-      if (M().getLayer("radar")) M().removeLayer("radar");
-      if (M().getSource("radar")) M().removeSource("radar");
-      state.radarFrames = [];
-      WX.tape.renderTape(); WX.fn.applyStep();
+    if (!state.radar) { clearRadar(); WX.tape.renderTape(); WX.fn.applyStep(); return; }
+    await loadRadar();
+  }
+
+  // Only the outermost sources call: RainViewer straight from the browser, for
+  // when our own API is the thing that is down.
+  async function rainviewerDirect() {
+    const j = await (await fetch(RAINVIEWER, { cache: "no-store" })).json();
+    const frames = [...(j.radar.past || []).map((x) => ({ time: x.time, token: x.path, kind: "past" })),
+                    ...(j.radar.nowcast || []).map((x) => ({ time: x.time, token: x.path, kind: "nowcast" }))];
+    return { id: "rainviewer", label: "RainViewer", detail: "Global composite · last 2 h plus nowcast",
+             attribution: "Radar © RainViewer", frames, templates: [`${j.host}{token}/256/{z}/{x}/{y}/2/1_1.png`] };
+  }
+
+  async function loadRadar(quiet) {
+    const my = ++radarReq;
+    const c = M().getCenter();
+    let picked = null, catalog = null;
+    try {
+      catalog = await WX.api(U(`${API}/radar/sources?lat=${c.lat.toFixed(3)}&lon=${WX.wlon(c.lng).toFixed(3)}`));
+      const byId = Object.fromEntries((catalog.sources || []).map((s) => [s.id, s]));
+      for (const id of catalog.order || []) { const s = byId[id]; if (s && s.frames && s.frames.length) { picked = s; break; } }
+      if (!picked) picked = (catalog.sources || []).find((s) => s.frames && s.frames.length) || null;
+    } catch (e) { /* our API is down; go straight to the source below */ }
+    if (!picked) { try { picked = await rainviewerDirect(); } catch (e) { /* nothing left */ } }
+    if (my !== radarReq || !state.radar) return;
+    if (!picked) {
+      WX.fn.toast("Radar unavailable right now — no source answered", 4500, "error");
+      state.radar = false; $("#radar-toggle").classList.remove("on"); clearRadar();
       return;
     }
-    try {
-      const j = await (await fetch(RAINVIEWER, { cache: "no-store" })).json();
-      state.radarHost = j.host;
-      state.radarFrames = [...j.radar.past.map((x) => ({ ...x, kind: "past" })), ...j.radar.nowcast.map((x) => ({ ...x, kind: "nowcast" }))];
-      state.radarIdx = j.radar.past.length - 1;
-      applyRadarFrame();
-      WX.tape.renderTape();
-      WX.fn.toast("Radar: RainViewer composite, last 2 h + 30 min nowcast. Coverage where radars exist.", 5000);
-    } catch (e) { WX.fn.toast("Radar unavailable right now", 4000, "error"); state.radar = false; $("#radar-toggle").classList.remove("on"); }
-  }
-  function radarTiles(fr) { return [`${state.radarHost}${fr.path}/256/{z}/{x}/{y}/2/1_1.png`]; }
-  function applyRadarFrame() {
-    const fr = state.radarFrames[state.radarIdx];
-    if (!fr) return;
-    if (M().getSource("radar")) M().getSource("radar").setTiles(radarTiles(fr));
-    else {
-      M().addSource("radar", { type: "raster", tiles: radarTiles(fr), tileSize: 256, attribution: "Radar © RainViewer" });
-      M().addLayer({ id: "radar", type: "raster", source: "radar", paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
+    // Keep the same valid time across a source swap where we can, so panning
+    // over the border doesn't jump the loop back to the start.
+    const wasAt = state.radarFrames.length ? state.radarFrames[state.radarIdx] : null;
+    const changed = !state.radarSource || state.radarSource.id !== picked.id;
+    state.radarSource = picked;
+    state.radarFrames = picked.frames.map((f) => ({ ...f, kind: f.kind || "past" }));
+    const lastPast = state.radarFrames.map((f) => f.kind).lastIndexOf("past");
+    state.radarIdx = lastPast >= 0 ? lastPast : state.radarFrames.length - 1;
+    if (wasAt) {
+      let best = state.radarIdx, err = Infinity;
+      state.radarFrames.forEach((f, i) => { const d = Math.abs(f.time - wasAt.time); if (d < err) { err = d; best = i; } });
+      if (err < 1800) state.radarIdx = best;
     }
+    if (changed) clearRadarLayers();      // colour tables differ; don't cross-fade them
+    applyRadarFrame();
+    WX.tape.renderTape();
+    const failed = (catalog && (catalog.sources || []).filter((s) => s.error).map((s) => s.id)) || [];
+    if (!quiet) {
+      const span = state.radarFrames.length ? Math.round((state.radarFrames[state.radarFrames.length - 1].time - state.radarFrames[0].time) / 60) : 0;
+      WX.fn.toast(`Radar: ${picked.label} — ${picked.detail}. ${state.radarFrames.length} frames over ${span} min.`
+        + (failed.length ? ` (${failed.join(", ")} unavailable, fell back)` : ""), 5500);
+    }
+  }
+
+  // Re-pick when the map moves far enough to change country. Debounced, and
+  // the API caches frame lists for two minutes, so panning is cheap.
+  function refreshRadarSource() {
+    if (!state.radar) return;
+    clearTimeout(radarMoveTimer);
+    radarMoveTimer = setTimeout(() => loadRadar(true), 600);
+  }
+
+  // Only {token} is ours; {z}/{x}/{y} and {bbox-epsg-3857} belong to MapLibre.
+  function radarTiles(fr) {
+    const src = state.radarSource;
+    if (!src || !fr) return [];
+    return (src.templates || []).map((t) => t.split("{token}").join(fr.token == null ? "" : fr.token));
+  }
+
+  function applyRadarFrame() {
+    const src = state.radarSource, fr = state.radarFrames[state.radarIdx];
+    if (!src || !fr) return;
+    const urls = radarTiles(fr);
+    urls.slice(0, RADAR_MAX_SUBLAYERS).forEach((u, i) => {
+      const id = `radar-${i}`;
+      if (M().getSource(id)) M().getSource(id).setTiles([u]);
+      else {
+        M().addSource(id, { type: "raster", tiles: [u], tileSize: 256, attribution: src.attribution });
+        M().addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
+      }
+    });
+    for (let i = urls.length; i < RADAR_MAX_SUBLAYERS; i++) dropLayer(`radar-${i}`);
     if (M().getLayer("wx")) M().setPaintProperty("wx", "raster-opacity", Math.min(0.45, LAYER_ALPHA[state.layer]));
     const t = new Date(fr.time * 1000);
     $("#valid-local").textContent = t.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) + (fr.kind === "nowcast" ? " · nowcast" : " · radar");
     $("#valid-utc").textContent = t.toISOString().slice(11, 16) + "Z";
     const ageMin = Math.round((Date.now() / 1000 - fr.time) / 60);
     $("#lead").textContent = ageMin >= 0 ? `−${ageMin}m` : `+${-ageMin}m`;
+    badge("radar", `Radar <b>${src.label}</b> <small>${t.toISOString().slice(11, 16)}Z${fr.kind === "nowcast" ? " nowcast" : ""}</small>`, "var(--rain, #6cb6ff)");
     WX.tape.renderTapeSelection();
+  }
+
+  function dropLayer(id) { if (M().getLayer(id)) M().removeLayer(id); if (M().getSource(id)) M().removeSource(id); }
+  function clearRadarLayers() { dropLayer("radar"); for (let i = 0; i < RADAR_MAX_SUBLAYERS; i++) dropLayer(`radar-${i}`); }
+  function clearRadar() {
+    clearTimeout(radarMoveTimer); radarReq++;
+    clearRadarLayers();
+    state.radarFrames = []; state.radarSource = null;
+    badge("radar", null);
   }
 
   // ── measure tool: two taps → distance (km / nm) and true bearing ──────

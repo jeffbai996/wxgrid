@@ -195,7 +195,24 @@
     if (!m) return null;
     return { lat: +m[1], lon: +m[2], zoom: +m[3], model: m[4], layer: m[5], level: m[6] ? +m[6] : 0, step: m[7] != null ? +m[7] : null, pt: m[8] ? [+m[8], +m[9]] : null };
   }
-  let hashTimer = null;
+  let hashTimer = null, ownHash = "";
+  // Paste a permalink into an already-open tab and the view should move. The
+  // browser treats a hash-only change as same-document, so nothing reloads —
+  // we have to apply it ourselves, ignoring the hashes we write.
+  function applyHash() {
+    if (location.hash === ownHash) return;
+    const h = readHash();
+    if (!h) return;
+    if (h.model && catalog && catalog.models.some((m) => m.key === h.model && m.runs.length)) { state.model = h.model; state.run = modelEntry().runs[0].run; }
+    if (h.layer && LAYERS.includes(h.layer) && runEntry().layers.includes(h.layer)) state.layer = h.layer;
+    state.level = h.level || 0;
+    if (h.step != null) state.stepIdx = Math.min(h.step, steps().length - 1);
+    map.jumpTo({ center: [h.lon, h.lat], zoom: h.zoom });
+    renderControls(); applyStep(); loadWind();
+    if (h.pt) openPoint(h.pt[0], h.pt[1]); else closePoint();
+  }
+  window.addEventListener("hashchange", applyHash);
+
   function pushHash() {
     clearTimeout(hashTimer);
     hashTimer = setTimeout(() => {
@@ -203,7 +220,8 @@
       const c = map.getCenter();
       let h = `${c.lat.toFixed(3)},${c.lng.toFixed(3)},${map.getZoom().toFixed(2)};${state.model};${state.layer}${state.level ? "/" + state.level : ""};s${state.stepIdx}`;
       if (state.point) h += `;p${state.point.lat.toFixed(3)},${state.point.lon.toFixed(3)}`;
-      history.replaceState(null, "", "#" + h);
+      ownHash = "#" + h;
+      history.replaceState(null, "", ownHash);
     }, 250);
   }
 
