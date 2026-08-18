@@ -284,6 +284,7 @@
       (p) => { map.flyTo({ center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), 7) }); openPoint(p.coords.latitude, p.coords.longitude); },
       () => toast("Location unavailable"));
     $("#point-close").onclick = closePoint;
+    $("#point-fav").onclick = () => { if (!state.point) return; const on = WX.search.toggleFav(state.point.lat, state.point.lon, state.point.name); $("#point-fav").textContent = on ? "★" : "☆"; $("#point-fav").classList.toggle("on", on); toast(on ? "Saved. Focus the search box to see your places." : "Removed", 2500); };
     WX.search.wireSearch();
     $$(".menu .menu-btn").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const m = b.parentElement; const open = m.classList.contains("open"); $$(".menu.open").forEach((x) => x.classList.remove("open")); if (!open) m.classList.add("open"); });
     // menu buttons show a tick when any of their toggles is on
@@ -380,6 +381,7 @@
     $("#point-local").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
     $("#point-now").textContent = "…";
     $$(".point-tabs button[data-tab=resort]").forEach((b) => b.hidden = !state.resort);
+    { const on = WX.search.isFav(lat, lon); $("#point-fav").textContent = on ? "★" : "☆"; $("#point-fav").classList.toggle("on", on); }
     placeMarker(lat, lon);
     pushHash();
     try {

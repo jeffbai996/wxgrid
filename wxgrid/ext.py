@@ -939,8 +939,9 @@ def alerts_point(lat: float, lon: float) -> list[dict]:
                         continue
                     hit = {k: w.get(k) for k in (*_LAYER_KEYS, "description", "instruction", "url")}
                     if w["source"] == "MeteoAlarm" and w.get("url"):
-                        hit.update({k: v for k, v in _ma_detail(w["url"]).items() if k != "web"})
-                        hit["url"] = _ma_detail(w["url"]).get("web") or w["url"]
+                        detail = _ma_detail(w["url"])
+                        hit.update({k: v for k, v in detail.items() if k != "web"})
+                        hit["url"] = detail.get("web") or w["url"]
                     out.append(hit)
             except Exception as exc:
                 log.warning("%s point alerts failed: %s", name, exc)

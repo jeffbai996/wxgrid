@@ -252,6 +252,11 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 .results button:hover, .results button.sel { background: rgba(255,255,255,.06); }
 .results .kind { font: 700 9.5px var(--font-display); text-transform: uppercase; letter-spacing: .06em; color: var(--accent); min-width: 42px; }
 .results .kind.resort { color: var(--warm); }
+.results .kind.fav { color: var(--warm); font-size: 12px; }
+.results .unfav { margin-left: 8px; color: var(--dim); font-size: 14px; padding: 0 4px; border-radius: 4px; }
+.results .unfav:hover { color: var(--bad); background: rgba(255,255,255,.06); }
+.point-head .icon.fav { font-size: 15px; color: var(--dim); }
+.point-head .icon.fav.on { color: var(--warm); }
 .results .sub { color: var(--dim); font-size: 11px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
 
 /* tapped-point marker: white dot with a breathing halo */

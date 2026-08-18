@@ -7,9 +7,26 @@
   const M = () => WX.map;
   // ── search: places + resorts ──────────────────────────────────────────
   let searchTimer = null, searchSel = -1, searchHits = [];
+  // ── favourites: starred places, in localStorage, listed when the box is empty
+  const favs = () => JSON.parse(localStorage.getItem("wxgrid.favs") || "[]");
+  const isFav = (lat, lon) => favs().some((f) => Math.abs(f.lat - lat) < 1e-3 && Math.abs(f.lon - lon) < 1e-3);
+  function toggleFav(lat, lon, name) {
+    let list = favs();
+    if (isFav(lat, lon)) list = list.filter((f) => !(Math.abs(f.lat - lat) < 1e-3 && Math.abs(f.lon - lon) < 1e-3));
+    else list.unshift({ name: name || `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`, lat, lon });
+    localStorage.setItem("wxgrid.favs", JSON.stringify(list.slice(0, 30)));
+    return isFav(lat, lon);
+  }
+  function showFavs() {
+    const list = favs();
+    if (!list.length) { hideResults(); return; }
+    searchHits = list.map((f) => ({ kind: "fav", name: f.name, sub: `${f.lat.toFixed(2)}°, ${f.lon.toFixed(2)}°`, lat: f.lat, lon: f.lon }));
+    searchSel = 0; paintResults();
+  }
   function wireSearch() {
     const q = $("#q");
-    q.oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => runSearch(q.value.trim()), 350); };
+    q.oninput = () => { clearTimeout(searchTimer); if (!q.value.trim()) { showFavs(); return; } searchTimer = setTimeout(() => runSearch(q.value.trim()), 350); };
+    q.onfocus = () => { if (!q.value.trim()) showFavs(); };
     q.onkeydown = (e) => {
       if (e.key === "ArrowDown") { e.preventDefault(); searchSel = Math.min(searchHits.length - 1, searchSel + 1); paintResults(); }
       else if (e.key === "ArrowUp") { e.preventDefault(); searchSel = Math.max(0, searchSel - 1); paintResults(); }
@@ -33,8 +50,8 @@
     const box = $("#search-results");
     if (!searchHits.length) { box.hidden = true; return; }
     box.hidden = false;
-    box.innerHTML = searchHits.map((h, i) => `<button class="${i === searchSel ? "sel" : ""}" data-i="${i}"><span class="kind ${h.kind}">${h.kind}</span><span>${h.name}</span><span class="sub">${h.sub}</span></button>`).join("");
-    box.querySelectorAll("button").forEach((b) => b.onclick = () => pickResult(searchHits[Number(b.dataset.i)]));
+    box.innerHTML = searchHits.map((h, i) => `<button class="${i === searchSel ? "sel" : ""}" data-i="${i}"><span class="kind ${h.kind}">${h.kind === "fav" ? "★" : h.kind}</span><span>${h.name}</span><span class="sub">${h.sub}</span>${h.kind === "fav" ? `<span class="unfav" data-i="${i}" title="Remove">×</span>` : ""}</button>`).join("");
+    box.querySelectorAll("button").forEach((b) => b.onclick = (e) => { if (e.target.classList.contains("unfav")) { const h = searchHits[Number(b.dataset.i)]; toggleFav(h.lat, h.lon); showFavs(); return; } pickResult(searchHits[Number(b.dataset.i)]); });
   }
   function hideResults() { $("#search-results").hidden = true; }
   function pickResult(h) {
@@ -44,5 +61,5 @@
     WX.fn.openPoint(h.lat, h.lon, h.name);
   }
 
-  WX.search = { wireSearch, hideResults, runSearch, paintResults, pickResult };
+  WX.search = { wireSearch, hideResults, runSearch, paintResults, pickResult, favs, isFav, toggleFav, showFavs };
 })();
