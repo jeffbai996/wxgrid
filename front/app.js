@@ -13,17 +13,17 @@
   const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", msl: "Pressure", tp6: "Rain", sf6: "New snow", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", frz: "Freezing lvl" };
   const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, sf6: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, frz: 0.7 };
   const LAYER_ICON = {
-    wind: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 5.5h7a2 2 0 1 0-2-2M2 9h10a2 2 0 1 1-2 2M2 12.5h5"/></svg>',
-    temp: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 9.5V3a2 2 0 0 1 4 0v6.5a3 3 0 1 1-4 0z"/><path d="M8 7v4"/></svg>',
-    gust: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 5h6M2 8h9M2 11h6M11 4l3 4-3 4"/></svg>',
-    tp6: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 8h8a3 3 0 0 0-.5-6 4 4 0 0 0-7.4 1A2.5 2.5 0 0 0 4 8z"/><path d="M5 11v2M8 11v2M11 11v2"/></svg>',
-    sf6: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v12M3 5l10 6M3 11l10-6M8 2l-2 2M8 2l2 2M8 14l-2-2M8 14l2-2"/></svg>',
-    sd_cm: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 12h12M3 12l3-5 3 4 2-3 3 4"/><path d="M2 14.5h12" opacity=".5"/></svg>',
-    tcc: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 12h7a3 3 0 0 0 0-6 4 4 0 0 0-7.6-1A3.5 3.5 0 0 0 4.5 12z"/></svg>',
-    msl: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2"/><circle cx="8" cy="8" r="5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg>',
-    d2m: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 2s-4 4.5-4 7.5a4 4 0 0 0 8 0C12 6.5 8 2 8 2z"/></svg>',
-    frz: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 12l4-6 3 4 2-3 3 5"/><path d="M2 8h12" stroke-dasharray="2 2"/></svg>',
-    cape: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5 4 9h4l-1 5.5L12 7H8z"/></svg>',
+    wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/></svg>',
+    temp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>',
+    gust: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v8"/><path d="M12.8 21.6A2 2 0 1 0 14 18H2"/><path d="M17.5 10a2.5 2.5 0 1 1 2 4H2"/><path d="m6 6 4 4 4-4"/></svg>',
+    tp6: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>',
+    sf6: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M8 15h.01"/><path d="M8 19h.01"/><path d="M12 17h.01"/><path d="M12 21h.01"/><path d="M16 15h.01"/><path d="M16 19h.01"/></svg>',
+    sd_cm: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/><path d="M4.14 15.08c2.62-1.57 5.24-1.43 7.86.42 2.74 1.94 5.49 2 8.23.19"/></svg>',
+    tcc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>',
+    msl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>',
+    d2m: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>',
+    frz: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h10"/><path d="M9 4v16"/><path d="m3 9 3 3-3 3"/><path d="M12 6 9 9"/><path d="M12 18l-3-3"/><path d="M14 4v10.54a4 4 0 1 1-4 0"/></svg>',
+    cape: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.326A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.973"/><path d="m13 12-3 5h4l-3 5"/></svg>',
   };
   const LEVEL_FT = { 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 500: "FL180", 300: "FL300", 250: "FL340" };
   const LEVEL_M = { 925: "≈750 m", 850: "≈1.5 km", 700: "≈3 km", 500: "≈5.5 km", 300: "≈9 km", 250: "≈10.5 km" };
@@ -33,7 +33,6 @@
   const state = {
     model: null, run: null, layer: "wind", level: 0, stepIdx: 0,
     playing: false, particles: true, units: localStorage.getItem("wxgrid.units") || "kmh",
-    tapeRes: localStorage.getItem("wxgrid.tapeRes") || "6h",
     point: null, tapePoint: null, tab: "now",
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null,
@@ -46,9 +45,13 @@
   const arrowRot = (deg) => `transform: rotate(${(deg + 180 + 45) % 360}deg)`;   // chevron points TO where wind goes
   const f = (v, fn) => (v == null ? "—" : fn(v));
   const arrow = (deg) => "↓↙←↖↑↗→↘"[Math.round(((deg % 360) / 45)) % 8];
+  // Static (GitHub Pages) builds load static-api.js first; it rewrites URLs
+  // and answers the JSON endpoints from files. Live builds pass straight through.
+  const U = (u) => (window.WXStatic ? window.WXStatic.url(u) : u);
+  const apiJson = (u) => window.WXStatic ? window.WXStatic.api(u) : fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
   window.WX = { state, speed, speedUnit, arrowRot, f, arrow, LEVEL_FT, LEVEL_M, AVY_COLORS, API,
                 get map() { return map; }, get catalog() { return catalog; }, toast, modelEntry: () => modelEntry(), openPoint, closePoint,
-                get validDate() { return validDate(); }, get stepHours() { return stepHours(); }, api: (u) => fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }) };
+                get validDate() { return validDate(); }, get stepHours() { return stepHours(); }, api: apiJson, url: U };
 
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
@@ -68,6 +71,7 @@
     new ResizeObserver(() => document.documentElement.style.setProperty("--top-h", $("#topbar").offsetHeight + "px")).observe($("#topbar"));
 
     catalog = await WX.api(`${API}/models?ts=${Date.now()}`);
+    if (catalog.static) toast(`Static demo snapshot — ${catalog.static.note}. Run ${catalog.static.built}Z. Self-host for the full thing.`, 9000);
     const withRuns = catalog.models.filter((m) => m.runs.length);
     if (!withRuns.length) { toast("No model runs in the store yet — ingest is still running.", 8000); return; }
     const pref = localStorage.getItem("wxgrid.model");
@@ -107,8 +111,8 @@
   const validDate = () => new Date(runDate().getTime() + stepHours() * 3600e3);
   const hasLevel = () => ["wind", "temp"].includes(state.layer);
   const levelQ = () => (state.level && hasLevel()) ? `?level=${state.level}` : "";
-  const layerUrl = (h = stepHours()) => `${API}/layer/${state.model}/${state.run}/${h}/${state.layer}.png${levelQ()}`;
-  const windUrl = (h = stepHours()) => `${API}/wind/${state.model}/${state.run}/${h}.json${state.level ? `?level=${state.level}` : ""}`;
+  const layerUrl = (h = stepHours()) => U(`${API}/layer/${state.model}/${state.run}/${h}/${state.layer}.png${levelQ()}`);
+  const windUrl = (h = stepHours()) => U(`${API}/wind/${state.model}/${state.run}/${h}.json${state.level ? `?level=${state.level}` : ""}`);
 
   // ── controls ──────────────────────────────────────────────────────────
   function renderControls() {
@@ -173,7 +177,6 @@
       else if (e.key === " ") { e.preventDefault(); togglePlay(); }
       else if (e.key === "Escape") { closePoint(); hideResults(); }
     });
-    renderTapeResBar();
   }
 
   function switchModel(key) {
@@ -253,7 +256,7 @@
   async function loadIso() {
     const my = ++isoReq;
     const v = isoVar();
-    const url = `${API}/isolines/${state.model}/${state.run}/${stepHours()}/${v.includes("?") ? v.replace("?", ".json?") : v + ".json"}`;
+    const url = U(`${API}/isolines/${state.model}/${state.run}/${stepHours()}/${v.includes("?") ? v.replace("?", ".json?") : v + ".json"}`);
     try {
       const gj = await WX.api(url);
       if (my !== isoReq || !state.iso) return;
@@ -377,30 +380,9 @@
   }
   function tapeData() { return (state.point && state.point.data) || state.tapePoint; }
 
-  function renderTapeResBar() {
-    let bar = $("#tape-res");
-    if (!bar) {
-      bar = document.createElement("span"); bar.id = "tape-res"; bar.className = "seg small";
-      $("#tape-where").before(bar);
-    }
-    bar.innerHTML = ["6h", "12h", "day"].map((r) => `<button data-res="${r}" class="${state.tapeRes === r ? "on" : ""}">${r}</button>`).join("");
-    bar.querySelectorAll("button").forEach((b) => b.onclick = () => { state.tapeRes = b.dataset.res; localStorage.setItem("wxgrid.tapeRes", state.tapeRes); renderTapeResBar(); renderTape(); });
-  }
-
-  // Group native 6 h steps into the tape's resolution. Each group carries the
-  // indices it covers; temps as min/max, wind as max, precip as the sum.
-  function tapeGroups(d) {
-    const groups = [];
-    const key = (dt) => state.tapeRes === "day" ? dt.toDateString() : state.tapeRes === "12h" ? `${dt.toDateString()}-${dt.getHours() < 12 ? "am" : "pm"}` : String(dt.getTime());
-    let cur = null;
-    d.valid.forEach((iso, i) => {
-      const dt = new Date(iso), k = key(dt);
-      if (!cur || cur.key !== k) { cur = { key: k, idx: [], start: dt }; groups.push(cur); }
-      cur.idx.push(i);
-    });
-    return groups;
-  }
-
+  // Windy-style tape: a table whose columns are forecast steps grouped under
+  // day headers and whose rows are variables (icon, temp, feels like, rain,
+  // wind, gusts, direction). Click a column to jump.
   function renderTape() {
     const tape = $("#tape");
     tape.classList.toggle("radar", state.radar && state.radarFrames.length > 0);
@@ -419,40 +401,35 @@
     }
     const d = tapeData();
     if (!d) { tape.innerHTML = ""; return; }
-    const s = d.series;
-    const groups = tapeGroups(d);
-    let html = "", lastDay = null;
-    groups.forEach((g) => {
-      const t = g.start, day = t.toDateString();
-      if (day !== lastDay) {
-        if (lastDay !== null) html += "</div></div>";
-        html += `<div class="tape-day"><div class="tape-dayname">${t.toLocaleDateString(undefined, { weekday: "short", day: "numeric" })}</div><div class="tape-cols">`;
-        lastDay = day;
-      }
-      const pick = (arr, fn) => { const v = arr ? g.idx.map((i) => arr[i]).filter((x) => x != null) : []; return v.length ? fn(v) : null; };
-      const tmax = pick(s.t2m, (v) => Math.max(...v)), tmin = pick(s.t2m, (v) => Math.min(...v));
-      const wmax = pick(s.wind, (v) => Math.max(...v));
-      const iMax = s.wind ? g.idx.reduce((a, b) => ((s.wind[b] ?? -1) > (s.wind[a] ?? -1) ? b : a), g.idx[0]) : g.idx[0];
-      const rain = pick(s.tp6, (v) => v.reduce((a, b) => a + b, 0)) || 0;
-      const snow = pick(s.sf6, (v) => v.reduce((a, b) => a + b, 0)) || 0;
-      const cloud = pick(s.tcc, (v) => v.reduce((a, b) => a + b, 0) / v.length);
-      const hr = t.getHours(), night = state.tapeRes === "6h" && (hr < 6 || hr >= 21);
-      const label = state.tapeRes === "day" ? "" : state.tapeRes === "12h" ? (hr < 12 ? "am" : "pm") : t.toLocaleTimeString(undefined, { hour: "numeric" }).replace(":00", "").replace(" ", "");
-      const temp = tmax == null ? "—" : state.tapeRes === "6h" ? `${Math.round(tmax - 273.15)}°` : `${Math.round(tmax - 273.15)}°<small>/${Math.round(tmin - 273.15)}°</small>`;
-      const dir = s.wdir && s.wdir[iMax] != null ? `<i style="${arrowRot(s.wdir[iMax])}"></i>` : "";
-      const w = wmax == null ? "—" : Math.round(speed(wmax));
-      const precip = snow >= 0.3 ? `<span class="tape-p snow">${snow.toFixed(snow < 10 ? 1 : 0)}<small>cm</small></span>` : rain >= 0.1 ? `<span class="tape-p rain">${rain.toFixed(rain < 10 ? 1 : 0)}<small>mm</small></span>` : `<span class="tape-p none">·</span>`;
-      const on = g.idx.includes(state.stepIdx);
-      html += `<div class="tape-col ${night ? "night" : ""} ${on ? "on" : ""} res-${state.tapeRes}" data-i="${g.idx[0]}" data-idx="${g.idx.join(",")}" title="${t.toLocaleString()}">
-        <span class="tape-hour">${label || "&nbsp;"}</span>
-        ${glyph(cloud, rain + snow, tmax, night)}
-        <span class="tape-temp">${temp}</span>
-        <span class="tape-wind">${dir}${w}</span>
-        ${precip}
-      </div>`;
-    });
-    tape.innerHTML = html + "</div></div>";
-    tape.querySelectorAll(".tape-col").forEach((c) => c.onclick = () => setStep(Number(c.dataset.i)));
+    const s = d.series, n = d.steps.length;
+    const dates = d.valid.map((iso) => new Date(iso));
+    // day header cells: colspan per day
+    const days = [];
+    dates.forEach((dt, i) => { const k = dt.toDateString(); if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, span: 0 }); days[days.length - 1].span++; });
+    const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day">${dy.start.toLocaleDateString(undefined, { weekday: "long", day: "numeric" })}</th>`).join("");
+    const cell = (i, inner, cls = "") => `<td class="${cls} ${dates[i].getHours() < 6 || dates[i].getHours() >= 21 ? "night" : ""}" data-i="${i}">${inner}</td>`;
+    const hourRow = dates.map((dt, i) => cell(i, `<span class="hr">${dt.toLocaleTimeString(undefined, { hour: "numeric" }).replace(":00", "").replace(/\s/, "<small>") + (/[ap]m/i.test(dt.toLocaleTimeString(undefined, { hour: "numeric" })) ? "</small>" : "")}</span>`, "hour")).join("");
+    const iconRow = dates.map((_, i) => cell(i, glyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), s.t2m ? s.t2m[i] : null, dates[i].getHours() < 6 || dates[i].getHours() >= 21), "ico")).join("");
+    const tempRow = dates.map((_, i) => cell(i, s.t2m && s.t2m[i] != null ? `${Math.round(s.t2m[i] - 273.15)}°` : "—", "temp")).join("");
+    const feels = (i) => { const t = s.t2m ? s.t2m[i] - 273.15 : null, w = s.wind ? s.wind[i] : null; if (t == null) return null; if (w != null && t <= 10 && w * 3.6 >= 4.8) { const v = Math.pow(w * 3.6, 0.16); return 13.12 + 0.6215 * t - 11.37 * v + 0.3965 * t * v; } if (s.d2m && s.d2m[i] != null && t >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / s.d2m[i])); return t + 0.5555 * (e - 10); } return t; };
+    const feelsRow = dates.map((_, i) => { const v = feels(i); return cell(i, v == null ? "—" : `${Math.round(v)}°`, "feels"); }).join("");
+    const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `<span class="snow">${sn.toFixed(sn < 10 ? 1 : 0)}</span>`, "rain"); return cell(i, r >= 0.1 ? `<span>${r.toFixed(r < 10 ? 1 : 0)}</span>` : "", "rain"); }).join("");
+    const windCol = (v) => { const kmh = v * 3.6; const p = Math.min(1, kmh / 70); return `background: rgba(${Math.round(60 + 180 * p)}, ${Math.round(160 - 60 * p)}, ${Math.round(220 - 200 * p)}, ${0.15 + 0.6 * p})`; };
+    const windRow = dates.map((_, i) => { const v = s.wind ? s.wind[i] : null; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("");
+    const gustRow = s.gust ? dates.map((_, i) => { const v = s.gust[i]; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("") : "";
+    const dirRow = dates.map((_, i) => cell(i, s.wdir && s.wdir[i] != null ? `<i class="dirarrow" style="${arrowRot(s.wdir[i])}"></i>` : "", "dir")).join("");
+    const label = (t, u) => `<th class="lab">${t}${u ? `<small>${u}</small>` : ""}</th>`;
+    tape.innerHTML = `<table class="wtape"><thead><tr><th class="lab corner"></th>${dayRow}</tr></thead><tbody>
+      <tr class="r-hour">${label("Hours")}${hourRow}</tr>
+      <tr class="r-icon">${label("")}${iconRow}</tr>
+      <tr class="r-temp">${label("Temp", "°C")}${tempRow}</tr>
+      <tr class="r-feels">${label("Feels like", "°C")}${feelsRow}</tr>
+      <tr class="r-rain">${label("Rain / snow", "mm · cm")}${rainRow}</tr>
+      <tr class="r-wind">${label("Wind", speedUnit())}${windRow}</tr>
+      ${gustRow ? `<tr class="r-wind">${label("Gusts", speedUnit())}${gustRow}</tr>` : ""}
+      <tr class="r-dir">${label("Wind dir.")}${dirRow}</tr>
+    </tbody></table>`;
+    tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => setStep(Number(c.dataset.i)));
     $("#tape-where").textContent = state.point ? (state.point.name || `${state.point.lat.toFixed(2)}, ${state.point.lon.toFixed(2)}`) : "map centre";
     renderTapeSelection();
   }
@@ -461,9 +438,9 @@
     const tape = $("#tape");
     const radar = state.radar && state.radarFrames.length;
     let on = null;
-    tape.querySelectorAll(".tape-col").forEach((c) => {
-      const isOn = radar ? Number(c.dataset.radar) === state.radarIdx : (c.dataset.idx || c.dataset.i || "").split(",").map(Number).includes(state.stepIdx);
-      c.classList.toggle("on", isOn); if (isOn) on = c;
+    tape.querySelectorAll(radar ? ".tape-col" : "td[data-i]").forEach((c) => {
+      const isOn = radar ? Number(c.dataset.radar) === state.radarIdx : Number(c.dataset.i) === state.stepIdx;
+      c.classList.toggle("on", isOn); if (isOn && !on) on = c;
     });
     if (on) { const r = on.getBoundingClientRect(), tr = tape.getBoundingClientRect(); if (r.left < tr.left + 40 || r.right > tr.right - 40) on.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); }
   }
@@ -487,7 +464,7 @@
       else if (e.key === "ArrowUp") { e.preventDefault(); searchSel = Math.max(0, searchSel - 1); paintResults(); }
       else if (e.key === "Escape") hideResults();
     };
-    $("#search").onsubmit = (e) => { e.preventDefault(); if (searchHits.length) pickResult(searchHits[Math.max(0, searchSel)]); else runSearch(q.value.trim(), true); };
+    $("#search").onsubmit = (e) => { e.preventDefault(); clearTimeout(searchTimer); if (searchHits.length) pickResult(searchHits[Math.max(0, searchSel)]); else runSearch(q.value.trim(), true); };
     document.addEventListener("click", (e) => { if (!e.target.closest("#search") && !e.target.closest("#search-results")) hideResults(); });
   }
   async function runSearch(text, go = false) {

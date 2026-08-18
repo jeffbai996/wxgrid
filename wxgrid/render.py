@@ -167,7 +167,7 @@ def legend(layer: str) -> dict:
 
 # ── wind vectors for particles ────────────────────────────────────────────
 
-def wind_json(u: np.ndarray, v: np.ndarray, factor: int = 4) -> bytes:
+def wind_json(u: np.ndarray, v: np.ndarray, factor: int = 4, decimals: int = 1) -> bytes:
     """Coarsen 0.25° u/v to `factor`×0.25° (default 1°) and emit compact JSON.
     Row 0 = 90°N, col 0 = 180°W; last column duplicates the first so the
     client can wrap longitude without a special case."""
@@ -179,8 +179,8 @@ def wind_json(u: np.ndarray, v: np.ndarray, factor: int = 4) -> bytes:
     payload = {
         "lat0": 90.0, "lon0": -180.0, "dlat": -GRID_RES * factor, "dlon": GRID_RES * factor,
         "ny": int(ny), "nx": int(nx),
-        "u": np.round(np.nan_to_num(uu), 1).ravel().tolist(),
-        "v": np.round(np.nan_to_num(vv), 1).ravel().tolist(),
+        "u": (np.round(np.nan_to_num(uu), decimals) if decimals else np.rint(np.nan_to_num(uu)).astype(int)).ravel().tolist(),
+        "v": (np.round(np.nan_to_num(vv), decimals) if decimals else np.rint(np.nan_to_num(vv)).astype(int)).ravel().tolist(),
     }
     return json.dumps(payload, separators=(",", ":")).encode()
 
