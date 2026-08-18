@@ -14,6 +14,7 @@ run's cache dies with the run. Routes stay thin — rendering is wxgrid.render.
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import numpy as np
@@ -31,12 +32,19 @@ log = logging.getLogger("wxgrid.api")
 app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=2048)   # wind JSON shrinks ~5x
 
-LAYERS = ("wind", "temp", "gust", "msl", "tp6", "sf6", "sd_cm", "tcc", "cape", "d2m", "frz")
+LAYERS = ("wind", "temp", "gust", "msl", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "frz", "waves", "wperiod")
 LEVEL_LAYERS = ("wind", "temp")
-_ALIAS = {"t2m": "temp", "snow": "sf6", "snowdepth": "sd_cm", "dewpt": "d2m"}
+_ALIAS = {"t2m": "temp", "snow": "sf6", "snowdepth": "sd_cm", "dewpt": "d2m", "swh": "waves", "mwp": "wperiod"}
 # Layers computed from several store variables at request time.
-_DERIVED = {"frz": tuple(f"{p}_{l}" for l in LEVELS for p in ("t", "gh"))}
+_DERIVED = {"frz": tuple(f"{p}_{l}" for l in LEVELS for p in ("t", "gh")),
+            "rh": ("t2m", "d2m"), "tp24": ("tp6",), "tp72": ("tp6",), "sf24": ("sf6",), "sf72": ("sf6",),
+            "waves": ("swh",), "wperiod": ("mwp",)}
+# Accumulation windows (hours) for the derived precip/snow layers.
+_ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72": ("sf6", 72)}
+# Layers that live only on LEVEL_EVERY steps (like the pressure levels).
+_SIX_HOURLY = ("frz", "waves", "wperiod")
 _readers: dict[tuple[str, str], RunReader] = {}
+_pool = ThreadPoolExecutor(max_workers=8)
 
 
 def _reader(model: str, run: str) -> RunReader:
@@ -100,6 +108,38 @@ def _freezing_level_grid(r: RunReader, step: int) -> np.ndarray:
     return out
 
 
+def _accumulate(r: RunReader, var: str, step: int, hours: int) -> np.ndarray:
+    """Sum of the per-step buckets that fall in (step, step + hours]: the
+    total that will fall in the next `hours` after the selected time. NaN if
+    no bucket at all lands in the window (run ends before then)."""
+    acc = np.zeros((GRID_LAT_N, GRID_LON_N), dtype=np.float32)
+    n = 0
+    for h in r.steps:
+        if step < h <= step + hours:
+            acc += np.nan_to_num(r.slab(var, h))
+            n += 1
+    if n == 0:
+        acc[:] = np.nan
+    return acc
+
+
+def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndarray:
+    """The (721, 1440) field a layer shows at a step, in STORE units. One
+    place for the layer/level → array logic, shared by the PNG route and the
+    static build."""
+    vars_ = _vars_for(layer, level)
+    if layer == "wind":
+        return render.wind_speed(r.slab(vars_[0], step), r.slab(vars_[1], step))
+    if layer == "frz":
+        return _freezing_level_grid(r, step)
+    if layer == "rh":
+        return render.relative_humidity(r.slab("t2m", step), r.slab("d2m", step))
+    if layer in _ACCUM:
+        var, hours = _ACCUM[layer]
+        return _accumulate(r, var, step, hours)
+    return r.slab(vars_[0], step)
+
+
 def _available(reader: RunReader, layer: str, level: int | None = None) -> bool:
     if layer == "frz":
         # needs at least two levels with both temperature and height
@@ -160,18 +200,12 @@ def api_layer(model: str, run: str, step: int, layer: str, level: int | None = N
     r = _reader(model, run)
     if step not in r.steps or not _available(r, layer, level):
         raise HTTPException(404, "step, layer or level not in run")
-    step = _level_step(r, step, level is not None or layer == "frz")
+    step = _level_step(r, step, level is not None or layer in _SIX_HOURLY)
     tag = f"{layer}{'' if level is None else '-' + str(level)}"
     path = CACHE_DIR / model / r.rid / f"{step:03d}-{tag}.png"
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        vars_ = _vars_for(layer, level)
-        if layer == "wind":
-            field = render.wind_speed(r.slab(vars_[0], step), r.slab(vars_[1], step))
-        elif layer == "frz":
-            field = _freezing_level_grid(r, step)
-        else:
-            field = r.slab(vars_[0], step)
+        field = field_for(r, layer, level, step)
         disp = render.DISPLAY[layer](render.to_mercator(field))
         tmp = path.with_suffix(".part")
         tmp.write_bytes(render.colorize(disp, layer))
@@ -181,9 +215,25 @@ def api_layer(model: str, run: str, step: int, layer: str, level: int | None = N
 
 
 @app.get("/api/wind/{model}/{run}/{step}.json")
-def api_wind(model: str, run: str, step: int, level: int | None = None):
-    level = _norm_level(level, "wind")
+def api_wind(model: str, run: str, step: int, level: int | None = None, field: str = "wind"):
+    """Coarse u/v for the particle layer. ?field=waves gives wave-propagation
+    vectors instead (mean direction × height, so bigger seas move faster)."""
     r = _reader(model, run)
+    if field == "waves":
+        if step not in r.steps or not _available(r, "waves"):
+            raise HTTPException(404, "no waves in run")
+        step = _level_step(r, step, True)
+        path = CACHE_DIR / model / r.rid / f"{step:03d}-wavevec.json"
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            swh = r.slab("swh", step); mwd = np.deg2rad(r.slab("mwd", step))
+            # mwd is the direction waves come FROM (met convention): propagation is the opposite way
+            u = -np.sin(mwd) * swh * 3.0; v = -np.cos(mwd) * swh * 3.0
+            tmp = path.with_suffix(".part")
+            tmp.write_bytes(render.wind_json(u, v))
+            tmp.replace(path)
+        return FileResponse(path, media_type="application/json", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    level = _norm_level(level, "wind")
     if step not in r.steps or not _available(r, "wind", level):
         raise HTTPException(404, "step or level not in run")
     step = _level_step(r, step, level is not None)
@@ -261,13 +311,18 @@ def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge
     r = _reader(model, run)
     t0 = parse_run_id(r.rid)
     n = len(r.steps)
-    series: dict[str, list] = {var: _clean(r.point(var, lat, lon)) for var in r.variables}
+    # One step per chunk means a point series decompresses every step of every
+    # variable; blosc releases the GIL, so read the variables in parallel.
+    series: dict[str, list] = dict(zip(r.variables, _pool.map(lambda v: _clean(r.point(v, lat, lon)), r.variables)))
     # Levels are stored on 6 h steps; the surface tier can be 3 h. Fill the
     # in-between steps by linear interpolation so aloft/freezing-level read
     # at every column of the tape.
     for var in list(series):
-        if var.split("_")[0] in ("u", "v", "t", "gh") and "_" in var:
+        if (var.split("_")[0] in ("u", "v", "t", "gh") and "_" in var) or var in ("swh", "mwd", "mwp"):
             series[var] = _fill_gaps(series[var])
+    if "t2m" in series and "d2m" in series:
+        series["rh"] = [None if (a is None or b is None) else round(float(render.relative_humidity(np.array([a]), np.array([b]))[0]), 1)
+                        for a, b in zip(series["t2m"], series["d2m"])]
     if "u10" in series and "v10" in series:
         series["wind"], series["wdir"] = _wind_pair(series["u10"], series["v10"])
     levels = _levels_for(r)

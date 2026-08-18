@@ -22,7 +22,7 @@ from wxgrid import fetch
 from wxgrid.config import GRIB_DIR, STORE_DIR
 from wxgrid.grib import iter_fields
 from wxgrid.models import MODELS, Model, get_model
-from wxgrid.store import RunWriter, list_runs, prune, run_id
+from wxgrid.store import RunWriter, list_runs, prune, run_id, run_path
 
 log = logging.getLogger("wxgrid.ingest")
 
@@ -126,12 +126,64 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
             "pruned": removed}
 
 
+def augment_waves(model: Model, rid: str, grib_root: Path = GRIB_DIR, store_root: Path = STORE_DIR) -> dict:
+    """Add the wave variables to a run that was ingested before waves existed.
+    Opens the run's group read-write, creates the missing arrays, fetches the
+    wave GRIB per 6 h step and writes it. Runs that already carry them, or
+    models without a wave stream, are a no-op."""
+    import zarr
+    from zarr.codecs import BloscCodec
+    from wxgrid.config import GRID_LAT_N, GRID_LON_N
+    from wxgrid.models import LEVEL_EVERY
+
+    if not model.wave_params:
+        return {"model": model.key, "run": rid, "skipped": "no wave params"}
+    path = run_path(model.key, rid, store_root)
+    g = zarr.open_group(path, mode="r+")
+    have = list(g.attrs.get("variables", []))
+    want = [v for v in model.wave_params.values() if v not in have]
+    if not want:
+        return {"model": model.key, "run": rid, "skipped": "already has waves"}
+    steps = list(g.attrs["steps"])
+    codec = BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle")
+    for var in want:
+        if var not in g:
+            g.create_array(var, shape=(len(steps), GRID_LAT_N, GRID_LON_N), dtype="float32",
+                           chunks=(1, GRID_LAT_N, GRID_LON_N), compressors=codec, fill_value=np.nan,
+                           dimension_names=("step", "latitude", "longitude"))
+    from ecmwf.opendata import Client
+    client = Client(source="ecmwf", model=model.ecmwf_model, resol="0p25")
+    run = datetime.strptime(rid, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
+    out_dir = grib_root / model.key / run.strftime("%Y%m%dT%H")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written = 0
+    for step in steps:
+        if step % LEVEL_EVERY:
+            continue
+        wv = fetch.fetch_ecmwf_wave(client, model, run, step, out_dir)
+        if not wv:
+            continue
+        for f in iter_fields(wv):
+            canon = model.wave_params.get(f.short_name)
+            if canon:
+                g[canon][steps.index(step)] = np.asarray(f.values, dtype=np.float32)
+                written += 1
+        wv.unlink(missing_ok=True)
+    cov = dict(g.attrs.get("coverage", {}))
+    for var in want:
+        cov[var] = written // max(1, len(want))
+    g.attrs.update({"variables": have + want, "coverage": cov})   # rewrites zarr.json → API reopens the run
+    log.info("%s %s: waves added, %d fields", model.key, rid, written)
+    return {"model": model.key, "run": rid, "wave_fields": written}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", choices=sorted(MODELS), help="one model")
     ap.add_argument("--all", action="store_true", help="every model")
     ap.add_argument("--run", default="auto", help="YYYY-MM-DDTHH (UTC) or 'auto'")
     ap.add_argument("--keep-grib", action="store_true")
+    ap.add_argument("--augment-waves", action="store_true", help="add wave fields to runs already in the store")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -143,6 +195,10 @@ def main(argv: list[str] | None = None) -> int:
     for key in keys:
         model = get_model(key)
         try:
+            if args.augment_waves:
+                for rid in list_runs(model.key):
+                    log.info("augment %s", augment_waves(model, rid))
+                continue
             run = _resolve_run(model, args.run)
             ingest_run(model, run, keep_grib=args.keep_grib)
         except Exception:

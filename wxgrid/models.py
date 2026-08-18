@@ -11,6 +11,8 @@ Canonical SURFACE variables (every model normalises onto these):
   d2m       2 m dew point, K
   sf6       snowfall over the PREVIOUS 6 h, mm water-equivalent (derived)
   sd_cm     snow depth, cm (ECMWF ships m w.e. → ×400 assumes 250 kg/m³; GFS ships depth)
+  swh, mwd, mwp  significant wave height m, mean wave direction °(from), mean period s
+            (ECMWF wave stream, IFS only, 6 h steps; NaN over land)
 
 Canonical PRESSURE-LEVEL variables, one per level in LEVELS (hPa):
   u_<lvl>, v_<lvl>  wind, m/s      t_<lvl>  temperature, K     gh_<lvl>  geopotential height, m
@@ -46,9 +48,13 @@ class Model:
     # accumulated-precip semantics: "since_start" (ECMWF tp) or "bucket6" (GFS APCP at 6 h steps)
     precip_mode: str = "since_start"
     attribution: str = ""
+    # ECMWF wave-stream shortName → canonical name (fetched on LEVEL_EVERY steps; IFS only)
+    wave_params: dict[str, str] = field(default_factory=dict)
 
     def canonical(self, short_name: str, level_type: str, level: int) -> str | None:
         """Map a decoded GRIB field to its store variable, or None to skip."""
+        if short_name in self.wave_params:
+            return self.wave_params[short_name]
         if level_type == "isobaricInhPa":
             prefix = self.pl_params.get(short_name)
             if prefix and level in self.levels:
@@ -68,6 +74,7 @@ class Model:
             out.append("sf6")
         for prefix in self.pl_params.values():
             out.extend(f"{prefix}_{lvl}" for lvl in self.levels)
+        out.extend(self.wave_params.values())
         return out
 
 
@@ -81,6 +88,7 @@ MODELS: dict[str, Model] = {
         pl_params=_ECMWF_PL,
         precip_mode="since_start",
         attribution="ECMWF open data, CC BY 4.0",
+        wave_params={"swh": "swh", "mwd": "mwd", "mwp": "mwp"},
     ),
     "aifs": Model(
         key="aifs", label="ECMWF AIFS (AI)", short="AIFS", source="ecmwf", ecmwf_model="aifs-single",

@@ -86,6 +86,27 @@ RAMPS: dict[str, dict] = {
     "cape": {"units": "J/kg", "lo": 0, "hi": 4000, "stops": [
         (0, (30, 30, 60)), (250, (60, 90, 190)), (700, (40, 170, 120)), (1500, (240, 220, 40)),
         (2500, (240, 120, 30)), (4000, (200, 20, 60))]},
+    "rh": {"units": "%", "lo": 0, "hi": 100, "stops": [
+        (0, (150, 90, 30)), (30, (200, 170, 90)), (50, (200, 210, 160)), (70, (110, 190, 190)),
+        (85, (50, 130, 210)), (100, (60, 40, 170))]},
+    "tp24": {"units": "mm/24h", "lo": 0, "hi": 120, "stops": [
+        (0, (110, 160, 230)), (2, (80, 130, 220)), (10, (40, 100, 200)), (25, (30, 170, 90)),
+        (50, (240, 220, 40)), (80, (240, 120, 30)), (120, (200, 20, 60))]},
+    "tp72": {"units": "mm/72h", "lo": 0, "hi": 250, "stops": [
+        (0, (110, 160, 230)), (5, (80, 130, 220)), (20, (40, 100, 200)), (50, (30, 170, 90)),
+        (100, (240, 220, 40)), (170, (240, 120, 30)), (250, (200, 20, 60))]},
+    "sf24": {"units": "cm/24h", "lo": 0, "hi": 60, "stops": [
+        (0, (150, 170, 220)), (2, (120, 150, 230)), (8, (80, 120, 230)), (20, (140, 90, 220)),
+        (35, (200, 80, 200)), (60, (240, 60, 120))]},
+    "sf72": {"units": "cm/72h", "lo": 0, "hi": 150, "stops": [
+        (0, (150, 170, 220)), (5, (120, 150, 230)), (20, (80, 120, 230)), (50, (140, 90, 220)),
+        (90, (200, 80, 200)), (150, (240, 60, 120))]},
+    "waves": {"units": "m", "lo": 0, "hi": 10, "stops": [
+        (0, (40, 60, 120)), (1, (40, 120, 200)), (2, (40, 190, 190)), (3, (90, 210, 110)),
+        (4.5, (230, 220, 60)), (6, (240, 130, 40)), (8, (220, 50, 40)), (10, (150, 0, 80))]},
+    "wperiod": {"units": "s", "lo": 0, "hi": 20, "stops": [
+        (0, (40, 40, 80)), (5, (60, 100, 190)), (8, (60, 180, 170)), (11, (150, 210, 90)),
+        (14, (240, 200, 60)), (17, (240, 120, 40)), (20, (200, 30, 60))]},
 }
 
 # canonical store variable → display transform (store units → ramp units)
@@ -101,7 +122,24 @@ DISPLAY = {
     "sd_cm": lambda cm: cm,
     "d2m": lambda k: k - 273.15,
     "frz": lambda m: m,
+    "rh": lambda pct: pct,
+    "tp24": lambda mm: mm,
+    "tp72": lambda mm: mm,
+    "sf24": lambda mm_we: mm_we,     # 1 mm w.e. ≈ 1 cm fresh snow, as sf6
+    "sf72": lambda mm_we: mm_we,
+    "waves": lambda m: m,
+    "wperiod": lambda s: s,
 }
+
+
+def relative_humidity(t_k: np.ndarray, td_k: np.ndarray) -> np.ndarray:
+    """RH % from temperature and dew point (Magnus, over water)."""
+    t = t_k - 273.15
+    td = td_k - 273.15
+    a, b = 17.625, 243.04
+    with np.errstate(invalid="ignore", divide="ignore"):
+        rh = 100.0 * np.exp(a * td / (b + td) - a * t / (b + t))
+    return np.clip(rh, 0.0, 100.0).astype(np.float32)
 
 
 def _lut(ramp: dict) -> np.ndarray:
@@ -136,13 +174,15 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78) -> byte
         return buf.getvalue()
     x = np.nan_to_num(field_display, nan=lo)
     idx = np.clip((x - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
-    if layer in ("tp6", "cape", "tcc", "sf6", "sd_cm"):
+    if layer in ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod"):
         rgba = lut[idx].copy()
-        if layer == "tp6":
-            # Rain: transparent where dry, ramping in over the first millimetre.
-            a = np.clip(x / 1.0, 0, 1)
-        elif layer == "sf6":
-            a = np.clip(x / 0.5, 0, 1)
+        if layer in ("tp6", "tp24", "tp72"):
+            # Rain: transparent where dry, ramping in over the first millimetre(s).
+            a = np.clip(x / {"tp6": 1.0, "tp24": 2.0, "tp72": 4.0}[layer], 0, 1)
+        elif layer in ("sf6", "sf24", "sf72"):
+            a = np.clip(x / {"sf6": 0.5, "sf24": 1.0, "sf72": 2.0}[layer], 0, 1)
+        elif layer in ("waves", "wperiod"):
+            a = np.where(np.isnan(field_display), 0.0, 1.0)      # land is NaN: show the map
         elif layer == "sd_cm":
             a = np.clip(x / 2.0, 0, 1)
         elif layer == "cape":

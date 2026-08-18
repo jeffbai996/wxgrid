@@ -28,7 +28,7 @@ import numpy as np
 from PIL import Image
 
 from wxgrid import render
-from wxgrid.api import ISOLINE_SPECS, LAYERS, _available, _freezing_level_grid, _levels_for, _vars_for
+from wxgrid.api import ISOLINE_SPECS, LAYERS, _available, _freezing_level_grid, _levels_for, _vars_for, field_for
 from wxgrid.config import BASE_DIR, DATA_DIR, FRONT_DIR
 from wxgrid.models import MODELS
 from wxgrid.store import RunReader, list_runs, parse_run_id
@@ -108,12 +108,7 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
                 variants += [l for l in TEMP_LEVELS if l in levels]
             for lvl in variants:
                 vars_ = _vars_for(layer, lvl)
-                if layer == "wind":
-                    field = render.wind_speed(r.slab(vars_[0], h), r.slab(vars_[1], h))
-                elif layer == "frz":
-                    field = _freezing_level_grid(r, h)
-                else:
-                    field = r.slab(vars_[0], h)
+                field = field_for(r, layer, lvl, h)
                 disp = render.DISPLAY[layer](render.to_mercator(field))
                 png = _shrink_png(render.colorize(disp, layer), scale)
                 (ldir / f"{layer}{'' if lvl is None else '-' + str(lvl)}.png").write_bytes(png)

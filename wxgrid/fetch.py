@@ -75,12 +75,26 @@ def fetch_ecmwf(model: Model, run: datetime, root: Path = GRIB_DIR,
             if _ecmwf_get(client, model, run, step, pl,
                           dict(levtype="pl", levelist=list(model.levels), param=list(model.pl_params))):
                 paths.append(pl)
+        wave = fetch_ecmwf_wave(client, model, run, step, out_dir)
+        if wave:
+            paths.append(wave)
         if not paths:
             continue
         got.append((step, paths))
         if on_step:
             on_step(step, paths)
     return got
+
+
+def fetch_ecmwf_wave(client, model: Model, run: datetime, step: int, out_dir: Path) -> Path | None:
+    """The wave stream (swh/mwd/mwp) for one 6 h step, or None when the model
+    has no wave params or the step is not a level step."""
+    if not model.wave_params or step % LEVEL_EVERY:
+        return None
+    wv = out_dir / f"step{step:03d}-wave.grib2"
+    if _ecmwf_get(client, model, run, step, wv, dict(stream="wave", param=list(model.wave_params))):
+        return wv
+    return None
 
 
 def _ecmwf_get(client, model: Model, run: datetime, step: int, target: Path, req: dict) -> bool:
