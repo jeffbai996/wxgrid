@@ -12,6 +12,15 @@
   const WORLD = [[-180, 85.05112878], [180, 85.05112878], [180, -85.05112878], [-180, -85.05112878]];
   const LAYERS = ["wind", "temp", "gust", "tp6", "tcc", "msl", "cape"];
   const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", msl: "Pressure", tp6: "Rain", tcc: "Clouds", cape: "CAPE" };
+  const LAYER_ICON = {
+    wind: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 5.5h7a2 2 0 1 0-2-2M2 9h10a2 2 0 1 1-2 2M2 12.5h5"/></svg>',
+    temp: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 9.5V3a2 2 0 0 1 4 0v6.5a3 3 0 1 1-4 0z"/><path d="M8 7v4"/></svg>',
+    gust: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 5h6M2 8h9M2 11h6M11 4l3 4-3 4"/></svg>',
+    tp6: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 8h8a3 3 0 0 0-.5-6 4 4 0 0 0-7.4 1A2.5 2.5 0 0 0 4 8z"/><path d="M5 11v2M8 11v2M11 11v2"/></svg>',
+    tcc: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 12h7a3 3 0 0 0 0-6 4 4 0 0 0-7.6-1A3.5 3.5 0 0 0 4.5 12z"/></svg>',
+    msl: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2"/><circle cx="8" cy="8" r="5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg>',
+    cape: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5 4 9h4l-1 5.5L12 7H8z"/></svg>',
+  };
   const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tcc: 0.9, cape: 0.85 };
   const LEVEL_LABEL = { 0: "Sfc", 925: "925", 850: "850", 700: "700", 500: "500", 300: "300", 250: "250" };
   const LEVEL_FT = { 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 500: "FL180", 300: "FL300", 250: "FL340" };
@@ -40,7 +49,6 @@
       minZoom: 1.2, maxZoom: 10, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
     });
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     map.on("moveend", () => {
       localStorage.setItem("wxgrid.view", JSON.stringify({ center: map.getCenter().toArray(), zoom: map.getZoom() }));
       if (!state.point) refreshTapePoint();
@@ -48,6 +56,7 @@
     wind = new WindLayer(map, $("#particles"));
     // Panels sit on top of the time bar, whose height depends on the tape.
     new ResizeObserver(() => document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px")).observe($("#timebar"));
+    new ResizeObserver(() => document.documentElement.style.setProperty("--top-h", $("#topbar").offsetHeight + "px")).observe($("#topbar"));
 
     catalog = await (await fetch(`${API}/models`, { cache: "no-store" })).json();
     const withRuns = catalog.models.filter((m) => m.runs.length);
@@ -96,8 +105,8 @@
 
     const chips = $("#layers");
     chips.innerHTML = LAYERS.map((l) =>
-      `<button class="chip ${l === state.layer ? "on" : ""}" data-layer="${l}" ${runEntry().layers.includes(l) ? "" : "disabled"}>${LAYER_LABEL[l]}</button>`).join("");
-    chips.querySelectorAll(".chip").forEach((b) => b.onclick = () => {
+      `<button class="${l === state.layer ? "on" : ""}" data-layer="${l}" ${runEntry().layers.includes(l) ? "" : "disabled"}>${LAYER_ICON[l]}<span>${LAYER_LABEL[l]}</span></button>`).join("");
+    chips.querySelectorAll("button").forEach((b) => b.onclick = () => {
       state.layer = b.dataset.layer; localStorage.setItem("wxgrid.layer", state.layer);
       if (!["wind", "temp"].includes(state.layer)) state.level = 0;
       renderControls(); applyStep(); loadWind(); });
@@ -139,6 +148,7 @@
       (p) => { map.flyTo({ center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), 7) }); openPoint(p.coords.latitude, p.coords.longitude); },
       () => toast("Location unavailable"));
     $("#point-close").onclick = closePoint;
+    $("#search").onsubmit = (e) => { e.preventDefault(); geocode($("#q").value.trim()); };
     $$(".point-tabs button").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; renderPoint(); });
     document.addEventListener("keydown", (e) => {
       if (["SELECT", "INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
@@ -342,11 +352,11 @@
 
   // ── point card ────────────────────────────────────────────────────────
   let pointReq = 0;
-  async function openPoint(lat, lon) {
+  async function openPoint(lat, lon, name) {
     const my = ++pointReq;
-    state.point = { lat, lon, data: null };
+    state.point = { lat, lon, data: null, name: name || (state.point && state.point.name && Math.abs(state.point.lat - lat) < 1e-6 ? state.point.name : null) };
     $("#point").hidden = false;
-    $("#point-title").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().label}`;
+    $("#point-title").textContent = `${state.point.name ? state.point.name + " · " : ""}${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
     $("#point-now").textContent = "…";
     try {
       const d = await (await fetch(`${API}/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}&model=${state.model}&run=${state.run}`)).json();
@@ -480,6 +490,20 @@
     });
     const i = Math.min(state.stepIdx, n - 1);
     ctx.fillStyle = "rgba(108,182,255,0.9)"; ctx.fillRect(xs[i] - 1, padT, 2, H - padT - padB);
+  }
+
+  // ── place search (OpenStreetMap Nominatim; 1 req/s etiquette) ────────
+  async function geocode(q) {
+    if (!q) return;
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`, { headers: { "Accept-Language": navigator.language || "en" } });
+      const hits = await r.json();
+      if (!hits.length) { toast(`Nothing found for “${q}”`); return; }
+      const h = hits[0], lat = parseFloat(h.lat), lon = parseFloat(h.lon);
+      map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 7), duration: 900 });
+      openPoint(lat, lon, h.display_name.split(",").slice(0, 2).join(",").trim());
+      $("#q").blur();
+    } catch (e) { toast("Search unavailable"); }
   }
 
   // ── misc ──────────────────────────────────────────────────────────────

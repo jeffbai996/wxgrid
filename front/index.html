@@ -8,7 +8,11 @@
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="private/theme.css">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0b0d10">
 </head>
 <body>
@@ -16,10 +20,12 @@
 <canvas id="particles"></canvas>
 
 <header id="topbar">
-  <div class="brand"><span class="brand-mark"></span>wxgrid</div>
+  <a class="brand" href="./" title="wxgrid"><img src="logo.svg" alt="" width="26" height="26"><span>wxgrid</span></a>
+  <form id="search" class="search" role="search" autocomplete="off">
+    <input id="q" type="search" placeholder="Search a place" aria-label="Search a place" enterkeyhint="search">
+  </form>
   <div class="seg" id="models" role="tablist" aria-label="Model"></div>
   <select id="run" class="run" title="Model run (UTC)"></select>
-  <nav id="layers" class="chips" aria-label="Layers"></nav>
   <div class="spacer"></div>
   <div class="seg small" id="levels" hidden aria-label="Altitude"></div>
   <button id="radar-toggle" class="chip" title="Live radar (RainViewer)">radar</button>
@@ -27,6 +33,8 @@
   <button id="units-toggle" class="chip mono" title="Wind units">km/h</button>
   <button id="locate" class="icon" title="My location">◎</button>
 </header>
+
+<nav id="layers" class="rail" aria-label="Layers"></nav>
 
 <aside id="legend" hidden>
   <div class="legend-bar"></div>

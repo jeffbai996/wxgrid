@@ -1,7 +1,9 @@
 # wxgrid
 
-Global weather-model grids, one store, two consumers: a Windy-style map in the
-browser and Python readers for signal engines downstream.
+Self-hosted, Windy-style weather map on free model data. Global weather-model
+grids, one store, two consumers: a map in the browser (wind particles, layers
+at the surface and aloft, live radar, a weather tape, aviation and outdoors
+readouts) and Python readers for signal engines downstream. MIT.
 
 ```
 ECMWF open data (IFS, AIFS) ─┐
@@ -18,11 +20,11 @@ NOAA NOMADS (GFS)            ├─ wxgrid.ingest ─▶ data/store/<model>/<run
 
 ## Models
 
-| key  | model            | source            | steps        | variables                     |
-|------|------------------|-------------------|--------------|-------------------------------|
-| ifs  | ECMWF IFS 0.25°  | ecmwf-opendata    | 0–240 h / 6h | u10 v10 t2m msl tp6 gust      |
-| aifs | ECMWF AIFS (AI)  | ecmwf-opendata    | 0–240 h / 6h | u10 v10 t2m msl tp6           |
-| gfs  | NOAA GFS 0.25°   | NOMADS filter CGI | 0–240 h / 6h | u10 v10 t2m msl tp6 gust      |
+| key  | model            | source            | steps        | surface variables                     | aloft (925/850/700/500/300/250 hPa) |
+|------|------------------|-------------------|--------------|---------------------------------------|-------------------------------------|
+| ifs  | ECMWF IFS 0.25°  | ecmwf-opendata    | 0–240 h / 6h | u10 v10 t2m msl tp6 gust tcc cape     | u v t gh                            |
+| aifs | ECMWF AIFS (AI)  | ecmwf-opendata    | 0–240 h / 6h | u10 v10 t2m msl tp6 tcc               | u v t gh                            |
+| gfs  | NOAA GFS 0.25°   | NOMADS filter CGI | 0–240 h / 6h | u10 v10 t2m msl tp6 gust tcc cape     | u v t gh                            |
 
 All free and keyless. ECMWF data is CC BY 4.0 (attribute ECMWF); GFS is public
 domain. `tp6` is precipitation over the previous 6 h in mm for every model
@@ -45,16 +47,28 @@ Production: `deploy/wxgrid.service` (API) + `deploy/wxgrid-ingest.timer`
 model when nothing is new). Tailnet: `tailscale serve --https=8464 http://127.0.0.1:8097`.
 
 `WXGRID_DATA_DIR` moves the store (default `./data`). Two runs per model are
-kept (`WXGRID_KEEP_RUNS`); each run is ~250–400 MB compressed.
+kept (`WXGRID_KEEP_RUNS`); each run is ~0.9–1.2 GB compressed with the aloft
+levels (winds/heights aloft are stored float16, temperatures float32).
+
+`WXGRID_PUBLIC=1` (see `deploy/wxgrid-public.service`) runs a second instance
+that never serves `front/private/` — the place for an operator's own fonts or
+theme overlay that shouldn't leave the house. Put it behind any reverse proxy
+or tunnel.
 
 ## Front end
 
 `front/` is static: MapLibre GL (vendored) on OpenFreeMap's dark style, one
 `image` source draped over the world in Web Mercator (the server reprojects
 the lat/lon grid so the drape is exact), a 2-D canvas particle layer above it
-(cambecc/earth lineage), a time scrubber (← → keys, space to play), a model
-picker that keeps the *valid time* when you switch, and a tap-anywhere point
-card with a meteogram. Layers: wind, gusts, temperature, pressure, rain.
+(cambecc/earth lineage), a Windy-style weather tape + scrubber (← → keys,
+space to play), a model picker that keeps the *valid time* when you switch,
+altitude picker for wind/temp (surface, 925…250 hPa), live radar overlay with
+its own timeline (RainViewer, last 2 h + nowcast), place search (Nominatim),
+and a tap-anywhere point card: Now (meteogram), Aloft (winds/temps per level,
+freezing level, cloud, CAPE, QNH), Outdoors (precip type, 24 h rain, snow
+level, gusts, wind chill). Layers: wind, temp, gusts, rain, clouds, pressure,
+CAPE. Units toggle km/h · kt · m/s. Fonts: Inter / Plus Jakarta Sans / Geist
+Mono (OFL, see `front/fonts/LICENSES.md`).
 
 ## For Python consumers
 
