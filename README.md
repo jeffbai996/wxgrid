@@ -67,7 +67,7 @@ to `data/cache/ext.json`) unless marked *direct*:
 
 - **Radar** — RainViewer composite (past 2 h + nowcast), *direct* tiles
 - **Satellite** — GOES-East/West GeoColor from NASA GIBS, latest frame, *direct* tiles
-- **Alerts** — NWS active alerts (polygons + point lookup) and Environment Canada's ALERTS WMS layer (*direct*)
+- **Alerts** — NWS (US), MeteoAlarm (Europe, Atom/CAP + EMMA_ID regions) and BoM (Australia, CAP-AU + AMOC districts) merged into one polygon layer and point lookup, plus Environment Canada's ALERTS WMS layer (*direct*)
 - **Storms** — NHC/CPHC active tropical cyclones: position, cone, forecast track (KMZ → GeoJSON)
 - **Avalanche** — Avalanche Canada (point product + regions) and avalanche.org (zones + products)
 - **Observations** — nearest METAR + TAF via aviationweather.gov

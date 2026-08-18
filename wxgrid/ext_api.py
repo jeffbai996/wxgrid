@@ -39,7 +39,7 @@ def api_avy_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(...
 
 @router.get("/alerts/layer")
 def api_alerts_layer():
-    return ext.nws_alerts_layer()
+    return ext.alerts_layer()
 
 
 @router.get("/alerts/point")

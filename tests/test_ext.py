@@ -69,3 +69,222 @@ def test_kmz_features_parses_kml_placemarks(monkeypatch, tmp_path):
     kinds = sorted(f["geometry"]["type"] for f in feats)
     assert kinds == ["LineString", "Point", "Polygon"]
     assert feats[0]["geometry"]["coordinates"][0][0] == [-160.0, 20.0]
+
+
+# ── MeteoAlarm (Europe) ───────────────────────────────────────────────────
+
+MA_ATOM_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2">
+  <id>tag:meteoalarm.org,2021-02-19:XX</id>
+  <title>MeteoAlarm - Alerting Europe for Extreme Weather</title>
+  <entry>
+    <cap:geocode><valueName>EMMA_ID</valueName><value>AT503</value></cap:geocode>
+    <cap:areaDesc>Salzburg-Umgebung</cap:areaDesc>
+    <cap:event>Thunderstormwarning</cap:event>
+    <cap:sent>2099-01-01T10:00:00+00:00</cap:sent>
+    <cap:onset>2099-01-01T10:00:00+00:00</cap:onset>
+    <cap:expires>2099-01-01T18:00:00+00:00</cap:expires>
+    <cap:severity>Moderate</cap:severity>
+    <cap:message_type>Alert</cap:message_type>
+    <cap:status>Actual</cap:status>
+    <cap:identifier>ID-A</cap:identifier>
+    <link type="application/cap+xml" href="https://feeds.example/cap/a"/>
+    <title>Yellow Thunderstorm Warning issued for Austria - Salzburg-Umgebung</title>
+  </entry>
+  <entry>
+    <cap:polygon>49.0,-2.0 49.0,-1.0 50.0,-1.0 50.0,-2.0 49.0,-2.0</cap:polygon>
+    <cap:areaDesc>Skomvaer - Andenes</cap:areaDesc>
+    <cap:event>Gale</cap:event>
+    <cap:sent>2099-01-01T09:00:00+00:00</cap:sent>
+    <cap:onset>2099-01-01T09:00:00+00:00</cap:onset>
+    <cap:expires>2099-01-02T03:00:00+00:00</cap:expires>
+    <cap:severity>Moderate</cap:severity>
+    <cap:message_type>Update</cap:message_type>
+    <cap:status>Actual</cap:status>
+    <cap:identifier>ID-B</cap:identifier>
+    <link type="application/cap+xml" href="https://feeds.example/cap/b"/>
+    <title>Orange Wind Warning issued for Norway - Skomvaer - Andenes</title>
+  </entry>
+  <entry>
+    <cap:geocode><valueName>EMMA_ID</valueName><value>AT100</value></cap:geocode>
+    <cap:areaDesc>Wien</cap:areaDesc>
+    <cap:event>Hitzewarnung</cap:event>
+    <cap:sent>2020-06-01T00:00:00+00:00</cap:sent>
+    <cap:expires>2020-06-01T12:00:00+00:00</cap:expires>
+    <cap:severity>Severe</cap:severity>
+    <cap:message_type>Alert</cap:message_type>
+    <cap:status>Actual</cap:status>
+    <cap:identifier>ID-C</cap:identifier>
+    <title>Orange High-temperature Warning issued for Austria - Wien</title>
+  </entry>
+</feed>"""
+
+
+def test_meteoalarm_atom_drops_expired_and_maps_awareness_colour_and_type():
+    got = {w["event"]: w for w in ext._ma_parse(MA_ATOM_FIXTURE)}
+    assert set(got) == {"thunderstorm", "wind"}          # the 2020 heat warning has expired
+    assert got["thunderstorm"]["sev"] == 2 and got["thunderstorm"]["severity"] == "Moderate"
+    assert got["thunderstorm"]["color"] == ext._SEV_COLOR[2]
+    assert got["thunderstorm"]["geometry"] is None and got["thunderstorm"]["code"] == "AT503"
+    assert got["thunderstorm"]["area"] == "Salzburg-Umgebung, Austria"
+    assert got["wind"]["sev"] == 3                        # orange outranks the CAP "Moderate"
+    # CAP polygons are lat,lon; GeoJSON is lon,lat
+    assert got["wind"]["geometry"]["coordinates"][0][0] == [-2.0, 49.0]
+    assert got["wind"]["source"] == "MeteoAlarm" and got["wind"]["url"].endswith("/cap/b")
+
+
+def test_meteoalarm_keeps_only_newest_update_per_area_and_event():
+    """The feed is a rolling archive: a re-warned region appears once per
+    update, and the map wants the latest, not five stacked polygons."""
+    first = MA_ATOM_FIXTURE[MA_ATOM_FIXTURE.index("<entry>"):MA_ATOM_FIXTURE.index("</entry>") + 8]
+    newer = first.replace("2099-01-01T10:00:00", "2099-01-01T11:30:00").replace("ID-A", "ID-A2")
+    got = [w for w in ext._ma_parse(MA_ATOM_FIXTURE.replace("</feed>", newer + "</feed>"))
+           if w["event"] == "thunderstorm"]
+    assert len(got) == 1 and got[0]["id"] == "ID-A2:AT503"
+
+
+def test_meteoalarm_warnings_fill_geometry_from_emma_regions(monkeypatch):
+    square = {"type": "Polygon", "coordinates": [[[13.0, 47.0], [14.0, 47.0], [14.0, 48.0], [13.0, 48.0], [13.0, 47.0]]]}
+    class R:
+        text = MA_ATOM_FIXTURE
+        def raise_for_status(self): pass
+    monkeypatch.setattr(ext._session, "get", lambda *a, **k: R())
+    monkeypatch.setattr(ext, "MA_COUNTRIES", ("austria",))
+    monkeypatch.setattr(ext, "_emma_regions", lambda: {"AT503": square})
+    ext.cache._d.clear()
+    ws = {w["event"]: w for w in ext._ma_warnings()}
+    assert ws["thunderstorm"]["geometry"] == square
+    assert ws["wind"]["sev"] == 3 and "_sent" not in ws["wind"]
+
+
+def test_meteoalarm_detail_prefers_the_english_cap_info(monkeypatch):
+    cap = """<?xml version="1.0"?><alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+      <identifier>ID-A</identifier>
+      <info><language>de-DE</language><senderName>GeoSphere Austria</senderName>
+        <description>Gewitter</description><instruction>Vorsicht</instruction><web>http://x/de</web></info>
+      <info><language>en-GB</language><senderName>GeoSphere Austria</senderName>
+        <description>Thunderstorms are possible.</description><instruction>Take care.</instruction><web>http://x/en</web></info>
+    </alert>"""
+    class R:
+        text = cap
+        def raise_for_status(self): pass
+    monkeypatch.setattr(ext._session, "get", lambda *a, **k: R())
+    ext.cache._d.clear()
+    d = ext._ma_detail("https://feeds.example/cap/a")
+    assert d["sender"] == "GeoSphere Austria" and d["description"].startswith("Thunderstorms")
+    assert d["instruction"] == "Take care." and d["web"] == "http://x/en"
+
+
+# ── BoM (Australia) ───────────────────────────────────────────────────────
+
+BOM_CAP_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+    <identifier>AusBoM-IDV21037-2099-01-01T00:00:00+00:00</identifier>
+    <sender>CAP.Message@bom.gov.au</sender>
+    <status>Actual</status>
+    <msgType>Update</msgType>
+    <info>
+        <language>en-AU</language>
+        <event>Weather</event>
+        <severity>Unknown</severity>
+        <effective>2099-01-01T00:00:00+00:00</effective>
+        <expires>2099-01-02T00:00:00+00:00</expires>
+        <senderName>Australian Government Bureau of Meteorology</senderName>
+        <headline>Severe Weather Warning for North Central forecast district</headline>
+        <description>DAMAGING WINDS averaging 60 to 70 km/h.</description>
+        <instruction>Avoid travel if possible.</instruction>
+        <web>http://www.bom.gov.au/vic/warnings/</web>
+        <area>
+            <areaDesc>Victoria: North Central</areaDesc>
+            <geocode><valueName>AMOC-AreaCode</valueName><value>VIC_PW008</value></geocode>
+            <geocode><valueName>AMOC-AreaCode</valueName><value>VIC_PW999</value></geocode>
+        </area>
+    </info>
+</alert>"""
+
+
+def test_bom_cap_parse_uses_district_geometry_and_infers_severity():
+    ring = [[144.0, -38.0], [145.0, -38.0], [145.0, -37.0], [144.0, -37.0], [144.0, -38.0]]
+    w = ext._bom_parse(BOM_CAP_FIXTURE, {"VIC_PW008": {"type": "Polygon", "coordinates": [ring]}})
+    assert w["source"] == "BoM" and w["sev"] == 3 and w["severity"] == "Severe"   # CAP said "Unknown"
+    assert w["event"] == "Severe Weather Warning" and w["area"] == "Victoria: North Central"
+    assert w["geometry"]["type"] == "Polygon" and w["geometry"]["coordinates"][0][0] == [144.0, -38.0]
+    assert w["instruction"] == "Avoid travel if possible." and w["sender"].endswith("Bureau of Meteorology")
+
+
+def test_bom_cap_parse_skips_expired_and_cancelled():
+    assert ext._bom_parse(BOM_CAP_FIXTURE.replace("<msgType>Update</msgType>", "<msgType>Cancel</msgType>"), {}) is None
+    assert ext._bom_parse(BOM_CAP_FIXTURE.replace("2099-01-02T00:00:00", "2020-01-02T00:00:00"), {}) is None
+    # an unknown district just means no shape, not a dropped warning
+    assert ext._bom_parse(BOM_CAP_FIXTURE, {})["geometry"] is None
+
+
+def _shapefile_zip(code: str, ring: list) -> bytes:
+    """Minimal ESRI shapefile zip (one polygon + a one-column dBASE table)."""
+    import io, struct, zipfile
+    n = len(ring)
+    body = struct.pack("<i", 5) + struct.pack("<4d", min(x for x, _ in ring), min(y for _, y in ring),
+                                              max(x for x, _ in ring), max(y for _, y in ring))
+    body += struct.pack("<ii", 1, n) + struct.pack("<i", 0)
+    for x, y in ring:
+        body += struct.pack("<2d", x, y)
+    shp = b"\x00" * 100 + struct.pack(">II", 1, len(body) // 2) + body
+    hdr = bytearray(32)
+    hdr[0] = 0x03
+    struct.pack_into("<I", hdr, 4, 1)          # one record
+    struct.pack_into("<HH", hdr, 8, 65, 13)    # header length, record length
+    field = b"AAC".ljust(11, b"\0") + b"C" + b"\0" * 4 + bytes([12, 0]) + b"\0" * 14
+    dbf = bytes(hdr) + field + b"\x0d" + b" " + code.encode().ljust(12)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("IDM00001.shp", shp)
+        z.writestr("IDM00001.dbf", dbf)
+    return buf.getvalue()
+
+
+def test_shp_regions_reads_shapefile_with_stdlib_only():
+    ring = [[144.0, -38.0], [145.0, -38.0], [145.0, -37.0], [144.0, -37.0], [144.0, -38.0]]
+    regions = ext._shp_regions(_shapefile_zip("VIC_PW008", ring))
+    assert list(regions) == ["VIC_PW008"]
+    assert regions["VIC_PW008"] == {"type": "Polygon", "coordinates": [ring]}
+
+
+# ── merged alerts ─────────────────────────────────────────────────────────
+
+def _fake_warning(source, sev, ring, **kw):
+    w = {"id": f"{source}-1", "event": "wind", "severity": "Moderate", "sev": sev, "color": ext._SEV_COLOR[sev],
+         "headline": "h", "area": "a", "onset": None, "ends": None, "sender": None, "source": source,
+         "description": "d", "instruction": "i", "url": "u",
+         "geometry": {"type": "Polygon", "coordinates": [ring]}}
+    w.update(kw)
+    return w
+
+
+def test_alerts_layer_merges_all_three_sources_and_survives_a_dead_one(monkeypatch):
+    ring = [[13.0, 47.0], [14.0, 47.0], [14.0, 48.0], [13.0, 48.0], [13.0, 47.0]]
+    monkeypatch.setattr(ext, "nws_alerts_layer", lambda: {"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {}, "properties": {"source": "NWS"}}]})
+    monkeypatch.setattr(ext, "_ma_warnings", lambda: [_fake_warning("MeteoAlarm", 3, ring)])
+    def boom():
+        raise RuntimeError("bom is down")
+    monkeypatch.setattr(ext, "_bom_warnings", boom)
+    lay = ext.alerts_layer()
+    assert [f["properties"]["source"] for f in lay["features"]] == ["NWS", "MeteoAlarm"]
+    assert "description" not in lay["features"][1]["properties"]   # layer stays lean
+
+
+def test_alerts_point_adds_hits_from_meteoalarm_and_bom(monkeypatch):
+    eu = [[13.0, 47.0], [14.0, 47.0], [14.0, 48.0], [13.0, 48.0], [13.0, 47.0]]
+    au = [[144.0, -38.0], [145.0, -38.0], [145.0, -37.0], [144.0, -37.0], [144.0, -38.0]]
+    monkeypatch.setattr(ext, "_nws_point", lambda lat, lon: [])
+    monkeypatch.setattr(ext, "_ma_warnings", lambda: [_fake_warning("MeteoAlarm", 2, eu, url="https://feeds.example/cap/a")])
+    monkeypatch.setattr(ext, "_bom_warnings", lambda: [_fake_warning("BoM", 4, au)])
+    monkeypatch.setattr(ext, "_ma_detail", lambda url: {"sender": "GeoSphere Austria", "description": "Thunderstorms.",
+                                                       "instruction": "Take care.", "web": "http://x/en"})
+    ext.cache._d.clear()
+    inside_eu = ext.alerts_point(47.5, 13.5)
+    assert [a["source"] for a in inside_eu] == ["MeteoAlarm"]
+    assert inside_eu[0]["sender"] == "GeoSphere Austria" and inside_eu[0]["url"] == "http://x/en"
+    ext.cache._d.clear()
+    assert [a["source"] for a in ext.alerts_point(-37.5, 144.5)] == ["BoM"]
+    ext.cache._d.clear()
+    assert ext.alerts_point(0.0, 0.0) == []

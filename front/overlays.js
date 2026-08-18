@@ -49,18 +49,41 @@
   function clearAvy() { ["avy-line", "avy-fill"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("avy")) M().removeSource("avy"); }
 
   // ── ski resorts overlay ───────────────────────────────────────────────
-  let resortsCatalog = null;
+  // Pins for every resort; when a snow layer is showing, each pin is sized
+  // and coloured by the forecast snowfall in the next 72 h from the selected
+  // time (the OpenSnow map), with the amount as its label.
+  let resortsCatalog = null, resortSnow = null, resortSnowKey = "", pendingSnow = null;
+  const SNOW_STOPS = [0, "#8a8f98", 5, "#9dd3ff", 15, "#6cb6ff", 30, "#8b7cff", 60, "#e05bd0", 100, "#ff5c8a"];
   async function loadResorts() {
     try {
       if (!resortsCatalog) resortsCatalog = (await WX.api(`${API}/resorts/all`)).resorts;
       if (!state.resorts) return;
-      const gj = { type: "FeatureCollection", features: resortsCatalog.map((r) => ({ type: "Feature", properties: { id: r.id, name: r.name }, geometry: { type: "Point", coordinates: [r.lon, r.lat] } })) };
+      const snowMode = ["sf6", "sf24", "sf72", "sd_cm"].includes(state.layer);
+      const key = `${state.model}/${state.run}/${WX.stepHours}`;
+      if (snowMode && resortSnowKey !== key && !pendingSnow) {
+        // draw the pins now, recolour when the amounts land
+        pendingSnow = WX.api(`${API}/resorts/snow?model=${state.model}&run=${state.run}&step=${WX.stepHours}&hours=72`)
+          .then((r) => { resortSnow = r.snow_cm; resortSnowKey = key; }).catch(() => { resortSnow = null; })
+          .finally(() => { pendingSnow = null; if (state.resorts) loadResorts(); });
+      }
+      const gj = { type: "FeatureCollection", features: resortsCatalog.map((r) => { const sn = snowMode && resortSnow && resortSnowKey === key ? resortSnow[r.id] : null; return { type: "Feature", properties: { id: r.id, name: r.name, snow: sn == null ? -1 : sn, label: sn == null ? r.name : (sn >= 1 ? `${Math.round(sn)} cm` : "") }, geometry: { type: "Point", coordinates: [r.lon, r.lat] } }; }) };
       if (M().getSource("resorts")) M().getSource("resorts").setData(gj);
       else {
         M().addSource("resorts", { type: "geojson", data: gj });
-        M().addLayer({ id: "resort-pts", type: "circle", source: "resorts", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 2.5, 8, 6], "circle-color": "#ffb454", "circle-stroke-color": "#0b0d10", "circle-stroke-width": 1.2, "circle-opacity": 0.9 } });
-        M().addLayer({ id: "resort-lbl", type: "symbol", source: "resorts", minzoom: 7, layout: { "text-field": ["get", "name"], "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top", "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1.2 } });
+        M().addLayer({ id: "resort-pts", type: "circle", source: "resorts", paint: {} });
+        M().addLayer({ id: "resort-lbl", type: "symbol", source: "resorts", layout: { "text-field": ["get", "label"], "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top", "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1.2 } });
       }
+      // paint by mode
+      const snowColor = ["case", ["<", ["get", "snow"], 0], "#ffb454", ["interpolate", ["linear"], ["get", "snow"], ...SNOW_STOPS]];
+      M().setPaintProperty("resort-pts", "circle-color", snowMode ? snowColor : "#ffb454");
+      M().setPaintProperty("resort-pts", "circle-radius", snowMode
+        ? ["interpolate", ["linear"], ["zoom"], 3, ["+", 2, ["*", 0.05, ["max", 0, ["get", "snow"]]]], 8, ["+", 4, ["*", 0.12, ["max", 0, ["get", "snow"]]]]]
+        : ["interpolate", ["linear"], ["zoom"], 3, 2.5, 8, 6]);
+      M().setPaintProperty("resort-pts", "circle-stroke-color", "#0b0d10");
+      M().setPaintProperty("resort-pts", "circle-stroke-width", 1.2);
+      M().setPaintProperty("resort-pts", "circle-opacity", 0.92);
+      M().setLayerZoomRange("resort-lbl", snowMode ? 4 : 7, 24);
+      M().setPaintProperty("resort-lbl", "text-color", snowMode ? "#dfe8ff" : "#ffd39a");
     } catch (e) { WX.fn.toast("Resort catalog unavailable"); }
   }
   function clearResorts() { ["resort-lbl", "resort-pts"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("resorts")) M().removeSource("resorts"); }

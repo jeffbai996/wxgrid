@@ -42,6 +42,37 @@ def all_resorts() -> dict:
                         for r in resorts.load_catalog()]}
 
 
+_snow_cache: dict[tuple, dict] = {}
+
+
+@router.get("/snow")
+def resorts_snow(model: str = "ifs", run: str = "latest", step: int = 0, hours: int = Query(72, ge=6, le=240)) -> dict:
+    """Forecast snowfall at every resort in the window (step, step + hours]:
+    the OpenSnow-style map. Model snowfall water-equivalent at 1 cm/mm at the
+    nearest 0.25° gridpoint. Cached per (model, run, step, hours)."""
+    from wxgrid.api import _reader          # lazy: api imports this module
+    import numpy as np
+    r = _reader(model, run)
+    if "sf6" not in r.variables:
+        raise HTTPException(404, "model has no snowfall")
+    if step not in r.steps:
+        step = min(r.steps, key=lambda x: abs(x - step))
+    key = (model, r.rid, step, hours)
+    hit = _snow_cache.get(key)
+    if hit is None:
+        idx = [k for k, h in enumerate(r.steps) if step < h <= step + hours]
+        out = {}
+        for res in resorts.load_catalog():
+            series = r.point("sf6", res["lat"], res["lon"])
+            v = float(np.nansum(series[idx])) if idx else float("nan")
+            out[res["id"]] = None if np.isnan(v) else round(v, 1)
+        hit = {"model": model, "run": r.rid, "step": step, "hours": hours, "snow_cm": out}
+        if len(_snow_cache) > 24:
+            _snow_cache.pop(next(iter(_snow_cache)))
+        _snow_cache[key] = hit
+    return hit
+
+
 @router.get("/{resort_id}")
 def get_resort(resort_id: str) -> dict:
     try:

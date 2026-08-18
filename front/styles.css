@@ -117,6 +117,8 @@ select.run {
 .rail .rail-sec { font: 700 9.5px var(--font-display); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; padding: 8px 10px 3px; border-top: 1px solid var(--line); margin-top: 3px; }
 .rail .rail-sec:first-child { border-top: 0; margin-top: 0; padding-top: 4px; }
 .seg.variant { margin-left: 8px; }
+.seg.variant button { white-space: nowrap; }
+@media (max-width: 820px) { .seg.variant { margin-left: 4px; padding: 2px; } .seg.variant button { padding: 3px 6px; font-size: 10.5px; } }
 
 /* ── topbar menus: layers ▾ / tools ▾ popovers (all widths) ──────────── */
 .menu { position: relative; display: block; }

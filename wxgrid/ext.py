@@ -6,6 +6,8 @@ rules, and so a hundred taps become one upstream request:
   aviationweather.gov            METAR / TAF nearest station     (NOAA, public)
   Open-Meteo elevation           terrain height at a point       (free, keyless)
   Avalanche Canada + avalanche.org  danger ratings, problems, regions (public JSON)
+  MeteoAlarm                     European warnings (Atom/CAP per country, EMMA_ID regions)
+  Bureau of Meteorology (AU)     Australian warnings (CAP-AU + AMOC district shapefiles)
 
 Every call is cached in memory with a TTL. Nothing here touches the store.
 """
@@ -13,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import threading
 import time
 from typing import Any, Callable
@@ -409,30 +412,541 @@ def nws_alerts_layer() -> dict:
     return cache.get("alerts:layer", 300, fetch)
 
 
+def _nws_point(lat: float, lon: float) -> list[dict]:
+    """NWS alerts at a point, zone- and polygon-based. Outside the US the API
+    404s and we return []."""
+    try:
+        r = _session.get(f"{NWS}/alerts/active", params={"point": f"{lat:.4f},{lon:.4f}"}, timeout=20)
+        if r.status_code != 200:
+            return []
+        out = []
+        for f in r.json().get("features", []):
+            p = f.get("properties", {})
+            sev = _SEV.get(p.get("severity"), 0)
+            out.append({"id": p.get("id"), "event": p.get("event"), "severity": p.get("severity"), "sev": sev, "color": _SEV_COLOR[sev],
+                        "headline": p.get("headline"), "area": p.get("areaDesc"), "onset": p.get("onset"), "ends": p.get("ends") or p.get("expires"),
+                        "description": (p.get("description") or "")[:900], "instruction": (p.get("instruction") or "")[:400],
+                        "sender": p.get("senderName"), "url": f.get("id"), "source": "NWS"})
+        return out
+    except Exception as exc:
+        log.info("nws point alerts: %s", exc)
+        return []
+
+
+# ── region-code → geometry indexes ───────────────────────────────────────
+
+_idx: dict[str, dict] = {}
+_idx_lock = threading.Lock()
+_idx_building: set[str] = set()
+_idx_retry: dict[str, float] = {}
+
+
+def _tag(el) -> str:
+    """Local name of an XML element, namespace or not — these feeds mix a
+    default Atom namespace with CAP children, and ElementTree makes the
+    prefixed form of every lookup unreadable."""
+    return el.tag.split("}")[-1]
+
+
+def _kid(parent, name):
+    return next((c for c in parent if _tag(c) == name), None)
+
+
+def _kids(parent, name) -> list:
+    return [c for c in parent if _tag(c) == name]
+
+
+def _txt(parent, name, default: str = "") -> str:
+    c = _kid(parent, name)
+    return (c.text or "").strip() if c is not None and c.text else default
+
+
+def _iso(s: str):
+    """CAP timestamps → aware datetime, or None when absent/mangled."""
+    from datetime import datetime
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _thin(ring: list, maxpts: int = 48) -> list:
+    """Drop points evenly to at most `maxpts` and round to ~100 m. Source
+    boundaries carry 1000+ vertices each; at map zooms this is invisible and
+    it is the difference between a 40 MB index and a 1.3 MB one."""
+    ring = [[round(float(x), 3), round(float(y), 3)] for x, y in ring]
+    if len(ring) > maxpts:
+        ring = ring[:: len(ring) // maxpts + 1]
+    if len(ring) >= 3 and ring[0] != ring[-1]:
+        ring.append(ring[0])
+    return ring
+
+
+def _rings_geom(rings: list) -> dict | None:
+    """Outer rings → Polygon/MultiPolygon, biggest six kept, holes dropped
+    (a hole in a warning area is not worth the payload)."""
+    keep = [[_thin(r)] for r in sorted(rings, key=len, reverse=True)[:6] if len(r) >= 4]
+    keep = [p for p in keep if len(p[0]) >= 4]
+    if not keep:
+        return None
+    return {"type": "Polygon", "coordinates": keep[0]} if len(keep) == 1 else {"type": "MultiPolygon", "coordinates": keep}
+
+
+def _outer_rings(geom: dict) -> list:
+    if not geom:
+        return []
+    if geom.get("type") == "Polygon":
+        return [geom["coordinates"][0]] if geom.get("coordinates") else []
+    if geom.get("type") == "MultiPolygon":
+        return [p[0] for p in geom.get("coordinates") or [] if p]
+    return []
+
+
+def _region_index(name: str, ttl: float, build: Callable[[], dict]) -> dict:
+    """A code → geometry lookup that is far too big for the TTL cache's single
+    JSON file (MeteoAlarm's geocodes are a 39 MB download, BoM's districts are
+    shapefiles). Each gets its own file beside the ext cache and is rebuilt in
+    a background thread, so the request that finds it stale is answered without
+    geometry instead of being held for a minute. Returns {} until it's ready."""
+    import json
+    path = _Path(_CACHE_DIR) / f"{name}.json"
+    with _idx_lock:
+        hit = _idx.get(name)
+        if hit is not None:
+            return hit
+        try:
+            if path.exists() and time.time() - path.stat().st_mtime < ttl:
+                _idx[name] = json.loads(path.read_text())
+                return _idx[name]
+        except Exception as exc:
+            log.warning("region index %s unreadable: %s", name, exc)
+        if name in _idx_building or time.time() < _idx_retry.get(name, 0.0):
+            return {}
+        _idx_building.add(name)
+
+    def work() -> None:
+        try:
+            built = build()
+            if not built:
+                raise ValueError("empty index")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".part")
+            tmp.write_text(json.dumps(built, separators=(",", ":")))
+            tmp.replace(path)
+            with _idx_lock:
+                _idx[name] = built
+            log.info("region index %s built: %d regions", name, len(built))
+        except Exception as exc:
+            log.warning("region index %s build failed: %s", name, exc)
+            with _idx_lock:
+                _idx_retry[name] = time.time() + 1800
+        finally:
+            with _idx_lock:
+                _idx_building.discard(name)
+
+    threading.Thread(target=work, name=f"wxgrid-idx-{name}", daemon=True).start()
+    return {}
+
+
+# ── alerts (MeteoAlarm, Europe) ──────────────────────────────────────────
+
+MA_ATOM = "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-{}"
+MA_GEOCODES = "https://drive.google.com/uc?export=download&id=16s24hYHfYQhKMNcP1hpgQmg13Yb8j0hV"
+MA_COUNTRIES = (
+    "andorra", "austria", "belgium", "bosnia-herzegovina", "bulgaria", "croatia", "cyprus", "czechia",
+    "denmark", "estonia", "finland", "france", "germany", "greece", "hungary", "iceland", "ireland",
+    "israel", "italy", "latvia", "lithuania", "luxembourg", "malta", "moldova", "montenegro",
+    "netherlands", "norway", "poland", "portugal", "republic-of-north-macedonia", "romania", "serbia",
+    "slovakia", "slovenia", "spain", "sweden", "switzerland", "ukraine", "united-kingdom",
+)
+# MeteoAlarm's awareness colours, which are the scale the national services
+# actually agree on — CAP severity from the same message is looser.
+_AWARE_LEVEL = {"yellow": 2, "orange": 3, "red": 4}
+_AWARE_TYPE = {"wind": "wind", "snow-ice": "snow-ice", "snow/ice": "snow-ice", "thunderstorm": "thunderstorm",
+               "thunderstorms": "thunderstorm", "fog": "fog", "high-temperature": "high-temp",
+               "low-temperature": "low-temp", "coastal-event": "coastal", "coastalevent": "coastal",
+               "forest-fire": "forestfire", "forestfire": "forestfire", "avalanches": "avalanche",
+               "avalanche": "avalanche", "rain": "rain", "flood": "flood", "flooding": "flood", "rain-flood": "flood"}
+_SEV_NAME = {4: "Extreme", 3: "Severe", 2: "Moderate", 1: "Minor", 0: "Unknown"}
+# "Yellow Thunderstorm Warning issued for Austria - Salzburg-Umgebung"
+_MA_TITLE = re.compile(r"^(\w+)\s+(.+?)\s+Warning issued for\s+(.+?)\s+-\s+(.+)$")
+
+
+def _emma_regions() -> dict:
+    """EMMA_ID → geometry. MeteoAlarm publishes one 39 MB GeoJSON of all 2195
+    warning regions (linked from their re-users page); we decode it a feature
+    at a time so the whole thing never lands in memory as objects, and keep a
+    simplified ring per region — 1.3 MB on disk, rebuilt monthly."""
+    def build() -> dict:
+        import json
+        r = _session.get(MA_GEOCODES, timeout=180)
+        r.raise_for_status()
+        text = r.text
+        i = text.index('"features"')
+        i = text.index("[", i) + 1
+        dec, out = json.JSONDecoder(), {}
+        while True:
+            while i < len(text) and text[i] in " \t\r\n,":
+                i += 1
+            if i >= len(text) or text[i] == "]":
+                break
+            feat, i = dec.raw_decode(text, i)
+            code = (feat.get("properties") or {}).get("code")
+            geom = _rings_geom(_outer_rings(feat.get("geometry") or {}))
+            if code and geom:
+                out[code] = geom
+        return out
+    return _region_index("meteoalarm_emma", 30 * 24 * 3600, build)
+
+
+def _ma_parse(xml: str) -> list[dict]:
+    """One country's legacy Atom feed → live warnings. The feed is a rolling
+    archive: most entries have already expired, and a region that has been
+    re-warned five times appears five times, so we keep the newest per
+    (area, event) and drop anything past its expiry."""
+    import xml.etree.ElementTree as ET
+    from datetime import datetime, timezone
+    root = ET.fromstring(xml)
+    now = datetime.now(timezone.utc)
+    seen: dict[tuple, dict] = {}
+    for e in _kids(root, "entry"):
+        if _txt(e, "status") != "Actual" or _txt(e, "message_type") == "Cancel":
+            continue
+        ends = _txt(e, "expires")
+        end_dt = _iso(ends)
+        if end_dt and end_dt < now:
+            continue
+        m = _MA_TITLE.match(_kid(e, "title").text or "" if _kid(e, "title") is not None else "")
+        colour = (m.group(1) if m else "").lower()
+        awareness = (m.group(2) if m else "").lower()
+        country = m.group(3) if m else ""
+        sev = _AWARE_LEVEL.get(colour) or _SEV.get(_txt(e, "severity"), 0)
+        event = _AWARE_TYPE.get(awareness, awareness or _txt(e, "event").lower() or "warning")
+        area = _txt(e, "areaDesc") or (m.group(4) if m else "")
+        code = ""
+        for gc in _kids(e, "geocode"):
+            if _txt(gc, "valueName") == "EMMA_ID":
+                code = _txt(gc, "value")
+        rings = []
+        for poly in _kids(e, "polygon"):
+            pts = [p.split(",") for p in (poly.text or "").split() if "," in p]
+            ring = [[float(lon), float(lat)] for lat, lon in pts]
+            if len(ring) >= 4:
+                rings.append(ring)
+        cap_url = ""
+        for ln in _kids(e, "link"):
+            if ln.get("type") == "application/cap+xml":
+                cap_url = ln.get("href") or ""
+        sent = _txt(e, "sent")
+        key = (country, code or area, event)
+        prev = seen.get(key)
+        if prev and (prev["_sent"] or "") >= sent:
+            continue
+        seen[key] = {
+            "id": f"{_txt(e, 'identifier')}:{code or area}", "event": event, "severity": _SEV_NAME.get(sev, "Unknown"),
+            "sev": sev, "color": _SEV_COLOR[sev], "headline": (_kid(e, "title").text or "").strip() if _kid(e, "title") is not None else "",
+            "area": f"{area}, {country}".strip(", "), "onset": _txt(e, "onset") or _txt(e, "effective"), "ends": ends,
+            "sender": None, "source": "MeteoAlarm", "url": cap_url, "code": code,
+            "geometry": _rings_geom(rings), "_sent": sent,
+        }
+    return list(seen.values())
+
+
+def _ma_warnings() -> list[dict]:
+    """Live European warnings from all 39 national feeds, fetched in parallel
+    (~5 MB upstream, one country per request, failures skipped). Cached 10 min.
+    Geometry is the CAP polygon where the service publishes one (Norway,
+    Sweden, the UK) and the EMMA_ID region otherwise."""
+    def fetch():
+        from concurrent.futures import ThreadPoolExecutor
+        def one(slug: str) -> list[dict]:
+            try:
+                r = _session.get(MA_ATOM.format(slug), timeout=30)
+                r.raise_for_status()
+                return _ma_parse(r.text)
+            except Exception as exc:
+                log.info("meteoalarm %s: %s", slug, exc)
+                return []
+        out: list[dict] = []
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for got in pool.map(one, MA_COUNTRIES):
+                out.extend(got)
+        regions = _emma_regions()
+        for w in out:
+            if not w["geometry"] and w["code"]:
+                w["geometry"] = regions.get(w["code"])
+            w.pop("_sent", None)
+        out.sort(key=lambda w: -w["sev"])
+        return out[:1200]
+    return cache.get("alerts:meteoalarm", 600, fetch)
+
+
+def _ma_detail(url: str) -> dict:
+    """The Atom entry is a summary; the CAP message behind it carries the
+    issuing service, the text and the advice. Fetched only for the handful of
+    warnings a point lookup actually hits."""
+    def fetch():
+        import xml.etree.ElementTree as ET
+        try:
+            r = _session.get(url, timeout=20)
+            r.raise_for_status()
+            root = ET.fromstring(r.text)
+        except Exception as exc:
+            log.info("meteoalarm cap %s: %s", url, exc)
+            return {}
+        infos = _kids(root, "info")
+        info = next((i for i in infos if _txt(i, "language", "").lower().startswith("en")), infos[0] if infos else None)
+        if info is None:
+            return {}
+        return {"sender": _txt(info, "senderName") or None, "description": _txt(info, "description")[:900],
+                "instruction": _txt(info, "instruction")[:400], "web": _txt(info, "web") or url}
+    return cache.get(f"alerts:ma:cap:{url}", 900, fetch)
+
+
+# ── alerts (BoM, Australia) ──────────────────────────────────────────────
+
+BOM_FTP_HOST = "ftp.bom.gov.au"
+BOM_CAP_DIR = "anon/gen/fwo"
+# BoM's CAP-AU messages carry no polygon, only AMOC area codes; the matching
+# district boundaries are these shapefiles (public forecast / marine wind /
+# fire weather / metropolitan). River-catchment sets exist too but are 8 MB for
+# flood warnings that are really line features, so they are left out and those
+# warnings come back without a shape.
+BOM_SPATIAL = ("IDM00001", "IDM00003", "IDM00007", "IDM00014")
+BOM_SPATIAL_DIR = "anon/home/adfd/spatial"
+_BOM_SEV = ((4, ("tropical cyclone", "destructive", "catastrophic", "tsunami", "hurricane force", "major flood", "extreme fire")),
+            (3, ("severe", "damaging", "fire weather", "storm force", "extreme heat", "moderate flood")),
+            (2, ("gale", "strong wind", "marine wind", "minor flood", "flood", "frost", "surf", "sheep graziers", "heat", "wind")))
+
+
+def _shp_regions(blob: bytes) -> dict:
+    """AAC code → geometry from a BoM shapefile zip, with stdlib struct: the
+    .shp is a flat list of polygon records and the .dbf a fixed-width table,
+    which is far less trouble than adding a shapefile dependency for three
+    files that change once a year."""
+    import io
+    import struct
+    import zipfile
+    z = zipfile.ZipFile(io.BytesIO(blob))
+    shp_name = next(n for n in z.namelist() if n.lower().endswith(".shp"))
+    dbf_name = next(n for n in z.namelist() if n.lower().endswith(".dbf"))
+    dbf = z.read(dbf_name)
+    n_rec = struct.unpack_from("<I", dbf, 4)[0]
+    hdr_len, rec_len = struct.unpack_from("<H", dbf, 8)[0], struct.unpack_from("<H", dbf, 10)[0]
+    fields, off = [], 32
+    while dbf[off] != 0x0D:                      # 0x0D terminates the field descriptor array
+        fields.append((dbf[off:off + 11].split(b"\0")[0].decode("latin1"), dbf[off + 16]))
+        off += 32
+    codes = []
+    for i in range(n_rec):
+        p, code = hdr_len + i * rec_len + 1, ""
+        for fname, flen in fields:
+            if fname == "AAC":
+                code = dbf[p:p + flen].decode("latin1").strip()
+            p += flen
+        codes.append(code)
+    shp, pos, out, k = z.read(shp_name), 100, {}, 0
+    while pos + 8 <= len(shp):
+        content_len = struct.unpack_from(">I", shp, pos + 4)[0]
+        body = pos + 8
+        if struct.unpack_from("<i", shp, body)[0] == 5:            # 5 = polygon
+            n_parts, n_points = struct.unpack_from("<ii", shp, body + 36)
+            parts = list(struct.unpack_from(f"<{n_parts}i", shp, body + 44))
+            pts_at = body + 44 + 4 * n_parts
+            rings = []
+            for j, start in enumerate(parts):
+                stop = parts[j + 1] if j + 1 < n_parts else n_points
+                xy = struct.unpack_from(f"<{2 * (stop - start)}d", shp, pts_at + 16 * start)
+                rings.append([[xy[m], xy[m + 1]] for m in range(0, len(xy), 2)])
+            geom = _rings_geom(rings)
+            if geom and k < len(codes) and codes[k]:
+                out[codes[k]] = geom
+        pos = body + content_len * 2
+        k += 1
+    return out
+
+
+def _bom_regions() -> dict:
+    """AMOC-AreaCode → geometry, built once a month from BoM's public spatial
+    zips (~7 MB total, anonymous FTP)."""
+    def build() -> dict:
+        import ftplib
+        import io
+        out: dict = {}
+        ftp = ftplib.FTP(BOM_FTP_HOST, timeout=60)
+        try:
+            ftp.login()
+            ftp.cwd(BOM_SPATIAL_DIR)
+            for dataset in BOM_SPATIAL:
+                buf = io.BytesIO()
+                ftp.retrbinary(f"RETR {dataset}.zip", buf.write)
+                out.update(_shp_regions(buf.getvalue()))
+        finally:
+            try:
+                ftp.quit()
+            except Exception:
+                ftp.close()
+        return out
+    return _region_index("bom_amoc", 30 * 24 * 3600, build)
+
+
+def _bom_sev(text: str, cap_severity: str) -> int:
+    sev = _SEV.get(cap_severity, 0)
+    if sev:
+        return sev
+    low = text.lower()
+    for level, words in _BOM_SEV:                 # CAP-AU usually says "Unknown"
+        if any(w in low for w in words):
+            return level
+    return 2
+
+
+def _bom_parse(xml: str, regions: dict) -> dict | None:
+    import xml.etree.ElementTree as ET
+    from datetime import datetime, timezone
+    root = ET.fromstring(xml)
+    if _txt(root, "status") != "Actual" or _txt(root, "msgType") == "Cancel":
+        return None
+    infos = _kids(root, "info")
+    info = next((i for i in infos if _txt(i, "language", "").lower().startswith("en")), infos[0] if infos else None)
+    if info is None:
+        return None
+    ends = _txt(info, "expires")
+    end_dt = _iso(ends)
+    if end_dt and end_dt < datetime.now(timezone.utc):
+        return None
+    headline = _txt(info, "headline")
+    sev = _bom_sev(f"{headline} {_txt(info, 'event')} {_txt(info, 'description')[:200]}", _txt(info, "severity"))
+    areas, rings = [], []
+    for area in _kids(info, "area"):
+        areas.append(_txt(area, "areaDesc"))
+        for poly in _kids(area, "polygon"):
+            pts = [p.split(",") for p in (poly.text or "").split() if "," in p]
+            ring = [[float(lon), float(lat)] for lat, lon in pts]
+            if len(ring) >= 4:
+                rings.append(ring)
+        for gc in _kids(area, "geocode"):
+            if _txt(gc, "valueName") == "AMOC-AreaCode":
+                rings.extend(_outer_rings(regions.get(_txt(gc, "value")) or {}))
+    return {"id": _txt(root, "identifier"), "event": headline.split(" for ")[0] or _txt(info, "event"),
+            "severity": _SEV_NAME.get(sev, "Unknown"), "sev": sev, "color": _SEV_COLOR[sev], "headline": headline,
+            "area": "; ".join(a for a in areas if a), "onset": _txt(info, "onset") or _txt(info, "effective"),
+            "ends": ends, "sender": _txt(info, "senderName") or "Bureau of Meteorology", "source": "BoM",
+            "description": _txt(info, "description")[:900], "instruction": _txt(info, "instruction")[:400],
+            "url": _txt(info, "web"), "geometry": _rings_geom(rings)}
+
+
+def _bom_cap_files() -> dict[str, str]:
+    """The active CAP-AU products, listed and pulled straight off BoM's
+    anonymous FTP: they publish no HTTP index of them, and their web front end
+    answers 403 to anything that isn't a browser user agent. A busy day is a
+    few dozen small files, so one sequential session is enough."""
+    def fetch():
+        import ftplib
+        out: dict[str, str] = {}
+        try:
+            ftp = ftplib.FTP(BOM_FTP_HOST, timeout=45)
+            try:
+                ftp.login()
+                ftp.cwd(BOM_CAP_DIR)
+                names = sorted({n.rsplit("/", 1)[-1] for n in ftp.nlst() if n.endswith(".cap.xml")})
+                for name in names[:80]:
+                    buf = bytearray()
+                    ftp.retrbinary(f"RETR {name}", buf.extend)
+                    out[name] = buf.decode("utf-8", "replace")
+            finally:
+                try:
+                    ftp.quit()
+                except Exception:
+                    ftp.close()
+        except Exception as exc:
+            log.warning("bom ftp failed: %s", exc)
+        return out
+    return cache.get("alerts:bom:cap", 600, fetch)
+
+
+def _bom_warnings() -> list[dict]:
+    """Active Australian warnings from the CAP-AU products. Cached 10 min.
+    Land and marine warnings get a shape from the district index; river-flood
+    warnings, whose catchments we don't carry, come back without one."""
+    def fetch():
+        files = _bom_cap_files()
+        if not files:
+            return []
+        regions = _bom_regions()
+        out = []
+        for name, xml in files.items():
+            try:
+                w = _bom_parse(xml, regions)
+            except Exception as exc:
+                log.info("bom cap %s: %s", name, exc)
+                continue
+            if w:
+                out.append(w)
+        out.sort(key=lambda w: -w["sev"])
+        return out
+    return cache.get("alerts:bom", 600, fetch)
+
+
+# ── alerts (merged) ──────────────────────────────────────────────────────
+
+_LAYER_KEYS = ("id", "event", "severity", "sev", "color", "headline", "area", "onset", "ends", "sender", "source")
+
+
+def _features(warnings: list[dict]) -> list[dict]:
+    return [{"type": "Feature", "geometry": w["geometry"], "properties": {k: w.get(k) for k in _LAYER_KEYS}}
+            for w in warnings if w.get("geometry")]
+
+
+def alerts_layer() -> dict:
+    """Every warning source that gives us a shape, in one FeatureCollection:
+    NWS (US), MeteoAlarm (Europe), BoM (Australia). Each source is cached and
+    guarded on its own — one dead upstream costs its own features, not the
+    endpoint."""
+    feats = list(nws_alerts_layer().get("features") or [])
+    for name, source in (("meteoalarm", _ma_warnings), ("bom", _bom_warnings)):
+        try:
+            feats.extend(_features(source()))
+        except Exception as exc:
+            log.warning("%s alerts layer failed: %s", name, exc)
+    return {"type": "FeatureCollection", "features": feats}
+
+
+def _bbox_hit(lon: float, lat: float, geom: dict) -> bool:
+    xs, ys = [], []
+    for ring in _outer_rings(geom):
+        for x, y in ring:
+            xs.append(x)
+            ys.append(y)
+    return bool(xs) and min(xs) <= lon <= max(xs) and min(ys) <= lat <= max(ys)
+
+
 def alerts_point(lat: float, lon: float) -> list[dict]:
-    """Alerts in force at a point (NWS: zone- and polygon-based). Outside the
-    US the NWS API 404s and we return []."""
+    """Alerts in force at a point. The NWS answers point queries itself; for
+    MeteoAlarm and BoM we test the point against the polygons we already hold,
+    which costs nothing extra upstream. A MeteoAlarm hit then pulls its CAP
+    message for the text the Atom summary doesn't carry."""
     key = f"alerts:pt:{lat:.2f}:{lon:.2f}"
     def fetch():
-        try:
-            r = _session.get(f"{NWS}/alerts/active", params={"point": f"{lat:.4f},{lon:.4f}"}, timeout=20)
-            if r.status_code != 200:
-                return []
-            out = []
-            for f in r.json().get("features", []):
-                p = f.get("properties", {})
-                sev = _SEV.get(p.get("severity"), 0)
-                out.append({"id": p.get("id"), "event": p.get("event"), "severity": p.get("severity"), "sev": sev, "color": _SEV_COLOR[sev],
-                            "headline": p.get("headline"), "area": p.get("areaDesc"), "onset": p.get("onset"), "ends": p.get("ends") or p.get("expires"),
-                            "description": (p.get("description") or "")[:900], "instruction": (p.get("instruction") or "")[:400],
-                            "sender": p.get("senderName"), "url": f.get("id"), "source": "NWS"})
-            out.sort(key=lambda a: -a["sev"])
-            return out
-        except Exception as exc:
-            log.info("nws point alerts: %s", exc)
-            return []
+        out = _nws_point(lat, lon)
+        for name, source in (("meteoalarm", _ma_warnings), ("bom", _bom_warnings)):
+            try:
+                for w in source():
+                    geom = w.get("geometry")
+                    if not geom or not _bbox_hit(lon, lat, geom) or not _in_geom(lon, lat, geom):
+                        continue
+                    hit = {k: w.get(k) for k in (*_LAYER_KEYS, "description", "instruction", "url")}
+                    if w["source"] == "MeteoAlarm" and w.get("url"):
+                        hit.update({k: v for k, v in _ma_detail(w["url"]).items() if k != "web"})
+                        hit["url"] = _ma_detail(w["url"]).get("web") or w["url"]
+                    out.append(hit)
+            except Exception as exc:
+                log.warning("%s point alerts failed: %s", name, exc)
+        out.sort(key=lambda a: -(a["sev"] or 0))
+        return out
     return cache.get(key, 300, fetch)
-
 
 # ── tropical systems (NHC) ────────────────────────────────────────────────
 
