@@ -17,10 +17,18 @@
     localStorage.setItem("wxgrid.favs", JSON.stringify(list.slice(0, 30)));
     return isFav(lat, lon);
   }
+  const recents = () => JSON.parse(localStorage.getItem("wxgrid.recent") || "[]");
+  function pushRecent(h) {
+    if (h.kind === "fav" || h.kind === "recent") return;
+    const list = recents().filter((r) => !(Math.abs(r.lat - h.lat) < 1e-3 && Math.abs(r.lon - h.lon) < 1e-3));
+    list.unshift({ name: h.name, lat: h.lat, lon: h.lon, id: h.id, kind: h.kind });
+    localStorage.setItem("wxgrid.recent", JSON.stringify(list.slice(0, 8)));
+  }
   function showFavs() {
-    const list = favs();
-    if (!list.length) { hideResults(); return; }
-    searchHits = list.map((f) => ({ kind: "fav", name: f.name, sub: `${f.lat.toFixed(2)}°, ${f.lon.toFixed(2)}°`, lat: f.lat, lon: f.lon }));
+    const list = favs(), rec = recents().filter((r) => !isFav(r.lat, r.lon)).slice(0, 5);
+    if (!list.length && !rec.length) { hideResults(); return; }
+    searchHits = [...list.map((f) => ({ kind: "fav", name: f.name, sub: `${f.lat.toFixed(2)}°, ${f.lon.toFixed(2)}°`, lat: f.lat, lon: f.lon })),
+                  ...rec.map((r) => ({ kind: "recent", name: r.name, sub: r.kind === "resort" ? "resort" : `${r.lat.toFixed(2)}°, ${r.lon.toFixed(2)}°`, lat: r.lat, lon: r.lon, id: r.id, srcKind: r.kind }))];
     searchSel = 0; paintResults();
   }
   function wireSearch() {
@@ -50,13 +58,14 @@
     const box = $("#search-results");
     if (!searchHits.length) { box.hidden = true; return; }
     box.hidden = false;
-    box.innerHTML = searchHits.map((h, i) => `<button class="${i === searchSel ? "sel" : ""}" data-i="${i}"><span class="kind ${h.kind}">${h.kind === "fav" ? "★" : h.kind}</span><span>${h.name}</span><span class="sub">${h.sub}</span>${h.kind === "fav" ? `<span class="unfav" data-i="${i}" title="Remove">×</span>` : ""}</button>`).join("");
+    box.innerHTML = searchHits.map((h, i) => `<button class="${i === searchSel ? "sel" : ""}" data-i="${i}"><span class="kind ${h.kind}">${h.kind === "fav" ? "★" : h.kind === "recent" ? "↺" : h.kind}</span><span>${h.name}</span><span class="sub">${h.sub}</span>${h.kind === "fav" ? `<span class="unfav" data-i="${i}" title="Remove">×</span>` : ""}</button>`).join("");
     box.querySelectorAll("button").forEach((b) => b.onclick = (e) => { if (e.target.classList.contains("unfav")) { const h = searchHits[Number(b.dataset.i)]; toggleFav(h.lat, h.lon); showFavs(); return; } pickResult(searchHits[Number(b.dataset.i)]); });
   }
   function hideResults() { $("#search-results").hidden = true; }
   function pickResult(h) {
     hideResults(); $("#q").blur();
-    if (h.kind === "resort") { WX.ov.selectResort(h.id); return; }
+    pushRecent(h);
+    if (h.kind === "resort" || (h.kind === "recent" && h.srcKind === "resort")) { WX.ov.selectResort(h.id); return; }
     M().flyTo({ center: [h.lon, h.lat], zoom: Math.max(M().getZoom(), 7), duration: 900 });
     WX.fn.openPoint(h.lat, h.lon, h.name);
   }

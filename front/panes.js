@@ -70,6 +70,7 @@
         <div class="hl">${hi != null ? `<span><i>H</i>${Math.round(hi)}°</span><span><i>L</i>${Math.round(lo)}°</span>` : ""}${sun ? `<span class="daylen">${W_ICONS.rise}${sun.rise}</span><span class="daylen">${W_ICONS.set}${sun.set}</span>` : ""}</div>
       </div>
       <div class="meta">${chips.join("")}</div>
+      ${daysStrip(d, i)}
       ${alertsHtml(pt)}${airHtml(pt)}`;
     // local context
     const loc = pt.local || {};
@@ -92,6 +93,29 @@
     if (!holder) { holder = document.createElement("div"); holder.id = "obs-holder"; $("#point-now").after(holder); }
     holder.innerHTML = obsHtml;
     drawMeteogram(d, i);
+  }
+
+  // Seven-day strip: one cell per local calendar day (icon, hi/lo, precip,
+  // max wind); tapping a day jumps the timeline to its midday step.
+  function daysStrip(d, i) {
+    const s = d.series; if (!s.t2m) return "";
+    const days = new Map();
+    d.valid.forEach((v, k) => { const dt = new Date(v); const key = dt.toDateString(); if (!days.has(key)) days.set(key, { dt, ks: [] }); days.get(key).ks.push(k); });
+    const cur = new Date(d.valid[i]).toDateString();
+    const cells = [...days.values()].slice(0, 8).map(({ dt, ks }) => {
+      const ts = ks.map((k) => s.t2m[k]).filter((x) => x != null);
+      if (ts.length < 2) return "";
+      const hi = Math.max(...ts) - K, lo = Math.min(...ts) - K;
+      const rain = ks.reduce((a, k) => a + ((s.tp6 && s.tp6[k]) || 0), 0), snow = ks.reduce((a, k) => a + ((s.sf6 && s.sf6[k]) || 0), 0);
+      const wmax = s.wind ? Math.max(...ks.map((k) => s.wind[k] || 0)) : null;
+      const noon = ks.reduce((b, k) => Math.abs(new Date(d.valid[k]).getHours() - 13) < Math.abs(new Date(d.valid[b]).getHours() - 13) ? k : b, ks[0]);
+      const cloud = ks.map((k) => s.tcc ? s.tcc[k] : null).filter((x) => x != null); const cl = cloud.length ? cloud.reduce((a, b) => a + b, 0) / cloud.length : null;
+      const g = W().tape && W().tape.glyph ? W().tape.glyph(cl, (rain + snow) / Math.max(1, ks.length) * (24 / 6), s.t2m[noon], false) : "";
+      const on = dt.toDateString() === cur;
+      return `<button class="day${on ? " on" : ""}" data-k="${noon}"><span class="dn">${dt.toLocaleDateString(undefined, { weekday: "short" })}</span><span class="dg">${g}</span><span class="hl"><b style="color:${tempColor(hi)}">${Math.round(hi)}°</b><i>${Math.round(lo)}°</i></span><span class="pr">${snow >= 1 ? `<span class="sn">${snow.toFixed(0)} cm</span>` : rain >= 0.5 ? `${rain.toFixed(rain < 10 ? 1 : 0)} mm` : "&nbsp;"}</span>${wmax != null ? `<span class="wd">${Math.round(W().speed(wmax))}</span>` : ""}</button>`;
+    }).join("");
+    setTimeout(() => document.querySelectorAll(".days .day").forEach((b) => b.onclick = () => W().setStep(Number(b.dataset.k))), 0);
+    return `<div class="days">${cells}</div>`;
   }
 
   const AQI_BANDS = [[50, "Good", "#2f9e44"], [100, "Moderate", "#e6b800"], [150, "Unhealthy for sensitive", "#f08c00"], [200, "Unhealthy", "#e03131"], [300, "Very unhealthy", "#9c36b5"], [9999, "Hazardous", "#7f1d1d"]];

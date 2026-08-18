@@ -46,7 +46,10 @@
     const days = [];
     dates.forEach((dt, i) => { const k = dt.toDateString(); if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, span: 0 }); days[days.length - 1].span++; });
     const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day">${dy.start.toLocaleDateString(undefined, { weekday: "long", day: "numeric" })}</th>`).join("");
-    const cell = (i, inner, cls = "") => `<td class="${cls} ${dates[i].getHours() < 6 || dates[i].getHours() >= 21 ? "night" : ""}" data-i="${i}">${inner}</td>`;
+    // the column whose interval holds the current wall-clock time gets a mark
+    const nowMs = Date.now();
+    const nowIdx = dates.findIndex((dt, i) => nowMs >= dt.getTime() && (i + 1 >= n || nowMs < dates[i + 1].getTime()));
+    const cell = (i, inner, cls = "") => `<td class="${cls} ${dates[i].getHours() < 6 || dates[i].getHours() >= 21 ? "night" : ""}${i === nowIdx ? " now" : ""}" data-i="${i}">${inner}</td>`;
     const hourRow = dates.map((dt, i) => cell(i, `<span class="hr">${dt.toLocaleTimeString(undefined, { hour: "numeric" }).replace(":00", "").replace(/\s/, "<small>") + (/[ap]m/i.test(dt.toLocaleTimeString(undefined, { hour: "numeric" })) ? "</small>" : "")}</span>`, "hour")).join("");
     const iconRow = dates.map((_, i) => cell(i, glyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), s.t2m ? s.t2m[i] : null, dates[i].getHours() < 6 || dates[i].getHours() >= 21), "ico")).join("");
     const tempRow = dates.map((_, i) => cell(i, s.t2m && s.t2m[i] != null ? `${Math.round(s.t2m[i] - 273.15)}°` : "—", "temp")).join("");

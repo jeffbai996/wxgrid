@@ -155,7 +155,7 @@
     if (state.storms) WX.ov.loadStorms();
     if (state.sat) WX.ov.loadSat();
     if (state.smoke) WX.ov.loadSmoke();
-    if (state.fires) WX.ov.loadFires();
+    if (state.fires) WX.fires.load();
     if (state.quakes) WX.ov.loadQuakes();
     if (state.aod) WX.ov.loadAod();
     if (state.thunder) WX.ov.loadThunder();
@@ -275,6 +275,7 @@
     op.oninput = () => { state.opacity = Number(op.value); localStorage.setItem("wxgrid.opacity", op.value); applyStep(false); };
     op.onclick = (e) => e.stopPropagation();
     buildStrip();
+    $("#fires-toggle").onclick = () => { state.fires = !state.fires; $("#fires-toggle").classList.toggle("on", state.fires); if (state.fires) WX.fires.load(); else WX.fires.clear(); };
     $("#share-btn").onclick = async () => { pushHash(); await new Promise((r) => setTimeout(r, 300)); try { await navigator.clipboard.writeText(location.href); toast("Link copied"); } catch (e) { toast(location.href, 6000); } };
     $("#keys-btn").onclick = () => toast("← → step · space play · / search · esc close · L layers", 6000);
     $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme === "light" ? "light" : "dark";
@@ -282,7 +283,7 @@
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
     $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) WX.ov.loadStorms(); else WX.ov.clearStorms(); };
     $("#sat-toggle").onclick = () => { state.sat = !state.sat; $("#sat-toggle").classList.toggle("on", state.sat); if (state.sat) WX.ov.loadSat(); else WX.ov.clearSat(); };
-    for (const [k, load, clear] of [["smoke", "loadSmoke", "clearSmoke"], ["fires", "loadFires", "clearFires"], ["quakes", "loadQuakes", "clearQuakes"], ["aod", "loadAod", "clearAod"], ["thunder", "loadThunder", "clearThunder"]]) {
+    for (const [k, load, clear] of [["smoke", "loadSmoke", "clearSmoke"], ["quakes", "loadQuakes", "clearQuakes"], ["aod", "loadAod", "clearAod"], ["thunder", "loadThunder", "clearThunder"]]) {
       $(`#${k}-toggle`).onclick = () => { state[k] = !state[k]; $(`#${k}-toggle`).classList.toggle("on", state[k]); if (state[k]) WX.ov[load](); else WX.ov[clear](); };
     }
     $("#theme-toggle").onclick = () => { applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light"); $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme; };
