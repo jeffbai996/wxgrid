@@ -64,7 +64,8 @@
         <div class="big" style="color:${t != null ? tempColor(t - K) : "inherit"}">${t == null ? "—" : Math.round(t - K)}<span class="deg">°</span></div>
         <div class="hl">${hi != null ? `<span><i>H</i>${Math.round(hi)}°</span><span><i>L</i>${Math.round(lo)}°</span>` : ""}${sun ? `<span class="daylen">${W_ICONS.rise}${sun.rise}</span><span class="daylen">${W_ICONS.set}${sun.set}</span>` : ""}</div>
       </div>
-      <div class="meta">${chips.join("")}</div>`;
+      <div class="meta">${chips.join("")}</div>
+      ${alertsHtml(pt)}${airHtml(pt)}`;
     // local context
     const loc = pt.local || {};
     const bits = [];
@@ -86,6 +87,23 @@
     if (!holder) { holder = document.createElement("div"); holder.id = "obs-holder"; $("#point-now").after(holder); }
     holder.innerHTML = obsHtml;
     drawMeteogram(d, i);
+  }
+
+  const AQI_BANDS = [[50, "Good", "#2f9e44"], [100, "Moderate", "#e6b800"], [150, "Unhealthy for sensitive", "#f08c00"], [200, "Unhealthy", "#e03131"], [300, "Very unhealthy", "#9c36b5"], [9999, "Hazardous", "#7f1d1d"]];
+  const aqiBand = (v) => AQI_BANDS.find((b) => v <= b[0]) || AQI_BANDS[AQI_BANDS.length - 1];
+  const uvBand = (v) => v < 3 ? ["Low", "#2f9e44"] : v < 6 ? ["Moderate", "#e6b800"] : v < 8 ? ["High", "#f08c00"] : v < 11 ? ["Very high", "#e03131"] : ["Extreme", "#9c36b5"];
+  function airHtml(pt) {
+    const a = pt.air; if (!a || a.us_aqi == null) return "";
+    const b = aqiBand(a.us_aqi);
+    const uvMax = a.hourly && a.hourly.uv ? Math.max(...a.hourly.uv.slice(0, 24).filter((x) => x != null)) : null;
+    const uvb = uvMax != null ? uvBand(uvMax) : null;
+    return `<div class="air"><span class="chipv" style="background:${b[2]}22;color:${b[2]}"><i class="sw" style="background:${b[2]}"></i>AQI <b>${a.us_aqi}</b> ${b[1]}</span>
+      ${a.pm2_5 != null ? `<span class="chipv">PM2.5 <b>${a.pm2_5.toFixed(0)}</b> µg/m³</span>` : ""}${a.ozone != null ? `<span class="chipv">O₃ <b>${a.ozone.toFixed(0)}</b></span>` : ""}
+      ${uvb ? `<span class="chipv" style="color:${uvb[1]}">UV max <b>${uvMax.toFixed(0)}</b> ${uvb[0]}</span>` : ""}</div>`;
+  }
+  function alertsHtml(pt) {
+    const al = pt.alerts; if (!al || !al.length) return "";
+    return `<div class="alerts">${al.slice(0, 3).map((a) => `<a class="alert" href="${esc(a.url || "#")}" target="_blank" rel="noopener" style="border-color:${esc(a.color)}"><i class="sw" style="background:${esc(a.color)}"></i><b>${esc(a.event)}</b>${a.ends ? `<span class="dim"> until ${new Date(a.ends).toLocaleString(undefined, { weekday: "short", hour: "numeric" })}</span>` : ""}<span class="hl">${esc((a.headline || a.area || "").slice(0, 120))}</span></a>`).join("")}${al.length > 3 ? `<div class="note">+${al.length - 3} more</div>` : ""}</div>`;
   }
 
   // NOAA sunrise/sunset (good to a minute or two), shown in the viewer's clock.
@@ -265,7 +283,14 @@
       ["Thunder risk (CAPE)", s.cape && s.cape[i] != null ? `${s.cape[i].toFixed(0)} J/kg` : "n/a", capeClass(s.cape && s.cape[i])],
       ["Dry windows (3 d)", dry.length ? `${dry.length * 6} h of ${Math.min(72, (d.steps.length - i) * 6)}` : "none", dry.length > 6 ? "good" : dry.length ? "meh" : "bad"],
     ];
-    $("#outdoors").innerHTML = `<dl class="kv">${rows.map(([k, v, cls]) => `<dt>${k}</dt><dd class="${cls}">${v}</dd>`).join("")}</dl>
+    const pt = W().state.point;
+    let tidesHtml = "";
+    if (pt && pt.tides && pt.tides.events && pt.tides.events.length) {
+      const t = pt.tides;
+      tidesHtml = `<div class="obs"><div class="obs-head"><span>Tides · ${esc(t.station)} · ${t.distance_km} km</span><span class="dim">${esc(t.source)} · ${esc(t.datum)}</span></div>
+        <div class="tides">${t.events.slice(0, 6).map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${e.height_m.toFixed(1)} m</b><small>${new Date(e.time).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div></div>`;
+    }
+    $("#outdoors").innerHTML = `<dl class="kv">${rows.map(([k, v, cls]) => `<dt>${k}</dt><dd class="${cls}">${v}</dd>`).join("")}</dl>${tidesHtml}${airHtml(pt || {})}
       <div class="note">Hiking / skiing / paddling read: snow level ≈ freezing level − 300 m; gusts are the model's 10 m gust where it ships one (IFS, GFS); tap the tape to move the day. Terrain is unresolved at 0.25° — a valley or a ridge will differ.</div>`;
   }
 

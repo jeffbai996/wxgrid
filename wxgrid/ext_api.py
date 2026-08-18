@@ -35,3 +35,31 @@ def api_avy_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(...
     if p is None:
         raise HTTPException(404, "no avalanche forecast region covers this point")
     return p
+
+
+@router.get("/alerts/layer")
+def api_alerts_layer():
+    return ext.nws_alerts_layer()
+
+
+@router.get("/alerts/point")
+def api_alerts_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
+    return {"alerts": ext.alerts_point(lat, lon)}
+
+
+@router.get("/storms")
+def api_storms():
+    return ext.storms()
+
+
+@router.get("/air")
+def api_air(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
+    return ext.air(lat, lon)
+
+
+@router.get("/tides")
+def api_tides(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
+    t = ext.tides(lat, lon)
+    if t is None:
+        raise HTTPException(404, "no tide station within reach")
+    return t

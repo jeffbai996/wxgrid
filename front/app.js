@@ -36,6 +36,7 @@
     point: null, tapePoint: null, tab: "now",
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null, measure: false,
+    alerts: false, storms: false, sat: false,
   };
   let map, wind, catalog, playTimer = null, marker = null;
 
@@ -119,6 +120,9 @@
     if (state.avy) loadAvy();
     if (state.resorts) loadResorts();
     if (state.resort) selectResort(state.resort.resort.id);
+    if (state.alerts) loadAlerts();
+    if (state.storms) loadStorms();
+    if (state.sat) loadSat();
     if (marker) marker.addTo(map);
   }
   function applyTheme(theme, swapMap = true) {
@@ -235,6 +239,9 @@
       renderLegend(); renderPoint(); renderTape();
     };
     $("#radar-toggle").onclick = toggleRadar;
+    $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) loadAlerts(); else clearAlerts(); };
+    $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) loadStorms(); else clearStorms(); };
+    $("#sat-toggle").onclick = () => { state.sat = !state.sat; $("#sat-toggle").classList.toggle("on", state.sat); if (state.sat) loadSat(); else clearSat(); };
     $("#theme-toggle").onclick = () => applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
     $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); if (!state.measure) clearMeasure(); else toast("Measure: tap two points"); };
     $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) loadIso(); else clearIso(); };
@@ -281,7 +288,7 @@
     pushHash();
     const src = map.getSource("wx");
     if (src) { try { src.updateImage({ url: layerUrl(), coordinates: WORLD }); } catch (e) { /* superseded */ } }
-    if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", state.radar ? Math.min(0.45, LAYER_ALPHA[state.layer]) : LAYER_ALPHA[state.layer]);
+    if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", (state.radar || state.sat) ? Math.min(0.45, LAYER_ALPHA[state.layer]) : LAYER_ALPHA[state.layer]);
     const v = validDate();
     $("#valid-local").textContent = v.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
@@ -406,6 +413,64 @@
   }
   WX.selectResort = selectResort;
 
+  // ── alerts: NWS polygons (GeoJSON) + Environment Canada (GeoMet WMS) ─
+  async function loadAlerts() {
+    try {
+      const gj = await WX.api(`${API}/alerts/layer`);
+      if (!state.alerts) return;
+      if (map.getSource("alerts")) map.getSource("alerts").setData(gj);
+      else {
+        map.addSource("alerts", { type: "geojson", data: gj });
+        map.addLayer({ id: "alerts-fill", type: "fill", source: "alerts", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.28 } }, firstSymbolId());
+        map.addLayer({ id: "alerts-line", type: "line", source: "alerts", paint: { "line-color": ["get", "color"], "line-width": 1.6 } }, firstSymbolId());
+        map.on("click", "alerts-fill", (e) => { const p = e.features[0].properties; toast(`${p.event} · ${p.area}`.slice(0, 160), 6000); });
+      }
+      if (!map.getSource("ec-alerts")) {
+        map.addSource("ec-alerts", { type: "raster", tileSize: 256, attribution: "Alerts © Environment Canada",
+          tiles: ["https://geo.weather.gc.ca/geomet?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ALERTS&CRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=true&STYLES="] });
+        map.addLayer({ id: "ec-alerts", type: "raster", source: "ec-alerts", paint: { "raster-opacity": 0.55, "raster-fade-duration": 0 } }, firstSymbolId());
+      }
+      toast(`Alerts: ${gj.features.length} NWS polygon alerts + Environment Canada layer`, 4000);
+    } catch (e) { toast("Alerts unavailable"); state.alerts = false; $("#alerts-toggle").classList.remove("on"); }
+  }
+  function clearAlerts() { ["alerts-line", "alerts-fill", "ec-alerts"].forEach((l) => map.getLayer(l) && map.removeLayer(l)); ["alerts", "ec-alerts"].forEach((sname) => map.getSource(sname) && map.removeSource(sname)); }
+
+  // ── tropical systems (NHC): cone, track, current position ─────────────
+  async function loadStorms() {
+    try {
+      const gj = await WX.api(`${API}/storms`);
+      if (!state.storms) return;
+      if (map.getSource("storms")) map.getSource("storms").setData(gj);
+      else {
+        map.addSource("storms", { type: "geojson", data: gj });
+        map.addLayer({ id: "storm-cone", type: "fill", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "fill-color": "#ffb454", "fill-opacity": 0.18 } }, firstSymbolId());
+        map.addLayer({ id: "storm-cone-line", type: "line", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "line-color": "#ffb454", "line-width": 1.2 } }, firstSymbolId());
+        map.addLayer({ id: "storm-track", type: "line", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "LineString"]], paint: { "line-color": "#fff", "line-width": 2 } });
+        map.addLayer({ id: "storm-pts", type: "circle", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "Point"]], paint: { "circle-radius": 4, "circle-color": "#fff", "circle-stroke-color": "#000", "circle-stroke-width": 1 } });
+        map.addLayer({ id: "storm-now", type: "circle", source: "storms", filter: ["==", ["get", "kind"], "current"], paint: { "circle-radius": 9, "circle-color": "#ef786f", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+        map.addLayer({ id: "storm-lbl", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"], layout: { "text-field": ["concat", ["get", "class"], " ", ["get", "name"], "\n", ["get", "intensity_kt"], " kt"], "text-size": 12, "text-offset": [0, 1.4], "text-anchor": "top", "text-font": ["Noto Sans Bold"] }, paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.4 } });
+        map.on("click", "storm-now", (e) => { const p = e.features[0].properties; toast(`${p.class} ${p.name} · ${p.intensity_kt} kt · ${p.pressure_mb} mb · moving ${p.movement} · adv ${p.advisory}`, 8000); });
+      }
+      const names = (gj.storms || []).map((x) => `${x.class} ${x.name}`).join(", ");
+      toast(names ? `Active: ${names}` : "No active tropical systems (NHC/CPHC)", 5000);
+      if (gj.storms && gj.storms.length && !state.point) { const st = gj.storms[0]; const f = gj.features.find((x) => x.properties.kind === "current" && x.properties.id === st.id); if (f) map.flyTo({ center: f.geometry.coordinates, zoom: Math.max(3.5, Math.min(map.getZoom(), 5)), duration: 1200 }); }
+    } catch (e) { toast("Storm feed unavailable"); state.storms = false; $("#storms-toggle").classList.remove("on"); }
+  }
+  function clearStorms() { ["storm-lbl", "storm-now", "storm-pts", "storm-track", "storm-cone-line", "storm-cone"].forEach((l) => map.getLayer(l) && map.removeLayer(l)); if (map.getSource("storms")) map.removeSource("storms"); }
+
+  // ── satellite: GOES GeoColor via NASA GIBS (timeless URL = latest) ────
+  function loadSat() {
+    for (const [id, name] of [["sat-east", "GOES-East_ABI_GeoColor"], ["sat-west", "GOES-West_ABI_GeoColor"]]) {
+      if (map.getSource(id)) continue;
+      map.addSource(id, { type: "raster", tileSize: 256, maxzoom: 7, attribution: "Satellite: NASA GIBS / NOAA GOES",
+        tiles: [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${name}/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png?t=${Math.floor(Date.now() / 6e5)}`] });
+      map.addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, "wx");
+    }
+    if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", Math.min(0.5, LAYER_ALPHA[state.layer]));
+    toast("Satellite: GOES-East/West GeoColor, latest available (~1 h lag). Americas + Pacific.", 5000);
+  }
+  function clearSat() { ["sat-east", "sat-west"].forEach((l) => { if (map.getLayer(l)) map.removeLayer(l); if (map.getSource(l)) map.removeSource(l); }); applyStep(); }
+
   // ── radar (RainViewer) ────────────────────────────────────────────────
   async function toggleRadar() {
     state.radar = !state.radar;
@@ -521,7 +586,9 @@
       const isOn = radar ? Number(c.dataset.radar) === state.radarIdx : Number(c.dataset.i) === state.stepIdx;
       c.classList.toggle("on", isOn); if (isOn && !on) on = c;
     });
-    if (on) { const r = on.getBoundingClientRect(), tr = tape.getBoundingClientRect(); if (r.left < tr.left + 40 || r.right > tr.right - 40) on.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); }
+    // Scroll the tape itself, never scrollIntoView: that walks every scrollable
+    // ancestor and drags the whole page sideways under an overflow:hidden body.
+    if (on) { const r = on.getBoundingClientRect(), tr = tape.getBoundingClientRect(); if (r.left < tr.left + 60 || r.right > tr.right - 60) tape.scrollTo({ left: tape.scrollLeft + (r.left + r.width / 2) - (tr.left + tr.width / 2), behavior: "smooth" }); }
   }
 
   function glyph(cloud, precip, tK, night) {
@@ -596,6 +663,9 @@
     // local context arrives lazily and re-renders as it lands
     WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; renderTape(); } renderPoint(); } }).catch(() => {});
     WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.obs = r; renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.alerts = r.alerts || []; renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.air = r; renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.tides = r; renderPoint(); } }).catch(() => { if (my === pointReq) state.point.tides = false; });
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
   function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; if (marker) { marker.remove(); marker = null; } renderTape(); refreshTapePoint(); }

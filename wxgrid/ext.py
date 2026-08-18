@@ -338,3 +338,238 @@ def _lvl_name(n) -> str:
 def _strip(html: str) -> str:
     import re
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html or "")).strip()
+
+
+# ── alerts (NWS) ─────────────────────────────────────────────────────────
+
+NWS = "https://api.weather.gov"
+_SEV = {"Extreme": 4, "Severe": 3, "Moderate": 2, "Minor": 1, "Unknown": 0}
+_SEV_COLOR = {4: "#b30000", 3: "#e8590c", 2: "#f0a020", 1: "#f5d33c", 0: "#8a8f98"}
+
+
+def _simplify_ring(ring: list, step: int) -> list:
+    return ring if len(ring) <= 30 else ring[::step] + [ring[0]]
+
+
+def nws_alerts_layer() -> dict:
+    """Active NWS alerts that carry their own polygon (storm-based warnings,
+    most marine and winter products). Zone-only alerts have no geometry in
+    this feed and are skipped for the map — the point endpoint still finds
+    them. Cached 5 min; ~1-3 MB upstream, ~200 KB out."""
+    def fetch():
+        feats = []
+        try:
+            j = _get_json(f"{NWS}/alerts/active", {"status": "actual", "message_type": "alert"}, timeout=40)
+        except Exception as exc:
+            log.warning("nws alerts failed: %s", exc)
+            return {"type": "FeatureCollection", "features": []}
+        for f in j.get("features", []):
+            g = f.get("geometry")
+            p = f.get("properties", {})
+            if not g:
+                continue
+            if g["type"] == "Polygon":
+                g = {"type": "Polygon", "coordinates": [[[round(x, 3), round(y, 3)] for x, y in _simplify_ring(r, 3)] for r in g["coordinates"]]}
+            sev = _SEV.get(p.get("severity"), 0)
+            feats.append({"type": "Feature", "geometry": g, "properties": {
+                "id": p.get("id"), "event": p.get("event"), "severity": p.get("severity"), "sev": sev,
+                "color": _SEV_COLOR[sev], "headline": p.get("headline"), "area": p.get("areaDesc"),
+                "onset": p.get("onset"), "ends": p.get("ends") or p.get("expires"), "sender": p.get("senderName"),
+                "source": "NWS"}})
+        return {"type": "FeatureCollection", "features": feats}
+    return cache.get("alerts:layer", 300, fetch)
+
+
+def alerts_point(lat: float, lon: float) -> list[dict]:
+    """Alerts in force at a point (NWS: zone- and polygon-based). Outside the
+    US the NWS API 404s and we return []."""
+    key = f"alerts:pt:{lat:.2f}:{lon:.2f}"
+    def fetch():
+        try:
+            r = _session.get(f"{NWS}/alerts/active", params={"point": f"{lat:.4f},{lon:.4f}"}, timeout=20)
+            if r.status_code != 200:
+                return []
+            out = []
+            for f in r.json().get("features", []):
+                p = f.get("properties", {})
+                sev = _SEV.get(p.get("severity"), 0)
+                out.append({"id": p.get("id"), "event": p.get("event"), "severity": p.get("severity"), "sev": sev, "color": _SEV_COLOR[sev],
+                            "headline": p.get("headline"), "area": p.get("areaDesc"), "onset": p.get("onset"), "ends": p.get("ends") or p.get("expires"),
+                            "description": (p.get("description") or "")[:900], "instruction": (p.get("instruction") or "")[:400],
+                            "sender": p.get("senderName"), "url": f.get("id"), "source": "NWS"})
+            out.sort(key=lambda a: -a["sev"])
+            return out
+        except Exception as exc:
+            log.info("nws point alerts: %s", exc)
+            return []
+    return cache.get(key, 300, fetch)
+
+
+# ── tropical systems (NHC) ────────────────────────────────────────────────
+
+NHC = "https://www.nhc.noaa.gov/CurrentStorms.json"
+
+
+def _kmz_features(url: str) -> list[dict]:
+    """Placemarks from an NHC KMZ → GeoJSON features (Point / LineString / Polygon)."""
+    import io
+    import re
+    import zipfile
+    import xml.etree.ElementTree as ET
+    r = _session.get(url, timeout=30)
+    r.raise_for_status()
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    kml = next((n for n in z.namelist() if n.lower().endswith(".kml")), None)
+    if not kml:
+        return []
+    root = ET.fromstring(z.read(kml))
+    ns = {"k": root.tag.split("}")[0].strip("{")} if "}" in root.tag else {}
+    q = (lambda t: f"k:{t}") if ns else (lambda t: t)
+    feats = []
+    for pm in root.iter(f"{{{ns['k']}}}Placemark" if ns else "Placemark"):
+        name = (pm.findtext(q("name"), default="", namespaces=ns) or "").strip()
+        desc = re.sub(r"<[^>]+>", " ", pm.findtext(q("description"), default="", namespaces=ns) or "")
+        desc = re.sub(r"\s+", " ", desc).strip()[:300]
+        for tag, gtype in (("Point", "Point"), ("LineString", "LineString"), ("Polygon", "Polygon")):
+            for geom in pm.iter(f"{{{ns['k']}}}{tag}" if ns else tag):
+                coords_el = geom.find(f".//{q('coordinates')}", ns)
+                if coords_el is None or not coords_el.text:
+                    continue
+                pts = [[float(c.split(",")[0]), float(c.split(",")[1])] for c in coords_el.text.split() if "," in c]
+                if gtype == "Point":
+                    g = {"type": "Point", "coordinates": pts[0]}
+                elif gtype == "LineString":
+                    g = {"type": "LineString", "coordinates": pts}
+                else:
+                    g = {"type": "Polygon", "coordinates": [pts]}
+                feats.append({"type": "Feature", "geometry": g, "properties": {"name": name, "desc": desc, "kind": tag.lower()}})
+    return feats
+
+
+def storms() -> dict:
+    """Active tropical cyclones (NHC/CPHC): current position + intensity from
+    CurrentStorms.json, forecast track and cone from the advisory KMZs."""
+    def fetch():
+        try:
+            j = _get_json(NHC, timeout=20)
+        except Exception as exc:
+            log.warning("nhc failed: %s", exc)
+            return {"type": "FeatureCollection", "features": [], "storms": []}
+        feats, meta = [], []
+        for s in j.get("activeStorms", []):
+            base = {"id": s.get("id"), "name": s.get("name"), "class": s.get("classification"), "intensity_kt": s.get("intensity"),
+                    "pressure_mb": s.get("pressure"), "movement": f"{s.get('movementDir')}° at {s.get('movementSpeed')} kt",
+                    "updated": s.get("lastUpdate"), "advisory": (s.get("publicAdvisory") or {}).get("advNum"),
+                    "url": (s.get("publicAdvisory") or {}).get("url")}
+            meta.append(base)
+            feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [s.get("longitudeNumeric"), s.get("latitudeNumeric")]},
+                          "properties": {**base, "kind": "current"}})
+            for key, kind in (("trackCone", "cone"), ("forecastTrack", "track")):
+                url = (s.get(key) or {}).get("kmzFile") if isinstance(s.get(key), dict) else None
+                if not url:
+                    continue
+                try:
+                    for f in _kmz_features(url):
+                        f["properties"].update({"storm": s.get("name"), "id": s.get("id"), "layer": kind})
+                        feats.append(f)
+                except Exception as exc:
+                    log.info("nhc %s %s: %s", s.get("id"), kind, exc)
+        return {"type": "FeatureCollection", "features": feats, "storms": meta}
+    return cache.get("storms", 900, fetch)
+
+
+# ── air quality / UV (Open-Meteo) ────────────────────────────────────────
+
+def air(lat: float, lon: float) -> dict:
+    key = f"air:{lat:.2f}:{lon:.2f}"
+    def fetch():
+        out: dict = {}
+        try:
+            j = _get_json("https://air-quality-api.open-meteo.com/v1/air-quality",
+                          {"latitude": lat, "longitude": lon, "current": "us_aqi,european_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,uv_index,uv_index_clear_sky",
+                           "hourly": "us_aqi,pm2_5,uv_index", "forecast_days": 2, "timezone": "UTC"}, timeout=15)
+            c = j.get("current", {})
+            out = {"time": c.get("time"), "us_aqi": c.get("us_aqi"), "eu_aqi": c.get("european_aqi"), "pm2_5": c.get("pm2_5"), "pm10": c.get("pm10"),
+                   "ozone": c.get("ozone"), "no2": c.get("nitrogen_dioxide"), "uv": c.get("uv_index"), "uv_clear": c.get("uv_index_clear_sky"),
+                   "hourly": {"time": j.get("hourly", {}).get("time", [])[:48], "us_aqi": j.get("hourly", {}).get("us_aqi", [])[:48],
+                              "pm2_5": j.get("hourly", {}).get("pm2_5", [])[:48], "uv": j.get("hourly", {}).get("uv_index", [])[:48]}}
+        except Exception as exc:
+            log.info("open-meteo air: %s", exc)
+        return out
+    return cache.get(key, 1800, fetch)
+
+
+# ── tides: DFO (Canada) + NOAA CO-OPS (US) ───────────────────────────────
+
+def _dfo_stations() -> list[dict]:
+    def fetch():
+        try:
+            return _get_json("https://api-iwls.dfo-mpo.gc.ca/api/v1/stations", timeout=30)
+        except Exception as exc:
+            log.warning("dfo stations: %s", exc)
+            return []
+    return cache.get("tides:dfo:stations", 7 * 24 * 3600, fetch)
+
+
+def _noaa_stations() -> list[dict]:
+    def fetch():
+        try:
+            j = _get_json("https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json", {"type": "tidepredictions"}, timeout=40)
+            return j.get("stations", [])
+        except Exception as exc:
+            log.warning("noaa stations: %s", exc)
+            return []
+    return cache.get("tides:noaa:stations", 7 * 24 * 3600, fetch)
+
+
+def tides(lat: float, lon: float, max_km: float = 60.0) -> dict | None:
+    """Next high/low water at the nearest tide station (Canadian DFO or US
+    NOAA CO-OPS), 48 h, metres. None when no station is within reach."""
+    key = f"tides:{lat:.2f}:{lon:.2f}"
+    def fetch():
+        from datetime import datetime, timedelta, timezone
+        best = None
+        for st in _dfo_stations():
+            if not st.get("operating") or not any(ts.get("code") == "wlp-hilo" for ts in st.get("timeSeries", [])):
+                continue
+            d = _haversine_km(lat, lon, st["latitude"], st["longitude"])
+            if d < (best[0] if best else max_km):
+                best = (d, "dfo", st)
+        for st in _noaa_stations():
+            try:
+                d = _haversine_km(lat, lon, float(st["lat"]), float(st["lng"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if d < (best[0] if best else max_km):
+                best = (d, "noaa", st)
+        if not best:
+            return None
+        d, src, st = best
+        now = datetime.now(timezone.utc)
+        events = []
+        try:
+            if src == "dfo":
+                j = _get_json(f"https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/{st['id']}/data",
+                              {"time-series-code": "wlp-hilo", "from": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                               "to": (now + timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")}, timeout=20)
+                vals = [(e["eventDate"], float(e["value"])) for e in j]
+                for k, (t, v) in enumerate(vals):
+                    prev = vals[k - 1][1] if k else None
+                    nxt = vals[k + 1][1] if k + 1 < len(vals) else None
+                    kind = "H" if (prev is None or v >= prev) and (nxt is None or v >= nxt) else "L"
+                    events.append({"time": t, "height_m": round(v, 2), "type": kind})
+                name, sid = st.get("officialName"), st.get("code")
+            else:
+                j = _get_json("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter",
+                              {"product": "predictions", "datum": "MLLW", "station": st["id"], "time_zone": "gmt", "units": "metric",
+                               "interval": "hilo", "format": "json", "begin_date": now.strftime("%Y%m%d %H:%M"),
+                               "range": 48}, timeout=20)
+                for e in j.get("predictions", []):
+                    events.append({"time": e["t"].replace(" ", "T") + "Z", "height_m": round(float(e["v"]), 2), "type": e["type"]})
+                name, sid = st.get("name"), st.get("id")
+        except Exception as exc:
+            log.info("tides %s %s: %s", src, st.get("id"), exc)
+            return None
+        return {"source": "DFO CHS" if src == "dfo" else "NOAA CO-OPS", "station": name, "station_id": sid, "distance_km": round(d, 1),
+                "datum": "chart datum" if src == "dfo" else "MLLW", "events": events[:8]}
+    return cache.get(key, 3600, fetch)
