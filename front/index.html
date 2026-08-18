@@ -27,10 +27,7 @@
   <div class="seg" id="models" role="tablist" aria-label="Model"></div>
   <select id="run" class="run" title="Model run (UTC)"></select>
   <div class="spacer"></div>
-  <div class="alt" id="alt" hidden>
-    <button id="alt-btn" class="chip alt-btn" title="Altitude"><span id="alt-label">sfc</span> <span class="caret">▾</span></button>
-    <div id="levels" class="alt-menu" hidden role="menu"></div>
-  </div>
+  <div class="seg small levels" id="levels" hidden aria-label="Altitude"></div>
   <button id="radar-toggle" class="chip" title="Live radar (RainViewer)">radar</button>
   <button id="iso-toggle" class="chip" title="Isolines (isobars / isotherms)">isolines</button>
   <button id="avy-toggle" class="chip" title="Avalanche forecast regions">avalanche</button>
@@ -65,13 +62,12 @@
 
 <div id="point" hidden>
   <div class="point-head">
-    <span id="point-title"></span>
-    <span class="point-tabs seg small">
-      <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="air">Airgram</button><button data-tab="winter">Winter</button><button data-tab="out">Outdoors</button><button data-tab="cmp">Compare</button><button data-tab="resort" hidden>Resort</button>
-    </span>
+    <div class="point-titles"><span id="point-title"></span><span id="point-local" class="dim"></span></div>
     <button id="point-close" class="icon" title="Close">×</button>
   </div>
-  <div id="point-local" class="dim"></div>
+  <div class="point-tabs seg small">
+    <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="air">Airgram</button><button data-tab="winter">Winter</button><button data-tab="out">Outdoors</button><button data-tab="cmp">Compare</button><button data-tab="resort" hidden>Resort</button>
+  </div>
   <div id="point-body">
     <section data-pane="now">
       <div id="point-now"></div>

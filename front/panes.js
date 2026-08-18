@@ -61,19 +61,17 @@
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
     $("#point-now").innerHTML = `<div class="hero">
         ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
-        <div>
-          <div class="big" style="color:${t != null ? tempColor(t - K) : "inherit"}">${t == null ? "—" : Math.round(t - K)}°<small>C${hi != null ? ` · H ${Math.round(hi)}° L ${Math.round(lo)}°` : ""}</small></div>
-          <div class="meta">${chips.join("")}</div>
-        </div>
+        <div class="big" style="color:${t != null ? tempColor(t - K) : "inherit"}">${t == null ? "—" : Math.round(t - K)}<span class="deg">°</span></div>
+        <div class="hl">${hi != null ? `<span><i>H</i>${Math.round(hi)}°</span><span><i>L</i>${Math.round(lo)}°</span>` : ""}${sun ? `<span class="daylen">${W_ICONS.rise}${sun.rise}</span><span class="daylen">${W_ICONS.set}${sun.set}</span>` : ""}</div>
       </div>
-      ${sun ? `<div class="hero"><div class="sun">${W_ICONS.rise} <b>${sun.rise}</b> ${W_ICONS.set} <b>${sun.set}</b> <span class="dim">${sun.len} of daylight</span></div></div>` : ""}`;
+      <div class="meta">${chips.join("")}</div>`;
     // local context
     const loc = pt.local || {};
     const bits = [];
-    if (loc.place && loc.place.name) bits.push(`<span><b>${esc(loc.place.name)}</b>${loc.place.region ? ", " + esc(loc.place.region) : ""}${loc.place.country ? " · " + esc(loc.place.country) : ""}</span>`);
+    if (loc.place && loc.place.name && loc.place.name !== pt.name) bits.push(`<span><b>${esc(loc.place.name)}</b>${loc.place.region ? ", " + esc(loc.place.region) : ""}${loc.place.country ? " · " + esc(loc.place.country) : ""}</span>`);
+    else if (loc.place && (loc.place.region || loc.place.country)) bits.push(`<span>${esc(loc.place.region || "")}${loc.place.country ? " · " + esc(loc.place.country) : ""}</span>`);
     if (loc.elevation_m != null) bits.push(`<span>elev <b>${Math.round(loc.elevation_m)} m</b> · ${Math.round(loc.elevation_m * 3.281)} ft</span>`);
-    bits.push(`<span>${new Date(d.valid[i]).toLocaleString(undefined, { weekday: "short", hour: "numeric" })} · <span class="dim">${W().modelEntry().label}</span></span>`);
-    $("#point-local").innerHTML = bits.join("");
+    $("#point-local").innerHTML = bits.length ? bits.join('<span class="sep">·</span>') : `${pt.lat.toFixed(2)}°, ${pt.lon.toFixed(2)}°`;
     // station observation
     let obsHtml = "";
     const o = pt.obs && pt.obs.metar;

@@ -206,17 +206,16 @@
       if (!hasLevel()) state.level = 0;
       renderControls(); applyStep(); loadWind(); if (state.iso) loadIso(); });
 
-    const alt = $("#alt"), lv = $("#levels");
+    const lv = $("#levels");
     const levels = runEntry().levels || [];
     const showLevels = hasLevel() && levels.length;
-    alt.hidden = !showLevels;
+    lv.hidden = !showLevels;
     if (showLevels) {
       const opts = [0, ...levels];
       if (!opts.includes(state.level)) state.level = 0;
-      $("#alt-label").textContent = state.level ? `${state.level} hPa` : "sfc";
-      lv.innerHTML = `<div class="hd"><span>level</span><span>metres</span><span>feet</span></div>` + opts.map((l) => `<button data-level="${l}" class="${l === state.level ? "on" : ""}" role="menuitem"><b>${l ? l + " hPa" : "sfc"}</b><small>${l ? LEVEL_M[l].replace("≈", "≈ ") : "10 m / 2 m"}</small><small>${l ? LEVEL_FT[l] : "—"}</small></button>`).join("");
-      lv.querySelectorAll("button").forEach((b) => b.onclick = () => { state.level = Number(b.dataset.level); lv.hidden = true; renderControls(); applyStep(); loadWind(); if (state.iso) loadIso(); pushHash(); });
-      $("#alt-btn").onclick = (e) => { e.stopPropagation(); lv.hidden = !lv.hidden; };
+      // Native title tooltips: hover a level for a beat and the metres/FL show.
+      lv.innerHTML = opts.map((l) => `<button data-level="${l}" class="${l === state.level ? "on" : ""}" title="${l ? `${l} hPa · ${LEVEL_M[l]} · ${LEVEL_FT[l]}` : "surface · 10 m wind · 2 m temperature"}">${l ? l : "sfc"}</button>`).join("");
+      lv.querySelectorAll("button").forEach((b) => b.onclick = () => { state.level = Number(b.dataset.level); renderControls(); applyStep(); loadWind(); if (state.iso) loadIso(); });
     }
 
     const slider = $("#step");
@@ -543,7 +542,7 @@
       else if (e.key === "Escape") hideResults();
     };
     $("#search").onsubmit = (e) => { e.preventDefault(); clearTimeout(searchTimer); if (searchHits.length) pickResult(searchHits[Math.max(0, searchSel)]); else runSearch(q.value.trim(), true); };
-    document.addEventListener("click", (e) => { if (!e.target.closest("#search") && !e.target.closest("#search-results")) hideResults(); if (!e.target.closest("#alt")) $("#levels").hidden = true; });
+    document.addEventListener("click", (e) => { if (!e.target.closest("#search") && !e.target.closest("#search-results")) hideResults(); });
   }
   async function runSearch(text, go = false) {
     if (text.length < 2) { hideResults(); return; }
@@ -579,8 +578,8 @@
     if (!keepResort) { state.resort = null; if (state.tab === "resort") state.tab = "now"; }
     state.point = { lat, lon, data: null, name: name || null, local: null, obs: null, avy: null, profile: null, cmp: null };
     $("#point").hidden = false;
-    $("#point-title").textContent = `${name ? name + " · " : ""}${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
-    $("#point-local").textContent = "";
+    $("#point-title").textContent = name || `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
+    $("#point-local").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
     $("#point-now").textContent = "…";
     $$(".point-tabs button[data-tab=resort]").forEach((b) => b.hidden = !state.resort);
     placeMarker(lat, lon);
@@ -593,7 +592,7 @@
       $("#point-foot").textContent = `${modelEntry().attribution} · run ${d.run}Z · nearest 0.25° gridpoint`;
     } catch (e) { $("#point-now").textContent = "point forecast unavailable"; }
     // local context arrives lazily and re-renders as it lands
-    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = `${r.place.name} · ${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`; renderTape(); } renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; renderTape(); } renderPoint(); } }).catch(() => {});
     WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.obs = r; renderPoint(); } }).catch(() => {});
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
