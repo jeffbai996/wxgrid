@@ -137,16 +137,55 @@ class RunReader:
         return np.asarray(self.group[var][self.steps.index(step)], dtype=np.float32)
 
     def point(self, var: str, lat: float, lon: float) -> np.ndarray:
-        """Nearest-gridpoint series over all steps, shape (n,)."""
+        """Nearest-gridpoint series over all steps, shape (n,). Reads the
+        point cube (all steps × a small tile per chunk) when the run has one;
+        the step-per-chunk layout means decompressing every step otherwise."""
         i = int(round((90.0 - lat) / GRID_RES))
         j = int(round((lon + 180.0) / GRID_RES)) % GRID_LON_N
         i = min(max(i, 0), GRID_LAT_N - 1)
+        pt = self._pt.get(var)
+        if pt is not None:
+            return np.asarray(pt[:, i, j], dtype=np.float32)
         return np.asarray(self.group[var][:, i, j], dtype=np.float32)
+
+    @property
+    def _pt(self) -> dict:
+        if not hasattr(self, "_pt_cache"):
+            self._pt_cache = {}
+            if "pt" in self.group:
+                g = self.group["pt"]
+                self._pt_cache = {name: g[name] for name in g.array_keys()}
+        return self._pt_cache
 
     def manifest(self) -> dict:
         return {"model": self.model, "run": self.rid, "steps": self.steps,
                 "variables": self.variables, "attribution": self.attrs.get("attribution", ""),
                 "coverage": self.attrs.get("coverage", {})}
+
+
+POINT_TILE = 24    # point-cube spatial chunk (24 × 24 gridpoints = 6° × 6°)
+
+
+def build_point_cube(model: str, rid: str, root: Path = STORE_DIR, variables: list[str] | None = None) -> int:
+    """Re-chunk a run for point reads: pt/<var> with chunks (all steps, 24, 24),
+    so a point series decompresses one small chunk instead of every step.
+    Roughly doubles the run on disk. Idempotent per variable; returns the
+    number of variables written."""
+    g = zarr.open_group(run_path(model, rid, root), mode="r+")
+    pt = g.require_group("pt")
+    codec = BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle")
+    n = 0
+    for var in (variables or list(g.attrs.get("variables", []))):
+        if var in pt or var not in g:
+            continue
+        src = g[var]
+        arr = pt.create_array(var, shape=src.shape, dtype=src.dtype,
+                              chunks=(src.shape[0], POINT_TILE, POINT_TILE), compressors=codec,
+                              fill_value=np.nan, dimension_names=("step", "latitude", "longitude"))
+        # whole variable in memory: 61 steps × 721 × 1440 × 4 B ≈ 250 MB, fine
+        arr[:] = src[:]
+        n += 1
+    return n
 
 
 def prune(model: str, keep: int = KEEP_RUNS, root: Path = STORE_DIR) -> list[str]:

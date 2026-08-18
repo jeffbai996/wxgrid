@@ -22,7 +22,7 @@ from wxgrid import fetch
 from wxgrid.config import GRIB_DIR, STORE_DIR
 from wxgrid.grib import iter_fields
 from wxgrid.models import MODELS, Model, get_model
-from wxgrid.store import RunWriter, list_runs, prune, run_id, run_path
+from wxgrid.store import RunWriter, build_point_cube, list_runs, prune, run_id, run_path
 
 log = logging.getLogger("wxgrid.ingest")
 
@@ -117,6 +117,10 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
         got = fetch.fetch_gfs(model, run, grib_root, on_step=on_step)
 
     counts = writer.finish()
+    try:
+        build_point_cube(model.key, rid, store_root)
+    except Exception:
+        log.exception("%s %s point cube failed (point reads fall back to the step layout)", model.key, rid)
     if not keep_grib:
         shutil.rmtree(grib_root / model.key / run.strftime("%Y%m%dT%H"), ignore_errors=True)
     removed = prune(model.key, root=store_root)
@@ -173,6 +177,7 @@ def augment_waves(model: Model, rid: str, grib_root: Path = GRIB_DIR, store_root
     for var in want:
         cov[var] = written // max(1, len(want))
     g.attrs.update({"variables": have + want, "coverage": cov})   # rewrites zarr.json → API reopens the run
+    build_point_cube(model.key, rid, store_root, want)
     log.info("%s %s: waves added, %d fields", model.key, rid, written)
     return {"model": model.key, "run": rid, "wave_fields": written}
 
@@ -184,6 +189,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run", default="auto", help="YYYY-MM-DDTHH (UTC) or 'auto'")
     ap.add_argument("--keep-grib", action="store_true")
     ap.add_argument("--augment-waves", action="store_true", help="add wave fields to runs already in the store")
+    ap.add_argument("--point-cube", action="store_true", help="build the point-read cube for runs already in the store")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -198,6 +204,10 @@ def main(argv: list[str] | None = None) -> int:
             if args.augment_waves:
                 for rid in list_runs(model.key):
                     log.info("augment %s", augment_waves(model, rid))
+                continue
+            if args.point_cube:
+                for rid in list_runs(model.key):
+                    log.info("point cube %s %s: %d variables", model.key, rid, build_point_cube(model.key, rid))
                 continue
             run = _resolve_run(model, args.run)
             ingest_run(model, run, keep_grib=args.keep_grib)
