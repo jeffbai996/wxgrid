@@ -1,0 +1,10 @@
+[Unit]
+Description=wxgrid — rebuild the static demo and push it to gh-pages
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/local-projects/wxgrid
+ExecStart=%h/local-projects/wxgrid/scripts/publish_pages.sh
+Nice=10
+TimeoutStartSec=30m
