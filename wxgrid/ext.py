@@ -18,6 +18,7 @@ import math
 import re
 import threading
 import time
+import uuid
 from typing import Any, Callable
 
 import requests
@@ -67,7 +68,7 @@ class _Cache:
         import json
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self._path.with_suffix(".part")
+            tmp = self._path.with_suffix(f".part-{uuid.uuid4().hex[:8]}")
             tmp.write_text(json.dumps({k: [t, v] for k, (t, v) in self._d.items() if now - t < 7 * 24 * 3600}))
             tmp.replace(self._path)
             self._last_flush, self._dirty = now, False
@@ -530,7 +531,7 @@ def _region_index(name: str, ttl: float, build: Callable[[], dict]) -> dict:
             if not built:
                 raise ValueError("empty index")
             path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_suffix(".part")
+            tmp = path.with_suffix(f".part-{uuid.uuid4().hex[:8]}")
             tmp.write_text(json.dumps(built, separators=(",", ":")))
             tmp.replace(path)
             with _idx_lock:

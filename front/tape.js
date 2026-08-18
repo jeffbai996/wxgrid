@@ -11,7 +11,7 @@
     const c = M().getCenter();
     const my = ++tapeReq;
     try {
-      const d = await WX.api(`${API}/point?lat=${c.lat.toFixed(2)}&lon=${c.lng.toFixed(2)}&model=${state.model}&run=${state.run}`);
+      const d = await WX.api(`${API}/point?lat=${c.lat.toFixed(2)}&lon=${WX.wlon(c.lng).toFixed(2)}&model=${state.model}&run=${state.run}`);
       if (my !== tapeReq) return;
       state.tapePoint = d;
       renderTape();

@@ -22,6 +22,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from math import asin, cos, radians, sin, sqrt
 from pathlib import Path
@@ -244,7 +245,7 @@ def _save_catalog(resorts: list[dict]) -> None:
     path = _catalog_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"built": datetime.now(timezone.utc).isoformat(), "resorts": resorts}
-    tmp = path.with_suffix(".part")
+    tmp = path.with_suffix(f".part-{uuid.uuid4().hex[:8]}")
     tmp.write_text(json.dumps(payload, indent=2))
     tmp.replace(path)
 
@@ -371,7 +372,7 @@ def _load_detail_cache(resort_id: str) -> dict | None:
 def _save_detail_cache(resort_id: str, detail: dict) -> None:
     path = _detail_path(resort_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".part")
+    tmp = path.with_suffix(f".part-{uuid.uuid4().hex[:8]}")
     tmp.write_text(json.dumps(detail, indent=2))
     tmp.replace(path)
 

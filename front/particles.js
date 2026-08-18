@@ -189,14 +189,20 @@
       for (const p of this.particles) {
         p.age += 1;
         const uv = this.sample(p.lon, p.lat);
-        if (!uv || p.age > p.maxAge || p.lat > 85 || p.lat < -85) { Object.assign(p, this.spawn(b, false)); continue; }
+        // out of the view by more than a world? it can never come back — respawn
+        if (!uv || p.age > p.maxAge || p.lat > 85 || p.lat < -85 || p.lon < b.w - 360 || p.lon > b.e + 360) { Object.assign(p, this.spawn(b, false)); continue; }
         const [u, v] = uv;
         const cosLat = Math.max(0.05, Math.cos(p.lat * Math.PI / 180));
         const nlon = p.lon + u * speed * dt / cosLat;
         const nlat = p.lat + v * speed * dt;
         const a = this.map.project([p.lon, p.lat]);
         const q = this.map.project([nlon, nlat]);
-        p.lon = ((nlon + 180) % 360 + 360) % 360 - 180;
+        // Keep longitude in the CONTINUOUS space of the current view instead
+        // of wrapping it to [-180, 180). map.project() maps a wrapped lon into
+        // the primary world copy, so when the viewport showed the copy east of
+        // the antimeridian, half the screen had no particles at all
+        // (Jeff 2026-08-18). sample() wraps on its own, so nothing else cares.
+        p.lon = nlon;
         p.lat = nlat;
         if (a.x < -20 || a.x > w + 20 || a.y < -20 || a.y > h + 20) { Object.assign(p, this.spawn(b, false)); continue; }
         if (Math.abs(q.x - a.x) > w / 2) continue;                        // wrapped across the antimeridian
