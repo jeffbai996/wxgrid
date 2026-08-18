@@ -133,6 +133,7 @@
 
       const b = this.bounds();
       const zoom = this.map.getZoom();
+      const light = document.documentElement.dataset.theme === "light";
       // Screen-relative speed: a 10 m/s wind moves ~90 px/s at any zoom, so
       // the animation reads the same whether you look at a hemisphere or a
       // bay. px/deg at the equator = 512·2^z / 360 for MapLibre's 512 tiles.
@@ -154,7 +155,8 @@
         if (a.x < -20 || a.x > w + 20 || a.y < -20 || a.y > h + 20) { Object.assign(p, this.spawn(b, false)); continue; }
         if (Math.abs(q.x - a.x) > w / 2) continue;                        // wrapped across the antimeridian
         const spd = Math.hypot(u, v);
-        const key = spd < 4 ? "rgba(255,255,255,0.38)" : spd < 10 ? "rgba(255,255,255,0.55)" : spd < 18 ? "rgba(255,230,160,0.7)" : "rgba(255,170,120,0.8)";
+        const key = light ? (spd < 4 ? "rgba(20,30,50,0.35)" : spd < 10 ? "rgba(20,30,50,0.5)" : spd < 18 ? "rgba(120,60,10,0.6)" : "rgba(160,30,10,0.7)")
+                          : (spd < 4 ? "rgba(255,255,255,0.38)" : spd < 10 ? "rgba(255,255,255,0.55)" : spd < 18 ? "rgba(255,230,160,0.7)" : "rgba(255,170,120,0.8)");
         let path = buckets.get(key);
         if (!path) { path = new Path2D(); buckets.set(key, path); }
         path.moveTo(a.x, a.y);

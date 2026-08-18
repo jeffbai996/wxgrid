@@ -28,15 +28,25 @@
   <select id="run" class="run" title="Model run (UTC)"></select>
   <div class="spacer"></div>
   <div class="seg small levels" id="levels" hidden aria-label="Altitude"></div>
-  <button id="radar-toggle" class="chip" title="Live radar (RainViewer)">radar</button>
-  <button id="iso-toggle" class="chip" title="Isolines (isobars / isotherms)">isolines</button>
-  <button id="avy-toggle" class="chip" title="Avalanche forecast regions">avalanche</button>
-  <button id="resorts-toggle" class="chip" title="Ski resorts">resorts</button>
-  <button id="particles-toggle" class="chip on" title="Wind particles">particles</button>
-  <button id="units-toggle" class="chip mono" title="Wind units">km/h</button>
-  <button id="measure-toggle" class="chip" title="Measure distance and bearing">measure</button>
-  <button id="theme-toggle" class="icon" title="Light / dark">◐</button>
-  <button id="locate" class="icon" title="My location">◎</button>
+  <div class="menu" id="overlays-menu">
+    <button class="chip menu-btn" data-menu="overlays" aria-haspopup="true">layers ▾</button>
+    <div class="menu-pop" hidden>
+      <button id="radar-toggle" class="chip" title="Live radar (RainViewer)">radar</button>
+      <button id="iso-toggle" class="chip" title="Isolines (isobars / isotherms)">isolines</button>
+      <button id="avy-toggle" class="chip" title="Avalanche forecast regions">avalanche</button>
+      <button id="resorts-toggle" class="chip" title="Ski resorts">resorts</button>
+      <button id="particles-toggle" class="chip on" title="Wind particles">particles</button>
+    </div>
+  </div>
+  <div class="menu" id="tools-menu">
+    <button class="chip menu-btn" data-menu="tools" aria-haspopup="true">tools ▾</button>
+    <div class="menu-pop" hidden>
+      <button id="units-toggle" class="chip mono" title="Wind units">km/h</button>
+      <button id="measure-toggle" class="chip" title="Measure distance and bearing">measure</button>
+      <button id="theme-toggle" class="icon" title="Light / dark">◐</button>
+      <button id="locate" class="icon" title="My location">◎</button>
+    </div>
+  </div>
 </header>
 <div id="search-results" class="results" hidden></div>
 
