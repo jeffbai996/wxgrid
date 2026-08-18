@@ -6,7 +6,9 @@
 <title>wxgrid</title>
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="private/theme.css">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#0b0d10">
 </head>
 <body>
@@ -14,14 +16,15 @@
 <canvas id="particles"></canvas>
 
 <header id="topbar">
-  <div class="brand">wxgrid</div>
-  <div class="ctl">
-    <select id="model" title="Forecast model"></select>
-    <select id="run" title="Model run (UTC)"></select>
-  </div>
+  <div class="brand"><span class="brand-mark"></span>wxgrid</div>
+  <div class="seg" id="models" role="tablist" aria-label="Model"></div>
+  <select id="run" class="run" title="Model run (UTC)"></select>
   <nav id="layers" class="chips" aria-label="Layers"></nav>
   <div class="spacer"></div>
+  <div class="seg small" id="levels" hidden aria-label="Altitude"></div>
+  <button id="radar-toggle" class="chip" title="Live radar (RainViewer)">radar</button>
   <button id="particles-toggle" class="chip on" title="Wind particles">particles</button>
+  <button id="units-toggle" class="chip mono" title="Wind units">km/h</button>
   <button id="locate" class="icon" title="My location">◎</button>
 </header>
 
@@ -31,22 +34,35 @@
 </aside>
 
 <footer id="timebar">
-  <button id="play" class="icon" title="Animate">▶</button>
-  <div class="time-meta">
-    <span id="valid-local"></span>
-    <span id="valid-utc" class="dim"></span>
+  <div class="tape-head">
+    <button id="play" class="icon" title="Animate (space)">▶</button>
+    <div class="time-meta">
+      <span id="valid-local"></span>
+      <span id="valid-utc" class="mono dim"></span>
+    </div>
+    <span id="lead" class="mono dim"></span>
+    <span id="tape-where" class="dim"></span>
   </div>
-  <input id="step" type="range" min="0" max="0" value="0" step="1">
-  <span id="lead" class="dim"></span>
+  <div id="tape" class="tape" tabindex="0" aria-label="Forecast timeline"></div>
+  <input id="step" type="range" min="0" max="0" value="0" step="1" aria-label="Forecast step">
 </footer>
 
 <div id="point" hidden>
   <div class="point-head">
     <span id="point-title"></span>
+    <span class="point-tabs seg small">
+      <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="out">Outdoors</button>
+    </span>
     <button id="point-close" class="icon" title="Close">×</button>
   </div>
-  <div id="point-now"></div>
-  <canvas id="meteogram" width="640" height="220"></canvas>
+  <div id="point-body">
+    <section data-pane="now">
+      <div id="point-now"></div>
+      <canvas id="meteogram" width="640" height="220"></canvas>
+    </section>
+    <section data-pane="aloft" hidden><div id="aloft"></div></section>
+    <section data-pane="out" hidden><div id="outdoors"></div></section>
+  </div>
   <div id="point-foot" class="dim"></div>
 </div>
 

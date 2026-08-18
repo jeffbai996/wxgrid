@@ -27,13 +27,6 @@ from wxgrid.store import RunWriter, list_runs, prune, run_id
 log = logging.getLogger("wxgrid.ingest")
 
 
-def canonical_vars(model: Model) -> list[str]:
-    out = []
-    for canon in model.params.values():
-        out.append("tp6" if canon == "tp" else canon)
-    return out
-
-
 def _resolve_run(model: Model, run: str | None) -> datetime:
     if run and run != "auto":
         return datetime.strptime(run, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
@@ -41,12 +34,12 @@ def _resolve_run(model: Model, run: str | None) -> datetime:
         from ecmwf.opendata import Client
         client = Client(source="ecmwf", model=model.ecmwf_model, resol="0p25")
         # Asking for the LAST step means "latest run that is fully published".
-        when = client.latest(type="fc", step=model.steps[-1], param=list(model.params)[:1])
+        when = client.latest(type="fc", step=model.steps[-1], param=list(model.sfc_params)[:1])
         return when.replace(tzinfo=timezone.utc)
     if model.source == "nomads":
         s = requests.Session()
         for cand in fetch.gfs_candidate_runs():
-            url = fetch.gfs_step_url(cand, model.steps[-1])
+            url = fetch.gfs_step_url(cand, model.steps[-1], model.levels)
             try:
                 if s.head(url, timeout=30, allow_redirects=True).status_code == 200:
                     return cand
@@ -63,17 +56,19 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
         log.info("%s %s already in store, skipping", model.key, rid)
         return {"model": model.key, "run": rid, "skipped": True}
 
-    writer = RunWriter(model.key, rid, model.steps, canonical_vars(model),
+    writer = RunWriter(model.key, rid, model.steps, model.store_variables(),
                        attribution=model.attribution, root=store_root)
     prev_accum: np.ndarray | None = None      # ECMWF tp is accumulated since t0
     prev_step: int | None = None
 
-    def on_step(step: int, path: Path) -> None:
+    def on_step(step: int, paths: list[Path]) -> None:
         nonlocal prev_accum, prev_step
-        for f in iter_fields(path):
-            canon = model.params.get(f.short_name)
+        for f in (fld for p in paths for fld in iter_fields(p)):
+            canon = model.canonical(f.short_name, f.level_type, f.level)
             if canon is None:
                 continue
+            if canon == "tcc" and f.units.strip() == "%":
+                f.values = f.values / 100.0                              # GFS TCDC is percent
             if canon != "tp":
                 writer.write(canon, step, f.values)
                 continue

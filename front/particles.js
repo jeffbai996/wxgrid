@@ -128,7 +128,7 @@
       ctx.fillStyle = "rgba(0,0,0,0.06)";
       ctx.fillRect(0, 0, w, h);
       ctx.globalCompositeOperation = "source-over";
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.05;
       ctx.lineCap = "round";
 
       const b = this.bounds();
@@ -154,7 +154,7 @@
         if (a.x < -20 || a.x > w + 20 || a.y < -20 || a.y > h + 20) { Object.assign(p, this.spawn(b, false)); continue; }
         if (Math.abs(q.x - a.x) > w / 2) continue;                        // wrapped across the antimeridian
         const spd = Math.hypot(u, v);
-        const key = spd < 4 ? "rgba(255,255,255,0.55)" : spd < 10 ? "rgba(255,255,255,0.75)" : spd < 18 ? "rgba(255,230,160,0.9)" : "rgba(255,170,120,0.95)";
+        const key = spd < 4 ? "rgba(255,255,255,0.38)" : spd < 10 ? "rgba(255,255,255,0.55)" : spd < 18 ? "rgba(255,230,160,0.7)" : "rgba(255,170,120,0.8)";
         let path = buckets.get(key);
         if (!path) { path = new Path2D(); buckets.set(key, path); }
         path.moveTo(a.x, a.y);

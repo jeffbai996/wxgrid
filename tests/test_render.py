@@ -21,7 +21,7 @@ def test_mercator_preserves_columns_and_maps_equator_to_middle_row():
 
 def test_colorize_emits_palette_png_of_mercator_size():
     field = np.full((render.MERC_H, GRID_LON_N), 20.0, dtype=np.float32)
-    png = render.colorize(field, "t2m")
+    png = render.colorize(field, "temp")
     img = Image.open(io.BytesIO(png))
     assert img.mode == "P" and img.size == (GRID_LON_N, render.MERC_H)
     assert np.asarray(img.convert("RGBA"))[0, 0, 3] == int(0.78 * 255)

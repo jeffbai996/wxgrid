@@ -21,7 +21,7 @@ import zarr
 from zarr.codecs import BloscCodec
 
 from wxgrid.config import GRID_LAT_N, GRID_LON_N, GRID_RES, KEEP_RUNS, STORE_DIR
-from wxgrid.models import STORE_VARS
+from wxgrid.models import HALF_PRECISION_PREFIXES
 
 LATS = np.linspace(90.0, -90.0, GRID_LAT_N, dtype=np.float32)
 LONS = (np.arange(GRID_LON_N, dtype=np.float32) * GRID_RES - 180.0).astype(np.float32)
@@ -72,7 +72,7 @@ class RunWriter:
         if self.path.exists():
             shutil.rmtree(self.path)
         self.steps = list(steps)
-        self.variables = [v for v in variables if v in STORE_VARS]
+        self.variables = list(dict.fromkeys(variables))
         self.group = zarr.open_group(self.path, mode="w")
         self.group.attrs.update({
             "model": model, "run": rid, "steps": self.steps, "complete": False,
@@ -85,19 +85,20 @@ class RunWriter:
         self.group.create_array("longitude", data=LONS, dimension_names=("longitude",))
         codec = BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle")
         for var in self.variables:
+            dtype = "float16" if var.startswith(HALF_PRECISION_PREFIXES) else "float32"
             arr = self.group.create_array(
-                var, shape=(len(self.steps), GRID_LAT_N, GRID_LON_N), dtype="float32",
+                var, shape=(len(self.steps), GRID_LAT_N, GRID_LON_N), dtype=dtype,
                 chunks=(1, GRID_LAT_N, GRID_LON_N), compressors=codec,
                 fill_value=np.nan, dimension_names=("step", "latitude", "longitude"),
             )
-            arr.attrs["units"] = _UNITS.get(var, "")
+            arr.attrs["units"] = _UNITS.get(var, {"u": "m s-1", "v": "m s-1", "t": "K", "gh": "m"}.get(var.split("_")[0], ""))
         self._written: dict[str, set[int]] = {v: set() for v in self.variables}
 
     def write(self, var: str, step: int, values: np.ndarray) -> None:
         if var not in self.variables:
             return
         idx = self.steps.index(step)
-        self.group[var][idx] = np.asarray(values, dtype=np.float32)
+        self.group[var][idx] = np.asarray(values, dtype=self.group[var].dtype)
         self._written[var].add(step)
 
     def has(self, var: str, step: int) -> bool:
@@ -116,7 +117,8 @@ class RunWriter:
         return counts
 
 
-_UNITS = {"u10": "m s-1", "v10": "m s-1", "t2m": "K", "msl": "Pa", "tp6": "mm", "gust": "m s-1"}
+_UNITS = {"u10": "m s-1", "v10": "m s-1", "t2m": "K", "msl": "Pa", "tp6": "mm", "gust": "m s-1",
+          "tcc": "1", "cape": "J kg-1"}
 
 
 class RunReader:
@@ -132,14 +134,14 @@ class RunReader:
 
     def slab(self, var: str, step: int) -> np.ndarray:
         """One (721, 1440) float32 field."""
-        return np.asarray(self.group[var][self.steps.index(step)])
+        return np.asarray(self.group[var][self.steps.index(step)], dtype=np.float32)
 
     def point(self, var: str, lat: float, lon: float) -> np.ndarray:
         """Nearest-gridpoint series over all steps, shape (n,)."""
         i = int(round((90.0 - lat) / GRID_RES))
         j = int(round((lon + 180.0) / GRID_RES)) % GRID_LON_N
         i = min(max(i, 0), GRID_LAT_N - 1)
-        return np.asarray(self.group[var][:, i, j])
+        return np.asarray(self.group[var][:, i, j], dtype=np.float32)
 
     def manifest(self) -> dict:
         return {"model": self.model, "run": self.rid, "steps": self.steps,

@@ -18,6 +18,10 @@ FRONT_DIR = BASE_DIR / "front"
 HOST = os.environ.get("WXGRID_HOST", "127.0.0.1")   # loopback; tailscale serve fronts it
 PORT = int(os.environ.get("WXGRID_PORT", "8097"))
 
+# Public deployment: refuses to serve front/private/ (fonts and theme bits that
+# are licensed for our own use only) and says so in /healthz.
+PUBLIC = os.environ.get("WXGRID_PUBLIC", "") == "1"
+
 # Runs kept per model. Two lets the front compare "this run vs the previous".
 KEEP_RUNS = int(os.environ.get("WXGRID_KEEP_RUNS", "2"))
 

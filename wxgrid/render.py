@@ -53,10 +53,10 @@ def to_mercator(field: np.ndarray) -> np.ndarray:
 # ── colour ramps ──────────────────────────────────────────────────────────
 # (value, (r, g, b)) stops in DISPLAY units; alpha handled per variable.
 RAMPS: dict[str, dict] = {
-    "t2m": {"units": "°C", "lo": -40, "hi": 45, "stops": [
-        (-40, (130, 22, 146)), (-30, (75, 42, 180)), (-20, (35, 90, 200)), (-10, (40, 150, 220)),
-        (0, (100, 200, 200)), (10, (110, 210, 110)), (20, (240, 220, 80)), (30, (240, 130, 40)),
-        (40, (200, 30, 30)), (45, (140, 0, 60))]},
+    "temp": {"units": "°C", "lo": -70, "hi": 45, "stops": [
+        (-70, (40, 10, 70)), (-55, (90, 20, 130)), (-40, (130, 22, 146)), (-30, (75, 42, 180)),
+        (-20, (35, 90, 200)), (-10, (40, 150, 220)), (0, (100, 200, 200)), (10, (110, 210, 110)),
+        (20, (240, 220, 80)), (30, (240, 130, 40)), (40, (200, 30, 30)), (45, (140, 0, 60))]},
     "wind": {"units": "m/s", "lo": 0, "hi": 40, "stops": [
         (0, (48, 18, 59)), (5, (60, 80, 180)), (10, (30, 160, 190)), (15, (60, 200, 110)),
         (20, (200, 220, 60)), (25, (250, 160, 30)), (30, (230, 70, 20)), (40, (150, 0, 60))]},
@@ -69,15 +69,22 @@ RAMPS: dict[str, dict] = {
     "tp6": {"units": "mm/6h", "lo": 0, "hi": 40, "stops": [
         (0, (110, 160, 230)), (1, (80, 130, 220)), (3, (40, 100, 200)), (8, (30, 170, 90)),
         (15, (240, 220, 40)), (25, (240, 120, 30)), (40, (200, 20, 60))]},
+    "tcc": {"units": "%", "lo": 0, "hi": 100, "stops": [
+        (0, (20, 30, 50)), (30, (90, 110, 140)), (60, (170, 180, 195)), (100, (245, 245, 250))]},
+    "cape": {"units": "J/kg", "lo": 0, "hi": 4000, "stops": [
+        (0, (30, 30, 60)), (250, (60, 90, 190)), (700, (40, 170, 120)), (1500, (240, 220, 40)),
+        (2500, (240, 120, 30)), (4000, (200, 20, 60))]},
 }
 
 # canonical store variable → display transform (store units → ramp units)
 DISPLAY = {
-    "t2m": lambda k: k - 273.15,
+    "temp": lambda k: k - 273.15,
     "msl": lambda pa: pa / 100.0,
     "tp6": lambda mm: mm,
     "gust": lambda ms: ms,
     "wind": lambda ms: ms,
+    "tcc": lambda frac: frac * 100.0,
+    "cape": lambda j: j,
 }
 
 
@@ -113,10 +120,16 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78) -> byte
         return buf.getvalue()
     x = np.nan_to_num(field_display, nan=lo)
     idx = np.clip((x - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
-    if layer == "tp6":
+    if layer in ("tp6", "cape", "tcc"):
         rgba = lut[idx].copy()
-        # Rain: transparent where dry, ramping in over the first millimetre.
-        rgba[..., 3] = (np.clip(x / 1.0, 0, 1) * alpha * 255).astype(np.uint8)
+        if layer == "tp6":
+            # Rain: transparent where dry, ramping in over the first millimetre.
+            a = np.clip(x / 1.0, 0, 1)
+        elif layer == "cape":
+            a = np.clip(x / 300.0, 0, 1)            # nothing to see under ~300 J/kg
+        else:
+            a = np.clip(x / 100.0, 0, 1) ** 0.7     # clear sky shows the map through
+        rgba[..., 3] = (a * alpha * 255).astype(np.uint8)
         Image.fromarray(rgba, "RGBA").save(buf, format="PNG", optimize=False, compress_level=6)
         return buf.getvalue()
     img = Image.fromarray(idx, "P")

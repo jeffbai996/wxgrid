@@ -1,60 +1,96 @@
 """Model registry: what we fetch, from where, and how it maps onto the store.
 
-Canonical variables (every model normalises onto these):
+Canonical SURFACE variables (every model normalises onto these):
   u10, v10  10 m wind components, m/s
   t2m       2 m temperature, K
   msl       mean sea-level pressure, Pa
   tp6       precipitation over the PREVIOUS 6 h, mm   (derived, see ingest)
   gust      10 m wind gust, m/s                       (only models that ship it)
+  tcc       total cloud cover, 0–1 (GFS ships %, converted)
+  cape      CAPE, J/kg                                (only models that ship it)
+
+Canonical PRESSURE-LEVEL variables, one per level in LEVELS (hPa):
+  u_<lvl>, v_<lvl>  wind, m/s      t_<lvl>  temperature, K     gh_<lvl>  geopotential height, m
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 STEPS_6H = list(range(0, 241, 6))
+LEVELS = (925, 850, 700, 500, 300, 250)          # ≈ 2.5k ft, 5k ft, 10k ft, FL180, FL300, FL340
+
+# GRIB typeOfLevel values that mean "a surface-ish single layer" for our purposes.
+SURFACE_LEVEL_TYPES = {"surface", "heightAboveGround", "meanSea", "atmosphere",
+                       "entireAtmosphere", "atmosphereSingleLayer", "unknown"}
 
 
 @dataclass(frozen=True)
 class Model:
     key: str                 # store key + API name
     label: str               # UI label
+    short: str               # tiny label for segmented controls
     source: str              # "ecmwf" | "nomads"
     steps: list[int] = field(default_factory=lambda: STEPS_6H)
-    # ecmwf: opendata client model id; nomads: unused
-    ecmwf_model: str = ""
-    # source-native param names → canonical names
-    params: dict[str, str] = field(default_factory=dict)
+    ecmwf_model: str = ""    # opendata client model id
+    # source-native surface shortName → canonical name
+    sfc_params: dict[str, str] = field(default_factory=dict)
+    # source-native pressure-level shortName → canonical prefix
+    pl_params: dict[str, str] = field(default_factory=dict)
+    levels: tuple[int, ...] = LEVELS
     # accumulated-precip semantics: "since_start" (ECMWF tp) or "bucket6" (GFS APCP at 6 h steps)
     precip_mode: str = "since_start"
-    cycles: tuple[int, ...] = (0, 6, 12, 18)
     attribution: str = ""
 
+    def canonical(self, short_name: str, level_type: str, level: int) -> str | None:
+        """Map a decoded GRIB field to its store variable, or None to skip."""
+        if level_type == "isobaricInhPa":
+            prefix = self.pl_params.get(short_name)
+            if prefix and level in self.levels:
+                return f"{prefix}_{level}"
+            return None
+        if level_type in SURFACE_LEVEL_TYPES:
+            return self.sfc_params.get(short_name)
+        return None
+
+    def store_variables(self) -> list[str]:
+        out = []
+        for canon in self.sfc_params.values():
+            out.append("tp6" if canon == "tp" else canon)
+        for prefix in self.pl_params.values():
+            out.extend(f"{prefix}_{lvl}" for lvl in self.levels)
+        return out
+
+
+_ECMWF_PL = {"u": "u", "v": "v", "t": "t", "gh": "gh"}
 
 MODELS: dict[str, Model] = {
     "ifs": Model(
-        key="ifs", label="ECMWF IFS", source="ecmwf", ecmwf_model="ifs",
-        params={"10u": "u10", "10v": "v10", "2t": "t2m", "msl": "msl", "tp": "tp",
-                "10fg": "gust"},
+        key="ifs", label="ECMWF IFS", short="IFS", source="ecmwf", ecmwf_model="ifs",
+        sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "msl": "msl", "tp": "tp",
+                    "10fg": "gust", "tcc": "tcc", "mucape": "cape"},
+        pl_params=_ECMWF_PL,
         precip_mode="since_start",
         attribution="ECMWF open data, CC BY 4.0",
     ),
     "aifs": Model(
-        key="aifs", label="ECMWF AIFS (AI)", source="ecmwf", ecmwf_model="aifs-single",
-        params={"10u": "u10", "10v": "v10", "2t": "t2m", "msl": "msl", "tp": "tp"},
+        key="aifs", label="ECMWF AIFS (AI)", short="AIFS", source="ecmwf", ecmwf_model="aifs-single",
+        sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "msl": "msl", "tp": "tp", "tcc": "tcc"},
+        pl_params=_ECMWF_PL,
         precip_mode="since_start",
         attribution="ECMWF open data (AIFS), CC BY 4.0",
     ),
     "gfs": Model(
-        key="gfs", label="NOAA GFS", source="nomads",
-        params={"10u": "u10", "10v": "v10", "2t": "t2m", "prmsl": "msl", "tp": "tp",
-                "gust": "gust"},
+        key="gfs", label="NOAA GFS", short="GFS", source="nomads",
+        sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "prmsl": "msl", "tp": "tp",
+                    "gust": "gust", "tcc": "tcc", "cape": "cape"},
+        pl_params=_ECMWF_PL,
         precip_mode="bucket6",
         attribution="NOAA NCEP GFS via NOMADS, public domain",
     ),
 }
 
-# Canonical variables the store may hold, in display order.
-STORE_VARS = ("u10", "v10", "t2m", "msl", "tp6", "gust")
+# Variables stored as float16 (range-safe, halves the store): winds/temps/heights aloft.
+HALF_PRECISION_PREFIXES = ("u_", "v_", "gh_")   # temps stay float32: 0.25 K steps would bend the freezing level
 
 
 def get_model(key: str) -> Model:
