@@ -206,8 +206,17 @@ times), Resort (elevation-band forecast + lifts). Layers: wind, temp, gusts, rai
 snow (6/24/72 h), snow depth, clouds, pressure, humidity (RH or dew point),
 CAPE, UV index, freezing level, waves (height or period), and the aerosol set;
 altitude picker for wind/temp; isolines; wind barbs; cross-sections; a value
-probe under the cursor. Units km/h · kt · m/s,
-permalinks in the URL hash, measure tool. Fonts: Inter / Urbanist / Geist
+probe under the cursor. **Units are a system, not a toggle**: °C/°F, mm/in, cm/in, km/mi/nm, m/ft,
+hPa/inHg/mmHg, 12/24 h — set once in the settings drawer and the tape, card,
+legend, cursor readout and cross-section all follow. The clock can run on your
+zone, UTC, or **the zone of the place you are looking at**, which is what you
+usually want when the place is five time zones away.
+
+Right-click (or long-press) anywhere on the map for forecast-here,
+cross-section-from-here, measure-from-here, save, copy coordinates. On a phone
+the card is a bottom sheet you drag up over the tape. Permalinks live in the
+URL hash and are applied when one is pasted into an open tab. Measure tool,
+saved places, first-run tour. Fonts: Inter / Urbanist / Geist
 Mono (OFL, see `front/fonts/LICENSES.md`).
 
 The met-service badge names whoever forecasts for the country under the
