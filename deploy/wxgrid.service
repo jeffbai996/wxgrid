@@ -1,0 +1,15 @@
+[Unit]
+Description=wxgrid — weather model grids API + map front (loopback :8097, tailnet :8464)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/local-projects/wxgrid
+ExecStart=%h/local-projects/wxgrid/venv/bin/uvicorn wxgrid.api:app --host 127.0.0.1 --port 8097
+Restart=on-failure
+RestartSec=5
+MemoryHigh=1G
+MemoryMax=1500M
+
+[Install]
+WantedBy=default.target

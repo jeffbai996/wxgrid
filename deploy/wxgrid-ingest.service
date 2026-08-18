@@ -1,0 +1,12 @@
+[Unit]
+Description=wxgrid — fetch the latest complete run of every model into the store
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/local-projects/wxgrid
+ExecStart=%h/local-projects/wxgrid/venv/bin/python -m wxgrid.ingest --all
+Nice=10
+IOSchedulingClass=idle
+MemoryHigh=2G
+MemoryMax=3G
+TimeoutStartSec=3h

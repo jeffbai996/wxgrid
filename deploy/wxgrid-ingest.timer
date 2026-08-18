@@ -1,0 +1,11 @@
+[Unit]
+Description=wxgrid ingest, hourly (each model publishes 4 runs/day; a run already stored is skipped)
+
+[Timer]
+OnBootSec=10min
+OnCalendar=*-*-* *:35:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>wxgrid</title>
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0d10">
+</head>
+<body>
+<div id="map"></div>
+<canvas id="particles"></canvas>
+
+<header id="topbar">
+  <div class="brand">wxgrid</div>
+  <div class="ctl">
+    <select id="model" title="Forecast model"></select>
+    <select id="run" title="Model run (UTC)"></select>
+  </div>
+  <nav id="layers" class="chips" aria-label="Layers"></nav>
+  <div class="spacer"></div>
+  <button id="particles-toggle" class="chip on" title="Wind particles">particles</button>
+  <button id="locate" class="icon" title="My location">◎</button>
+</header>
+
+<aside id="legend" hidden>
+  <div class="legend-bar"></div>
+  <div class="legend-ticks"></div>
+</aside>
+
+<footer id="timebar">
+  <button id="play" class="icon" title="Animate">▶</button>
+  <div class="time-meta">
+    <span id="valid-local"></span>
+    <span id="valid-utc" class="dim"></span>
+  </div>
+  <input id="step" type="range" min="0" max="0" value="0" step="1">
+  <span id="lead" class="dim"></span>
+</footer>
+
+<div id="point" hidden>
+  <div class="point-head">
+    <span id="point-title"></span>
+    <button id="point-close" class="icon" title="Close">×</button>
+  </div>
+  <div id="point-now"></div>
+  <canvas id="meteogram" width="640" height="220"></canvas>
+  <div id="point-foot" class="dim"></div>
+</div>
+
+<div id="toast" hidden></div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="particles.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
