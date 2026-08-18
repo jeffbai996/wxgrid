@@ -168,6 +168,14 @@ lifts) degrade quietly.
 - Model split-screen; webcams (needs a keyed API).
 - Self-hosted AI model via ECMWF `ai-models` (Aurora / GraphCast-small).
 
+## Running it kindly
+
+Ingest and the static build are memory-hungry (a run is several GB and the
+point cube is written per latitude band). The systemd units cap them at 2/3 GB
+and run at idle IO priority; a hand-run `python -m wxgrid.ingest` has no such
+cap, so on a shared box prefer `systemctl --user start wxgrid-ingest` or wrap
+it in `systemd-run --user -p MemoryMax=3G --scope`.
+
 ## Tests
 
 `pytest -q` — render (Mercator, colour, wind JSON), store roundtrip/prune,

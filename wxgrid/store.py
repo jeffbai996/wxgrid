@@ -182,8 +182,12 @@ def build_point_cube(model: str, rid: str, root: Path = STORE_DIR, variables: li
         arr = pt.create_array(var, shape=src.shape, dtype=src.dtype,
                               chunks=(src.shape[0], POINT_TILE, POINT_TILE), compressors=codec,
                               fill_value=np.nan, dimension_names=("step", "latitude", "longitude"))
-        # whole variable in memory: 61 steps × 721 × 1440 × 4 B ≈ 250 MB, fine
-        arr[:] = src[:]
+        # Copy one latitude band at a time. Reading the whole variable would be
+        # ~250 MB resident per variable and, with several ingests and the API
+        # in flight, that was enough to put fragserv into swap (2026-08-18).
+        for y0 in range(0, src.shape[1], POINT_TILE):
+            y1 = min(y0 + POINT_TILE, src.shape[1])
+            arr[:, y0:y1, :] = src[:, y0:y1, :]
         n += 1
     return n
 

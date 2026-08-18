@@ -7,4 +7,9 @@ Type=oneshot
 WorkingDirectory=%h/local-projects/wxgrid
 ExecStart=%h/local-projects/wxgrid/scripts/publish_pages.sh
 Nice=10
+IOSchedulingClass=idle
+# The static build holds whole fields while it renders; unbounded it was one of
+# the things that put the box into swap on 2026-08-18.
+MemoryHigh=2G
+MemoryMax=3G
 TimeoutStartSec=30m

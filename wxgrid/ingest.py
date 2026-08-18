@@ -63,6 +63,25 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
     if rid in list_runs(model.key, store_root):
         log.info("%s %s already in store, skipping", model.key, rid)
         return {"model": model.key, "run": rid, "skipped": True}
+    # One writer per run: the timer and a hand-run ingest of the same run
+    # would otherwise rmtree each other's half-written group (seen 2026-08-18).
+    import fcntl
+    lock_path = store_root / model.key / f".{rid}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock = open(lock_path, "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        log.info("%s %s is being ingested by another process, skipping", model.key, rid)
+        return {"model": model.key, "run": rid, "skipped": "locked"}
+    try:
+        return _ingest_locked(model, run, rid, grib_root, store_root, keep_grib)
+    finally:
+        fcntl.flock(lock, fcntl.LOCK_UN); lock.close()
+        lock_path.unlink(missing_ok=True)
+
+
+def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store_root: Path, keep_grib: bool) -> dict:
 
     writer = RunWriter(model.key, rid, model.steps, model.store_variables(),
                        attribution=model.attribution, root=store_root)
