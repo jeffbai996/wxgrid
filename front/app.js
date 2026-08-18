@@ -59,6 +59,7 @@
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null, measure: false,
     alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false,
+    sigmet: false, aq: false, aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
     opacity: Number(localStorage.getItem("wxgrid.opacity") || 100), xsection: false,
   };
   let map, wind, catalog, playTimer = null, marker = null;
@@ -164,6 +165,8 @@
     if (state.fires) WX.fires.load();
     if (state.quakes) WX.ov.loadQuakes();
     if (state.aod) WX.ov.loadAod();
+    if (state.sigmet) WX.sigmet.load();
+    if (state.aq) WX.cams.load(state.aqVar);
     if (state.thunder) WX.ov.loadThunder();
     if (marker) marker.addTo(map);
   }
@@ -296,6 +299,8 @@
     op.oninput = () => { state.opacity = Number(op.value); localStorage.setItem("wxgrid.opacity", op.value); applyStep(false); };
     op.onclick = (e) => e.stopPropagation();
     buildStrip();
+    $("#sigmet-toggle").onclick = () => { state.sigmet = !state.sigmet; $("#sigmet-toggle").classList.toggle("on", state.sigmet); if (state.sigmet) WX.sigmet.load(); else WX.sigmet.clear(); };
+    $("#aq-toggle").onclick = () => { state.aq = !state.aq; $("#aq-toggle").classList.toggle("on", state.aq); if (state.aq) WX.cams.load(state.aqVar); else WX.cams.clear(); };
     $("#fires-toggle").onclick = () => { state.fires = !state.fires; $("#fires-toggle").classList.toggle("on", state.fires); if (state.fires) WX.fires.load(); else WX.fires.clear(); };
     $("#share-btn").onclick = async () => { pushHash(); await new Promise((r) => setTimeout(r, 300)); try { await navigator.clipboard.writeText(location.href); toast("Link copied"); } catch (e) { toast(location.href, 6000); } };
     $("#keys-btn").onclick = () => toast("← → step · space play · / search · esc close · L layers", 6000);
@@ -337,7 +342,7 @@
   // menus. Clicking proxies the real button; the observer below mirrors state.
   const STRIP = [
     ["radar", "Radar"], ["sat", "Satellite"], ["aod", "Aerosol"], ["iso", "Isolines"], null,
-    ["alerts", "Alerts", "warn"], ["storms", "Storms", "warn"], ["thunder", "Thunder", "warn"], ["fires", "Fires", "warn"], ["smoke", "Smoke"], ["quakes", "Quakes"], null,
+    ["alerts", "Alerts", "warn"], ["storms", "Storms", "warn"], ["thunder", "Thunder", "warn"], ["sigmet", "SIGMET", "warn"], ["fires", "Fires", "warn"], ["smoke", "Smoke"], ["aq", "Air quality"], ["quakes", "Quakes"], null,
     ["avy", "Avalanche"], ["resorts", "Ski resorts"], null,
     ["particles", "Particles"], ["barbs", "Barbs"], null,
     ["xsection", "Cross section"], ["measure", "Measure"],
@@ -381,6 +386,7 @@
     if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", ((state.radar || state.sat) ? Math.min(0.45, LAYER_ALPHA[state.layer]) : LAYER_ALPHA[state.layer]) * state.opacity / 100);
     if (state.thunder && WX.ov) WX.ov.loadThunder();
     if (state.xsection && WX.xs) WX.xs.refresh();
+    if (state.aq && WX.cams) WX.cams.refresh();
     if (WX.probe) WX.probe.refresh();
     const v = validDate();
     $("#valid-local").textContent = v.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });

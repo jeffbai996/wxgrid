@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>wxgrid</title>
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
 <link rel="stylesheet" href="styles.css">
@@ -43,6 +43,8 @@
       <button id="storms-toggle" class="row chip warn" title="Active tropical cyclones (NHC/CPHC)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6a6 6 0 1 0 6 6"/><path d="M12 10a2 2 0 1 0 2 2"/></svg><span>Storms</span><i class="sw"></i></button>
       <button id="smoke-toggle" class="row chip" title="Surface PM2.5 / wildfire smoke forecast (ECCC RAQDPS)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c4-2 4-6 8-6s4 4 8 6"/><path d="M6 14c3-2 3-5 6-5s3 3 6 5"/><path d="M8 8c2-1 2-3 4-3s2 2 4 3"/></svg><span>Smoke</span><i class="sw"></i></button>
       <button id="fires-toggle" class="row chip warn" title="Wildfires: active incidents and perimeters (CIFFC, CWFIS, NIFC/WFIGS) over the last-24 h hotspots"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg><span>Fires</span><i class="sw"></i></button>
+      <button id="sigmet-toggle" class="row chip warn" title="SIGMET / AIRMET: turbulence, icing, IFR, convective and volcanic-ash hazard areas (NOAA Aviation Weather Center)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.6 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><span>SIGMET</span><i class="sw"></i></button>
+      <button id="aq-toggle" class="row chip" title="Aerosol layers: PM2.5, PM10, dust, optical depth (NOAA GEFS-Aerosol)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h13a3 3 0 1 0-3-3"/><path d="M3 13h16a3 3 0 1 1-3 3"/><path d="M3 18h9"/></svg><span>Air quality</span><i class="sw"></i></button>
       <button id="quakes-toggle" class="row chip" title="Earthquakes M2.5+, past day (USGS)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l3-8 4 16 3-10 2 4h5"/></svg><span>Quakes</span><i class="sw"></i></button>
       <button id="aod-toggle" class="row chip" title="Aerosol optical depth, MODIS Terra+Aqua, yesterday (NASA GIBS)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="8" r="2.5"/><circle cx="16" cy="6" r="2"/><circle cx="12" cy="14" r="3"/><circle cx="18" cy="16" r="2"/><circle cx="6" cy="17" r="2"/></svg><span>Aerosol</span><i class="sw"></i></button>
       <button id="thunder-toggle" class="row chip warn" title="Thunderstorm marks where the model has CAPE and rain together"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg><span>Thunder</span><i class="sw"></i></button>
@@ -100,7 +102,7 @@
     <button id="point-close" class="icon" title="Close">×</button>
   </div>
   <div class="point-tabs seg small">
-    <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="air">Airgram</button><button data-tab="winter">Winter</button><button data-tab="out">Outdoors</button><button data-tab="cmp">Compare</button><button data-tab="resort" hidden>Resort</button>
+    <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="air">Airgram</button><button data-tab="skewt">Skew-T</button><button data-tab="winter">Winter</button><button data-tab="out">Outdoors</button><button data-tab="cmp">Compare</button><button data-tab="resort" hidden>Resort</button>
   </div>
   <div id="point-body">
     <section data-pane="now">
@@ -109,6 +111,7 @@
     </section>
     <section data-pane="aloft" hidden><div id="aloft"></div></section>
     <section data-pane="air" hidden><canvas id="airgram" width="640" height="260"></canvas><div id="airgram-note" class="note"></div></section>
+    <section data-pane="skewt" hidden><canvas id="skewt" width="640" height="520"></canvas><div id="skewt-note" class="note"></div></section>
     <section data-pane="winter" hidden><div id="winter"></div></section>
     <section data-pane="out" hidden><div id="outdoors"></div></section>
     <section data-pane="cmp" hidden><div id="compare"></div></section>
@@ -126,10 +129,13 @@
 <script src="app.js"></script>
 <script src="overlays.js"></script>
 <script src="fires.js"></script>
+<script src="sigmet.js"></script>
+<script src="cams.js"></script>
 <script src="xsection.js"></script>
 <script src="tape.js"></script>
 <script src="search.js"></script>
 <script src="private/theme.js"></script>
+<script src="sounding.js"></script>
 <script src="provider.js"></script>
 <script src="probe.js"></script>
 <script src="panes.js"></script>

@@ -19,6 +19,7 @@
     if (tab === "now") renderNow(pt, d, i);
     else if (tab === "aloft") renderAloft(d, i);
     else if (tab === "air") renderAirgram(d, i);
+    else if (tab === "skewt") renderSkewT(pt, d, i);
     else if (tab === "winter") renderWinter(pt, d, i);
     else if (tab === "out") renderOutdoors(d, i);
     else if (tab === "cmp") renderCompare(pt, d, i);
@@ -78,7 +79,11 @@
     if (loc.place && loc.place.name && loc.place.name !== pt.name) bits.push(`<span><b>${esc(loc.place.name)}</b>${loc.place.region ? ", " + esc(loc.place.region) : ""}${loc.place.country ? " · " + esc(loc.place.country) : ""}</span>`);
     else if (loc.place && (loc.place.region || loc.place.country)) bits.push(`<span>${esc(loc.place.region || "")}${loc.place.country ? " · " + esc(loc.place.country) : ""}</span>`);
     if (loc.elevation_m != null) bits.push(`<span>elev <b>${Math.round(loc.elevation_m)} m</b> · ${Math.round(loc.elevation_m * 3.281)} ft</span>`);
-    $("#point-local").innerHTML = bits.length ? bits.join('<span class="sep">·</span>') : `${pt.lat.toFixed(2)}°, ${pt.lon.toFixed(2)}°`;
+    // the title already carries the coordinates when there is no place name —
+    // don't print them twice
+    const coords = `${pt.lat.toFixed(2)}°, ${W().wlon(pt.lon).toFixed(2)}°`;
+    const titled = ($("#point-title").textContent || "").trim();
+    $("#point-local").innerHTML = bits.length ? bits.join('<span class="sep">·</span>') : (titled === coords ? "" : coords);
     // station observation
     let obsHtml = "";
     const o = pt.obs && pt.obs.metar;
@@ -287,6 +292,19 @@
   }
 
   const uvWord = (u) => u < 3 ? "low" : u < 6 ? "moderate" : u < 8 ? "high" : u < 11 ? "very high" : "extreme";
+  function renderSkewT(pt, d, i) {
+    if (!window.WXSounding) return;
+    // the diagram draws in the canvas's own pixel space, so size the element
+    // to the card before every draw instead of letting a 640 px chart get
+    // squeezed by CSS
+    const c = $("#skewt"), host = c.parentElement;
+    const w = Math.max(300, Math.round(host.clientWidth));
+    const h = Math.round(Math.min(520, Math.max(300, w * 1.05)));
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; c.style.width = w + "px"; c.style.height = h + "px"; }
+    const r = window.WXSounding.draw(c, d, i, { elevation_m: ((pt && pt.local) || {}).elevation_m });
+    $("#skewt-note").textContent = (r && r.caption) || "";
+  }
+
   // ── Outdoors ──────────────────────────────────────────────────────────
   function renderOutdoors(d, i) {
     const { speed, speedUnit, state } = W();

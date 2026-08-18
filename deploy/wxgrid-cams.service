@@ -1,0 +1,17 @@
+[Unit]
+Description=wxgrid — cache the latest GEFS-Aerosol run for the global air-quality layers
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/local-projects/wxgrid
+ExecStart=%h/local-projects/wxgrid/venv/bin/python -m wxgrid.cams --refresh
+# One step at a time: peak is a ~14 MB GRIB on disk and a handful of 4 MB
+# float32 grids in memory, so this fits well inside the cap even while the
+# ingest timer is running the weather models.
+Nice=10
+IOSchedulingClass=idle
+MemoryHigh=1G
+MemoryMax=2G
+TimeoutStartSec=45min

@@ -50,6 +50,12 @@
   --tape-night: rgba(0,0,0,.05);
 }
 * { box-sizing: border-box; }
+/* Chrome behaves like an app, not a document: no text selection, no double-tap
+   zoom, no tap flash. The map canvas keeps its own gestures, and anything
+   worth copying (raw METAR, alert text) opts back in with .selectable. */
+html { touch-action: manipulation; }
+body { user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+input, textarea, select, .selectable, .obs .raw, .alert .hl, #point-body .note { user-select: text; -webkit-user-select: text; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13.5px/1.35 var(--font-body); overflow: hidden; -webkit-font-smoothing: antialiased; }
 #map { position: absolute; inset: 0; }
 #particles { position: absolute; inset: 0; pointer-events: none; }
@@ -280,12 +286,28 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 .fatal-actions .mono { font-size: 11px; }
 
 @media (max-width: 820px) {
-  #topbar { flex-wrap: wrap; gap: 6px; }
+  /* three predictable rows instead of whatever wrapping produced:
+     brand + search + the two menus · models + run · levels */
+  #topbar { flex-wrap: wrap; gap: 6px 5px; padding: 6px 8px; padding-top: calc(6px + env(safe-area-inset-top)); }
   .brand span { display: none; }
-  .search input { width: 130px; }
+  .brand { order: 1; margin-right: 0; }
+  .search { order: 2; flex: 1 1 90px; min-width: 0; }
+  .search input { width: 100%; }
+  #overlays-menu { order: 3; flex: 0 0 auto; }
+  #tools-menu { order: 4; flex: 0 0 auto; }
+  #models { order: 5; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  #models::-webkit-scrollbar { display: none; }
+  select.run { order: 6; flex: 0 0 auto; padding: 5px 22px 5px 8px; font-size: 11.5px; }
+  .seg.variant { order: 7; }
+  #levels { order: 8; flex-basis: 100%; max-width: 100%; }
+  .seg button { padding: 5px 10px; }
+  .seg.small button { padding: 4px 7px; }
+  .spacer { display: none; }
   #side { left: 8px; right: 8px; top: calc(var(--top-h) + 4px); max-height: none; }
   .tstrip { display: none; }
-  .locate-btn { left: 8px; width: 36px; height: 36px; bottom: calc(var(--tb-h) + 14px + env(safe-area-inset-bottom)); }
+  /* the card owns the left side on a phone, so the crosshair moves right */
+  .cams-legend { left: 8px; right: 8px; }
+  .locate-btn { left: auto; right: 8px; width: 38px; height: 38px; bottom: calc(var(--tb-h) + 14px + env(safe-area-inset-bottom)); }
   .rail { flex: 1; min-width: 0; flex-direction: row; overflow-x: auto; scrollbar-width: none; border-radius: 999px; padding: 3px; }
   .rail::-webkit-scrollbar { display: none; }
   .rail button { padding: 5px 9px; border-radius: 999px; box-shadow: none; }
@@ -430,6 +452,7 @@ table.wtape tr.r-dir td { height: 20px; }
 .tide.H b { color: var(--rain); }
 
 /* ── met-service badge for the country under the cursor ─────────────── */
+body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 116px + env(safe-area-inset-bottom)); }
 .provider { position: absolute; z-index: 5; left: 62px; bottom: calc(var(--tb-h) + 22px + env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 11px 6px 9px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px);
   font: 700 11.5px var(--font-display); color: var(--fg-2); letter-spacing: .01em; opacity: 0; transform: translateY(6px); transition: opacity .35s ease, transform .35s ease; pointer-events: none; }

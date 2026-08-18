@@ -1,0 +1,15 @@
+[Unit]
+Description=wxgrid air-quality refresh — GEFS-Aerosol publishes 4 runs/day (00/06/12/18 Z)
+
+# A run lands roughly 5 h after its nominal time, so fire a couple of hours
+# after each and let the refresh no-op when the newest run is already cached
+# (it checks the catalog, not the clock). Offset from wxgrid-ingest.timer's
+# :35 so the two do not fight over the disk on a box that already swapped.
+[Timer]
+OnBootSec=20min
+OnCalendar=*-*-* 05,11,17,23:15:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
