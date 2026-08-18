@@ -59,7 +59,7 @@
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null, measure: false,
     alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false,
-    sigmet: false, aurora: false, lightning: false, aq: false, aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
+    sigmet: false, aurora: false, lightning: false, aq: false, route: false, aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
     opacity: Number(localStorage.getItem("wxgrid.opacity") || 100), xsection: false,
     playMs: Number(localStorage.getItem("wxgrid.playMs") || 900),
   };
@@ -127,6 +127,7 @@
       map.on("click", (e) => {
         if (state.measure) { WX.ov.measureClick(e.lngLat); return; }
         if (state.xsection) { WX.xs.click(e.lngLat); return; }
+        if (state.route && WX.route && !WX.route.active) { WX.route.addPoint(e.lngLat); return; }
         const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter((l) => map.getLayer(l)) });
         const resort = feats.find((x) => x.layer.id === "resort-pts");
         if (resort) { WX.ov.selectResort(resort.properties.id); return; }
@@ -323,10 +324,10 @@
     op.oninput = () => { state.opacity = Number(op.value); localStorage.setItem("wxgrid.opacity", op.value); applyStep(false); };
     op.onclick = (e) => e.stopPropagation();
     buildStrip();
-    $("#aurora-toggle").onclick = () => { state.aurora = !state.aurora; $("#aurora-toggle").classList.toggle("on", state.aurora); if (state.aurora) WX.sky.aurora.load(); else WX.sky.aurora.clear(); };
-    $("#lightning-toggle").onclick = () => WX.sky.lightning.load();
-    $("#sigmet-toggle").onclick = () => { state.sigmet = !state.sigmet; $("#sigmet-toggle").classList.toggle("on", state.sigmet); if (state.sigmet) WX.sigmet.load(); else WX.sigmet.clear(); };
-    $("#aq-toggle").onclick = () => { state.aq = !state.aq; $("#aq-toggle").classList.toggle("on", state.aq); if (state.aq) WX.cams.load(state.aqVar); else WX.cams.clear(); };
+    $("#aurora-toggle").onclick = () => { if (!WX.sky) return; state.aurora = !state.aurora; $("#aurora-toggle").classList.toggle("on", state.aurora); if (state.aurora) WX.sky.aurora.load(); else WX.sky.aurora.clear(); };
+    $("#lightning-toggle").onclick = () => WX.sky && WX.sky.lightning.load();
+    $("#sigmet-toggle").onclick = () => { if (!WX.sigmet) return; state.sigmet = !state.sigmet; $("#sigmet-toggle").classList.toggle("on", state.sigmet); if (state.sigmet) WX.sigmet.load(); else WX.sigmet.clear(); };
+    $("#aq-toggle").onclick = () => { if (!WX.cams) return; state.aq = !state.aq; $("#aq-toggle").classList.toggle("on", state.aq); if (state.aq) WX.cams.load(state.aqVar); else WX.cams.clear(); };
     $("#fires-toggle").onclick = () => { state.fires = !state.fires; $("#fires-toggle").classList.toggle("on", state.fires); if (state.fires) WX.fires.load(); else WX.fires.clear(); };
     $("#share-btn").onclick = async () => { pushHash(); await new Promise((r) => setTimeout(r, 300)); try { await navigator.clipboard.writeText(location.href); toast("Link copied"); } catch (e) { toast(location.href, 6000); } };
     $("#settings-btn").onclick = () => { $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(); };
@@ -342,6 +343,11 @@
       $(`#${k}-toggle`).onclick = () => { state[k] = !state[k]; $(`#${k}-toggle`).classList.toggle("on", state[k]); if (state[k]) WX.ov[load](); else WX.ov[clear](); };
     }
     $("#theme-toggle").onclick = () => { applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light"); $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme; };
+    $("#route-toggle").onclick = () => {
+      if (!WX.route) { toast("Route forecast is unavailable in this build", 4000, "error"); return; }
+      const on = !state.route; state.route = on; $("#route-toggle").classList.toggle("on", on);
+      if (on) WX.route.start(); else WX.route.stop();
+    };
     $("#xsection-toggle").onclick = () => { const on = !state.xsection; $("#xsection-toggle").classList.toggle("on", on); if (on) WX.xs.start(); else WX.xs.stop(); };
     $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); $("#measure-toggle").querySelector(".val").textContent = state.measure ? "on" : "off"; if (!state.measure) WX.ov.clearMeasure(); else toast("Measure: tap two points"); };
     $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) WX.ov.loadIso(); else WX.ov.clearIso(); };
@@ -375,7 +381,7 @@
     ["alerts", "Alerts", "warn"], ["storms", "Storms", "warn"], ["thunder", "Thunder", "warn"], ["sigmet", "SIGMET", "warn"], ["fires", "Fires", "warn"], ["smoke", "Smoke"], ["aq", "Air quality"], ["quakes", "Quakes"], null,
     ["avy", "Avalanche"], ["resorts", "Ski resorts"], null,
     ["particles", "Particles"], ["barbs", "Barbs"], null,
-    ["xsection", "Cross section"], ["measure", "Measure"],
+    ["xsection", "Cross section"], ["route", "Route forecast"], ["measure", "Measure"],
   ];
   function buildStrip() {
     const st = $("#tstrip"); if (!st) return;
@@ -447,6 +453,7 @@
     if (state.thunder && WX.ov) WX.ov.loadThunder();
     if (state.xsection && WX.xs) WX.xs.refresh();
     if (state.aq && WX.cams) WX.cams.refresh();
+    if (state.route && WX.route) WX.route.refresh();
     if (WX.probe) WX.probe.refresh();
     const v = validDate();
     $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts({ weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
