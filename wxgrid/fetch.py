@@ -230,8 +230,33 @@ GEFS_SFC_FLAGS = {
 }
 
 
+# Ensemble standard deviation, published beside the mean in the same
+# pgrb2sp25 directory as geavg:  gespr.tHHz.pgrb2s.0p25.fHHH  (+ .idx).
+# Identical grid, steps and parameter list to geavg — only the GRIB2 "derived
+# forecast" octet differs, which eccodes does not surface in the shortName. So
+# the file lands in the step dir under its own suffix and the ingest reads the
+# provenance off the NAME, not off the message.
+SPREAD_SUFFIX = "-spr.grib2"
+GEFS_SPREAD_FLAGS = {
+    "var_TMP": "on", "var_UGRD": "on", "var_VGRD": "on", "var_PRMSL": "on", "var_APCP": "on",
+    "lev_2_m_above_ground": "on", "lev_10_m_above_ground": "on",
+    "lev_mean_sea_level": "on", "lev_surface": "on",
+}
+
+
 def _query(url: str, q: dict[str, str]) -> str:
     return url + "?" + "&".join(f"{k}={v}" for k, v in q.items())
+
+
+def gefs_spread_url(run: datetime, step: int) -> str:
+    return _query(NOMADS_GEFS_SFC, {
+        "dir": f"%2Fgefs.{run:%Y%m%d}%2F{run:%H}%2Fatmos%2Fpgrb2sp25",
+        "file": f"gespr.t{run:%H}z.pgrb2s.0p25.f{step:03d}", **GEFS_SPREAD_FLAGS})
+
+
+def is_spread(path: str | Path) -> bool:
+    """True for a GRIB this module downloaded from an ensemble-spread stream."""
+    return Path(path).name.endswith(SPREAD_SUFFIX)
 
 
 def gefs_sfc_url(run: datetime, step: int) -> str:
@@ -266,6 +291,15 @@ def fetch_gefs(model: Model, run: datetime, root: Path = GRIB_DIR,
         if _have(sfc) or _download(s, gefs_sfc_url(run, step), sfc):
             paths.append(sfc)
         time.sleep(0.5)      # NOMADS rate courtesy; they ban hammering
+        if model.spread_params:
+            # Never fatal: a step whose spread file is missing simply leaves
+            # the `_sd` variables NaN there, and the mean is still ingested.
+            spr = out_dir / f"step{step:03d}{SPREAD_SUFFIX}"
+            if _have(spr) or _download(s, gefs_spread_url(run, step), spr):
+                paths.append(spr)
+            else:
+                log.info("%s %s step %03d: no ensemble spread published", model.key, run, step)
+            time.sleep(0.5)
         if model.pl_params and step % LEVEL_EVERY == 0:
             pl = out_dir / f"step{step:03d}-pl.grib2"
             if _have(pl) or _download(s, gefs_pl_url(run, step, model.levels), pl):

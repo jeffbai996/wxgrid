@@ -129,6 +129,25 @@ def reverse(lat: float, lon: float) -> dict:
     return cache.get(key, 24 * 3600, fetch)
 
 
+def timezone(lat: float, lon: float) -> dict:
+    """The IANA zone and current UTC offset at a point, so the app can show a
+    forecast in the *place's* clock rather than the reader's. Open-Meteo's
+    forecast endpoint resolves the zone with `timezone=auto`; the longitude
+    hour is the fallback when it is unreachable."""
+    key = f"tz:{lat:.1f}:{lon:.1f}"
+    def fetch():
+        try:
+            j = _get_json("https://api.open-meteo.com/v1/forecast",
+                          {"latitude": round(lat, 3), "longitude": round(lon, 3),
+                           "timezone": "auto", "forecast_days": 1, "daily": "sunrise"})
+            return {"tz": j.get("timezone"), "abbr": j.get("timezone_abbreviation"),
+                    "offset_s": j.get("utc_offset_seconds"), "source": "open-meteo"}
+        except Exception as exc:                       # noqa: BLE001 - any failure falls back
+            log.debug("timezone lookup failed: %s", exc)
+            return {"tz": None, "abbr": None, "offset_s": int(round(lon / 15.0)) * 3600, "source": "longitude"}
+    return cache.get(key, 30 * 24 * 3600, fetch)
+
+
 # ── elevation ─────────────────────────────────────────────────────────────
 
 def elevation(lat: float, lon: float) -> float | None:

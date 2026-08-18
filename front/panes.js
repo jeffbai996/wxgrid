@@ -57,18 +57,18 @@
     const hi = todays.length ? Math.max(...todays.map((k) => s.t2m[k])) - K : null, lo = todays.length ? Math.min(...todays.map((k) => s.t2m[k])) - K : null;
     const chips = [];
     if (s.wind) chips.push(`<span class="chipv" style="background:${windColor(s.wind[i] || 0)}">${f(s.wdir && s.wdir[i], arrow)} <b>${f(s.wind[i], (v) => speed(v).toFixed(0))}</b>${s.gust && s.gust[i] != null ? `<span class="dim">G${speed(s.gust[i]).toFixed(0)}</span>` : ""} ${speedUnit()}</span>`);
-    if (s.tp6 && s.tp6[i] > 0.05) chips.push(`<span class="chipv" style="color:var(--rain)"><b>${s.tp6[i].toFixed(1)}</b> mm/6h</span>`);
-    if (s.sf6 && s.sf6[i] > 0.05) chips.push(`<span class="chipv" style="color:#cfe8ff"><b>${s.sf6[i].toFixed(1)}</b> cm snow</span>`);
+    if (s.tp6 && s.tp6[i] > 0.05) chips.push(`<span class="chipv" style="color:var(--rain)"><b>${W().units.precip(s.tp6[i]).v}</b> ${W().units.precipUnit}/6h</span>`);
+    if (s.sf6 && s.sf6[i] > 0.05) chips.push(`<span class="chipv" style="color:#cfe8ff"><b>${W().units.snow(s.sf6[i]).v}</b> ${W().units.snowUnit} snow</span>`);
     if (s.tcc) chips.push(`<span class="chipv">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
-    if (s.d2m) chips.push(`<span class="chipv">dew <b>${f(s.d2m[i], (v) => (v - K).toFixed(0))}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
-    if (s.msl) chips.push(`<span class="chipv"><b>${f(s.msl[i], (v) => (v / 100).toFixed(0))}</b> hPa</span>`);
-    if (s.swh && s.swh[i] != null) chips.push(`<span class="chipv" style="color:#7dd3fc">〜 <b>${s.swh[i].toFixed(1)}</b> m${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` · ${arrow((s.mwd[i] + 180) % 360)}` : ""}</span>`);
+    if (s.d2m) chips.push(`<span class="chipv">dew <b>${f(s.d2m[i], (v) => W().units.temp(v).v)}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
+    if (s.msl) chips.push(`<span class="chipv"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}</span>`);
+    if (s.swh && s.swh[i] != null) chips.push(`<span class="chipv" style="color:#7dd3fc">〜 <b>${W().units.alt(s.swh[i], 1).v}</b> ${W().units.altUnit}${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` · ${arrow((s.mwd[i] + 180) % 360)}` : ""}</span>`);
     if (s.cape && s.cape[i] > 100) chips.push(`<span class="chipv" style="color:${s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)"}">⚡ <b>${s.cape[i].toFixed(0)}</b> J/kg</span>`);
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
     $("#point-now").innerHTML = `<div class="hero">
         ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
-        <div class="big" style="color:${t != null ? tempColor(t - K) : "inherit"}">${t == null ? "—" : Math.round(t - K)}<span class="deg">°</span></div>
-        <div class="hl">${hi != null ? `<span><i>H</i>${Math.round(hi)}°</span><span><i>L</i>${Math.round(lo)}°</span>` : ""}${sun ? `<span class="daylen">${W_ICONS.rise}${sun.rise}</span><span class="daylen">${W_ICONS.set}${sun.set}</span>` : ""}</div>
+        <div class="big" style="color:${t != null ? tempColor(t - K) : "inherit"}">${t == null ? "—" : W().units.temp(t).v}<span class="deg">°</span></div>
+        <div class="hl">${hi != null ? `<span><i>H</i>${W().units.tempC(hi).v}°</span><span><i>L</i>${W().units.tempC(lo).v}°</span>` : ""}${sun ? `<span class="daylen">${W_ICONS.rise}${sun.rise}</span><span class="daylen">${W_ICONS.set}${sun.set}</span>` : ""}</div>
       </div>
       <div class="meta">${chips.join("")}</div>
       ${daysStrip(d, i)}
@@ -78,7 +78,8 @@
     const bits = [];
     if (loc.place && loc.place.name && loc.place.name !== pt.name) bits.push(`<span><b>${esc(loc.place.name)}</b>${loc.place.region ? ", " + esc(loc.place.region) : ""}${loc.place.country ? " · " + esc(loc.place.country) : ""}</span>`);
     else if (loc.place && (loc.place.region || loc.place.country)) bits.push(`<span>${esc(loc.place.region || "")}${loc.place.country ? " · " + esc(loc.place.country) : ""}</span>`);
-    if (loc.elevation_m != null) bits.push(`<span>elev <b>${Math.round(loc.elevation_m)} m</b> · ${Math.round(loc.elevation_m * 3.281)} ft</span>`);
+    if (loc.elevation_m != null) bits.push(`<span>elev <b>${W().units.alt(loc.elevation_m).txt}</b></span>`);
+    if (W().units.followsPoint && loc.timezone && loc.timezone.abbr) bits.push(`<span>${esc(loc.timezone.abbr)}</span>`);
     // the title already carries the coordinates when there is no place name —
     // don't print them twice
     const coords = `${pt.lat.toFixed(2)}°, ${W().wlon(pt.lon).toFixed(2)}°`;
@@ -117,7 +118,7 @@
       const cloud = ks.map((k) => s.tcc ? s.tcc[k] : null).filter((x) => x != null); const cl = cloud.length ? cloud.reduce((a, b) => a + b, 0) / cloud.length : null;
       const g = W().tape && W().tape.glyph ? W().tape.glyph(cl, (rain + snow) / Math.max(1, ks.length) * (24 / 6), s.t2m[noon], false) : "";
       const on = dt.toDateString() === cur;
-      return `<button class="day${on ? " on" : ""}" data-k="${noon}"><span class="dn">${dt.toLocaleDateString(undefined, { weekday: "short" })}</span><span class="dg">${g}</span><span class="hl"><b style="color:${tempColor(hi)}">${Math.round(hi)}°</b><i>${Math.round(lo)}°</i></span><span class="pr">${snow >= 1 ? `<span class="sn">${snow.toFixed(0)} cm</span>` : rain >= 0.5 ? `${rain.toFixed(rain < 10 ? 1 : 0)} mm` : "&nbsp;"}</span>${wmax != null ? `<span class="wd">${Math.round(W().speed(wmax))}</span>` : ""}</button>`;
+      return `<button class="day${on ? " on" : ""}" data-k="${noon}"><span class="dn">${dt.toLocaleDateString(undefined, { weekday: "short" })}</span><span class="dg">${g}</span><span class="hl"><b style="color:${tempColor(hi)}">${W().units.tempC(hi).v}°</b><i>${W().units.tempC(lo).v}°</i></span><span class="pr">${snow >= 1 ? `<span class="sn">${W().units.snow(snow).txt}</span>` : rain >= 0.5 ? W().units.precip(rain).txt : "&nbsp;"}</span>${wmax != null ? `<span class="wd">${Math.round(W().speed(wmax))}</span>` : ""}</button>`;
     }).join("");
     setTimeout(() => document.querySelectorAll(".days .day").forEach((b) => b.onclick = () => W().setStep(Number(b.dataset.k))), 0);
     return `<div class="days">${cells}</div>`;
@@ -161,7 +162,7 @@
     const r = calc(true), s = calc(false);
     if (r == null || s == null) return null;
     const base = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-    const fmt = (h) => new Date(base + h * 3600e3).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    const fmt = (h) => new Date(base + h * 3600e3).toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric", minute: "2-digit" }));
     const len = ((s - r + 24) % 24);
     return { rise: fmt(r), set: fmt(s), len: `${Math.floor(len)}h${String(Math.round((len % 1) * 60)).padStart(2, "0")}` };
   }
@@ -258,13 +259,13 @@
       ["New snow next 24 h", sn(24), ""],
       ["New snow next 48 h", sn(48), ""],
       ["New snow next 72 h", sn(72), ""],
-      ["Snow depth (model)", s.sd_cm ? `${Math.round(s.sd_cm[i])} cm` : "n/a", ""],
-      ["Freezing level", fl != null ? `${fl} m · ${Math.round(fl * 3.281 / 100) * 100} ft` : "—", ""],
+      ["Snow depth (model)", s.sd_cm ? W().units.snow(s.sd_cm[i]).txt : "n/a", ""],
+      ["Freezing level", fl != null ? W().units.alt(fl).txt : "—", ""],
       ["Snow level (≈)", snowLevel != null ? `${Math.round(snowLevel / 50) * 50} m` : "—", ""],
       ["Ridge wind 850 / 700", `${f(w850, (v) => speed(v).toFixed(0))} / ${f(w700, (v) => speed(v).toFixed(0))} ${speedUnit()}`, w700 != null && speed(w700) > (W().state.units === "kt" ? 25 : W().state.units === "ms" ? 13 : 45) ? "bad" : w700 != null && speed(w700) > (W().state.units === "kt" ? 15 : W().state.units === "ms" ? 8 : 28) ? "meh" : "good"],
       ["Wind loading", w850 != null && speed(w850) > (W().state.units === "kt" ? 15 : W().state.units === "ms" ? 8 : W().state.units === "mph" ? 17 : 28) ? `${lee} aspects loading` : "light", w850 != null && speed(w850) > 15 ? "meh" : "good"],
       ["Rain on snow", rainOnSnow ? "yes, wet loading" : "no", rainOnSnow ? "bad" : "good"],
-      ["Surface temp", t != null ? `${t.toFixed(0)}°C` : "—", t != null && t > 0 && s.sd_cm && s.sd_cm[i] > 5 ? "meh" : ""],
+      ["Surface temp", t != null ? W().units.tempC(t).txt : "—", t != null && t > 0 && s.sd_cm && s.sd_cm[i] > 5 ? "meh" : ""],
     ];
     let avyHtml = `<div class="avy"><div class="avy-head"><span>Avalanche forecast</span><span class="dim">loading…</span></div></div>`;
     if (pt.avy === false) avyHtml = `<div class="avy"><div class="avy-head"><span>Avalanche forecast</span></div><div class="avy-note">No public forecast region covers this point (Avalanche Canada / avalanche.org).</div></div>`;
@@ -328,12 +329,12 @@
     const dry = { length: dryH / 6 };
     const rows = [
       ["Precip now", `${ptype}${rain != null && rain > 0 ? ` · ${rain.toFixed(1)} mm/6h` : ""}`, ptype === "dry" ? "good" : ptype === "snow" ? "meh" : ""],
-      ["Next 24 h rain", rain24 != null ? `${rain24.toFixed(1)} mm` : "—", rain24 == null ? "" : rain24 < 1 ? "good" : rain24 < 10 ? "meh" : "bad"],
-      ["Freezing level", fl != null ? `${fl} m` : "—", ""],
+      ["Next 24 h rain", rain24 != null ? W().units.precip(rain24).txt : "—", rain24 == null ? "" : rain24 < 1 ? "good" : rain24 < 10 ? "meh" : "bad"],
+      ["Freezing level", fl != null ? W().units.alt(fl).txt : "—", ""],
       ["Snow level (≈)", snowLevel != null ? `${Math.round(snowLevel / 50) * 50} m` : "—", ""],
       ["Wind / gust", w != null ? `${speed(w).toFixed(0)}${g != null ? ` G${speed(g).toFixed(0)}` : ""} ${speedUnit()}` : "—", w == null ? "" : speed(w) < calm ? "good" : "meh"],
       ["Max gust 24 h", gustMax24 != null ? `${speed(gustMax24).toFixed(0)} ${speedUnit()}` : "—", gustMax24 == null ? "" : speed(gustMax24) < gusty ? "good" : "bad"],
-      ["Feels like", chill != null ? `${chill.toFixed(0)}° (wind chill)` : humidex != null ? `${humidex.toFixed(0)}° (humidex)` : t != null ? `${t.toFixed(0)}°` : "—", (chill != null && chill < -10) || (humidex != null && humidex > 35) ? "bad" : ""],
+      ["Feels like", chill != null ? `${W().units.tempC(chill).v}° (wind chill)` : humidex != null ? `${W().units.tempC(humidex).v}° (humidex)` : t != null ? `${W().units.tempC(t).v}°` : "—", (chill != null && chill < -10) || (humidex != null && humidex > 35) ? "bad" : ""],
       ["Cloud", cloud != null ? `${(cloud * 100).toFixed(0)}%` : "—", cloud == null ? "" : cloud < 0.3 ? "good" : ""],
       ["Thunder risk (CAPE)", s.cape && s.cape[i] != null ? `${s.cape[i].toFixed(0)} J/kg` : "n/a", capeClass(s.cape && s.cape[i])],
       ["UV index (model est.)", s.uvi && s.uvi[i] != null ? `${s.uvi[i].toFixed(0)} ${uvWord(s.uvi[i])}` : "—", s.uvi && s.uvi[i] != null ? (s.uvi[i] < 3 ? "good" : s.uvi[i] < 8 ? "meh" : "bad") : ""],

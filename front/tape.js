@@ -45,17 +45,18 @@
     // day header cells: colspan per day
     const days = [];
     dates.forEach((dt, i) => { const k = dt.toDateString(); if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, span: 0 }); days[days.length - 1].span++; });
-    const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day">${dy.start.toLocaleDateString(undefined, { weekday: "long", day: "numeric" })}</th>`).join("");
+    const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}</th>`).join("");
     // the column whose interval holds the current wall-clock time gets a mark
     const nowMs = Date.now();
     const nowIdx = dates.findIndex((dt, i) => nowMs >= dt.getTime() && (i + 1 >= n || nowMs < dates[i + 1].getTime()));
     const cell = (i, inner, cls = "") => `<td class="${cls} ${dates[i].getHours() < 6 || dates[i].getHours() >= 21 ? "night" : ""}${i === nowIdx ? " now" : ""}" data-i="${i}">${inner}</td>`;
-    const hourRow = dates.map((dt, i) => cell(i, `<span class="hr">${dt.toLocaleTimeString(undefined, { hour: "numeric" }).replace(":00", "").replace(/\s/, "<small>") + (/[ap]m/i.test(dt.toLocaleTimeString(undefined, { hour: "numeric" })) ? "</small>" : "")}</span>`, "hour")).join("");
+    const hourTxt = (dt) => dt.toLocaleTimeString(undefined, WX.units.timeOpts({ hour: "numeric" }));
+    const hourRow = dates.map((dt, i) => cell(i, `<span class="hr">${hourTxt(dt).replace(":00", "").replace(/\s/, "<small>") + (/[ap]m/i.test(hourTxt(dt)) ? "</small>" : "")}</span>`, "hour")).join("");
     const iconRow = dates.map((_, i) => cell(i, glyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), s.t2m ? s.t2m[i] : null, dates[i].getHours() < 6 || dates[i].getHours() >= 21), "ico")).join("");
-    const tempRow = dates.map((_, i) => cell(i, s.t2m && s.t2m[i] != null ? `${Math.round(s.t2m[i] - 273.15)}°` : "—", "temp")).join("");
+    const tempRow = dates.map((_, i) => cell(i, s.t2m && s.t2m[i] != null ? `${WX.units.temp(s.t2m[i]).v}°` : "—", "temp")).join("");
     const feels = (i) => { const t = s.t2m ? s.t2m[i] - 273.15 : null, w = s.wind ? s.wind[i] : null; if (t == null) return null; if (w != null && t <= 10 && w * 3.6 >= 4.8) { const v = Math.pow(w * 3.6, 0.16); return 13.12 + 0.6215 * t - 11.37 * v + 0.3965 * t * v; } if (s.d2m && s.d2m[i] != null && t >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / s.d2m[i])); return t + 0.5555 * (e - 10); } return t; };
-    const feelsRow = dates.map((_, i) => { const v = feels(i); return cell(i, v == null ? "—" : `${Math.round(v)}°`, "feels"); }).join("");
-    const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `<span class="snow">${sn.toFixed(sn < 10 ? 1 : 0)}</span>`, "rain"); return cell(i, r >= 0.1 ? `<span>${r.toFixed(r < 10 ? 1 : 0)}</span>` : "", "rain"); }).join("");
+    const feelsRow = dates.map((_, i) => { const v = feels(i); return cell(i, v == null ? "—" : `${WX.units.tempC(v).v}°`, "feels"); }).join("");
+    const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `<span class="snow">${WX.units.snow(sn).v}</span>`, "rain"); return cell(i, r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : "", "rain"); }).join("");
     const windCol = (v) => { const kmh = v * 3.6; const p = Math.min(1, kmh / 70); return `background: rgba(${Math.round(60 + 180 * p)}, ${Math.round(160 - 60 * p)}, ${Math.round(220 - 200 * p)}, ${0.15 + 0.6 * p})`; };
     const windRow = dates.map((_, i) => { const v = s.wind ? s.wind[i] : null; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("");
     const gustRow = s.gust ? dates.map((_, i) => { const v = s.gust[i]; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("") : "";
@@ -64,9 +65,9 @@
     tape.innerHTML = `<table class="wtape"><thead><tr><th class="lab corner"></th>${dayRow}</tr></thead><tbody>
       <tr class="r-hour">${label("Hours")}${hourRow}</tr>
       <tr class="r-icon">${label("")}${iconRow}</tr>
-      <tr class="r-temp">${label("Temp", "°C")}${tempRow}</tr>
-      <tr class="r-feels">${label("Feels like", "°C")}${feelsRow}</tr>
-      <tr class="r-rain">${label("Rain / snow", "mm · cm")}${rainRow}</tr>
+      <tr class="r-temp">${label("Temp", WX.units.tempUnit)}${tempRow}</tr>
+      <tr class="r-feels">${label("Feels like", WX.units.tempUnit)}${feelsRow}</tr>
+      <tr class="r-rain">${label("Rain / snow", `${WX.units.precipUnit} · ${WX.units.snowUnit}`)}${rainRow}</tr>
       <tr class="r-wind">${label("Wind", speedUnit())}${windRow}</tr>
       ${gustRow ? `<tr class="r-wind">${label("Gusts", speedUnit())}${gustRow}</tr>` : ""}
       <tr class="r-dir">${label("Wind dir.")}${dirRow}</tr>

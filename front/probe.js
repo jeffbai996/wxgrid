@@ -48,7 +48,7 @@
       if (!uv) return null;
       const spd = Math.hypot(uv[0], uv[1]);
       const dir = (270 - Math.atan2(uv[1], uv[0]) * 180 / Math.PI) % 360;      // FROM, wind convention
-      if (layer === "waves") { const h = spd / 3; return { text: `${h.toFixed(1)} m`, sub: `${WX.arrow((dir + 180) % 360)} ${Math.round((dir + 180) % 360)}°` }; }
+      if (layer === "waves") { const h = spd / 3; return { text: WX.units.alt(h, 1).txt, sub: `${WX.arrow((dir + 180) % 360)} ${Math.round((dir + 180) % 360)}°` }; }
       return { text: `${Math.round(WX.speed(spd))} ${WX.speedUnit()}`, sub: `${WX.arrow(dir)} ${Math.round(dir)}°` };
     }
     if (!data) return null;
@@ -64,7 +64,13 @@
     for (let k = 0; k < 256; k++) { const c = r.cols[k].rgb; const d = (c[0] - R) ** 2 + (c[1] - G) ** 2 + (c[2] - B) ** 2; if (d < bd) { bd = d; best = k; } }
     let v = r.cols[best].v;
     if (["wind", "gust"].includes(layer)) return { text: `${Math.round(WX.speed(v))} ${WX.speedUnit()}`, sub: "" };
-    const nd = ["temp", "d2m", "msl", "tcc", "cape", "rh", "frz", "sd_cm", "wperiod"].includes(layer) ? 0 : 1;
+    const U = WX.units;
+    const conv = { temp: () => U.tempC(v), d2m: () => U.tempC(v), msl: () => U.press(v * 100), frz: () => U.alt(v),
+                   tp6: () => U.precip(v), tp24: () => U.precip(v), tp72: () => U.precip(v),
+                   sf6: () => U.snow(v), sf24: () => U.snow(v), sf72: () => U.snow(v), sd_cm: () => U.snow(v),
+                   waves: () => U.alt(v, 1) }[layer];
+    if (conv) { const c = conv(); return { text: c.txt, sub: WX.state.level && layer === "temp" ? `${WX.state.level} hPa` : "" }; }
+    const nd = ["tcc", "cape", "rh", "wperiod", "uvi"].includes(layer) ? 0 : 1;
     return { text: `${v.toFixed(nd)} ${r.lg.units}`, sub: WX.state.level && ["temp"].includes(layer) ? `${WX.state.level} hPa` : "" };
   }
 

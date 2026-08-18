@@ -250,10 +250,11 @@ input#step { width: 100%; accent-color: var(--accent); height: 14px; margin: 2px
 #point-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin: 0 -6px; padding: 0 6px; }
 #point-foot { flex: 0 0 auto; }
 .point-head { display: flex; align-items: flex-start; gap: 8px; }
+.sheet-grip { display: none; }
 .point-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .point-head #point-title { font: 750 16.5px/1.2 var(--font-display); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #point .point-tabs { display: flex; align-items: center; margin: 9px 0 3px; max-width: none; padding: 3px; }
-#point .point-tabs button { flex: 1 1 auto; padding: 6px 6px; font-size: 11.5px; line-height: 1.15; }
+#point .point-tabs button { flex: 1 1 auto; padding: 6px 6px; font-size: 11.5px; line-height: 1.15; white-space: nowrap; }
 .point-head .icon { width: 26px; height: 26px; font-size: 13px; }
 #point-now { display: flex; gap: 14px; margin: 8px 0 4px; font: 500 12px var(--font-mono); flex-wrap: wrap; align-items: baseline; }
 #point-now b { font-size: 17px; color: var(--fg); font-family: var(--font-display); font-weight: 700; }
@@ -314,7 +315,17 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
   .rail button svg { display: none; }
   .rail .rail-sec { display: none; }
   .rail button .var { display: none; }
-  #point { left: 8px; top: calc(var(--top-h) + 44px); max-height: calc(100vh - var(--top-h) - var(--tb-h) - 62px - env(safe-area-inset-bottom)); }
+  /* On a phone the card is a bottom sheet: it sits above the time bar at
+     rest, drags up over it, and drags down to close. Two snap points, so a
+     thumb never has to be precise. */
+  #point { left: 8px; right: 8px; top: auto; border-radius: 16px 16px 12px 12px;
+    bottom: calc(var(--tb-h) + 10px + env(safe-area-inset-bottom));
+    max-height: min(56vh, calc(100vh - var(--top-h) - var(--tb-h) - 40px));
+    transition: bottom .22s cubic-bezier(.4,0,.2,1), max-height .22s cubic-bezier(.4,0,.2,1); }
+  #point.sheet-full { bottom: calc(6px + env(safe-area-inset-bottom)); max-height: calc(100vh - var(--top-h) - 20px); }
+  #point.sheet-drag { transition: none; }
+  .sheet-grip { display: block; padding: 2px 0 6px; margin: -4px 0 0; touch-action: none; cursor: grab; }
+  .sheet-grip i { display: block; width: 38px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 0 auto; }
   #levels { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
   #legend { width: 90px; margin-left: 8px; }
   #legend .legend-ticks { display: none; }

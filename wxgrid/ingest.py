@@ -20,6 +20,7 @@ import requests
 
 from wxgrid import fetch
 from wxgrid.config import GRIB_DIR, GRID_LAT_N, GRID_LON_N, STORE_DIR
+from wxgrid.ens import wind_speed_spread
 from wxgrid.grib import iter_fields
 from wxgrid.models import MODELS, Model, get_model
 from wxgrid.store import RunWriter, build_point_cube, list_runs, prune, run_id, run_path
@@ -81,6 +82,53 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
         lock_path.unlink(missing_ok=True)
 
 
+def write_spread(writer: RunWriter, model: Model, step: int, paths: list[Path],
+                 mean: dict[str, np.ndarray]) -> list[str]:
+    """Ensemble-spread GRIBs → the `_sd` variables for one step.
+
+    Never fatal. A step whose spread file did not download, a parameter the
+    producer dropped that cycle, or a GRIB that will not decode all end the
+    same way: log it, leave those steps NaN, let the run finish. `finish()`
+    drops a variable that no step ever delivered, so the API never advertises
+    an all-NaN field.
+
+    `mean` is the same step's decoded mean fields, needed only for `wind_sd`:
+    NOMADS publishes the spread of the wind components, and turning that into
+    a spread of wind SPEED needs the mean wind direction.
+    """
+    if not model.spread_params or not paths:
+        return []
+    sd: dict[str, np.ndarray] = {}
+    for p in paths:
+        try:
+            for f in iter_fields(p):
+                canon = model.canonical_spread(f.short_name, f.level_type, f.level)
+                if canon is None:
+                    continue
+                vals = f.values
+                # Same unit rule as the mean path: ECMWF-style metres of water
+                # would need ×1000; GEFS ships kg m-2, which is already mm.
+                if canon == "tp6_sd" and f.units.strip().startswith("m"):
+                    vals = vals * 1000.0
+                sd[canon] = vals
+        except Exception:
+            log.exception("%s step %03d: spread file %s unreadable, skipping", model.key, step, p.name)
+    if not sd:
+        log.info("%s step %03d: spread file carried nothing we map", model.key, step)
+        return []
+    written = []
+    for canon, vals in sd.items():
+        if canon in ("u10_sd", "v10_sd"):
+            continue                     # inputs to wind_sd, not stored themselves
+        writer.write(canon, step, vals)
+        written.append(canon)
+    if "u10_sd" in sd and "v10_sd" in sd:
+        writer.write("wind_sd", step,
+                     wind_speed_spread(mean.get("u10"), mean.get("v10"), sd["u10_sd"], sd["v10_sd"]))
+        written.append("wind_sd")
+    return written
+
+
 def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store_root: Path, keep_grib: bool) -> dict:
 
     writer = RunWriter(model.key, rid, model.steps, model.store_variables(),
@@ -101,6 +149,11 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
                                    units=model.unit_override.get(short) if short else None)
 
     def on_step(step: int, paths: list[Path]) -> None:
+        # The ensemble-spread GRIB decodes to the same shortNames as the mean,
+        # so the two sets of files are kept apart by name and mapped through
+        # different tables (Model.canonical vs Model.canonical_spread).
+        spread_paths = [p for p in paths if fetch.is_spread(p)]
+        paths = [p for p in paths if not fetch.is_spread(p)]
         got: dict[str, np.ndarray] = {}
         got_start: dict[str, int] = {}
         for f in _fields(paths):
@@ -151,6 +204,7 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
             if canon in ("tp", "sf", "sd", "csnow"):
                 continue
             writer.write(canon, step, vals)
+        write_spread(writer, model, step, spread_paths, got)
         log.info("%s %s step %03d written", model.key, rid, step)
 
     fetcher = {"ecmwf": fetch.fetch_ecmwf, "nomads": fetch.fetch_gfs,

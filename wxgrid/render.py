@@ -196,23 +196,77 @@ def _lut(ramp: dict) -> np.ndarray:
 _LUTS = {k: _lut(v) for k, v in RAMPS.items()}
 
 
-def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78) -> bytes:
-    """PNG for a Mercator-projected field already in display units.
+IMAGE_FORMATS = {"png": "image/png", "webp": "image/webp"}
+# Layers whose alpha varies with the value, so they cannot be palette images.
+_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi")
+
+
+def pick_format(accept: str | None) -> str:
+    """The image format to serve, from a request's Accept header. Every
+    browser that supports WebP advertises `image/webp`; everything else (curl,
+    old Safari, the static build's file: loads) falls through to PNG."""
+    return "webp" if accept and "image/webp" in accept else "png"
+
+
+def layer_cache_name(step: int, tag: str, accept: str | None) -> tuple[str, str, str]:
+    """(cache filename, format, media type) for one rendered layer. Keeps the
+    format decision and the cache key in one place, so a WebP and a PNG of the
+    same step never collide on disk."""
+    fmt = pick_format(accept)
+    return f"{step:03d}-{tag}.{fmt}", fmt, IMAGE_FORMATS[fmt]
+
+
+# libwebp effort. 1 gets within ~1 pp of the best ratio on the big alpha
+# layers for ~1 s per 1440² frame; 2+ costs 3-16 s for that last percent, and
+# a layer is encoded on the request that misses the cache, so the user waits.
+WEBP_METHOD = 1
+
+
+def _webp(rgba: np.ndarray, buf: io.BytesIO) -> bytes:
+    """Lossless WebP from an RGBA array — the same pixels the PNG carries.
+
+    `exact=True` keeps the colour under fully transparent pixels. libwebp
+    would happily rewrite it (nobody can see it, and it compresses better),
+    but the GPU can: MapLibre filters the raster bilinearly, so a texel at the
+    edge of a rain blob mixes with its invisible neighbour, and a neighbour
+    quietly zeroed to black draws a dark fringe. It is not even a real
+    trade-off here — measured on tp6, `exact=True` came out *smaller* as well
+    as identical, because the zeroed pixels break the run-length structure the
+    encoder was exploiting.
+    """
+    Image.fromarray(rgba, "RGBA").save(buf, format="WEBP", lossless=True, quality=100,
+                                       method=WEBP_METHOD, exact=True)
+    return buf.getvalue()
+
+
+def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: str = "png") -> bytes:
+    """PNG (or WebP) for a Mercator-projected field already in display units.
 
     Constant-alpha layers go out as 8-bit palette PNGs (256 colours is exactly
     the LUT, ~4x smaller than RGBA on the wire); rain, whose alpha varies with
     the value, stays RGBA. A field that is entirely missing (a step the model
     did not publish for this variable) becomes a fully transparent image, so
-    the map shows nothing rather than a stale previous step."""
+    the map shows nothing rather than a stale previous step.
+
+    `fmt="webp"` emits the identical RGBA as lossless WebP. WebP has no
+    palette mode, so the palette layers are expanded to RGBA first with the
+    same constant alpha the PNG's transparency table carries — the decoded
+    image is byte-identical either way, only the container differs."""
+    if fmt not in IMAGE_FORMATS:
+        raise ValueError(f"unknown image format {fmt}")
     ramp, lut = RAMPS[layer], _LUTS[layer]
     lo, hi = ramp["lo"], ramp["hi"]
     buf = io.BytesIO()
     if np.all(np.isnan(field_display)):
-        Image.new("RGBA", (field_display.shape[1], field_display.shape[0]), (0, 0, 0, 0)).save(buf, format="PNG")
+        blank = Image.new("RGBA", (field_display.shape[1], field_display.shape[0]), (0, 0, 0, 0))
+        if fmt == "webp":
+            blank.save(buf, format="WEBP", lossless=True, method=WEBP_METHOD, exact=True)
+        else:
+            blank.save(buf, format="PNG")
         return buf.getvalue()
     x = np.nan_to_num(field_display, nan=lo)
     idx = np.clip((x - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
-    if layer in ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi"):
+    if layer in _RGBA_LAYERS:
         rgba = lut[idx].copy()
         if layer in ("tp6", "tp24", "tp72"):
             # Rain: transparent where dry, ramping in over the first millimetre(s).
@@ -230,8 +284,14 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78) -> byte
         else:
             a = np.clip(x / 100.0, 0, 1) ** 0.7     # clear sky shows the map through
         rgba[..., 3] = (a * alpha * 255).astype(np.uint8)
+        if fmt == "webp":
+            return _webp(rgba, buf)
         Image.fromarray(rgba, "RGBA").save(buf, format="PNG", optimize=False, compress_level=6)
         return buf.getvalue()
+    if fmt == "webp":
+        rgba = lut[idx].copy()
+        rgba[..., 3] = int(alpha * 255)
+        return _webp(rgba, buf)
     img = Image.fromarray(idx, "P")
     img.putpalette(lut[:, :3].astype(np.uint8).ravel().tolist())
     img.info["transparency"] = bytes([int(alpha * 255)] * 256)

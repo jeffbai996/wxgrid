@@ -180,7 +180,7 @@
     levels.forEach((p) => { if (levels.length > 6 && p % 100 !== 0 && p !== 925) return; x.fillText(String(p), padL - 6, yOf(p)); });
     x.save(); x.translate(12, padT + gh / 2); x.rotate(-Math.PI / 2); x.textAlign = "center"; x.fillText("hPa", 0, 0); x.restore();
     x.textAlign = "center"; x.textBaseline = "top";
-    for (let k = 0; k <= 4; k++) { const i = Math.round((n - 1) * k / 4); x.fillText(`${Math.round(data.dist_km[i])} km`, xOf(i), padT + gh + 5); }
+    for (let k = 0; k <= 4; k++) { const i = Math.round((n - 1) * k / 4); x.fillText(WX.units.dist(data.dist_km[i], 0).txt, xOf(i), padT + gh + 5); }
     x.strokeStyle = css("--line") || "rgba(255,255,255,.1)"; x.lineWidth = 1;
     x.strokeRect(padL, padT, gw, gh);
 
@@ -189,7 +189,7 @@
       const i = Math.max(0, Math.min(n - 1, Math.round((hoverX * w - padL) / gw * (n - 1))));
       x.strokeStyle = css("--accent") || "#ff8a3d"; x.lineWidth = 1.2;
       x.beginPath(); x.moveTo(xOf(i), padT); x.lineTo(xOf(i), padT + gh); x.stroke();
-      const t2 = sfc.t2m && sfc.t2m[i] != null ? `${(sfc.t2m[i] - 273.15).toFixed(0)}°C` : "—";
+      const t2 = sfc.t2m && sfc.t2m[i] != null ? WX.units.temp(sfc.t2m[i]).txt : "—";
       const lab = `${data.lats[i].toFixed(2)}°, ${data.lons[i].toFixed(2)}° · sfc ${t2}`;
       x.font = `600 11px ${css("--font-display") || "sans-serif"}`;
       const tw = x.measureText(lab).width + 12;
@@ -201,7 +201,7 @@
     }
 
     const v = new Date(data.valid);
-    el.querySelector(".xs-sub").textContent = `${Math.round(data.length_km)} km · ${data.model.toUpperCase()} · ${v.toLocaleString(undefined, { weekday: "short", hour: "numeric" })}`;
+    el.querySelector(".xs-sub").textContent = `${WX.units.dist(data.length_km, 0).txt} · ${data.model.toUpperCase()} · ${v.toLocaleString(undefined, WX.units.timeOpts({ weekday: "short", hour: "numeric" }))}`;
   }
 
   // small barb, staff into the wind

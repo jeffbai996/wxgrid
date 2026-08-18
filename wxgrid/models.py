@@ -14,6 +14,20 @@ Canonical SURFACE variables (every model normalises onto these):
   swh, mwd, mwp  significant wave height m, mean wave direction °(from), mean period s
             (ECMWF wave stream, IFS only, 6 h steps; NaN over land)
 
+Canonical ENSEMBLE-SPREAD variables (`_sd`), same units as the field they
+describe — the across-member standard deviation, i.e. how much the ensemble
+disagrees with itself. Only ensemble models carry them (see `spread_params`):
+  t2m_sd    2 m temperature spread, K
+  wind_sd   10 m wind SPEED spread, m/s   (derived: the producer ships the
+            spread of the u and v COMPONENTS, not of the speed — see
+            wxgrid.ens.wind_speed_spread)
+  msl_sd    mean sea-level pressure spread, Pa
+  tp6_sd    precipitation spread, mm, over the accumulation window the
+            producer published for that step. NOT differenced between steps:
+            you cannot difference standard deviations, so this is the spread
+            of the producer's own bucket (3 h at GEFS' odd steps, 6 h at the
+            6-hourly ones) while `tp6` is the per-step increment.
+
 Canonical PRESSURE-LEVEL variables, one per level in LEVELS (hPa):
   u_<lvl>, v_<lvl>  wind, m/s      t_<lvl>  temperature, K     gh_<lvl>  geopotential height, m
 """
@@ -57,6 +71,14 @@ class Model:
     attribution: str = ""
     # ECMWF wave-stream shortName → canonical name (fetched on LEVEL_EVERY steps; IFS only)
     wave_params: dict[str, str] = field(default_factory=dict)
+    # Ensemble-SPREAD stream: source-native shortName → canonical `_sd` name.
+    # It needs a mapping of its own rather than sharing sfc_params, because the
+    # spread file decodes to exactly the SAME shortNames as the mean — NOMADS'
+    # gespr carries the identical parameter list to geavg and differs only in
+    # the GRIB2 "derived forecast" octet, which eccodes does not put in the
+    # shortName. Fed to the writer from a separately named GRIB (see
+    # fetch.SPREAD_SUFFIX), so provenance comes from the file, not the message.
+    spread_params: dict[str, str] = field(default_factory=dict)
     # One-file-per-variable sources (MSC datamart): shortName → filename token.
     # The keys are the shortName we FORCE on the decoded message, because a few
     # GEM parameters are outside the stock eccodes tables and decode as
@@ -80,6 +102,12 @@ class Model:
             return self.sfc_params.get(short_name)
         return None
 
+    def canonical_spread(self, short_name: str, level_type: str, level: int = 0) -> str | None:
+        """Same job as `canonical`, for a message read out of the spread file."""
+        if level_type in SURFACE_LEVEL_TYPES:
+            return self.spread_params.get(short_name)
+        return None
+
     def store_variables(self) -> list[str]:
         out = []
         for canon in self.sfc_params.values():
@@ -91,6 +119,11 @@ class Model:
         for prefix in self.pl_params.values():
             out.extend(f"{prefix}_{lvl}" for lvl in self.levels)
         out.extend(self.wave_params.values())
+        spread = list(self.spread_params.values())
+        # u10_sd/v10_sd are only inputs: what is stored is the wind SPEED spread.
+        if "u10_sd" in spread and "v10_sd" in spread:
+            out.append("wind_sd")
+        out.extend(v for v in spread if v not in ("u10_sd", "v10_sd"))
         return out
 
 
@@ -150,6 +183,12 @@ MODELS: dict[str, Model] = {
         # 300/400 hPa ship winds without temperature and 600 hPa not at all,
         # so those are left out rather than stored half-empty.
         levels=(1000, 925, 850, 700, 500, 250, 200),
+        # The 31-member ensemble's across-member standard deviation, published
+        # as `gespr.tHHz.pgrb2s.0p25.fHHH` beside the mean in pgrb2sp25 — same
+        # grid, same steps, same parameter list, so it costs one more filtered
+        # GET per step and lands on the existing 0.25° machinery unchanged.
+        spread_params={"2t": "t2m_sd", "10u": "u10_sd", "10v": "v10_sd",
+                       "prmsl": "msl_sd", "tp": "tp6_sd"},
         precip_mode="bucket6",
         snow_depth_factor=100.0,
         attribution="NOAA NCEP GEFS ensemble mean via NOMADS, public domain",

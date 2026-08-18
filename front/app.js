@@ -61,6 +61,7 @@
     alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false,
     sigmet: false, aq: false, aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
     opacity: Number(localStorage.getItem("wxgrid.opacity") || 100), xsection: false,
+    playMs: Number(localStorage.getItem("wxgrid.playMs") || 900),
   };
   let map, wind, catalog, playTimer = null, marker = null;
 
@@ -85,7 +86,8 @@
   // Functions the split-out modules (overlays.js, tape.js, search.js) call back into.
   window.WX.fn = { applyStep: (...a) => applyStep(...a), openPoint: (...a) => openPoint(...a), setStep: (...a) => setStep(...a), toast, firstSymbolId: () => firstSymbolId(),
                    renderPoint: () => renderPoint(), refreshPoint: () => refreshPoint(), closePoint: () => closePoint(), placeMarker: (...a) => placeMarker(...a),
-                   stepHours: () => stepHours(), steps: () => steps(), layerUrl: () => layerUrl(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d) };
+                   stepHours: () => stepHours(), steps: () => steps(), layerUrl: () => layerUrl(),
+                   applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d) };
 
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
@@ -137,10 +139,12 @@
       map.on("mouseenter", "resort-pts", () => map.getCanvas().style.cursor = "pointer");
       map.on("mouseleave", "resort-pts", () => map.getCanvas().style.cursor = "");
       renderControls();
+      if (WX.mapmenu) WX.mapmenu.wire();
       applyStep();
       loadWind();
       WX.tape.refreshTapePoint();
       if (hash && hash.pt) openPoint(hash.pt[0], hash.pt[1]);
+      if (WX.tour) setTimeout(() => WX.tour.start(), 1200);
     });
   }
   const firstSymbolId = () => { const l = map.getStyle().layers.find((x) => x.type === "symbol"); return l ? l.id : undefined; };
@@ -303,7 +307,10 @@
     $("#aq-toggle").onclick = () => { state.aq = !state.aq; $("#aq-toggle").classList.toggle("on", state.aq); if (state.aq) WX.cams.load(state.aqVar); else WX.cams.clear(); };
     $("#fires-toggle").onclick = () => { state.fires = !state.fires; $("#fires-toggle").classList.toggle("on", state.fires); if (state.fires) WX.fires.load(); else WX.fires.clear(); };
     $("#share-btn").onclick = async () => { pushHash(); await new Promise((r) => setTimeout(r, 300)); try { await navigator.clipboard.writeText(location.href); toast("Link copied"); } catch (e) { toast(location.href, 6000); } };
-    $("#keys-btn").onclick = () => toast("← → step · space play · / search · esc close · L layers", 6000);
+    $("#settings-btn").onclick = () => { $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(); };
+    $("#keys-btn").onclick = () => { $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(); };
+    // a unit change repaints every number on screen at once
+    document.addEventListener("wx-units", () => { renderLegend(); renderPoint(); WX.tape.renderTape(); if (WX.probe) WX.probe.hover(null); if (state.xsection && WX.xs) WX.xs.refresh(); $("#units-toggle").querySelector(".val").textContent = speedUnit(); });
     $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme === "light" ? "light" : "dark";
     $("#radar-toggle").onclick = () => WX.ov.toggleRadar();
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
@@ -320,6 +327,7 @@
     $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) WX.ov.loadResorts(); else WX.ov.clearResorts(); };
     $("#locate").onclick = goToMe;
     $("#point-close").onclick = closePoint;
+    wireSheet();
     $("#point-fav").onclick = () => { if (!state.point) return; const on = WX.search.toggleFav(state.point.lat, state.point.lon, state.point.name); $("#point-fav").classList.toggle("on", on); $("#point-fav").title = on ? "Saved place" : "Save place"; toast(on ? "Saved. Focus the search box to see your places." : "Removed", 2500); };
     WX.search.wireSearch();
     $$(".menu .menu-btn").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const m = b.parentElement; const open = m.classList.contains("open"); $$(".menu.open").forEach((x) => x.classList.remove("open")); if (!open) m.classList.add("open"); });
@@ -355,8 +363,38 @@
       const svg = src.querySelector("svg") ? src.querySelector("svg").outerHTML : "";
       return `<button data-for="${k}-toggle" data-tip="${tip}" class="${cls || ""}${src.classList.contains("on") ? " on" : ""}" aria-label="${tip}">${svg}</button>`;
     }).join("");
-    st.querySelectorAll("button").forEach((b) => b.onclick = () => $("#" + b.dataset.for).click());
-    new MutationObserver(() => st.querySelectorAll("button").forEach((b) => b.classList.toggle("on", $("#" + b.dataset.for).classList.contains("on")))).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
+    // settings is not a proxy for a menu toggle — it opens the drawer
+    st.insertAdjacentHTML("beforeend", `<div class="sep"></div>
+      <button data-tip="Units and settings" aria-label="Settings" id="strip-settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.2.5.66.86 1.2.98H21a2 2 0 1 1 0 4h-.09c-.54.02-1 .38-1.2.88z"/></svg></button>`);
+    st.querySelectorAll("button[data-for]").forEach((b) => b.onclick = () => $("#" + b.dataset.for).click());
+    $("#strip-settings").onclick = () => WX.settings.toggle();
+    new MutationObserver(() => st.querySelectorAll("button[data-for]").forEach((b) => b.classList.toggle("on", $("#" + b.dataset.for).classList.contains("on")))).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
+  }
+
+  // Bottom-sheet drag on phones: pull the grip up to cover the tape, down to
+  // put it back or close it. Pointer events so a mouse works too.
+  function wireSheet() {
+    const grip = $(".sheet-grip"), card = $("#point");
+    if (!grip) return;
+    let y0 = 0, dy = 0, full = false, dragging = false;
+    const setFull = (on) => { full = on; card.classList.toggle("sheet-full", on); };
+    grip.addEventListener("pointerdown", (e) => {
+      dragging = true; y0 = e.clientY; dy = 0;
+      card.classList.add("sheet-drag"); grip.setPointerCapture(e.pointerId);
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      dy = e.clientY - y0;
+      card.style.transform = `translateY(${Math.max(-40, dy)}px)`;
+    });
+    grip.addEventListener("pointerup", () => {
+      if (!dragging) return;
+      dragging = false; card.classList.remove("sheet-drag"); card.style.transform = "";
+      if (dy < -40) setFull(true);
+      else if (dy > 90) { if (full) setFull(false); else closePoint(); }
+      else if (Math.abs(dy) < 6) setFull(!full);          // a tap on the grip toggles
+    });
+    grip.addEventListener("pointercancel", () => { dragging = false; card.classList.remove("sheet-drag"); card.style.transform = ""; });
   }
 
   function switchModel(key) {
@@ -389,7 +427,7 @@
     if (state.aq && WX.cams) WX.cams.refresh();
     if (WX.probe) WX.probe.refresh();
     const v = validDate();
-    $("#valid-local").textContent = v.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts({ weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
     $("#lead").textContent = `+${stepHours()}h`;
     if (prefetch) { const img = new Image(); img.src = layerUrl(steps()[(state.stepIdx + 1) % steps().length]); if (state.resorts && WX.ov) WX.ov.loadResorts(); }
@@ -413,8 +451,18 @@
     state.playing = !state.playing;
     $("#play").textContent = state.playing ? "❚❚" : "▶";
     if (playTimer) { clearInterval(playTimer); playTimer = null; }
-    if (state.playing) playTimer = setInterval(() => nudge(1), state.radar ? 450 : 900);
+    if (state.playing) playTimer = setInterval(() => nudge(1), state.radar ? Math.min(500, state.playMs) : state.playMs);
   }
+
+  // one switch for the wind animation, shared by the menu chips and settings
+  function setMotion(mode) {
+    state.particles = mode === "particles"; state.barbs = mode === "barbs";
+    $("#particles-toggle").classList.toggle("on", state.particles);
+    $("#barbs-toggle").classList.toggle("on", state.barbs);
+    wind.setMode(state.barbs ? "barbs" : "particles");
+    wind.setEnabled(state.particles || state.barbs);
+  }
+  function restartPlay() { if (state.playing) { togglePlay(); togglePlay(); } }
 
   function renderLegend() {
     const lg = catalog.layers.find((l) => l.layer === state.layer);
@@ -423,8 +471,13 @@
     const grad = lg.stops.map((s) => `rgb(${s.rgb.join(",")}) ${((s.v - lg.lo) / (lg.hi - lg.lo) * 100).toFixed(1)}%`).join(", ");
     $(".legend-bar").style.background = `linear-gradient(to right, ${grad})`;
     const isSpeed = ["wind", "gust"].includes(state.layer);
-    const conv = (v) => isSpeed ? Math.round(speed(v)) : Math.round(v);
-    const unit = isSpeed ? speedUnit() : lg.units;
+    const cv = { temp: (v) => WX.units.tempC(v), d2m: (v) => WX.units.tempC(v),
+                 msl: (v) => WX.units.press(v * 100), frz: (v) => WX.units.alt(v),
+                 tp6: (v) => WX.units.precip(v), tp24: (v) => WX.units.precip(v), tp72: (v) => WX.units.precip(v),
+                 sf6: (v) => WX.units.snow(v), sf24: (v) => WX.units.snow(v), sf72: (v) => WX.units.snow(v),
+                 sd_cm: (v) => WX.units.snow(v), waves: (v) => WX.units.alt(v, 1) }[state.layer];
+    const conv = (v) => isSpeed ? Math.round(speed(v)) : cv ? cv(v).v : Math.round(v);
+    const unit = isSpeed ? speedUnit() : cv ? cv(0).unit : lg.units;
     const ticks = [0, 0.25, 0.5, 0.75, 1].map((q) => lg.lo + (lg.hi - lg.lo) * q);
     const name = LAYER_LABEL[state.layer] + (state.level && hasLevel() ? ` ${state.level}` : "");
     $(".legend-ticks").innerHTML = ticks.map((t, i) => `<span>${i === 2 ? `<b>${name}</b> ` : ""}${conv(t)}${i === 4 ? " " + unit : ""}</span>`).join("");
@@ -454,7 +507,7 @@
       $("#point-foot").textContent = `${modelEntry().short} run ${rd.toLocaleString(undefined, { day: "numeric", month: "short", timeZone: "UTC" })} ${String(rd.getUTCHours()).padStart(2, "0")}Z · 0.25° gridpoint · ${modelEntry().attribution.replace("ECMWF open data", "ECMWF").replace(" (AIFS)", "").replace("NOAA NCEP GFS via NOMADS", "NOAA")}`;
     } catch (e) { $("#point-now").textContent = "point forecast unavailable"; }
     // local context arrives lazily and re-renders as it lands
-    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; WX.tape.renderTape(); } renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; WX.tape.renderTape(); } renderPoint(); } }).catch(() => {});
     WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.obs = r; renderPoint(); } }).catch(() => {});
     WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.alerts = r.alerts || []; renderPoint(); } }).catch(() => {});
     WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.air = r; renderPoint(); } }).catch(() => {});

@@ -15,7 +15,8 @@ def api_geo(q: str = Query(..., min_length=1, max_length=120), limit: int = Quer
 
 @router.get("/geo/reverse")
 def api_reverse(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
-    return {"place": ext.reverse(lat, lon), "elevation_m": ext.elevation(lat, lon)}
+    return {"place": ext.reverse(lat, lon), "elevation_m": ext.elevation(lat, lon),
+            "timezone": ext.timezone(lat, lon)}
 
 
 @router.get("/obs")
