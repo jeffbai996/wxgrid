@@ -76,6 +76,7 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
             shutil.copy2(item, out / item.name)
     html = (out / "index.html").read_text()
     html = html.replace('<link rel="stylesheet" href="private/theme.css">\n', "")
+    html = html.replace('<script src="private/theme.js"></script>\n', "")
     html = html.replace("<title>wxgrid</title>", '<title>wxgrid</title>\n<meta name="wxgrid-mode" content="static">')
     html = html.replace('<script src="app.js"></script>', '<script src="static-api.js"></script>\n<script src="app.js"></script>')
     (out / "index.html").write_text(html)

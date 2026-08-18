@@ -497,6 +497,19 @@ if PUBLIC:
         return await call_next(request)
 
 
+from starlette.responses import Response as _Response  # noqa: E402
+
+
+@app.get("/private/theme.js", include_in_schema=False)
+def private_theme_js():
+    """The optional private overlay script. Empty (not 404) when there is no
+    overlay, so the page never logs a missing script."""
+    path = FRONT_DIR / "private" / "theme.js"
+    if path.is_file() and not PUBLIC:
+        return FileResponse(path, media_type="application/javascript")
+    return _Response("", media_type="application/javascript")
+
+
 from wxgrid.resorts_api import router as _resorts_router  # noqa: E402
 from wxgrid.ext_api import router as _ext_router  # noqa: E402
 app.include_router(_resorts_router)

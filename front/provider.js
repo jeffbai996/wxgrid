@@ -48,7 +48,15 @@
     if (!p) { box.classList.remove("show"); last = null; return; }
     if (last === iso && box.classList.contains("show")) return;
     // fade out → swap → fade in, so a border crossing reads as a change
-    const swap = () => { box.querySelector(".txt").innerHTML = `${p[0]} <small>${iso}</small>`; box.querySelector(".dot").style.background = p[1]; box.querySelector(".dot").style.color = p[1]; box.classList.add("show"); last = iso; };
+    // A private overlay (private/theme.js) may supply real agency marks; the
+    // public build shows the wordmark and a colour dot.
+    const logo = window.WX_PRIVATE && window.WX_PRIVATE.logos && window.WX_PRIVATE.logos[iso];
+    const swap = () => {
+      const dot = box.querySelector(".dot");
+      if (logo) { dot.innerHTML = `<img src="${logo.file}" alt="" class="${logo.dark_bg_ok === false ? "chip" : ""}">`; dot.classList.add("logo"); dot.style.background = "transparent"; }
+      else { dot.innerHTML = ""; dot.classList.remove("logo"); dot.style.background = p[1]; dot.style.color = p[1]; }
+      box.querySelector(".txt").innerHTML = `${logo && logo.name ? logo.name : p[0]} <small>${iso}</small>`;
+      box.classList.add("show"); last = iso; };
     if (box.classList.contains("show")) { box.classList.remove("show"); clearTimeout(hideTimer); hideTimer = setTimeout(swap, 180); } else swap();
   }
   function hover(ll) {
