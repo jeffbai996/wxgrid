@@ -110,7 +110,7 @@ wind chill/humidex, dry windows, tides), Compare (all models on the same valid
 times), Resort (elevation-band forecast + lifts). Layers: wind, temp, gusts,
 rain, new snow, snow depth, clouds, pressure, dew point, freezing level, CAPE;
 altitude picker for wind/temp; isolines; wind barbs. Units km/h · kt · m/s,
-permalinks in the URL hash, measure tool. Fonts: Inter / Plus Jakarta Sans / Geist
+permalinks in the URL hash, measure tool. Fonts: Inter / Urbanist / Geist
 Mono (OFL, see `front/fonts/LICENSES.md`).
 
 ## For Python consumers
