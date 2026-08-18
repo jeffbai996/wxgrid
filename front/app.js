@@ -9,9 +9,26 @@
   const $$ = (s) => Array.from(document.querySelectorAll(s));
   const API = "api";
   const WORLD = [[-180, 85.05112878], [180, 85.05112878], [180, -85.05112878], [-180, -85.05112878]];
-  const LAYERS = ["wind", "temp", "gust", "tp6", "sf6", "sd_cm", "tcc", "msl", "d2m", "frz", "cape"];
-  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", msl: "Pressure", tp6: "Rain", sf6: "New snow", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", frz: "Freezing lvl" };
-  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, sf6: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, frz: 0.7 };
+  // Every raster layer the API can draw. The rail shows FAMILIES; a family
+  // with variants (rain 6h/24h/72h …) gets a variant picker in the time bar.
+  const LAYERS = ["wind", "temp", "gust", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "msl", "d2m", "rh", "frz", "cape", "waves", "wperiod"];
+  const FAMILIES = [
+    { key: "wind", label: "Wind", layers: ["wind"] },
+    { key: "gust", label: "Gusts", layers: ["gust"] },
+    { key: "temp", label: "Temp", layers: ["temp"] },
+    { key: "rain", label: "Rain", layers: ["tp6", "tp24", "tp72"], variants: { tp6: "6 h", tp24: "24 h", tp72: "72 h" }, section: "Precipitation" },
+    { key: "snow", label: "New snow", layers: ["sf6", "sf24", "sf72"], variants: { sf6: "6 h", sf24: "24 h", sf72: "72 h" } },
+    { key: "sd", label: "Snow depth", layers: ["sd_cm"] },
+    { key: "frz", label: "Freezing lvl", layers: ["frz"] },
+    { key: "tcc", label: "Clouds", layers: ["tcc"], section: "Air" },
+    { key: "msl", label: "Pressure", layers: ["msl"] },
+    { key: "hum", label: "Humidity", layers: ["rh", "d2m"], variants: { rh: "RH %", d2m: "Dew pt" } },
+    { key: "cape", label: "CAPE", layers: ["cape"] },
+    { key: "waves", label: "Waves", layers: ["waves", "wperiod"], variants: { waves: "Height", wperiod: "Period" }, section: "Sea" },
+  ];
+  const familyOf = (layer) => FAMILIES.find((f) => f.layers.includes(layer)) || FAMILIES[0];
+  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period" };
+  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8 };
   const LAYER_ICON = {
     wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/></svg>',
     temp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>',
@@ -24,7 +41,10 @@
     d2m: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>',
     frz: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h10"/><path d="M9 4v16"/><path d="m3 9 3 3-3 3"/><path d="M12 6 9 9"/><path d="M12 18l-3-3"/><path d="M14 4v10.54a4 4 0 1 1-4 0"/></svg>',
     cape: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.326A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.973"/><path d="m13 12-3 5h4l-3 5"/></svg>',
+    rh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>',
+    waves: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
   };
+  const FAMILY_ICON = { wind: "wind", gust: "gust", temp: "temp", rain: "tp6", snow: "sf6", sd: "sd_cm", frz: "frz", tcc: "tcc", msl: "msl", hum: "rh", cape: "cape", waves: "waves" };
   const LEVEL_FT = { 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 500: "FL180", 300: "FL300", 250: "FL340" };
   const LEVEL_M = { 925: "≈750 m", 850: "≈1.5 km", 700: "≈3 km", 500: "≈5.5 km", 300: "≈9 km", 250: "≈10.5 km" };
   const RAINVIEWER = "https://api.rainviewer.com/public/weather-maps.json";
@@ -41,8 +61,8 @@
   let map, wind, catalog, playTimer = null, marker = null;
 
   // ── shared helpers (used by panes.js) ────────────────────────────────
-  const speed = (ms) => ms == null ? null : state.units === "kt" ? ms * 1.943844 : state.units === "ms" ? ms : ms * 3.6;
-  const speedUnit = () => ({ kmh: "km/h", kt: "kt", ms: "m/s" }[state.units]);
+  const speed = (ms) => ms == null ? null : state.units === "kt" ? ms * 1.943844 : state.units === "ms" ? ms : state.units === "mph" ? ms * 2.236936 : ms * 3.6;
+  const speedUnit = () => ({ kmh: "km/h", kt: "kt", ms: "m/s", mph: "mph" }[state.units]);
   const arrowRot = (deg) => `transform: rotate(${(deg + 180 + 45) % 360}deg)`;   // chevron points TO where wind goes
   const f = (v, fn) => (v == null ? "—" : fn(v));
   const arrow = (deg) => "↓↙←↖↑↗→↘"[Math.round(((deg % 360) / 45)) % 8];
@@ -176,9 +196,10 @@
   const runDate = () => new Date(runEntry().valid_from);
   const validDate = () => new Date(runDate().getTime() + stepHours() * 3600e3);
   const hasLevel = () => ["wind", "temp"].includes(state.layer);
+  const isWaves = () => ["waves", "wperiod"].includes(state.layer);
   const levelQ = () => (state.level && hasLevel()) ? `?level=${state.level}` : "";
   const layerUrl = (h = stepHours()) => U(`${API}/layer/${state.model}/${state.run}/${h}/${state.layer}.png${levelQ()}`);
-  const windUrl = (h = stepHours()) => U(`${API}/wind/${state.model}/${state.run}/${h}.json${state.level ? `?level=${state.level}` : ""}`);
+  const windUrl = (h = stepHours()) => U(`${API}/wind/${state.model}/${state.run}/${h}.json${isWaves() ? "?field=waves" : state.level ? `?level=${state.level}` : ""}`);
 
   // ── controls ──────────────────────────────────────────────────────────
   function renderControls() {
@@ -192,12 +213,28 @@
     rs.onchange = () => { state.run = rs.value; clampStep(); renderControls(); applyStep(); loadWind(); refreshPoint(); };
 
     const rail = $("#layers");
-    rail.innerHTML = LAYERS.map((l) =>
-      `<button class="${l === state.layer ? "on" : ""}" data-layer="${l}" ${runEntry().layers.includes(l) ? "" : "disabled"} title="${LAYER_LABEL[l]}">${LAYER_ICON[l]}<span>${LAYER_LABEL[l]}</span></button>`).join("");
+    const avail = runEntry().layers;
+    const fam = familyOf(state.layer);
+    rail.innerHTML = FAMILIES.map((f) => {
+      const ok = f.layers.some((l) => avail.includes(l));
+      const on = f.key === fam.key;
+      return `${f.section ? `<div class="rail-sec">${f.section}</div>` : ""}<button class="${on ? "on" : ""}" data-family="${f.key}" ${ok ? "" : "disabled"} title="${f.label}${ok ? "" : " (not in this model)"}">${LAYER_ICON[FAMILY_ICON[f.key]]}<span>${f.label}</span>${f.variants ? `<i class="var">${f.variants[on ? state.layer : f.layers.find((l) => avail.includes(l)) || f.layers[0]] || ""}</i>` : ""}</button>`;
+    }).join("");
     rail.querySelectorAll("button").forEach((b) => b.onclick = () => {
-      state.layer = b.dataset.layer; localStorage.setItem("wxgrid.layer", state.layer);
+      const f = FAMILIES.find((x) => x.key === b.dataset.family);
+      // remember the last variant used per family
+      const pref = localStorage.getItem("wxgrid.variant." + f.key);
+      state.layer = (pref && f.layers.includes(pref) && avail.includes(pref)) ? pref : f.layers.find((l) => avail.includes(l)) || f.layers[0];
+      localStorage.setItem("wxgrid.layer", state.layer);
       if (!hasLevel()) state.level = 0;
       renderControls(); applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); });
+    // variant picker (rain 6h/24h/72h …) sits in the time bar next to the legend
+    const vp = $("#variant");
+    if (fam.variants) {
+      vp.hidden = false;
+      vp.innerHTML = fam.layers.map((l) => `<button data-layer="${l}" class="${l === state.layer ? "on" : ""}" ${avail.includes(l) ? "" : "disabled"}>${fam.variants[l]}</button>`).join("");
+      vp.querySelectorAll("button").forEach((b) => b.onclick = () => { state.layer = b.dataset.layer; localStorage.setItem("wxgrid.layer", state.layer); localStorage.setItem("wxgrid.variant." + fam.key, state.layer); renderControls(); applyStep(); loadWind(); });
+    } else { vp.hidden = true; vp.innerHTML = ""; }
 
     const lv = $("#levels");
     const levels = runEntry().levels || [];
@@ -221,13 +258,16 @@
     $("#play").onclick = togglePlay;
     $("#particles-toggle").onclick = () => { state.particles = !state.particles; $("#particles-toggle").classList.toggle("on", state.particles); if (state.particles) { state.barbs = false; $("#barbs-toggle").classList.remove("on"); wind.setMode("particles"); } wind.setEnabled(state.particles || state.barbs); };
     $("#barbs-toggle").onclick = () => { state.barbs = !state.barbs; $("#barbs-toggle").classList.toggle("on", state.barbs); if (state.barbs) { state.particles = false; $("#particles-toggle").classList.remove("on"); wind.setEnabled(true); wind.setMode("barbs"); } else { wind.setMode("particles"); wind.setEnabled(state.particles); } };
-    $("#units-toggle").textContent = speedUnit();
+    $("#units-toggle").querySelector(".val").textContent = speedUnit();
     $("#units-toggle").onclick = () => {
-      state.units = { kmh: "kt", kt: "ms", ms: "kmh" }[state.units];
+      state.units = { kmh: "kt", kt: "ms", ms: "mph", mph: "kmh" }[state.units];
       localStorage.setItem("wxgrid.units", state.units);
-      $("#units-toggle").textContent = speedUnit();
+      $("#units-toggle").querySelector(".val").textContent = speedUnit();
       renderLegend(); renderPoint(); WX.tape.renderTape();
     };
+    $("#share-btn").onclick = async () => { pushHash(); await new Promise((r) => setTimeout(r, 300)); try { await navigator.clipboard.writeText(location.href); toast("Link copied"); } catch (e) { toast(location.href, 6000); } };
+    $("#keys-btn").onclick = () => toast("← → step · space play · / search · esc close · L layers", 6000);
+    $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme === "light" ? "light" : "dark";
     $("#radar-toggle").onclick = () => WX.ov.toggleRadar();
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
     $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) WX.ov.loadStorms(); else WX.ov.clearStorms(); };
@@ -235,8 +275,8 @@
     for (const [k, load, clear] of [["smoke", "loadSmoke", "clearSmoke"], ["fires", "loadFires", "clearFires"], ["quakes", "loadQuakes", "clearQuakes"]]) {
       $(`#${k}-toggle`).onclick = () => { state[k] = !state[k]; $(`#${k}-toggle`).classList.toggle("on", state[k]); if (state[k]) WX.ov[load](); else WX.ov[clear](); };
     }
-    $("#theme-toggle").onclick = () => applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
-    $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); if (!state.measure) WX.ov.clearMeasure(); else toast("Measure: tap two points"); };
+    $("#theme-toggle").onclick = () => { applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light"); $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme; };
+    $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); $("#measure-toggle").querySelector(".val").textContent = state.measure ? "on" : "off"; if (!state.measure) WX.ov.clearMeasure(); else toast("Measure: tap two points"); };
     $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) WX.ov.loadIso(); else WX.ov.clearIso(); };
     $("#avy-toggle").onclick = () => { state.avy = !state.avy; $("#avy-toggle").classList.toggle("on", state.avy); if (state.avy) WX.ov.loadAvy(); else WX.ov.clearAvy(); };
     $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) WX.ov.loadResorts(); else WX.ov.clearResorts(); };
@@ -247,7 +287,7 @@
     WX.search.wireSearch();
     $$(".menu .menu-btn").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const m = b.parentElement; const open = m.classList.contains("open"); $$(".menu.open").forEach((x) => x.classList.remove("open")); if (!open) m.classList.add("open"); });
     // menu buttons show a tick when any of their toggles is on
-    new MutationObserver(() => $$(".menu").forEach((m) => m.querySelector(".menu-btn").classList.toggle("has-on", !!m.querySelector(".menu-pop .chip.on")))).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
+    new MutationObserver(() => $$(".menu").forEach((m) => m.querySelector(".menu-btn").classList.toggle("has-on", !!m.querySelector(".menu-pop .chip.on:not(#particles-toggle):not(#barbs-toggle)")))).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
     document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) $$(".menu.open").forEach((x) => x.classList.remove("open")); });
     $$(".point-tabs button").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; renderPoint(); });
     document.addEventListener("keydown", (e) => {
@@ -255,7 +295,9 @@
       if (e.key === "ArrowRight") nudge(1);
       else if (e.key === "ArrowLeft") nudge(-1);
       else if (e.key === " ") { e.preventDefault(); togglePlay(); }
-      else if (e.key === "Escape") { closePoint(); WX.search.hideResults(); }
+      else if (e.key === "Escape") { closePoint(); WX.search.hideResults(); $$(".menu.open").forEach((x) => x.classList.remove("open")); }
+      else if (e.key === "/") { e.preventDefault(); $("#q").focus(); }
+      else if (e.key === "l" || e.key === "L") { $("#overlays-menu").classList.toggle("open"); }
     });
   }
 
@@ -295,7 +337,7 @@
 
   let windReq = 0;
   async function loadWind() {
-    if (!runEntry().layers.includes("wind")) { wind.setField(null); return; }
+    if (!runEntry().layers.includes(isWaves() ? "waves" : "wind")) { wind.setField(null); return; }
     const my = ++windReq;
     try {
       const fld = await WX.api(windUrl());
@@ -345,7 +387,8 @@
       if (my !== pointReq) return;
       state.point.data = d;
       renderPoint(); WX.tape.renderTape();
-      $("#point-foot").textContent = `${modelEntry().attribution} · run ${d.run}Z · nearest 0.25° gridpoint`;
+      const rd = new Date(d.run + ":00Z");
+      $("#point-foot").textContent = `${modelEntry().short} run ${rd.toLocaleString(undefined, { day: "numeric", month: "short", timeZone: "UTC" })} ${String(rd.getUTCHours()).padStart(2, "0")}Z · 0.25° gridpoint · ${modelEntry().attribution.replace("ECMWF open data", "ECMWF").replace(" (AIFS)", "").replace("NOAA NCEP GFS via NOMADS", "NOAA")}`;
     } catch (e) { $("#point-now").textContent = "point forecast unavailable"; }
     // local context arrives lazily and re-renders as it lands
     WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; WX.tape.renderTape(); } renderPoint(); } }).catch(() => {});

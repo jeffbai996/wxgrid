@@ -7,6 +7,10 @@
   const $ = (s) => document.querySelector(s);
   const W = () => window.WX;
   const K = 273.15;
+  // Sum of the per-step buckets in (steps[i], steps[i]+hours] — the tape can be
+  // 3 h or 6 h per column, so "next 24 h" is by hours, not by column count.
+  const sumWindow = (arr, steps, i, hours) => { if (!arr) return null; let t = 0, n = 0; for (let k = i + 1; k < steps.length; k++) { if (steps[k] > steps[i] + hours) break; t += arr[k] || 0; n++; } return n ? t : null; };
+  const stepHrs = (d, i) => (d.steps[i + 1] != null ? d.steps[i + 1] - d.steps[i] : d.steps[i] - (d.steps[i - 1] || 0)) || 6;
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   let W_ICONS = {};
 
@@ -57,6 +61,7 @@
     if (s.tcc) chips.push(`<span class="chipv">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
     if (s.d2m) chips.push(`<span class="chipv">dew <b>${f(s.d2m[i], (v) => (v - K).toFixed(0))}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
     if (s.msl) chips.push(`<span class="chipv"><b>${f(s.msl[i], (v) => (v / 100).toFixed(0))}</b> hPa</span>`);
+    if (s.swh && s.swh[i] != null) chips.push(`<span class="chipv" style="color:#7dd3fc">〜 <b>${s.swh[i].toFixed(1)}</b> m${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` · ${arrow((s.mwd[i] + 180) % 360)}` : ""}</span>`);
     if (s.cape && s.cape[i] > 100) chips.push(`<span class="chipv" style="color:${s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)"}">⚡ <b>${s.cape[i].toFixed(0)}</b> J/kg</span>`);
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
     $("#point-now").innerHTML = `<div class="hero">
@@ -215,15 +220,21 @@
     const t = s.t2m ? s.t2m[i] - K : null;
     const rainOnSnow = s.sd_cm && s.sd_cm[i] > 5 && s.tp6 && s.tp6[i] > 1 && (s.sf6 ? s.sf6[i] < 0.3 : t != null && t > 1.5);
     const w850 = d.aloft && d.aloft["850"] ? d.aloft["850"].wind[i] : null, w700 = d.aloft && d.aloft["700"] ? d.aloft["700"].wind[i] : null;
+    // snow-to-liquid ratio from the surface temperature: cold storms stack higher
+    const slr = t == null ? 10 : t < -12 ? 15 : t < -6 ? 12 : t < 0 ? 10 : t < 1.5 ? 7 : 5;
+    const sn = (h) => { const v = sumWindow(s.sf6, d.steps, i, h); return v == null ? "n/a" : `${v.toFixed(0)} cm <span class="dim">(${(v * slr / 10).toFixed(0)} @ ${slr}:1)</span>`; };
+    const w850d = d.aloft && d.aloft["850"] ? d.aloft["850"].wdir[i] : null;
+    const lee = w850d == null ? null : ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round((((w850d + 180) % 360) / 45)) % 8];
     const rows = [
-      ["New snow next 24 h", s.sf6 ? `${sum(s.sf6, i + 1, i + 5).toFixed(0)} cm` : "n/a", ""],
-      ["New snow next 48 h", s.sf6 ? `${sum(s.sf6, i + 1, i + 9).toFixed(0)} cm` : "n/a", ""],
-      ["New snow next 72 h", s.sf6 ? `${sum(s.sf6, i + 1, i + 13).toFixed(0)} cm` : "n/a", ""],
+      ["New snow next 24 h", sn(24), ""],
+      ["New snow next 48 h", sn(48), ""],
+      ["New snow next 72 h", sn(72), ""],
       ["Snow depth (model)", s.sd_cm ? `${Math.round(s.sd_cm[i])} cm` : "n/a", ""],
       ["Freezing level", fl != null ? `${fl} m · ${Math.round(fl * 3.281 / 100) * 100} ft` : "—", ""],
       ["Snow level (≈)", snowLevel != null ? `${Math.round(snowLevel / 50) * 50} m` : "—", ""],
       ["Ridge wind 850 / 700", `${f(w850, (v) => speed(v).toFixed(0))} / ${f(w700, (v) => speed(v).toFixed(0))} ${speedUnit()}`, w700 != null && speed(w700) > (W().state.units === "kt" ? 25 : W().state.units === "ms" ? 13 : 45) ? "bad" : w700 != null && speed(w700) > (W().state.units === "kt" ? 15 : W().state.units === "ms" ? 8 : 28) ? "meh" : "good"],
-      ["Rain on snow", rainOnSnow ? "yes — wet loading" : "no", rainOnSnow ? "bad" : "good"],
+      ["Wind loading", w850 != null && speed(w850) > (W().state.units === "kt" ? 15 : W().state.units === "ms" ? 8 : W().state.units === "mph" ? 17 : 28) ? `${lee} aspects loading` : "light", w850 != null && speed(w850) > 15 ? "meh" : "good"],
+      ["Rain on snow", rainOnSnow ? "yes, wet loading" : "no", rainOnSnow ? "bad" : "good"],
       ["Surface temp", t != null ? `${t.toFixed(0)}°C` : "—", t != null && t > 0 && s.sd_cm && s.sd_cm[i] > 5 ? "meh" : ""],
     ];
     let avyHtml = `<div class="avy"><div class="avy-head"><span>Avalanche forecast</span><span class="dim">loading…</span></div></div>`;
@@ -231,7 +242,7 @@
     else if (pt.avy) avyHtml = avyBlock(pt.avy, AVY_COLORS);
     else fetchAvy(pt);
     $("#winter").innerHTML = `<dl class="kv">${rows.map(([k, v, cls]) => `<dt>${k}</dt><dd class="${cls}">${v}</dd>`).join("")}</dl>${avyHtml}
-      <div class="note">Snow amounts are the model's snowfall water-equivalent shown at 1 cm per mm (a 10:1 ratio; cold storms run higher, warm ones lower). Snow depth is the model's own snowpack, not a station. Wind loading: sustained 850/700 hPa flow above ~30 km/h moves snow onto lee slopes.</div>`;
+      <div class="note">Snow amounts are the model's snowfall water-equivalent at 1 cm per mm; the bracket applies a temperature-based snow-to-liquid ratio. Snow depth is the model's own snowpack, not a station. Wind loading: sustained 850/700 hPa flow above ~30 km/h moves snow onto lee slopes.</div>`;
   }
   async function fetchAvy(pt) {
     const my = pt;
@@ -264,13 +275,14 @@
     if (t != null && s.d2m && s.d2m[i] != null && t >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / s.d2m[i])); humidex = t + 0.5555 * (e - 10); }
     const snowLevel = fl != null ? Math.max(0, fl - 300) : null;
     const ptype = rain != null && rain > 0.2 ? (t != null && t < 1 ? "snow" : t != null && t < 3 ? "rain/snow" : "rain") : "dry";
-    const j1 = Math.min(d.steps.length - 1, i + 4);
-    const rain24 = s.tp6 ? s.tp6.slice(i + 1, j1 + 1).reduce((a, b) => a + (b || 0), 0) : null;
+    const j1 = (() => { let k = i; while (k + 1 < d.steps.length && d.steps[k + 1] <= d.steps[i] + 24) k++; return k; })();
+    const rain24 = sumWindow(s.tp6, d.steps, i, 24);
     const gusts = s.gust ? s.gust.slice(i, j1 + 1).filter((v) => v != null) : [];
     const gustMax24 = gusts.length ? Math.max(...gusts) : null;
     const calm = state.units === "kt" ? 12 : state.units === "ms" ? 6 : 22, gusty = state.units === "kt" ? 25 : state.units === "ms" ? 13 : 46;
-    const dry = [];  // next dry windows (6 h blocks with <0.2 mm) — hikers/paddlers
-    for (let k = i; k < Math.min(d.steps.length, i + 12); k++) if (s.tp6 && (s.tp6[k] || 0) < 0.2 && (!s.wind || s.wind[k] == null || speed(s.wind[k]) < gusty)) dry.push(k);
+    let dryH = 0, totH = 0;  // dry, calm hours in the next 72 h (hikers, paddlers)
+    for (let k = i; k < d.steps.length && d.steps[k] < d.steps[i] + 72; k++) { const h = stepHrs(d, k); totH += h; if (s.tp6 && (s.tp6[k] || 0) < 0.2 && (!s.wind || s.wind[k] == null || speed(s.wind[k]) < gusty)) dryH += h; }
+    const dry = { length: dryH / 6 };
     const rows = [
       ["Precip now", `${ptype}${rain != null && rain > 0 ? ` · ${rain.toFixed(1)} mm/6h` : ""}`, ptype === "dry" ? "good" : ptype === "snow" ? "meh" : ""],
       ["Next 24 h rain", rain24 != null ? `${rain24.toFixed(1)} mm` : "—", rain24 == null ? "" : rain24 < 1 ? "good" : rain24 < 10 ? "meh" : "bad"],
@@ -281,7 +293,8 @@
       ["Feels like", chill != null ? `${chill.toFixed(0)}° (wind chill)` : humidex != null ? `${humidex.toFixed(0)}° (humidex)` : t != null ? `${t.toFixed(0)}°` : "—", (chill != null && chill < -10) || (humidex != null && humidex > 35) ? "bad" : ""],
       ["Cloud", cloud != null ? `${(cloud * 100).toFixed(0)}%` : "—", cloud == null ? "" : cloud < 0.3 ? "good" : ""],
       ["Thunder risk (CAPE)", s.cape && s.cape[i] != null ? `${s.cape[i].toFixed(0)} J/kg` : "n/a", capeClass(s.cape && s.cape[i])],
-      ["Dry windows (3 d)", dry.length ? `${dry.length * 6} h of ${Math.min(72, (d.steps.length - i) * 6)}` : "none", dry.length > 6 ? "good" : dry.length ? "meh" : "bad"],
+      ...(s.swh && s.swh[i] != null ? [["Sea state", `${s.swh[i].toFixed(1)} m${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` from ${Math.round(s.mwd[i])}°` : ""}`, s.swh[i] < 1 ? "good" : s.swh[i] < 2.5 ? "meh" : "bad"]] : []),
+      ["Dry, calm hours (3 d)", dryH ? `${dryH} h of ${totH}` : "none", dryH > 36 ? "good" : dryH ? "meh" : "bad"],
     ];
     const pt = W().state.point;
     let tidesHtml = "";
@@ -349,11 +362,11 @@
         const t = b.temp[k], w = b.wind[k], dir = b.wdir[k], pty = b.ptype[k];
         // snow at this band over next 24 h: precip that falls as snow at the band's temperature
         let snow24 = 0, rain24 = 0;
-        for (let q = k + 1; q <= Math.min(k + 4, p.steps.length - 1); q++) { const amt = (p.tp6 && p.tp6[q]) || 0; if (b.ptype[q] === "snow") snow24 += amt; else if (b.ptype[q] === "mixed") { snow24 += amt / 2; rain24 += amt / 2; } else rain24 += amt; }
+        for (let q = k + 1; q < p.steps.length && p.steps[q] <= p.steps[k] + 24; q++) { const amt = (p.tp6 && p.tp6[q]) || 0; if (b.ptype[q] === "snow") snow24 += amt; else if (b.ptype[q] === "mixed") { snow24 += amt / 2; rain24 += amt / 2; } else rain24 += amt; }
         return `<tr><td class="name">${name}<small>${z} m · ${Math.round(z * 3.281 / 50) * 50} ft</small></td><td><b>${t == null ? "—" : Math.round(t - K) + "°"}</b></td><td>${w == null ? "—" : `<i style="display:inline-block;width:8px;height:8px;border-left:1.5px solid currentColor;border-top:1.5px solid currentColor;${W().arrowRot(dir)};margin-right:4px"></i>${Math.round(speed(w))} ${speedUnit()}`}</td><td>${pty ? `<span class="pill ${pty}">${pty}</span>` : "<span class=dim>—</span>"}</td><td>${snow24 >= 0.5 ? `<span class="pill snow">${snow24.toFixed(0)} cm</span>` : rain24 >= 0.5 ? `<span class="pill rain">${rain24.toFixed(0)} mm</span>` : "<span class=dim>·</span>"}</td></tr>`;
       }).join("");
       const fl = p.freezing_level_m ? p.freezing_level_m[k] : null;
-      const snow72 = (() => { let s3 = 0; const b = p.bands[p.bands.length - 1]; for (let q = k + 1; q <= Math.min(k + 12, p.steps.length - 1); q++) if (b.ptype[q] === "snow") s3 += (p.tp6 && p.tp6[q]) || 0; return s3; })();
+      const snow72 = (() => { let s3 = 0; const b = p.bands[p.bands.length - 1]; for (let q = k + 1; q < p.steps.length && p.steps[q] <= p.steps[k] + 72; q++) if (b.ptype[q] === "snow") s3 += (p.tp6 && p.tp6[q]) || 0; return s3; })();
       bandsHtml = `<div class="snowline"><span>freezing level <b>${fl != null ? fl + " m" : "—"}</b></span><span>peak snow 72 h <b>${snow72.toFixed(0)} cm</b></span><span>lifts mapped <b>${lifts}</b></span></div>
         <table class="bands"><thead><tr><th>Band</th><th>Temp</th><th>Wind</th><th>Precip type</th><th>Next 24 h</th></tr></thead><tbody>${rows}</tbody></table>`;
     }

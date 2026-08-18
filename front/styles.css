@@ -112,6 +112,11 @@ select.run {
 .rail button.on { background: var(--accent); color: var(--accent-ink); }
 .rail button.on svg { opacity: 1; }
 .rail button:disabled { opacity: .3; cursor: default; }
+.rail button .var { margin-left: auto; padding-left: 10px; font: 600 10px var(--font-mono); font-style: normal; color: var(--dim); }
+.rail button.on .var { color: var(--accent-ink); opacity: .75; }
+.rail .rail-sec { font: 700 9.5px var(--font-display); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; padding: 8px 10px 3px; border-top: 1px solid var(--line); margin-top: 3px; }
+.rail .rail-sec:first-child { border-top: 0; margin-top: 0; padding-top: 4px; }
+.seg.variant { margin-left: 8px; }
 
 /* ── topbar menus: layers ▾ / tools ▾ popovers (all widths) ──────────── */
 .menu { position: relative; display: block; }
@@ -121,6 +126,26 @@ select.run {
 .menu.open .menu-pop { display: flex; }
 .menu .menu-pop .chip, .menu .menu-pop .icon { width: 100%; border-radius: 8px; text-align: left; justify-content: flex-start; height: auto; padding: 7px 10px; }
 .menu .menu-btn.has-on { border-color: var(--accent); color: var(--accent); }
+.menu-list { min-width: 200px; max-height: calc(100vh - var(--top-h) - 20px); overflow-y: auto; scrollbar-width: none; }
+.menu-list .menu-sec { font: 700 9.5px var(--font-display); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; padding: 8px 10px 3px; }
+.menu-list .menu-sec:not(:first-child) { border-top: 1px solid var(--line); margin-top: 3px; }
+.menu .menu-pop .row .sw { margin-left: auto; width: 26px; height: 14px; border-radius: 999px; background: rgba(255,255,255,.12); position: relative; flex: 0 0 26px; transition: background .15s; }
+.menu .menu-pop .row .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--fg-2); transition: transform .15s, background .15s; }
+.menu .menu-pop .row.on .sw { background: var(--accent); }
+.menu .menu-pop .row.warn.on .sw { background: var(--warm); }
+.menu .menu-pop .row.on .sw::after { transform: translateX(12px); background: var(--accent-ink); }
+.menu .menu-pop .row.on { color: var(--fg); }
+:root[data-theme="light"] .menu .menu-pop .row .sw { background: rgba(0,0,0,.12); }
+.menu .menu-pop .row { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; color: var(--fg-2);
+  padding: 8px 10px; border-radius: 8px; font: 600 12.5px var(--font-display); cursor: pointer; text-align: left; }
+.menu .menu-pop .row:hover { background: rgba(255,255,255,.06); color: var(--fg); }
+.menu .menu-pop .row svg { width: 16px; height: 16px; flex: 0 0 16px; opacity: .8; }
+.menu .menu-pop .row .val { margin-left: auto; font: 600 11px var(--font-mono); color: var(--dim); }
+.menu .menu-pop .row.on { color: var(--accent); }
+.menu .menu-pop .row.on .val { color: var(--accent); }
+.menu .menu-pop .row.chip { background: transparent; border: 0; }
+.menu .menu-pop .row.chip.on { background: transparent; color: var(--fg); border: 0; }
+:root[data-theme="light"] .menu .menu-pop .row:hover, :root[data-theme="light"] .rail button:hover { background: rgba(0,0,0,.05); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 button:focus:not(:focus-visible) { outline: none; }
 
@@ -159,10 +184,18 @@ input#step { width: 100%; accent-color: var(--accent); height: 14px; margin: 2px
 
 /* ── point card ──────────────────────────────────────────────────────── */
 #point {
-  position: absolute; z-index: 6; left: 12px; bottom: calc(var(--tb-h) + 22px + env(safe-area-inset-bottom)); width: min(440px, calc(100vw - 24px));
+  position: absolute; z-index: 6; left: 12px; top: calc(var(--top-h) + 8px); width: min(440px, calc(100vw - 24px));
+  max-height: calc(100vh - var(--top-h) - var(--tb-h) - 30px - env(safe-area-inset-bottom));
+  display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 8px;
   backdrop-filter: blur(10px);
 }
+/* the head and tabs stay put; the body scrolls, so a late METAR or a long
+   Winter pane grows downward inside the card instead of pushing the title
+   off the top of the screen */
+#point[hidden] { display: none; }
+#point-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin: 0 -6px; padding: 0 6px; }
+#point-foot { flex: 0 0 auto; }
 .point-head { display: flex; align-items: flex-start; gap: 8px; }
 .point-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .point-head #point-title { font: 800 15px/1.2 var(--font-display); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -196,6 +229,9 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
   .rail::-webkit-scrollbar { display: none; }
   .rail button { padding: 5px 9px; border-radius: 999px; }
   .rail button svg { display: none; }
+  .rail .rail-sec { display: none; }
+  .rail button .var { display: none; }
+  #point { top: calc(var(--top-h) + 44px); max-height: calc(100vh - var(--top-h) - var(--tb-h) - 62px - env(safe-area-inset-bottom)); }
   #levels { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
   #legend { width: 90px; margin-left: 8px; }
   #legend .legend-ticks { display: none; }
