@@ -270,7 +270,7 @@
   }
   async function fetchAvy(pt) {
     const my = pt;
-    try { my.avy = await W().api(`${W().API}/avy/point?lat=${pt.lat.toFixed(3)}&lon=${pt.lon.toFixed(3)}`); }
+    try { my.avy = await W().api(`${W().API}/avy/point?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}`); }
     catch (e) { my.avy = false; }
     if (W().state.point === my && W().state.tab === "winter") W().renderPoint();
   }
@@ -339,7 +339,7 @@
     if (!pt.cmp) {
       pt.cmp = { loading: true, rows: {} };
       const models = catalog.models.filter((m) => m.runs.length);
-      Promise.all(models.map((m) => api(`${API}/point?lat=${pt.lat.toFixed(3)}&lon=${pt.lon.toFixed(3)}&model=${m.key}`).then((r) => [m, r]).catch(() => null))).then((rs) => {
+      Promise.all(models.map((m) => api(`${API}/point?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}&model=${m.key}`).then((r) => [m, r]).catch(() => null))).then((rs) => {
         rs.filter(Boolean).forEach(([m, r]) => { pt.cmp.rows[m.key] = { model: m, data: r }; });
         pt.cmp.loading = false;
         if (W().state.point === pt && W().state.tab === "cmp") W().renderPoint();

@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
@@ -154,6 +156,20 @@ def _levels_for(reader: RunReader) -> list[int]:
     return [lvl for lvl in LEVELS if f"u_{lvl}" in reader.variables and f"t_{lvl}" in reader.variables]
 
 
+def _tmp_for(path):
+    """A private temp name per writer. Two requests for the same uncached
+    layer used to share one `.part` file: the first rename won, the second
+    raised FileNotFoundError and 500ed (seen 2026-08-18 with the tape
+    prefetching the next step while the map fetched the current one)."""
+    return path.with_suffix(f".part-{os.getpid()}-{uuid.uuid4().hex[:8]}")
+
+
+def _wrap_lon(lon: float) -> float:
+    """Longitudes arrive from a map that renders world copies, so a permalink
+    can legitimately carry 200 or -200. Wrap instead of rejecting."""
+    return (lon + 180.0) % 360.0 - 180.0
+
+
 def _norm_layer(layer: str) -> str:
     layer = _ALIAS.get(layer, layer)
     if layer not in LAYERS:
@@ -210,7 +226,7 @@ def api_layer(model: str, run: str, step: int, layer: str, level: int | None = N
         path.parent.mkdir(parents=True, exist_ok=True)
         field = field_for(r, layer, level, step)
         disp = render.DISPLAY[layer](render.to_mercator(field))
-        tmp = path.with_suffix(".part")
+        tmp = _tmp_for(path)
         tmp.write_bytes(render.colorize(disp, layer))
         tmp.replace(path)
     return FileResponse(path, media_type="image/png",
@@ -232,7 +248,7 @@ def api_wind(model: str, run: str, step: int, level: int | None = None, field: s
             swh = r.slab("swh", step); mwd = np.deg2rad(r.slab("mwd", step))
             # mwd is the direction waves come FROM (met convention): propagation is the opposite way
             u = -np.sin(mwd) * swh * 3.0; v = -np.cos(mwd) * swh * 3.0
-            tmp = path.with_suffix(".part")
+            tmp = _tmp_for(path)
             tmp.write_bytes(render.wind_json(u, v))
             tmp.replace(path)
         return FileResponse(path, media_type="application/json", headers={"Cache-Control": "public, max-age=31536000, immutable"})
@@ -245,7 +261,7 @@ def api_wind(model: str, run: str, step: int, level: int | None = None, field: s
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         u, v = _vars_for("wind", level)
-        tmp = path.with_suffix(".part")
+        tmp = _tmp_for(path)
         tmp.write_bytes(render.wind_json(r.slab(u, step), r.slab(v, step)))
         tmp.replace(path)
     return FileResponse(path, media_type="application/json",
@@ -309,8 +325,9 @@ def _freezing_level(series: dict, levels: list[int], n: int) -> list:
 
 
 @app.get("/api/point")
-def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180),
+def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-540, le=540),
               model: str = "aifs", run: str = "latest"):
+    lon = _wrap_lon(lon)
     r = _reader(model, run)
     t0 = parse_run_id(r.rid)
     n = len(r.steps)
@@ -362,7 +379,7 @@ def api_thunder(model: str, run: str, step: int):
         ys, xs = np.nonzero(mask)
         feats = [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [round(-180 + x * 1.0, 2), round(90 - y * 1.0, 2)]},
                   "properties": {"cape": int(cape[y, x]), "mm": round(float(tp[y, x]), 1)}} for y, x in zip(ys.tolist(), xs.tolist())]
-        tmp = path.with_suffix(".part")
+        tmp = _tmp_for(path)
         tmp.write_text(json.dumps({"type": "FeatureCollection", "features": feats}, separators=(",", ":")))
         tmp.replace(path)
     return FileResponse(path, media_type="application/json", headers={"Cache-Control": "public, max-age=31536000, immutable"})
@@ -417,7 +434,7 @@ def api_isolines(model: str, run: str, step: int, var: str, level: int | None = 
                 feats.append({"type": "Feature", "properties": {"value": float(lv), "label": f"{lv:g}"},
                               "geometry": {"type": "LineString", "coordinates": coords}})
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".part")
+        tmp = _tmp_for(path)
         import json as _json
         tmp.write_text(_json.dumps({"type": "FeatureCollection", "unit": unit, "interval": interval, "features": feats}, separators=(",", ":")))
         tmp.replace(path)
@@ -468,10 +485,11 @@ def _interp_column(series: dict, levels: list[int], n: int, z_m: float) -> dict:
 
 
 @app.get("/api/profile")
-def api_profile(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180),
+def api_profile(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-540, le=540),
                 elevs: str = Query("0,1000,2000,3000"), model: str = "aifs", run: str = "latest"):
     """Temperature and wind at arbitrary altitudes (m ASL) — the elevation-band
     forecast a ski resort wants (valley / mid / alpine / peak)."""
+    lon = _wrap_lon(lon)
     r = _reader(model, run)
     levels = _levels_for(r)
     if not levels:
@@ -501,6 +519,61 @@ def api_profile(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., 
             "valid": [(t0 + timedelta(hours=h)).isoformat() for h in r.steps],
             "bands": bands, "tp6": series.get("tp6"), "sf6": series.get("sf6"),
             "freezing_level_m": fl, "levels": levels}
+
+
+@app.get("/api/xsection")
+def api_xsection(lat1: float = Query(..., ge=-90, le=90), lon1: float = Query(..., ge=-540, le=540),
+                 lat2: float = Query(..., ge=-90, le=90), lon2: float = Query(..., ge=-540, le=540),
+                 step: int = 0, n: int = Query(80, ge=8, le=200), model: str = "ifs", run: str = "latest"):
+    """Vertical slice along a great-circle path: temperature, wind and
+    geopotential height at every stored pressure level, sampled at `n` points
+    between the ends, for one forecast step. The front end draws the classic
+    cross-section from this."""
+    lon1, lon2 = _wrap_lon(lon1), _wrap_lon(lon2)
+    r = _reader(model, run)
+    if step not in r.steps:
+        step = min(r.steps, key=lambda x: abs(x - step))
+    levels = _levels_for(r)
+    if not levels:
+        raise HTTPException(404, "run has no pressure levels")
+    lstep = _level_step(r, step, True)      # aloft products live on 6 h steps
+
+    # great-circle interpolation, so a long slice does not drift off the path
+    p1 = np.deg2rad([lat1, lon1]); p2 = np.deg2rad([lat2, lon2])
+    d = 2 * np.arcsin(np.sqrt(np.sin((p2[0] - p1[0]) / 2) ** 2 + np.cos(p1[0]) * np.cos(p2[0]) * np.sin((p2[1] - p1[1]) / 2) ** 2))
+    fs = np.linspace(0, 1, n)
+    if d < 1e-9:
+        lats = np.full(n, lat1); lons = np.full(n, lon1)
+    else:
+        a_ = np.sin((1 - fs) * d) / np.sin(d); b_ = np.sin(fs * d) / np.sin(d)
+        x = a_ * np.cos(p1[0]) * np.cos(p1[1]) + b_ * np.cos(p2[0]) * np.cos(p2[1])
+        y = a_ * np.cos(p1[0]) * np.sin(p1[1]) + b_ * np.cos(p2[0]) * np.sin(p2[1])
+        z = a_ * np.sin(p1[0]) + b_ * np.sin(p2[0])
+        lats = np.rad2deg(np.arctan2(z, np.hypot(x, y))); lons = np.rad2deg(np.arctan2(y, x))
+
+    def rows(var: str, at: int) -> list:
+        if var not in r.variables:
+            return [None] * n
+        sl = r.slab(var, at)
+        i = np.clip(np.rint((90.0 - lats) / 0.25).astype(int), 0, GRID_LAT_N - 1)
+        j = (np.rint((lons + 180.0) / 0.25).astype(int)) % GRID_LON_N
+        vals = sl[i, j]
+        return [None if np.isnan(v) else round(float(v), 2) for v in vals]
+
+    out_levels = []
+    for lvl in levels:
+        t = rows(f"t_{lvl}", lstep); u = rows(f"u_{lvl}", lstep); v = rows(f"v_{lvl}", lstep)
+        spd, dr = _wind_pair(u, v)
+        out_levels.append({"level": lvl, "temp": t, "wind": spd, "wdir": dr, "gh": rows(f"gh_{lvl}", lstep)})
+    km = float(6371.0 * d)
+    return {"model": model, "run": r.rid, "step": step, "level_step": lstep,
+            "valid": (parse_run_id(r.rid) + timedelta(hours=step)).isoformat(),
+            "n": n, "length_km": round(km, 1), "levels": levels,
+            "lats": [round(float(x), 3) for x in lats], "lons": [round(float(x), 3) for x in lons],
+            "dist_km": [round(km * f, 1) for f in fs.tolist()],
+            "surface": {"t2m": rows("t2m", step), "msl": rows("msl", step), "tp6": rows("tp6", step),
+                        "tcc": rows("tcc", step), "wind": _wind_pair(rows("u10", step), rows("v10", step))[0]},
+            "profile": out_levels}
 
 
 @app.get("/api/legend/{layer}")

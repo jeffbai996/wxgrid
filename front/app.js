@@ -59,7 +59,7 @@
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null, measure: false,
     alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false,
-    opacity: Number(localStorage.getItem("wxgrid.opacity") || 100),
+    opacity: Number(localStorage.getItem("wxgrid.opacity") || 100), xsection: false,
   };
   let map, wind, catalog, playTimer = null, marker = null;
 
@@ -69,11 +69,16 @@
   const arrowRot = (deg) => `transform: rotate(${(deg + 180 + 45) % 360}deg)`;   // chevron points TO where wind goes
   const f = (v, fn) => (v == null ? "—" : fn(v));
   const arrow = (deg) => "↓↙←↖↑↗→↘"[Math.round(((deg % 360) / 45)) % 8];
+  // The map renders world copies, so a click east of the antimeridian gives
+  // lng 200 or -200. The marker keeps the raw value (it belongs in the copy
+  // the user clicked); every API call gets the wrapped one, since the store
+  // is one world wide.
+  const wlon = (x) => ((x + 180) % 360 + 360) % 360 - 180;
   // Static (GitHub Pages) builds load static-api.js first; it rewrites URLs
   // and answers the JSON endpoints from files. Live builds pass straight through.
   const U = (u) => (window.WXStatic ? window.WXStatic.url(u) : u);
   const apiJson = (u) => window.WXStatic ? window.WXStatic.api(u) : fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
-  window.WX = { state, speed, speedUnit, arrowRot, f, arrow, LEVEL_FT, LEVEL_M, AVY_COLORS, API, LAYER_ALPHA, $, $$,
+  window.WX = { state, speed, speedUnit, arrowRot, f, arrow, wlon, LEVEL_FT, LEVEL_M, AVY_COLORS, API, LAYER_ALPHA, $, $$,
                 get map() { return map; }, get catalog() { return catalog; }, toast, modelEntry: () => modelEntry(), openPoint, closePoint,
                 get validDate() { return validDate(); }, get stepHours() { return stepHours(); }, api: apiJson, url: U };
   // Functions the split-out modules (overlays.js, tape.js, search.js) call back into.
@@ -117,6 +122,7 @@
       ensureWxLayer();
       map.on("click", (e) => {
         if (state.measure) { WX.ov.measureClick(e.lngLat); return; }
+        if (state.xsection) { WX.xs.click(e.lngLat); return; }
         const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter((l) => map.getLayer(l)) });
         const resort = feats.find((x) => x.layer.id === "resort-pts");
         if (resort) { WX.ov.selectResort(resort.properties.id); return; }
@@ -262,6 +268,21 @@
 
     renderLegend();
     $("#play").onclick = togglePlay;
+    const tb = $("#timebar"), tmin = $("#tape-min");
+    const setMini = (on) => { tb.classList.toggle("mini", on); localStorage.setItem("wxgrid.tapeMini", on ? "1" : "0");
+      tmin.title = on ? "Show the forecast table" : "Hide the forecast table"; };
+    setMini(localStorage.getItem("wxgrid.tapeMini") === "1");
+    tmin.onclick = () => setMini(!tb.classList.contains("mini"));
+    // the crosshair button map apps have: centre here and open the card
+    const goToMe = () => {
+      if (!navigator.geolocation) { toast("This browser has no location service", 4000, "error"); return; }
+      $("#locate-btn").classList.add("on");
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { $("#locate-btn").classList.remove("on"); map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: Math.max(map.getZoom(), 8), duration: 900 }); openPoint(pos.coords.latitude, pos.coords.longitude); },
+        () => { $("#locate-btn").classList.remove("on"); toast("Location unavailable. Allow it for this site and try again.", 5000, "error"); },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    };
+    $("#locate-btn").onclick = goToMe;
     $("#particles-toggle").onclick = () => { state.particles = !state.particles; $("#particles-toggle").classList.toggle("on", state.particles); if (state.particles) { state.barbs = false; $("#barbs-toggle").classList.remove("on"); wind.setMode("particles"); } wind.setEnabled(state.particles || state.barbs); };
     $("#barbs-toggle").onclick = () => { state.barbs = !state.barbs; $("#barbs-toggle").classList.toggle("on", state.barbs); if (state.barbs) { state.particles = false; $("#particles-toggle").classList.remove("on"); wind.setEnabled(true); wind.setMode("barbs"); } else { wind.setMode("particles"); wind.setEnabled(state.particles); } };
     $("#units-toggle").querySelector(".val").textContent = speedUnit();
@@ -287,15 +308,14 @@
       $(`#${k}-toggle`).onclick = () => { state[k] = !state[k]; $(`#${k}-toggle`).classList.toggle("on", state[k]); if (state[k]) WX.ov[load](); else WX.ov[clear](); };
     }
     $("#theme-toggle").onclick = () => { applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light"); $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme; };
+    $("#xsection-toggle").onclick = () => { const on = !state.xsection; $("#xsection-toggle").classList.toggle("on", on); if (on) WX.xs.start(); else WX.xs.stop(); };
     $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); $("#measure-toggle").querySelector(".val").textContent = state.measure ? "on" : "off"; if (!state.measure) WX.ov.clearMeasure(); else toast("Measure: tap two points"); };
     $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) WX.ov.loadIso(); else WX.ov.clearIso(); };
     $("#avy-toggle").onclick = () => { state.avy = !state.avy; $("#avy-toggle").classList.toggle("on", state.avy); if (state.avy) WX.ov.loadAvy(); else WX.ov.clearAvy(); };
     $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) WX.ov.loadResorts(); else WX.ov.clearResorts(); };
-    $("#locate").onclick = () => navigator.geolocation && navigator.geolocation.getCurrentPosition(
-      (p) => { map.flyTo({ center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), 7) }); openPoint(p.coords.latitude, p.coords.longitude); },
-      () => toast("Location unavailable", 4000, "error"));
+    $("#locate").onclick = goToMe;
     $("#point-close").onclick = closePoint;
-    $("#point-fav").onclick = () => { if (!state.point) return; const on = WX.search.toggleFav(state.point.lat, state.point.lon, state.point.name); $("#point-fav").textContent = on ? "★" : "☆"; $("#point-fav").classList.toggle("on", on); toast(on ? "Saved. Focus the search box to see your places." : "Removed", 2500); };
+    $("#point-fav").onclick = () => { if (!state.point) return; const on = WX.search.toggleFav(state.point.lat, state.point.lon, state.point.name); $("#point-fav").classList.toggle("on", on); $("#point-fav").title = on ? "Saved place" : "Save place"; toast(on ? "Saved. Focus the search box to see your places." : "Removed", 2500); };
     WX.search.wireSearch();
     $$(".menu .menu-btn").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const m = b.parentElement; const open = m.classList.contains("open"); $$(".menu.open").forEach((x) => x.classList.remove("open")); if (!open) m.classList.add("open"); });
     // menu buttons show a tick when any of their toggles is on
@@ -319,7 +339,8 @@
     ["radar", "Radar"], ["sat", "Satellite"], ["aod", "Aerosol"], ["iso", "Isolines"], null,
     ["alerts", "Alerts", "warn"], ["storms", "Storms", "warn"], ["thunder", "Thunder", "warn"], ["fires", "Fires", "warn"], ["smoke", "Smoke"], ["quakes", "Quakes"], null,
     ["avy", "Avalanche"], ["resorts", "Ski resorts"], null,
-    ["particles", "Particles"], ["barbs", "Barbs"], ["measure", "Measure"],
+    ["particles", "Particles"], ["barbs", "Barbs"], null,
+    ["xsection", "Cross section"], ["measure", "Measure"],
   ];
   function buildStrip() {
     const st = $("#tstrip"); if (!st) return;
@@ -359,6 +380,7 @@
     if (src) { try { src.updateImage({ url: layerUrl(), coordinates: WORLD }); } catch (e) { /* superseded */ } }
     if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", ((state.radar || state.sat) ? Math.min(0.45, LAYER_ALPHA[state.layer]) : LAYER_ALPHA[state.layer]) * state.opacity / 100);
     if (state.thunder && WX.ov) WX.ov.loadThunder();
+    if (state.xsection && WX.xs) WX.xs.refresh();
     if (WX.probe) WX.probe.refresh();
     const v = validDate();
     $("#valid-local").textContent = v.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -414,11 +436,11 @@
     $("#point-local").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
     $("#point-now").textContent = "…";
     $$(".point-tabs button[data-tab=resort]").forEach((b) => b.hidden = !state.resort);
-    { const on = WX.search.isFav(lat, lon); $("#point-fav").textContent = on ? "★" : "☆"; $("#point-fav").classList.toggle("on", on); }
+    { const on = WX.search.isFav(lat, lon); $("#point-fav").classList.toggle("on", on); $("#point-fav").title = on ? "Saved place" : "Save place"; }
     placeMarker(lat, lon);
     pushHash();
     try {
-      const d = await WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}&model=${state.model}&run=${state.run}`);
+      const d = await WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}&model=${state.model}&run=${state.run}`);
       if (my !== pointReq) return;
       state.point.data = d;
       renderPoint(); WX.tape.renderTape();
@@ -426,11 +448,11 @@
       $("#point-foot").textContent = `${modelEntry().short} run ${rd.toLocaleString(undefined, { day: "numeric", month: "short", timeZone: "UTC" })} ${String(rd.getUTCHours()).padStart(2, "0")}Z · 0.25° gridpoint · ${modelEntry().attribution.replace("ECMWF open data", "ECMWF").replace(" (AIFS)", "").replace("NOAA NCEP GFS via NOMADS", "NOAA")}`;
     } catch (e) { $("#point-now").textContent = "point forecast unavailable"; }
     // local context arrives lazily and re-renders as it lands
-    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; WX.tape.renderTape(); } renderPoint(); } }).catch(() => {});
-    WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.obs = r; renderPoint(); } }).catch(() => {});
-    WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.alerts = r.alerts || []; renderPoint(); } }).catch(() => {});
-    WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.air = r; renderPoint(); } }).catch(() => {});
-    WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.tides = r; renderPoint(); } }).catch(() => { if (my === pointReq) state.point.tides = false; });
+    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; WX.tape.renderTape(); } renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.obs = r; renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.alerts = r.alerts || []; renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.air = r; renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.tides = r; renderPoint(); } }).catch(() => { if (my === pointReq) state.point.tides = false; });
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
   function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
