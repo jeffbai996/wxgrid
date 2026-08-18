@@ -27,23 +27,23 @@
   <div class="seg" id="models" role="tablist" aria-label="Model"></div>
   <select id="run" class="run" title="Model run (UTC)"></select>
   <div class="spacer"></div>
-  <div class="seg small levels" id="levels" hidden aria-label="Altitude"></div>
+  <div class="alt" id="alt" hidden>
+    <button id="alt-btn" class="chip alt-btn" title="Altitude"><span id="alt-label">sfc</span> <span class="caret">▾</span></button>
+    <div id="levels" class="alt-menu" hidden role="menu"></div>
+  </div>
   <button id="radar-toggle" class="chip" title="Live radar (RainViewer)">radar</button>
   <button id="iso-toggle" class="chip" title="Isolines (isobars / isotherms)">isolines</button>
   <button id="avy-toggle" class="chip" title="Avalanche forecast regions">avalanche</button>
   <button id="resorts-toggle" class="chip" title="Ski resorts">resorts</button>
   <button id="particles-toggle" class="chip on" title="Wind particles">particles</button>
   <button id="units-toggle" class="chip mono" title="Wind units">km/h</button>
+  <button id="measure-toggle" class="chip" title="Measure distance and bearing">measure</button>
+  <button id="theme-toggle" class="icon" title="Light / dark">◐</button>
   <button id="locate" class="icon" title="My location">◎</button>
 </header>
 <div id="search-results" class="results" hidden></div>
 
 <nav id="layers" class="rail" aria-label="Layers"></nav>
-
-<aside id="legend" hidden>
-  <div class="legend-bar"></div>
-  <div class="legend-ticks"></div>
-</aside>
 
 <footer id="timebar">
   <div class="tape-head">
@@ -54,6 +54,10 @@
     </div>
     <span id="lead" class="mono dim"></span>
     <span id="tape-where" class="dim"></span>
+    <aside id="legend" hidden>
+      <div class="legend-bar"></div>
+      <div class="legend-ticks"></div>
+    </aside>
   </div>
   <div id="tape" class="tape" tabindex="0" aria-label="Forecast timeline"></div>
   <input id="step" type="range" min="0" max="0" value="0" step="1" aria-label="Forecast step">
@@ -83,6 +87,7 @@
   <div id="point-foot" class="dim"></div>
 </div>
 
+<div id="measure" class="measure" hidden></div>
 <div id="toast" hidden></div>
 
 <script src="vendor/maplibre-gl.js"></script>

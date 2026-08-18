@@ -8,6 +8,7 @@
   const W = () => window.WX;
   const K = 273.15;
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  let W_ICONS = {};
 
   function render(tab, pt, i) {
     const d = pt.data;
@@ -20,35 +21,67 @@
     else if (tab === "resort") renderResort(pt, d, i);
   }
 
-  // ── Now: local context line, current model values, station obs, meteogram
+  // ── colour helpers ────────────────────────────────────────────────────
+  const TEMP_STOPS = [[-30, [75, 42, 180]], [-15, [40, 150, 220]], [0, [100, 200, 200]], [10, [110, 210, 110]], [20, [240, 220, 80]], [28, [240, 130, 40]], [36, [200, 30, 30]]];
+  function lerpStops(stops, v) {
+    let a = stops[0], b = stops[stops.length - 1];
+    for (let k = 0; k < stops.length - 1; k++) if (v >= stops[k][0] && v <= stops[k + 1][0]) { a = stops[k]; b = stops[k + 1]; break; }
+    const q = Math.max(0, Math.min(1, (v - a[0]) / (b[0] - a[0] || 1)));
+    return `rgb(${a[1].map((x, k) => Math.round(x + (b[1][k] - x) * q)).join(",")})`;
+  }
+  const tempColor = (c) => lerpStops(TEMP_STOPS, c);
+  const windColor = (ms) => { const p = Math.min(1, (ms * 3.6) / 70); return `rgba(${Math.round(60 + 180 * p)}, ${Math.round(160 - 60 * p)}, ${Math.round(220 - 200 * p)}, ${0.35 + 0.55 * p})`; };
+  const bigGlyph = (cloud, precip, tK, night) => {
+    const c = cloud == null ? 0 : cloud, snow = tK != null && tK - K < 1 && precip > 0.2;
+    const body = night ? `<circle cx="16" cy="16" r="9" fill="#cfd6e3"/>` : `<circle cx="16" cy="16" r="9" fill="#ffd166"/><g stroke="#ffd166" stroke-width="2" stroke-linecap="round">${[0,45,90,135,180,225,270,315].map((a)=>`<line x1="${16+12*Math.cos(a*Math.PI/180)}" y1="${16+12*Math.sin(a*Math.PI/180)}" x2="${16+14.5*Math.cos(a*Math.PI/180)}" y2="${16+14.5*Math.sin(a*Math.PI/180)}"/>`).join("")}</g>`;
+    const cl = c > 0.25 ? `<path d="M13 30h19a7 7 0 0 0 0-14 9 9 0 0 0-17-2 8 8 0 0 0-2 16z" fill="rgba(210,218,230,${0.4 + 0.6 * c})"/>` : "";
+    const rn = precip > 0.2 ? (snow ? `<text x="17" y="42" font-size="12" fill="#dfe8ff">✱ ✱</text>` : `<path d="M16 33v5M22 33v5M28 33v5" stroke="#6cb6ff" stroke-width="2.5" stroke-linecap="round"/>`) : "";
+    return `<svg class="glyph" viewBox="0 0 46 46">${c < 0.9 ? body : ""}${cl}${rn}</svg>`;
+  };
+  W_ICONS = { rise: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v8M4.93 10.93l1.41 1.41M2 18h2M20 18h2M19.07 10.93l-1.41 1.41M22 22H2M16 6l-4-4-4 4M16 18a4 4 0 0 0-8 0"/></svg>',
+              set: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 10V2M4.93 10.93l1.41 1.41M2 18h2M20 18h2M19.07 10.93l-1.41 1.41M22 22H2M16 6l-4 4-4-4M16 18a4 4 0 0 0-8 0"/></svg>' };
+
+  // ── Now: hero, local context, station obs, meteogram ─────────────────
   function renderNow(pt, d, i) {
     const { speed, speedUnit, f, arrow } = W();
-    const s = d.series, parts = [];
-    if (s.t2m) parts.push(`<span><b>${f(s.t2m[i], (v) => (v - K).toFixed(0))}°</b> C</span>`);
-    if (s.d2m) parts.push(`<span>dew <b>${f(s.d2m[i], (v) => (v - K).toFixed(0))}°</b></span>`);
-    if (s.wind) parts.push(`<span><b>${f(s.wind[i], (v) => speed(v).toFixed(0))}</b> ${speedUnit()} ${f(s.wdir && s.wdir[i], arrow)}</span>`);
-    if (s.gust) parts.push(`<span>gust <b>${f(s.gust[i], (v) => speed(v).toFixed(0))}</b></span>`);
-    if (s.tp6) parts.push(`<span>rain <b>${f(s.tp6[i], (v) => v.toFixed(1))}</b> mm/6h</span>`);
-    if (s.sf6 && s.sf6[i] > 0.05) parts.push(`<span>snow <b>${s.sf6[i].toFixed(1)}</b> cm/6h</span>`);
-    if (s.tcc) parts.push(`<span>cloud <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
-    if (s.msl) parts.push(`<span><b>${f(s.msl[i], (v) => (v / 100).toFixed(0))}</b> hPa</span>`);
-    $("#point-now").innerHTML = parts.join("");
+    const s = d.series;
+    const t = s.t2m ? s.t2m[i] : null, night = (() => { const h = new Date(d.valid[i]).getHours(); return h < 6 || h >= 21; })();
+    // today's hi/lo (same local calendar day as the shown step)
+    const day = new Date(d.valid[i]).toDateString();
+    const todays = d.valid.map((v, k) => k).filter((k) => new Date(d.valid[k]).toDateString() === day && s.t2m && s.t2m[k] != null);
+    const hi = todays.length ? Math.max(...todays.map((k) => s.t2m[k])) - K : null, lo = todays.length ? Math.min(...todays.map((k) => s.t2m[k])) - K : null;
+    const chips = [];
+    if (s.wind) chips.push(`<span class="chipv" style="background:${windColor(s.wind[i] || 0)}">${f(s.wdir && s.wdir[i], arrow)} <b>${f(s.wind[i], (v) => speed(v).toFixed(0))}</b>${s.gust && s.gust[i] != null ? `<span class="dim">G${speed(s.gust[i]).toFixed(0)}</span>` : ""} ${speedUnit()}</span>`);
+    if (s.tp6 && s.tp6[i] > 0.05) chips.push(`<span class="chipv" style="color:var(--rain)"><b>${s.tp6[i].toFixed(1)}</b> mm/6h</span>`);
+    if (s.sf6 && s.sf6[i] > 0.05) chips.push(`<span class="chipv" style="color:#cfe8ff"><b>${s.sf6[i].toFixed(1)}</b> cm snow</span>`);
+    if (s.tcc) chips.push(`<span class="chipv">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
+    if (s.d2m) chips.push(`<span class="chipv">dew <b>${f(s.d2m[i], (v) => (v - K).toFixed(0))}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
+    if (s.msl) chips.push(`<span class="chipv"><b>${f(s.msl[i], (v) => (v / 100).toFixed(0))}</b> hPa</span>`);
+    if (s.cape && s.cape[i] > 100) chips.push(`<span class="chipv" style="color:${s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)"}">⚡ <b>${s.cape[i].toFixed(0)}</b> J/kg</span>`);
+    const sun = sunTimes(pt.lat, pt.lon, W().validDate);
+    $("#point-now").innerHTML = `<div class="hero">
+        ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
+        <div>
+          <div class="big" style="color:${t != null ? tempColor(t - K) : "inherit"}">${t == null ? "—" : Math.round(t - K)}°<small>C${hi != null ? ` · H ${Math.round(hi)}° L ${Math.round(lo)}°` : ""}</small></div>
+          <div class="meta">${chips.join("")}</div>
+        </div>
+      </div>
+      ${sun ? `<div class="hero"><div class="sun">${W_ICONS.rise} <b>${sun.rise}</b> ${W_ICONS.set} <b>${sun.set}</b> <span class="dim">${sun.len} of daylight</span></div></div>` : ""}`;
     // local context
     const loc = pt.local || {};
     const bits = [];
     if (loc.place && loc.place.name) bits.push(`<span><b>${esc(loc.place.name)}</b>${loc.place.region ? ", " + esc(loc.place.region) : ""}${loc.place.country ? " · " + esc(loc.place.country) : ""}</span>`);
     if (loc.elevation_m != null) bits.push(`<span>elev <b>${Math.round(loc.elevation_m)} m</b> · ${Math.round(loc.elevation_m * 3.281)} ft</span>`);
-    const sun = sunTimes(pt.lat, pt.lon, W().validDate);
-    if (sun) bits.push(`<span>☀ <b>${sun.rise}</b> – <b>${sun.set}</b> <span class="dim">(${sun.len})</span></span>`);
+    bits.push(`<span>${new Date(d.valid[i]).toLocaleString(undefined, { weekday: "short", hour: "numeric" })} · <span class="dim">${W().modelEntry().label}</span></span>`);
     $("#point-local").innerHTML = bits.join("");
     // station observation
     let obsHtml = "";
     const o = pt.obs && pt.obs.metar;
     if (o) {
-      const t = o.time ? new Date(o.time) : null;
+      const tm = o.time ? new Date(o.time) : null;
       const cl = (o.clouds || []).map((c) => `${c.cover}${c.base != null ? "@" + Math.round(c.base) + "ft" : ""}`).join(" ");
-      obsHtml = `<div class="obs"><div class="obs-head"><span>Observed · ${esc(o.station)} ${esc(o.name || "")} · ${o.distance_km} km</span><span>${t ? t.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : ""} ${o.flight_category ? `<span class="fc ${esc(o.flight_category)}">${esc(o.flight_category)}</span>` : ""}</span></div>
-        <div class="obs-vals">${o.temp_c != null ? `<span><b>${o.temp_c.toFixed(0)}°</b> C</span>` : ""}${o.dewpoint_c != null ? `<span>dew <b>${o.dewpoint_c.toFixed(0)}°</b></span>` : ""}${o.wspd_kt != null ? `<span><b>${speed(o.wspd_kt / 1.943844).toFixed(0)}</b> ${speedUnit()} ${o.wdir != null && o.wdir !== 0 ? String(o.wdir).padStart(3, "0") + "°" : "calm"}${o.wgst_kt ? ` G${speed(o.wgst_kt / 1.943844).toFixed(0)}` : ""}</span>` : ""}${o.visib != null ? `<span>vis <b>${o.visib}</b> sm</span>` : ""}${o.altim_hpa != null ? `<span>QNH <b>${o.altim_hpa.toFixed(0)}</b></span>` : ""}${cl ? `<span>${esc(cl)}</span>` : ""}${o.wx ? `<span>${esc(o.wx)}</span>` : ""}</div>
+      obsHtml = `<div class="obs"><div class="obs-head"><span>Observed · ${esc(o.station)} ${esc(o.name || "")} · ${o.distance_km} km</span><span>${tm ? tm.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : ""} ${o.flight_category ? `<span class="fc ${esc(o.flight_category)}">${esc(o.flight_category)}</span>` : ""}</span></div>
+        <div class="obs-vals">${o.temp_c != null ? `<span><b style="color:${tempColor(o.temp_c)}">${o.temp_c.toFixed(0)}°</b> C</span>` : ""}${o.dewpoint_c != null ? `<span>dew <b>${o.dewpoint_c.toFixed(0)}°</b></span>` : ""}${o.wspd_kt != null ? `<span><b>${speed(o.wspd_kt / 1.943844).toFixed(0)}</b> ${speedUnit()} ${o.wdir != null && o.wdir !== 0 ? String(o.wdir).padStart(3, "0") + "°" : "calm"}${o.wgst_kt ? ` G${speed(o.wgst_kt / 1.943844).toFixed(0)}` : ""}</span>` : ""}${o.visib != null ? `<span>vis <b>${o.visib}</b> sm</span>` : ""}${o.altim_hpa != null ? `<span>QNH <b>${o.altim_hpa.toFixed(0)}</b></span>` : ""}${cl ? `<span>${esc(cl)}</span>` : ""}${o.wx ? `<span>${esc(o.wx)}</span>` : ""}</div>
         <div class="raw">${esc(o.raw || "")}</div></div>`;
     }
     let holder = $("#obs-holder");
@@ -91,12 +124,12 @@
       const gh = a.gh && a.gh[i] != null ? a.gh[i] : null;
       return `<tr><td class="mono">${lvl} hPa</td><td>${gh != null ? `${Math.round(gh)} m · ${Math.round(gh * 3.281 / 100) * 100} ft` : LEVEL_FT[lvl]}</td>
         <td class="dir">${a.wdir[i] != null ? `<i style="${arrowRot(a.wdir[i])}"></i>${String(a.wdir[i]).padStart(3, "0")}°` : "—"}</td>
-        <td>${f(a.wind[i], (v) => speed(v).toFixed(0))} ${speedUnit()}</td>
-        <td>${f(a.temp[i], (v) => (v - K).toFixed(0))}°C</td></tr>`;
+        <td><span class="wchip" style="background:${windColor(a.wind[i] || 0)}">${f(a.wind[i], (v) => speed(v).toFixed(0))}</span> ${speedUnit()}</td>
+        <td class="tempc" style="color:${a.temp[i] != null ? tempColor(a.temp[i] - K) : "inherit"}">${f(a.temp[i], (v) => (v - K).toFixed(0))}°</td></tr>`;
     }).join("");
     const s = d.series;
     const fl = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[i] : null;
-    const sfc = s.wind ? `<tr><td class="mono">sfc</td><td>10 m</td><td class="dir">${s.wdir[i] != null ? `<i style="${arrowRot(s.wdir[i])}"></i>${String(s.wdir[i]).padStart(3, "0")}°` : "—"}</td><td>${f(s.wind[i], (v) => speed(v).toFixed(0))} ${speedUnit()}${s.gust ? ` <span class="dim">G${f(s.gust[i], (v) => speed(v).toFixed(0))}</span>` : ""}</td><td>${f(s.t2m && s.t2m[i], (v) => (v - K).toFixed(0))}°C</td></tr>` : "";
+    const sfc = s.wind ? `<tr><td class="mono">sfc</td><td>10 m</td><td class="dir">${s.wdir[i] != null ? `<i style="${arrowRot(s.wdir[i])}"></i>${String(s.wdir[i]).padStart(3, "0")}°` : "—"}</td><td><span class="wchip" style="background:${windColor(s.wind[i] || 0)}">${f(s.wind[i], (v) => speed(v).toFixed(0))}</span> ${speedUnit()}${s.gust ? ` <span class="dim">G${f(s.gust[i], (v) => speed(v).toFixed(0))}</span>` : ""}</td><td class="tempc" style="color:${s.t2m && s.t2m[i] != null ? tempColor(s.t2m[i] - K) : "inherit"}">${f(s.t2m && s.t2m[i], (v) => (v - K).toFixed(0))}°</td></tr>` : "";
     $("#aloft").innerHTML = `<table class="aloft"><thead><tr><th>Level</th><th>Height</th><th>Dir</th><th>Speed</th><th>Temp</th></tr></thead><tbody>${rows}${sfc}</tbody></table>
       <dl class="kv">
         <dt>Freezing level</dt><dd>${fl != null ? `${fl} m · ${Math.round(fl * 3.281 / 100) * 100} ft` : (d.levels && d.levels.length ? "below 925 hPa or above 250" : "—")}</dd>

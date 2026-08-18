@@ -35,7 +35,7 @@
     playing: false, particles: true, units: localStorage.getItem("wxgrid.units") || "kmh",
     point: null, tapePoint: null, tab: "now",
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
-    iso: false, avy: false, resorts: false, resort: null,
+    iso: false, avy: false, resorts: false, resort: null, measure: false,
   };
   let map, wind, catalog, playTimer = null, marker = null;
 
@@ -56,15 +56,18 @@
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
     const saved = JSON.parse(localStorage.getItem("wxgrid.view") || "null");
+    applyTheme(localStorage.getItem("wxgrid.theme") || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"), false);
+    const hash = readHash();
     map = new maplibregl.Map({
-      container: "map", style: "https://tiles.openfreemap.org/styles/dark",
-      center: saved ? saved.center : [-123, 47], zoom: saved ? saved.zoom : 4,
+      container: "map", style: mapStyle(),
+      center: hash ? [hash.lon, hash.lat] : saved ? saved.center : [-123, 47], zoom: hash ? hash.zoom : saved ? saved.zoom : 4,
       minZoom: 1.2, maxZoom: 11, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
     });
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
     map.on("moveend", () => {
       localStorage.setItem("wxgrid.view", JSON.stringify({ center: map.getCenter().toArray(), zoom: map.getZoom() }));
       if (!state.point) refreshTapePoint();
+      pushHash();
     });
     wind = new WindLayer(map, $("#particles"));
     new ResizeObserver(() => document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px")).observe($("#timebar"));
@@ -80,11 +83,11 @@
     state.layer = localStorage.getItem("wxgrid.layer") || "wind";
     if (!runEntry().layers.includes(state.layer)) state.layer = runEntry().layers[0];
 
+    if (hash) { if (hash.model && catalog.models.some((m) => m.key === hash.model && m.runs.length)) state.model = hash.model; if (hash.layer && LAYERS.includes(hash.layer)) state.layer = hash.layer; state.level = hash.level || 0; state.run = modelEntry().runs[0].run; if (hash.step != null) state.stepIdx = Math.min(hash.step, steps().length - 1); }
     map.on("load", () => {
-      map.addSource("wx", { type: "image", url: layerUrl(), coordinates: WORLD });
-      map.addLayer({ id: "wx", type: "raster", source: "wx",
-                     paint: { "raster-opacity": LAYER_ALPHA[state.layer], "raster-fade-duration": 0, "raster-resampling": "linear" } }, firstSymbolId());
+      ensureWxLayer();
       map.on("click", (e) => {
+        if (state.measure) { measureClick(e.lngLat); return; }
         const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter((l) => map.getLayer(l)) });
         const resort = feats.find((x) => x.layer.id === "resort-pts");
         if (resort) { selectResort(resort.properties.id); return; }
@@ -98,9 +101,79 @@
       applyStep();
       loadWind();
       refreshTapePoint();
+      if (hash && hash.pt) openPoint(hash.pt[0], hash.pt[1]);
     });
   }
   const firstSymbolId = () => { const l = map.getStyle().layers.find((x) => x.type === "symbol"); return l ? l.id : undefined; };
+  const mapStyle = () => document.documentElement.dataset.theme === "light" ? "https://tiles.openfreemap.org/styles/positron" : "https://tiles.openfreemap.org/styles/dark";
+  function ensureWxLayer() {
+    if (map.getSource("wx")) return;
+    map.addSource("wx", { type: "image", url: layerUrl(), coordinates: WORLD });
+    map.addLayer({ id: "wx", type: "raster", source: "wx", paint: { "raster-opacity": LAYER_ALPHA[state.layer], "raster-fade-duration": 0, "raster-resampling": "linear" } }, firstSymbolId());
+  }
+  // After a basemap swap every custom source is gone; put back whatever was on.
+  function restoreLayers() {
+    ensureWxLayer(); applyStep();
+    if (state.radar && state.radarFrames.length) applyRadarFrame();
+    if (state.iso) loadIso();
+    if (state.avy) loadAvy();
+    if (state.resorts) loadResorts();
+    if (state.resort) selectResort(state.resort.resort.id);
+    if (marker) marker.addTo(map);
+  }
+  function applyTheme(theme, swapMap = true) {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("wxgrid.theme", theme);
+    document.querySelector('meta[name="theme-color"]').content = theme === "light" ? "#eef1f5" : "#000000";
+    if (swapMap && map) {
+      map.setStyle(mapStyle(), { diff: false });
+      // style.load is what fires once the new style's sources exist; idle
+      // is the belt for the braces on builds where it doesn't.
+      map.once("style.load", restoreLayers);
+      map.once("idle", () => { if (!map.getSource("wx")) restoreLayers(); });
+    }
+  }
+
+  // ── permalink: #lat,lon,zoom · model · layer[/level] · step [· pt lat,lon]
+  function readHash() {
+    const h = location.hash.replace(/^#/, "");
+    if (!h) return null;
+    const m = h.match(/^(-?[\d.]+),(-?[\d.]+),([\d.]+)(?:;([a-z]+))?(?:;([a-z_0-9]+)(?:\/(\d+))?)?(?:;s(\d+))?(?:;p(-?[\d.]+),(-?[\d.]+))?/);
+    if (!m) return null;
+    return { lat: +m[1], lon: +m[2], zoom: +m[3], model: m[4], layer: m[5], level: m[6] ? +m[6] : 0, step: m[7] != null ? +m[7] : null, pt: m[8] ? [+m[8], +m[9]] : null };
+  }
+  let hashTimer = null;
+  function pushHash() {
+    clearTimeout(hashTimer);
+    hashTimer = setTimeout(() => {
+      if (!map) return;
+      const c = map.getCenter();
+      let h = `${c.lat.toFixed(3)},${c.lng.toFixed(3)},${map.getZoom().toFixed(2)};${state.model};${state.layer}${state.level ? "/" + state.level : ""};s${state.stepIdx}`;
+      if (state.point) h += `;p${state.point.lat.toFixed(3)},${state.point.lon.toFixed(3)}`;
+      history.replaceState(null, "", "#" + h);
+    }, 250);
+  }
+
+  // ── measure tool: two taps → distance (km / nm) and true bearing ──────
+  let measurePts = [];
+  function measureClick(ll) {
+    measurePts.push([ll.lng, ll.lat]);
+    if (measurePts.length > 2) measurePts = [[ll.lng, ll.lat]];
+    const gj = { type: "FeatureCollection", features: measurePts.length === 2 ? [{ type: "Feature", geometry: { type: "LineString", coordinates: measurePts } }] : [] };
+    if (map.getSource("measure")) map.getSource("measure").setData(gj);
+    else { map.addSource("measure", { type: "geojson", data: gj }); map.addLayer({ id: "measure-line", type: "line", source: "measure", paint: { "line-color": "#ffb454", "line-width": 2, "line-dasharray": [1.5, 1.5] } }); }
+    const box = $("#measure"); box.hidden = false;
+    if (measurePts.length < 2) { box.textContent = "tap the second point"; return; }
+    const [a, b] = measurePts;
+    const R = 6371, toR = Math.PI / 180;
+    const dLat = (b[1] - a[1]) * toR, dLon = (b[0] - a[0]) * toR;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * toR) * Math.cos(b[1] * toR) * Math.sin(dLon / 2) ** 2;
+    const km = 2 * R * Math.asin(Math.sqrt(h));
+    const y = Math.sin(dLon) * Math.cos(b[1] * toR), x = Math.cos(a[1] * toR) * Math.sin(b[1] * toR) - Math.sin(a[1] * toR) * Math.cos(b[1] * toR) * Math.cos(dLon);
+    const brg = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    box.innerHTML = `<b>${km.toFixed(km < 100 ? 1 : 0)} km</b> · ${(km / 1.852).toFixed(km < 100 ? 1 : 0)} nm · ${(km * 0.621371).toFixed(0)} mi · true bearing <b>${brg.toFixed(0).padStart(3, "0")}°</b>`;
+  }
+  function clearMeasure() { measurePts = []; $("#measure").hidden = true; if (map.getLayer("measure-line")) map.removeLayer("measure-line"); if (map.getSource("measure")) map.removeSource("measure"); }
 
   // ── catalog helpers ───────────────────────────────────────────────────
   const modelEntry = () => catalog.models.find((m) => m.key === state.model);
@@ -133,15 +206,17 @@
       if (!hasLevel()) state.level = 0;
       renderControls(); applyStep(); loadWind(); if (state.iso) loadIso(); });
 
-    const lv = $("#levels");
+    const alt = $("#alt"), lv = $("#levels");
     const levels = runEntry().levels || [];
     const showLevels = hasLevel() && levels.length;
-    lv.hidden = !showLevels;
+    alt.hidden = !showLevels;
     if (showLevels) {
       const opts = [0, ...levels];
       if (!opts.includes(state.level)) state.level = 0;
-      lv.innerHTML = opts.map((l) => `<button data-level="${l}" class="${l === state.level ? "on" : ""}" title="${l ? `${l} hPa · ${LEVEL_M[l]} · ${LEVEL_FT[l]}` : "surface: 10 m wind, 2 m temperature"}">${l ? `${l}<small>${LEVEL_FT[l]}</small>` : `sfc<small>10 m</small>`}</button>`).join("");
-      lv.querySelectorAll("button").forEach((b) => b.onclick = () => { state.level = Number(b.dataset.level); renderControls(); applyStep(); loadWind(); if (state.iso) loadIso(); });
+      $("#alt-label").textContent = state.level ? `${state.level} hPa` : "sfc";
+      lv.innerHTML = `<div class="hd"><span>level</span><span>metres</span><span>feet</span></div>` + opts.map((l) => `<button data-level="${l}" class="${l === state.level ? "on" : ""}" role="menuitem"><b>${l ? l + " hPa" : "sfc"}</b><small>${l ? LEVEL_M[l].replace("≈", "≈ ") : "10 m / 2 m"}</small><small>${l ? LEVEL_FT[l] : "—"}</small></button>`).join("");
+      lv.querySelectorAll("button").forEach((b) => b.onclick = () => { state.level = Number(b.dataset.level); lv.hidden = true; renderControls(); applyStep(); loadWind(); if (state.iso) loadIso(); pushHash(); });
+      $("#alt-btn").onclick = (e) => { e.stopPropagation(); lv.hidden = !lv.hidden; };
     }
 
     const slider = $("#step");
@@ -161,6 +236,8 @@
       renderLegend(); renderPoint(); renderTape();
     };
     $("#radar-toggle").onclick = toggleRadar;
+    $("#theme-toggle").onclick = () => applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+    $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); if (!state.measure) clearMeasure(); else toast("Measure: tap two points"); };
     $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) loadIso(); else clearIso(); };
     $("#avy-toggle").onclick = () => { state.avy = !state.avy; $("#avy-toggle").classList.toggle("on", state.avy); if (state.avy) loadAvy(); else clearAvy(); };
     $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) loadResorts(); else clearResorts(); };
@@ -200,6 +277,7 @@
   function setStep(i) { state.stepIdx = Math.max(0, Math.min(steps().length - 1, i)); $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) loadIso(); }
 
   function applyStep(prefetch = true) {
+    pushHash();
     const src = map.getSource("wx");
     if (src) { try { src.updateImage({ url: layerUrl(), coordinates: WORLD }); } catch (e) { /* superseded */ } }
     if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", state.radar ? Math.min(0.45, LAYER_ALPHA[state.layer]) : LAYER_ALPHA[state.layer]);
@@ -465,7 +543,7 @@
       else if (e.key === "Escape") hideResults();
     };
     $("#search").onsubmit = (e) => { e.preventDefault(); clearTimeout(searchTimer); if (searchHits.length) pickResult(searchHits[Math.max(0, searchSel)]); else runSearch(q.value.trim(), true); };
-    document.addEventListener("click", (e) => { if (!e.target.closest("#search") && !e.target.closest("#search-results")) hideResults(); });
+    document.addEventListener("click", (e) => { if (!e.target.closest("#search") && !e.target.closest("#search-results")) hideResults(); if (!e.target.closest("#alt")) $("#levels").hidden = true; });
   }
   async function runSearch(text, go = false) {
     if (text.length < 2) { hideResults(); return; }
@@ -506,6 +584,7 @@
     $("#point-now").textContent = "…";
     $$(".point-tabs button[data-tab=resort]").forEach((b) => b.hidden = !state.resort);
     placeMarker(lat, lon);
+    pushHash();
     try {
       const d = await WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}&model=${state.model}&run=${state.run}`);
       if (my !== pointReq) return;
