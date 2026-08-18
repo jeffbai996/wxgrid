@@ -157,9 +157,29 @@
     return { resorts: [] };
   }
 
+  async function air(q) {
+    const j = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${q.get("lat")}&longitude=${q.get("lon")}&current=us_aqi,pm2_5,pm10,ozone,uv_index&hourly=uv_index&forecast_days=1&timezone=UTC`).then((r) => r.json());
+    const c = j.current || {};
+    return { us_aqi: c.us_aqi, pm2_5: c.pm2_5, pm10: c.pm10, ozone: c.ozone, uv: c.uv_index, hourly: { uv: (j.hourly || {}).uv_index || [] } };
+  }
+  const SEVC = { Extreme: "#b30000", Severe: "#e8590c", Moderate: "#f0a020", Minor: "#f5d33c" };
+  async function alertsPoint(q) {
+    const r = await fetch(`https://api.weather.gov/alerts/active?point=${q.get("lat")},${q.get("lon")}`, { headers: { Accept: "application/geo+json" } });
+    if (!r.ok) return { alerts: [] };
+    const j = await r.json();
+    return { alerts: (j.features || []).map((f) => ({ id: f.id, event: f.properties.event, severity: f.properties.severity, color: SEVC[f.properties.severity] || "#8a8f98", headline: f.properties.headline, area: f.properties.areaDesc, ends: f.properties.ends || f.properties.expires, url: f.id })) };
+  }
+  async function alertsLayer() {
+    const j = await fetch("https://api.weather.gov/alerts/active?status=actual&message_type=alert", { headers: { Accept: "application/geo+json" } }).then((r) => r.json());
+    return { type: "FeatureCollection", features: (j.features || []).filter((f) => f.geometry).map((f) => ({ type: "Feature", geometry: f.geometry, properties: { event: f.properties.event, area: f.properties.areaDesc, color: SEVC[f.properties.severity] || "#8a8f98" } })) };
+  }
+
   async function api(u) {
     const [path, qs] = u.split("?");
     const q = new URLSearchParams(qs || "");
+    if (path === "api/air") return air(q);
+    if (path === "api/alerts/point") return alertsPoint(q);
+    if (path === "api/alerts/layer") return alertsLayer();
     if (path === "api/models") return catalog();
     if (path === "api/point") return point(q);
     if (path === "api/profile") return profile(q);
