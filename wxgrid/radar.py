@@ -452,7 +452,12 @@ _LUT: np.ndarray | None = None
 
 def to_mercator(grid: np.ndarray, width: int = OUT_W, height: int = OUT_H) -> np.ndarray:
     """(181, 360) lat/lon, row 0 = 90°S, col 0 = 0°E → (height, width) Web
-    Mercator, row 0 = +85.05°, col 0 = 180°W. Bilinear, wrapping in longitude."""
+    Mercator, row 0 = +85.05°, col 0 = 180°W.
+
+    Cubic, not bilinear: at 1° the oval's edge is a diagonal across very few
+    cells, and bilinear resampling turns that into visible staircase facets
+    that look like a rendering bug rather than the coarse grid it is. Cubic
+    still passes through every data point; the clip catches its overshoot."""
     from scipy.ndimage import map_coordinates
     r = (np.arange(height, dtype=np.float64) + 0.5) / height
     lat = np.degrees(np.arctan(np.sinh(math.pi * (1.0 - 2.0 * r))))
@@ -460,7 +465,8 @@ def to_mercator(grid: np.ndarray, width: int = OUT_W, height: int = OUT_H) -> np
     lon = -180.0 + 360.0 * (np.arange(width, dtype=np.float64) + 0.5) / width
     cols = (lon % 360.0) / 360.0 * OV_LON
     rr, cc = np.meshgrid(rows, cols, indexing="ij")
-    return map_coordinates(grid, [rr, cc], order=1, mode="grid-wrap").astype(np.float32)
+    out = map_coordinates(grid, [rr, cc], order=3, mode="grid-wrap")
+    return np.clip(out, 0.0, 100.0).astype(np.float32)
 
 
 def aurora_png(width: int = OUT_W, height: int = OUT_H) -> bytes:

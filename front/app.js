@@ -59,7 +59,7 @@
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null, measure: false,
     alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false,
-    sigmet: false, aq: false, aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
+    sigmet: false, aurora: false, lightning: false, aq: false, aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
     opacity: Number(localStorage.getItem("wxgrid.opacity") || 100), xsection: false,
     playMs: Number(localStorage.getItem("wxgrid.playMs") || 900),
   };
@@ -103,6 +103,7 @@
     map.on("moveend", () => {
       localStorage.setItem("wxgrid.view", JSON.stringify({ center: map.getCenter().toArray(), zoom: map.getZoom() }));
       if (!state.point) WX.tape.refreshTapePoint();
+      if (state.radar && WX.ov.refreshRadarSource) WX.ov.refreshRadarSource();
       pushHash();
     });
     wind = new WindLayer(map, $("#particles"));
@@ -170,6 +171,7 @@
     if (state.quakes) WX.ov.loadQuakes();
     if (state.aod) WX.ov.loadAod();
     if (state.sigmet) WX.sigmet.load();
+    if (state.aurora && WX.sky) WX.sky.aurora.load(true);
     if (state.aq) WX.cams.load(state.aqVar);
     if (state.thunder) WX.ov.loadThunder();
     if (marker) marker.addTo(map);
@@ -321,6 +323,8 @@
     op.oninput = () => { state.opacity = Number(op.value); localStorage.setItem("wxgrid.opacity", op.value); applyStep(false); };
     op.onclick = (e) => e.stopPropagation();
     buildStrip();
+    $("#aurora-toggle").onclick = () => { state.aurora = !state.aurora; $("#aurora-toggle").classList.toggle("on", state.aurora); if (state.aurora) WX.sky.aurora.load(); else WX.sky.aurora.clear(); };
+    $("#lightning-toggle").onclick = () => WX.sky.lightning.load();
     $("#sigmet-toggle").onclick = () => { state.sigmet = !state.sigmet; $("#sigmet-toggle").classList.toggle("on", state.sigmet); if (state.sigmet) WX.sigmet.load(); else WX.sigmet.clear(); };
     $("#aq-toggle").onclick = () => { state.aq = !state.aq; $("#aq-toggle").classList.toggle("on", state.aq); if (state.aq) WX.cams.load(state.aqVar); else WX.cams.clear(); };
     $("#fires-toggle").onclick = () => { state.fires = !state.fires; $("#fires-toggle").classList.toggle("on", state.fires); if (state.fires) WX.fires.load(); else WX.fires.clear(); };
@@ -367,7 +371,7 @@
   // Desktop tool strip: icon proxies for the toggles that live in the topbar
   // menus. Clicking proxies the real button; the observer below mirrors state.
   const STRIP = [
-    ["radar", "Radar"], ["sat", "Satellite"], ["aod", "Aerosol"], ["iso", "Isolines"], null,
+    ["radar", "Radar"], ["sat", "Satellite"], ["aurora", "Aurora"], ["aod", "Aerosol"], ["iso", "Isolines"], null,
     ["alerts", "Alerts", "warn"], ["storms", "Storms", "warn"], ["thunder", "Thunder", "warn"], ["sigmet", "SIGMET", "warn"], ["fires", "Fires", "warn"], ["smoke", "Smoke"], ["aq", "Air quality"], ["quakes", "Quakes"], null,
     ["avy", "Avalanche"], ["resorts", "Ski resorts"], null,
     ["particles", "Particles"], ["barbs", "Barbs"], null,

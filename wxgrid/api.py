@@ -617,11 +617,13 @@ from wxgrid.ext_api import router as _ext_router  # noqa: E402
 from wxgrid.fires_api import router as _fires_router  # noqa: E402
 from wxgrid.sigmet_api import router as _sigmet_router  # noqa: E402
 from wxgrid.cams_api import router as _cams_router  # noqa: E402
+from wxgrid.radar_api import router as _radar_router  # noqa: E402
 app.include_router(_resorts_router)
 app.include_router(_ext_router)
 app.include_router(_fires_router)
 app.include_router(_sigmet_router)
 app.include_router(_cams_router)
+app.include_router(_radar_router)
 
 if FRONT_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(FRONT_DIR), html=True), name="front")

@@ -6,6 +6,10 @@
   const WX = window.WX;
   const { $, $$, API, LAYER_ALPHA, state, speed, speedUnit, arrowRot, toast, url: U } = WX;
   const M = () => WX.map;
+  // app.js has its own `const RAINVIEWER` but it lives inside app.js's IIFE, so
+  // it was never visible here — the direct-fetch fallback used to throw a
+  // ReferenceError and land in the catch as "radar unavailable".
+  const RAINVIEWER = "https://api.rainviewer.com/public/weather-maps.json";
   // ── isolines overlay ──────────────────────────────────────────────────
   let isoReq = 0;
   function isoVar() {
@@ -409,5 +413,6 @@
 
   function clearQuakes() { if (M().getLayer("quakes")) M().removeLayer("quakes"); if (M().getSource("quakes")) M().removeSource("quakes"); }
 
-  WX.ov = { loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles };
+  WX.ov = { loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
+             loadRadar, clearRadar, refreshRadarSource, badge };
 })();
