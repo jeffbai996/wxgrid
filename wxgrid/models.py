@@ -25,7 +25,11 @@ STEPS_6H = list(range(0, 241, 6))
 STEPS_IFS = list(range(0, 145, 3)) + list(range(150, 241, 6))   # IFS open data: 3-hourly to 144 h, then 6-hourly
 STEPS_3H = list(range(0, 241, 3))                                # GFS: 3-hourly all the way
 LEVEL_EVERY = 6                                                  # pressure levels are fetched on 6 h steps only
-LEVELS = (925, 850, 700, 500, 300, 250)          # ≈ 2.5k ft, 5k ft, 10k ft, FL180, FL300, FL340
+LEVELS = (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200)
+# ≈ surface, 2.5k ft, 5k ft, 10k ft, 14k ft, FL180, FL240, FL300, FL340, FL390.
+# A model that does not publish one of these simply never writes it; the API's
+# _levels_for() advertises only the levels a run actually contains, so runs
+# ingested against an older LEVELS keep working.
 
 # GRIB typeOfLevel values that mean "a surface-ish single layer" for our purposes.
 SURFACE_LEVEL_TYPES = {"surface", "heightAboveGround", "meanSea", "atmosphere",
@@ -37,7 +41,7 @@ class Model:
     key: str                 # store key + API name
     label: str               # UI label
     short: str               # tiny label for segmented controls
-    source: str              # "ecmwf" | "nomads"
+    source: str              # "ecmwf" | "nomads" | "nomads-gefs" | "datamart"
     steps: list[int] = field(default_factory=lambda: STEPS_6H)
     ecmwf_model: str = ""    # opendata client model id
     # source-native surface shortName → canonical name
@@ -47,9 +51,21 @@ class Model:
     levels: tuple[int, ...] = LEVELS
     # accumulated-precip semantics: "since_start" (ECMWF tp) or "bucket6" (GFS APCP at 6 h steps)
     precip_mode: str = "since_start"
+    # snow depth as shipped → cm. ECMWF sends m of water equivalent (×400 at
+    # 250 kg/m³); GFS/GEFS/GEM send physical depth in m (×100).
+    snow_depth_factor: float = 400.0
     attribution: str = ""
     # ECMWF wave-stream shortName → canonical name (fetched on LEVEL_EVERY steps; IFS only)
     wave_params: dict[str, str] = field(default_factory=dict)
+    # One-file-per-variable sources (MSC datamart): shortName → filename token.
+    # The keys are the shortName we FORCE on the decoded message, because a few
+    # GEM parameters are outside the stock eccodes tables and decode as
+    # "unknown"; the fetcher knows what it asked for, so it says so.
+    file_params: dict[str, str] = field(default_factory=dict)
+    file_pl_params: dict[str, str] = field(default_factory=dict)
+    # shortName → units string to trust instead of the GRIB's own (GEM's cloud
+    # cover is percent but declares no units).
+    unit_override: dict[str, str] = field(default_factory=dict)
 
     def canonical(self, short_name: str, level_type: str, level: int) -> str | None:
         """Map a decoded GRIB field to its store variable, or None to skip."""
@@ -104,7 +120,39 @@ MODELS: dict[str, Model] = {
                     "gust": "gust", "tcc": "tcc", "cape": "cape", "2d": "d2m", "sde": "sd", "csnow": "csnow"},
         pl_params=_ECMWF_PL,
         precip_mode="bucket6",
+        snow_depth_factor=100.0,
         attribution="NOAA NCEP GFS via NOMADS, public domain",
+    ),
+    "gem": Model(
+        key="gem", label="ECCC GEM GDPS", short="GEM", source="datamart", steps=STEPS_3H,
+        # Keys are the shortNames we force on each single-variable file.
+        sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "2d": "d2m", "prmsl": "msl",
+                    "tp": "tp", "sf": "sf", "sde": "sd", "gust": "gust", "tcc": "tcc", "cape": "cape"},
+        file_params={"10u": "WindU_AGL-10m", "10v": "WindV_AGL-10m", "2t": "AirTemp_AGL-2m",
+                     "2d": "DewPoint_AGL-2m", "prmsl": "Pressure_MSL", "tp": "Precip-Accum_Sfc",
+                     "sf": "Snow-Accum_Sfc", "sde": "SnowDepth_Sfc", "gust": "WindGust_AGL-10m",
+                     "tcc": "TotalCloudCover_Sfc", "cape": "CAPE_Sfc"},
+        pl_params=_ECMWF_PL,
+        file_pl_params={"t": "AirTemp", "u": "WindU", "v": "WindV", "gh": "GeopotentialHeight"},
+        unit_override={"tcc": "%", "tp": "kg m-2", "sf": "kg m-2", "cape": "J kg-1"},
+        precip_mode="since_start",
+        snow_depth_factor=100.0,
+        attribution="Environment and Climate Change Canada, Open Government Licence",
+    ),
+    "gefs": Model(
+        key="gefs", label="NOAA GEFS mean", short="GEFS", source="nomads-gefs", steps=STEPS_3H,
+        sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "prmsl": "msl", "tp": "tp",
+                    "gust": "gust", "tcc": "tcc", "cape": "cape", "2d": "d2m", "sde": "sd",
+                    "csnow": "csnow"},
+        pl_params=_ECMWF_PL,
+        # The ensemble mean has no 0.25° pressure levels; we take the 0.5°
+        # "a" file and regrid. It carries t+gh+u+v on these levels only —
+        # 300/400 hPa ship winds without temperature and 600 hPa not at all,
+        # so those are left out rather than stored half-empty.
+        levels=(1000, 925, 850, 700, 500, 250, 200),
+        precip_mode="bucket6",
+        snow_depth_factor=100.0,
+        attribution="NOAA NCEP GEFS ensemble mean via NOMADS, public domain",
     ),
 }
 

@@ -19,7 +19,7 @@ import numpy as np
 import requests
 
 from wxgrid import fetch
-from wxgrid.config import GRIB_DIR, STORE_DIR
+from wxgrid.config import GRIB_DIR, GRID_LAT_N, GRID_LON_N, STORE_DIR
 from wxgrid.grib import iter_fields
 from wxgrid.models import MODELS, Model, get_model
 from wxgrid.store import RunWriter, build_point_cube, list_runs, prune, run_id, run_path
@@ -36,16 +36,24 @@ def _resolve_run(model: Model, run: str | None) -> datetime:
         # Asking for the LAST step means "latest run that is fully published".
         when = client.latest(type="fc", step=model.steps[-1], param=list(model.sfc_params)[:1])
         return when.replace(tzinfo=timezone.utc)
-    if model.source == "nomads":
-        s = requests.Session()
-        for cand in fetch.gfs_candidate_runs():
-            url = fetch.gfs_step_url(cand, model.steps[-1], model.levels)
+    # For the HTTP sources, "latest" = the newest cycle whose LAST step is
+    # already on the server; probing that one file is enough.
+    probes = {
+        "nomads": (fetch.gfs_candidate_runs, lambda c: fetch.gfs_step_url(c, model.steps[-1], model.levels)),
+        "nomads-gefs": (fetch.gfs_candidate_runs, lambda c: fetch.gefs_probe_url(c, model.steps[-1])),
+        "datamart": (fetch.gem_candidate_runs,
+                     lambda c: fetch.gem_file_url(c, model.steps[-1], model.file_params["2t"])),
+    }
+    if model.source in probes:
+        candidates, url_for = probes[model.source]
+        s = fetch.new_session()
+        for cand in candidates():
             try:
-                if s.head(url, timeout=30, allow_redirects=True).status_code == 200:
+                if s.head(url_for(cand), timeout=30, allow_redirects=True).status_code == 200:
                     return cand
             except requests.RequestException:
                 continue
-        raise RuntimeError("no fully published GFS run found in the last 24 h")
+        raise RuntimeError(f"no fully published {model.key} run found in the last day")
     raise ValueError(model.source)
 
 
@@ -64,10 +72,19 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
     # from the GRIB (startStep). Remember (start, step, accum) per variable.
     prev_accum: dict[str, tuple[int, int, np.ndarray]] = {}
 
+    def _fields(paths: list[Path]):
+        """Every message in this step's files. Datamart files carry one
+        variable each and encode the shortName in the filename, because a few
+        GEM parameters decode as "unknown" against the stock eccodes tables."""
+        for p in paths:
+            short, _ = fetch.grib_override(p)
+            yield from iter_fields(p, short_name=short,
+                                   units=model.unit_override.get(short) if short else None)
+
     def on_step(step: int, paths: list[Path]) -> None:
         got: dict[str, np.ndarray] = {}
         got_start: dict[str, int] = {}
-        for f in (fld for p in paths for fld in iter_fields(p)):
+        for f in _fields(paths):
             canon = model.canonical(f.short_name, f.level_type, f.level)
             if canon is None:
                 continue
@@ -83,6 +100,10 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
         buckets: dict[str, np.ndarray] = {}
         for canon, out in (("tp", "tp6"), ("sf", "sf6")):
             if canon not in got:
+                # GEM publishes no accumulation file for hour 000; nothing has
+                # fallen at t0 either way, so store the zero rather than a hole.
+                if step == 0 and out in writer.variables:
+                    writer.write(out, step, np.zeros((GRID_LAT_N, GRID_LON_N), dtype=np.float32))
                 continue
             accum = np.nan_to_num(got[canon])
             prev = prev_accum.get(canon)
@@ -91,8 +112,13 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
             elif model.precip_mode == "bucket6":
                 # same bucket as the previous step → difference; new bucket → the field itself
                 bucket = np.clip(accum - prev[2], 0.0, None) if (prev and prev[0] == starts.get(canon, -1) and prev[1] < step) else accum
+            elif prev:
+                bucket = np.clip(accum - prev[2], 0.0, None)
             else:
-                bucket = np.clip(accum - prev[2], 0.0, None) if prev else np.full_like(accum, np.nan)
+                # First step that delivered this field. If it is not step 0 the
+                # model simply has no hour-0 accumulation file (GEM), and the
+                # total since t0 IS the bucket for this step.
+                bucket = accum
             buckets[out] = bucket
             writer.write(out, step, bucket)
             prev_accum[canon] = (starts.get(canon, 0), step, accum)
@@ -101,20 +127,16 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
         if "csnow" in got and "tp6" in buckets and model.precip_mode == "bucket6":
             writer.write("sf6", step, np.where(got["csnow"] >= 0.5, buckets["tp6"], 0.0))
         if "sd" in got:
-            # ECMWF sd is metres of water equivalent (×400 → cm at 250 kg/m³);
-            # GFS SNOD is physical depth in metres (×100 → cm).
-            factor = 100.0 if model.precip_mode == "bucket6" else 400.0
-            writer.write("sd_cm", step, np.nan_to_num(got["sd"]) * factor)
+            writer.write("sd_cm", step, np.nan_to_num(got["sd"]) * model.snow_depth_factor)
         for canon, vals in got.items():
             if canon in ("tp", "sf", "sd", "csnow"):
                 continue
             writer.write(canon, step, vals)
         log.info("%s %s step %03d written", model.key, rid, step)
 
-    if model.source == "ecmwf":
-        got = fetch.fetch_ecmwf(model, run, grib_root, on_step=on_step)
-    else:
-        got = fetch.fetch_gfs(model, run, grib_root, on_step=on_step)
+    fetcher = {"ecmwf": fetch.fetch_ecmwf, "nomads": fetch.fetch_gfs,
+               "nomads-gefs": fetch.fetch_gefs, "datamart": fetch.fetch_gem}[model.source]
+    got = fetcher(model, run, grib_root, on_step=on_step)
 
     counts = writer.finish()
     try:
@@ -209,7 +231,15 @@ def main(argv: list[str] | None = None) -> int:
                 for rid in list_runs(model.key):
                     log.info("point cube %s %s: %d variables", model.key, rid, build_point_cube(model.key, rid))
                 continue
-            run = _resolve_run(model, args.run)
+            try:
+                run = _resolve_run(model, args.run)
+            except RuntimeError as exc:
+                # Nothing published yet for this model. With --all that is a
+                # normal race against the producers, not a failure.
+                log.warning("%s: %s", key, exc)
+                if not args.all:
+                    rc = 1
+                continue
             ingest_run(model, run, keep_grib=args.keep_grib)
         except Exception:
             log.exception("%s failed", key)

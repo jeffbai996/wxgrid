@@ -20,15 +20,40 @@ NOAA NOMADS (GFS)            ├─ wxgrid.ingest ─▶ data/store/<model>/<run
 
 ## Models
 
-| key  | model            | source            | surface steps                 | surface variables                                    | aloft (925/850/700/500/300/250 hPa, 6 h) |
-|------|------------------|-------------------|-------------------------------|------------------------------------------------------|------------------------------------------|
-| ifs  | ECMWF IFS 0.25°  | ecmwf-opendata    | 3 h to 144 h, then 6 h to 240 | u10 v10 t2m d2m msl tp sf sd gust tcc cape + waves swh mwd mwp (6 h) | u v t gh                                 |
-| aifs | ECMWF AIFS (AI)  | ecmwf-opendata    | 6 h to 240 h                  | u10 v10 t2m d2m msl tp sf tcc                        | u v t gh                                 |
-| gfs  | NOAA GFS 0.25°   | NOMADS filter CGI | 3 h to 240 h                  | u10 v10 t2m d2m msl tp sf(derived) sd gust tcc cape  | u v t gh                                 |
+Pressure levels are **1000 925 850 700 600 500 400 300 250 200 hPa**, fetched
+on 6 h steps. A model that does not publish one of them simply never writes it;
+the API advertises only the levels a run actually contains, so runs ingested
+against an older level set keep working.
+
+| key  | model            | source            | native grid | surface steps                 | surface variables                                    | aloft (u v t gh) |
+|------|------------------|-------------------|-------------|-------------------------------|------------------------------------------------------|------------------|
+| ifs  | ECMWF IFS        | ecmwf-opendata    | 0.25°       | 3 h to 144 h, then 6 h to 240 | u10 v10 t2m d2m msl tp sf sd gust tcc cape + waves swh mwd mwp (6 h) | all 10 levels |
+| aifs | ECMWF AIFS (AI)  | ecmwf-opendata    | 0.25°       | 6 h to 240 h                  | u10 v10 t2m d2m msl tp sf tcc                        | all 10 levels |
+| gfs  | NOAA GFS         | NOMADS filter CGI | 0.25°       | 3 h to 240 h                  | u10 v10 t2m d2m msl tp sf(derived) sd gust tcc cape  | all 10 levels |
+| gem  | ECCC GEM GDPS    | MSC datamart      | 0.15° →     | 3 h to 240 h                  | u10 v10 t2m d2m msl tp sf sd gust tcc cape           | all 10 levels |
+| gefs | NOAA GEFS mean   | NOMADS filter CGI | 0.25° / 0.5° → | 3 h to 240 h               | u10 v10 t2m d2m msl tp sf(derived) sd gust tcc cape  | 1000 925 850 700 500 250 200 |
+
+`→` marks a source that is bilinearly regridded onto the common 0.25° grid
+(`wxgrid.grib.regrid_to_common`, missing-value aware so a masked field like
+GEM's CAPE does not lose a cell at every edge of its mask).
+
+**GEM GDPS** comes off the MSC datamart as one GRIB per variable, level and
+step, under `/{YYYYMMDD}/WXO-DD/model_gdps/15km/{HH}/{hhh}/` — the older
+`/model_gem_global/15km/…` tree with `CMC_glb_*` filenames is gone. Several GEM
+parameters are outside the stock eccodes tables and decode as shortName
+`unknown`, so the fetcher encodes what it asked for in the filename and the
+ingest forces that name on the message. Runs are 00 and 12 Z; there is no
+hour-000 accumulation file, so the first precipitation bucket is hour 003.
+
+**GEFS** is the `geavg` ensemble-mean member. Surface comes from the 0.25°
+`pgrb2s` product; the mean has no 0.25° pressure levels, so those come from the
+0.5° `pgrb2a` product and are regridded. That product carries no 600 hPa at all
+and ships 300/400 hPa without temperature, so `gefs` stores seven levels rather
+than ten. Ensemble spread (`gespr`) is not ingested.
 
 Precipitation and snowfall are stored as the amount since the previous stored
 step (`tp6`/`sf6` — the names predate the 3-hourly tier); snow depth is `sd_cm`.
-Pressure levels are fetched on 6 h steps and linearly filled between them for
+Pressure-level fields are linearly filled between the 6 h steps for
 point products. IFS also carries the ECMWF **wave** stream (significant
 height, mean direction, mean period) on 6 h steps.
 

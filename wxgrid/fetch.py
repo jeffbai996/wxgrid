@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Callable
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from wxgrid.config import GRIB_DIR
 from wxgrid.models import LEVEL_EVERY, Model
@@ -22,6 +24,7 @@ from wxgrid.models import LEVEL_EVERY, Model
 log = logging.getLogger(__name__)
 
 NOMADS = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl"
+GEM_WORKERS = 4          # datamart is happy with a handful of parallel GETs
 # GFS variable/level flags for the filter CGI. The CGI ANDs the var set with
 # the level set, so surface TMP / HGT at pressure levels etc. come along; the
 # ingest maps by (shortName, typeOfLevel, level) and drops what it doesn't
@@ -37,6 +40,28 @@ def gfs_flags(levels: tuple[int, ...]) -> dict[str, str]:
     for lvl in levels:
         flags[f"lev_{lvl}_mb"] = "on"
     return flags
+
+
+def new_session() -> requests.Session:
+    """A session that retries the transport-level failures these servers throw
+    under load. dd.weather.gc.ca closes pooled keep-alive connections without a
+    response often enough that without this every GEM run burns minutes in the
+    caller's 5/10/15 s backoff; urllib3 replays the GET on a fresh connection
+    instead. `read` must be non-zero: urllib3 counts a "remote end closed the
+    connection" as a read error, and that is the exact failure being retried.
+    `total` still caps the whole ladder, so a genuinely dead file fails fast."""
+    s = requests.Session()
+    retry = Retry(total=4, connect=3, read=2, status=3, backoff_factor=0.5,
+                  status_forcelist=(500, 502, 503, 504), allowed_methods=("GET", "HEAD"))
+    adapter = HTTPAdapter(max_retries=retry, pool_maxsize=GEM_WORKERS * 2)
+    s.mount("https://", adapter)
+    s.mount("http://", adapter)
+    return s
+
+
+def _have(target: Path) -> bool:
+    """A previous, unfinished fetch already left this file here."""
+    return target.exists() and target.stat().st_size > 0
 
 
 def _run_dir(model: Model, run: datetime, root: Path) -> Path:
@@ -143,7 +168,7 @@ def gfs_step_url(run: datetime, step: int, levels: tuple[int, ...] = ()) -> str:
 def fetch_gfs(model: Model, run: datetime, root: Path = GRIB_DIR,
               session: requests.Session | None = None,
               on_step: Callable[[int, list[Path]], None] | None = None) -> list[tuple[int, list[Path]]]:
-    s = session or requests.Session()
+    s = session or new_session()
     out_dir = _run_dir(model, run, root)
     got: list[tuple[int, list[Path]]] = []
     for step in model.steps:
@@ -159,12 +184,17 @@ def fetch_gfs(model: Model, run: datetime, root: Path = GRIB_DIR,
     return got
 
 
-def _download(s: requests.Session, url: str, target: Path, tries: int = 3) -> bool:
+def _download(s: requests.Session, url: str, target: Path, tries: int = 3,
+              timeout: tuple[float, float] = (10.0, 120.0)) -> bool:
+    """`timeout` is (connect, read). Read is per-chunk, not for the whole body,
+    so it bounds a stalled socket rather than a big-but-moving download."""
     for attempt in range(tries):
         try:
-            r = s.get(url, timeout=120, stream=True)
+            r = s.get(url, timeout=timeout, stream=True)
             if r.status_code == 404:
-                log.info("not published yet: %s", url.split("file=")[1][:40])
+                # normal: a step the producer has not written yet, or a
+                # datamart parameter that does not exist at hour 000
+                log.info("not published: %s", url.rsplit("/", 1)[-1][:80])
                 return False
             r.raise_for_status()
             tmp = target.with_suffix(".part")
@@ -180,3 +210,161 @@ def _download(s: requests.Session, url: str, target: Path, tries: int = 3) -> bo
             log.warning("download %s failed (%d/%d): %s", target.name, attempt + 1, tries, exc)
             time.sleep(5 * (attempt + 1))
     return False
+
+
+# ── GEFS ensemble mean via NOMADS ─────────────────────────────────────────
+# Two products, because the mean is not published with 0.25° pressure levels:
+#   pgrb2sp25  geavg.tHHz.pgrb2s.0p25.fHHH   surface, 0.25°, 3-hourly
+#   pgrb2ap5   geavg.tHHz.pgrb2a.0p50.fHHH   pressure levels, 0.5°, regridded
+# The 0.5° fields go through the bilinear regridder in wxgrid.grib.
+NOMADS_GEFS_SFC = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gefs_atmos_0p25s.pl"
+NOMADS_GEFS_PL = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gefs_atmos_0p50a.pl"
+GEFS_PUB = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gens/prod"
+
+GEFS_SFC_FLAGS = {
+    "var_UGRD": "on", "var_VGRD": "on", "var_TMP": "on", "var_DPT": "on",
+    "var_PRMSL": "on", "var_APCP": "on", "var_GUST": "on", "var_TCDC": "on",
+    "var_CAPE": "on", "var_SNOD": "on", "var_CSNOW": "on",
+    "lev_10_m_above_ground": "on", "lev_2_m_above_ground": "on",
+    "lev_mean_sea_level": "on", "lev_surface": "on", "lev_entire_atmosphere": "on",
+}
+
+
+def _query(url: str, q: dict[str, str]) -> str:
+    return url + "?" + "&".join(f"{k}={v}" for k, v in q.items())
+
+
+def gefs_sfc_url(run: datetime, step: int) -> str:
+    return _query(NOMADS_GEFS_SFC, {
+        "dir": f"%2Fgefs.{run:%Y%m%d}%2F{run:%H}%2Fatmos%2Fpgrb2sp25",
+        "file": f"geavg.t{run:%H}z.pgrb2s.0p25.f{step:03d}", **GEFS_SFC_FLAGS})
+
+
+def gefs_pl_url(run: datetime, step: int, levels: tuple[int, ...]) -> str:
+    flags = {"var_UGRD": "on", "var_VGRD": "on", "var_TMP": "on", "var_HGT": "on"}
+    flags.update({f"lev_{lvl}_mb": "on" for lvl in levels})
+    return _query(NOMADS_GEFS_PL, {
+        "dir": f"%2Fgefs.{run:%Y%m%d}%2F{run:%H}%2Fatmos%2Fpgrb2ap5",
+        "file": f"geavg.t{run:%H}z.pgrb2a.0p50.f{step:03d}", **flags})
+
+
+def gefs_probe_url(run: datetime, step: int) -> str:
+    """Cheap existence check (the .idx next to the raw member file)."""
+    return (f"{GEFS_PUB}/gefs.{run:%Y%m%d}/{run:%H}/atmos/pgrb2sp25/"
+            f"geavg.t{run:%H}z.pgrb2s.0p25.f{step:03d}.idx")
+
+
+def fetch_gefs(model: Model, run: datetime, root: Path = GRIB_DIR,
+               session: requests.Session | None = None,
+               on_step: Callable[[int, list[Path]], None] | None = None) -> list[tuple[int, list[Path]]]:
+    s = session or new_session()
+    out_dir = _run_dir(model, run, root)
+    got: list[tuple[int, list[Path]]] = []
+    for step in model.steps:
+        paths: list[Path] = []
+        sfc = out_dir / f"step{step:03d}-sfc.grib2"
+        if _have(sfc) or _download(s, gefs_sfc_url(run, step), sfc):
+            paths.append(sfc)
+        time.sleep(0.5)      # NOMADS rate courtesy; they ban hammering
+        if model.pl_params and step % LEVEL_EVERY == 0:
+            pl = out_dir / f"step{step:03d}-pl.grib2"
+            if _have(pl) or _download(s, gefs_pl_url(run, step, model.levels), pl):
+                paths.append(pl)
+            time.sleep(0.5)
+        if not paths:
+            continue
+        got.append((step, paths))
+        if on_step:
+            on_step(step, paths)
+    return got
+
+
+# ── GEM GDPS via the MSC datamart ─────────────────────────────────────────
+# One GRIB per (variable, level, step) under a date-partitioned tree. The old
+# /model_gem_global/15km/... path and the CMC_glb_* filenames are gone: the
+# live tree is /{YYYYMMDD}/WXO-DD/model_gdps/15km/{HH}/{hhh}/ with MSC's
+# standard names, e.g.
+#   20260818T00Z_MSC_GDPS_AirTemp_AGL-2m_LatLon0.15_PT003H.grib2
+#   20260818T00Z_MSC_GDPS_WindU_IsbL-0850_LatLon0.15_PT006H.grib2
+DATAMART = "https://dd.weather.gc.ca"
+
+
+def gem_candidate_runs(now: datetime | None = None, back: int = 4) -> list[datetime]:
+    """GDPS runs at 00 and 12 Z only, newest first."""
+    now = now or datetime.now(timezone.utc)
+    base = now.replace(minute=0, second=0, microsecond=0)
+    base = base.replace(hour=(base.hour // 12) * 12)
+    return [base - timedelta(hours=12 * k) for k in range(back)]
+
+
+def gem_file_url(run: datetime, step: int, var: str) -> str:
+    return (f"{DATAMART}/{run:%Y%m%d}/WXO-DD/model_gdps/15km/{run:%H}/{step:03d}/"
+            f"{run:%Y%m%d}T{run:%H}Z_MSC_GDPS_{var}_LatLon0.15_PT{step:03d}H.grib2")
+
+
+def gem_step_files(model: Model, step: int) -> list[tuple[str, str]]:
+    """(shortName we force on the message, datamart variable token) for a step."""
+    out = list(model.file_params.items())
+    if model.file_pl_params and step % LEVEL_EVERY == 0:
+        for short, token in model.file_pl_params.items():
+            out += [(f"{short}@{lvl}", f"{token}_IsbL-{lvl:04d}") for lvl in model.levels]
+    return out
+
+
+def _gem_target(out_dir: Path, step: int, short: str) -> Path:
+    """`step006__u@850.grib2` — the token after `__` is the shortName override
+    the ingest reads back off the filename."""
+    return out_dir / f"step{step:03d}__{short}.grib2"
+
+
+def fetch_gem(model: Model, run: datetime, root: Path = GRIB_DIR,
+              session: requests.Session | None = None,
+              on_step: Callable[[int, list[Path]], None] | None = None) -> list[tuple[int, list[Path]]]:
+    """A step is whatever files came back; accumulations are absent at step 0
+    (the datamart publishes no Precip-Accum for hour 000) and that is fine."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    local = threading.local()
+
+    def _session() -> requests.Session:
+        if session is not None:
+            return session
+        if not hasattr(local, "s"):
+            local.s = new_session()           # keep-alive per worker thread
+        return local.s
+
+    out_dir = _run_dir(model, run, root)
+    got: list[tuple[int, list[Path]]] = []
+    with ThreadPoolExecutor(max_workers=GEM_WORKERS) as pool:
+        for step in model.steps:
+            wanted = gem_step_files(model, step)
+
+            def _one(item: tuple[str, str]) -> Path | None:
+                short, token = item
+                target = _gem_target(out_dir, step, short)
+                if _have(target):
+                    return target
+                return target if _download(_session(), gem_file_url(run, step, token), target,
+                                           timeout=(10.0, 60.0)) else None
+
+            paths = [p for p in pool.map(_one, wanted) if p is not None]
+            if not paths:
+                log.info("gem %s step %03d: nothing published", run, step)
+                continue
+            got.append((step, paths))
+            if on_step:
+                on_step(step, paths)
+    return got
+
+
+def grib_override(path: Path) -> tuple[str | None, int | None]:
+    """(shortName, level) encoded in a datamart filename, or (None, None)."""
+    stem = Path(path).stem
+    if "__" not in stem:
+        return None, None
+    token = stem.split("__", 1)[1]
+    if "@" in token:
+        short, _, lvl = token.partition("@")
+        return short, int(lvl)
+    return token, None
