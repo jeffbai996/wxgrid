@@ -1,12 +1,12 @@
 [Unit]
-Description=wxgrid — public instance (same store, private/ withheld) for a tunnel/reverse proxy on :8098
+Description=wxgrid — public instance (same store, private/ withheld) for a tunnel/reverse proxy on :8089
 After=network.target
 
 [Service]
 Type=simple
 WorkingDirectory=%h/local-projects/wxgrid
 Environment=WXGRID_PUBLIC=1
-ExecStart=%h/local-projects/wxgrid/venv/bin/uvicorn wxgrid.api:app --host 127.0.0.1 --port 8098 --proxy-headers
+ExecStart=%h/local-projects/wxgrid/venv/bin/uvicorn wxgrid.api:app --host 127.0.0.1 --port 8089 --proxy-headers
 Restart=on-failure
 RestartSec=5
 MemoryHigh=1G
