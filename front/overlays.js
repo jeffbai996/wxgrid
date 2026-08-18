@@ -258,7 +258,44 @@
       toast(`Quakes: ${gj.features.length} events M2.5+ in the past day (USGS)`, 4000);
     } catch (e) { toast("USGS feed unavailable", 4000, "error"); }
   }
+  // ── aerosol optical depth: MODIS Terra+Aqua combined, yesterday (NASA GIBS)
+  function loadAod() {
+    if (M().getSource("aod")) return;
+    const d = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    M().addSource("aod", { type: "raster", tileSize: 256, maxzoom: 6, attribution: "Aerosol: NASA GIBS MODIS",
+      tiles: [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Combined_Value_Added_AOD/default/${d}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`] });
+    M().addLayer({ id: "aod", type: "raster", source: "aod", paint: { "raster-opacity": 0.75, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
+    toast(`Aerosol optical depth, MODIS combined, ${d}. Gaps are cloud or no overpass.`, 5000);
+  }
+  function clearAod() { if (M().getLayer("aod")) M().removeLayer("aod"); if (M().getSource("aod")) M().removeSource("aod"); }
+
+  // ── thunder marks: model CAPE + rain at the shown step ─────────────────
+  let thunderReq = 0;
+  async function loadThunder() {
+    const my = ++thunderReq;
+    try {
+      const gj = await WX.api(`${API}/thunder/${state.model}/${state.run}/${WX.stepHours}.json`);
+      if (my !== thunderReq || !state.thunder) return;
+      if (M().getSource("thunder")) M().getSource("thunder").setData(gj);
+      else {
+        M().addSource("thunder", { type: "geojson", data: gj });
+        if (!M().hasImage("bolt")) M().addImage("bolt", boltIcon(), { pixelRatio: 2 });
+        M().addLayer({ id: "thunder", type: "symbol", source: "thunder", layout: { "icon-image": "bolt", "icon-size": ["interpolate", ["linear"], ["get", "cape"], 800, 0.55, 3000, 1.0], "icon-allow-overlap": true, "icon-ignore-placement": true },
+                       paint: { "icon-opacity": 0.95 } });
+      }
+    } catch (e) { if (my === thunderReq) toast("Thunder marks unavailable for this model", 4000, "error"); }
+  }
+  // A yellow lightning bolt with a dark outline, drawn once into a canvas.
+  function boltIcon() {
+    const c = document.createElement("canvas"); c.width = 44; c.height = 44; const x = c.getContext("2d");
+    const P = new Path2D("M25 3 L9 25 L21 25 L17 41 L35 17 L23 17 Z");
+    x.lineJoin = "round"; x.lineWidth = 5; x.strokeStyle = "rgba(0,0,0,.65)"; x.stroke(P);
+    x.fillStyle = "#ffd54a"; x.fill(P);
+    return x.getImageData(0, 0, 44, 44);
+  }
+  function clearThunder() { if (M().getLayer("thunder")) M().removeLayer("thunder"); if (M().getSource("thunder")) M().removeSource("thunder"); }
+
   function clearQuakes() { if (M().getLayer("quakes")) M().removeLayer("quakes"); if (M().getSource("quakes")) M().removeSource("quakes"); }
 
-  WX.ov = { loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles };
+  WX.ov = { loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles };
 })();

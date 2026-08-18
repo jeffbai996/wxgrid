@@ -101,6 +101,9 @@ RAMPS: dict[str, dict] = {
     "sf72": {"units": "cm/72h", "lo": 0, "hi": 150, "stops": [
         (0, (150, 170, 220)), (5, (120, 150, 230)), (20, (80, 120, 230)), (50, (140, 90, 220)),
         (90, (200, 80, 200)), (150, (240, 60, 120))]},
+    "uvi": {"units": "UVI", "lo": 0, "hi": 12, "stops": [
+        (0, (40, 60, 40)), (1, (60, 160, 70)), (3, (140, 200, 60)), (5, (240, 220, 40)),
+        (6, (240, 150, 40)), (8, (220, 60, 40)), (10, (170, 40, 150)), (12, (110, 20, 140))]},
     "waves": {"units": "m", "lo": 0, "hi": 10, "stops": [
         (0, (40, 60, 120)), (1, (40, 120, 200)), (2, (40, 190, 190)), (3, (90, 210, 110)),
         (4.5, (230, 220, 60)), (6, (240, 130, 40)), (8, (220, 50, 40)), (10, (150, 0, 80))]},
@@ -129,7 +132,42 @@ DISPLAY = {
     "sf72": lambda mm_we: mm_we,
     "waves": lambda m: m,
     "wperiod": lambda s: s,
+    "uvi": lambda u: u,
 }
+
+
+def uv_index_point(tcc: list, valid: list, lat: float, lon: float) -> list:
+    """Same estimate as uv_index() for one point over a run's valid times."""
+    out = []
+    for c, when in zip(tcc, valid):
+        if c is None:
+            out.append(None); continue
+        doy = when.timetuple().tm_yday
+        hour = when.hour + when.minute / 60.0
+        decl = np.deg2rad(23.44) * np.sin(2 * np.pi * (284 + doy) / 365.0)
+        ha = np.deg2rad(15.0 * (hour - 12.0) + lon)
+        mu = np.sin(np.deg2rad(lat)) * np.sin(decl) + np.cos(np.deg2rad(lat)) * np.cos(decl) * np.cos(ha)
+        mu = max(0.0, min(1.0, float(mu)))
+        out.append(round(12.5 * mu ** 2.42 * (1.0 - 0.56 * max(0.0, min(1.0, c))), 1))
+    return out
+
+
+def uv_index(tcc: np.ndarray, when) -> np.ndarray:
+    """Estimated UV index on the whole grid at a UTC datetime: clear-sky index
+    from solar elevation (UVI ≈ 12.5·μ₀^2.42, sea level, ~300 DU ozone; Allaart
+    et al. 2004 fit) reduced by cloud (1 − 0.56·tcc). No ozone, aerosol or
+    altitude term — a planning number, not a measurement."""
+    doy = when.timetuple().tm_yday
+    hour = when.hour + when.minute / 60.0
+    decl = np.deg2rad(23.44) * np.sin(2 * np.pi * (284 + doy) / 365.0)
+    lats = np.deg2rad(np.linspace(90, -90, GRID_LAT_N))[:, None]
+    lons = np.linspace(-180, 179.75, GRID_LON_N)[None, :]
+    ha = np.deg2rad(15.0 * (hour - 12.0) + lons)
+    mu = np.sin(lats) * np.sin(decl) + np.cos(lats) * np.cos(decl) * np.cos(ha)
+    mu = np.clip(mu, 0.0, 1.0)
+    clear = 12.5 * mu ** 2.42
+    cloud = 1.0 - 0.56 * np.clip(np.nan_to_num(tcc), 0.0, 1.0)
+    return (clear * cloud).astype(np.float32)
 
 
 def relative_humidity(t_k: np.ndarray, td_k: np.ndarray) -> np.ndarray:
@@ -174,7 +212,7 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78) -> byte
         return buf.getvalue()
     x = np.nan_to_num(field_display, nan=lo)
     idx = np.clip((x - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
-    if layer in ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod"):
+    if layer in ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi"):
         rgba = lut[idx].copy()
         if layer in ("tp6", "tp24", "tp72"):
             # Rain: transparent where dry, ramping in over the first millimetre(s).
@@ -183,6 +221,8 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78) -> byte
             a = np.clip(x / {"sf6": 0.5, "sf24": 1.0, "sf72": 2.0}[layer], 0, 1)
         elif layer in ("waves", "wperiod"):
             a = np.where(np.isnan(field_display), 0.0, 1.0)      # land is NaN: show the map
+        elif layer == "uvi":
+            a = np.clip(x / 1.0, 0, 1)                            # night is transparent
         elif layer == "sd_cm":
             a = np.clip(x / 2.0, 0, 1)
         elif layer == "cape":

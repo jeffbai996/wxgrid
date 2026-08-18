@@ -13,6 +13,7 @@ run's cache dies with the run. Routes stay thin — rendering is wxgrid.render.
 """
 from __future__ import annotations
 
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -32,13 +33,13 @@ log = logging.getLogger("wxgrid.api")
 app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=2048)   # wind JSON shrinks ~5x
 
-LAYERS = ("wind", "temp", "gust", "msl", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "frz", "waves", "wperiod")
+LAYERS = ("wind", "temp", "gust", "msl", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "uvi", "frz", "waves", "wperiod")
 LEVEL_LAYERS = ("wind", "temp")
 _ALIAS = {"t2m": "temp", "snow": "sf6", "snowdepth": "sd_cm", "dewpt": "d2m", "swh": "waves", "mwp": "wperiod"}
 # Layers computed from several store variables at request time.
 _DERIVED = {"frz": tuple(f"{p}_{l}" for l in LEVELS for p in ("t", "gh")),
             "rh": ("t2m", "d2m"), "tp24": ("tp6",), "tp72": ("tp6",), "sf24": ("sf6",), "sf72": ("sf6",),
-            "waves": ("swh",), "wperiod": ("mwp",)}
+            "waves": ("swh",), "wperiod": ("mwp",), "uvi": ("tcc",)}
 # Accumulation windows (hours) for the derived precip/snow layers.
 _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72": ("sf6", 72)}
 # Layers that live only on LEVEL_EVERY steps (like the pressure levels).
@@ -137,6 +138,8 @@ def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndar
     if layer in _ACCUM:
         var, hours = _ACCUM[layer]
         return _accumulate(r, var, step, hours)
+    if layer == "uvi":
+        return render.uv_index(r.slab("tcc", step), parse_run_id(r.rid) + timedelta(hours=step))
     return r.slab(vars_[0], step)
 
 
@@ -320,6 +323,8 @@ def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge
     for var in list(series):
         if (var.split("_")[0] in ("u", "v", "t", "gh") and "_" in var) or var in ("swh", "mwd", "mwp"):
             series[var] = _fill_gaps(series[var])
+    if "tcc" in series:
+        series["uvi"] = render.uv_index_point(series["tcc"], [t0 + timedelta(hours=h) for h in r.steps], lat, lon)
     if "t2m" in series and "d2m" in series:
         series["rh"] = [None if (a is None or b is None) else round(float(render.relative_humidity(np.array([a]), np.array([b]))[0]), 1)
                         for a, b in zip(series["t2m"], series["d2m"])]
@@ -337,6 +342,30 @@ def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge
             "units": {"t2m": "K", "msl": "Pa", "tp6": "mm", "wind": "m/s", "gust": "m/s",
                       "u10": "m/s", "v10": "m/s", "wdir": "deg", "tcc": "fraction", "cape": "J/kg",
                       "aloft.temp": "K", "aloft.gh": "m", "freezing_level_m": "m"}}
+
+
+@app.get("/api/thunder/{model}/{run}/{step}.json")
+def api_thunder(model: str, run: str, step: int):
+    """Points where the model has convective energy AND precipitation at the
+    step: CAPE ≥ 800 J/kg and ≥ 0.5 mm in the bucket, sampled every 1°.
+    A cheap thunderstorm mask (Windy's lightning marks are observations; this
+    is the forecast analogue)."""
+    r = _reader(model, run)
+    if step not in r.steps or "cape" not in r.variables or "tp6" not in r.variables:
+        raise HTTPException(404, "model has no CAPE")
+    path = CACHE_DIR / model / r.rid / f"{step:03d}-thunder.json"
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        cape = r.slab("cape", step)[::4, ::4]
+        tp = r.slab("tp6", step)[::4, ::4]
+        mask = (cape >= 800) & (tp >= 0.5)
+        ys, xs = np.nonzero(mask)
+        feats = [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [round(-180 + x * 1.0, 2), round(90 - y * 1.0, 2)]},
+                  "properties": {"cape": int(cape[y, x]), "mm": round(float(tp[y, x]), 1)}} for y, x in zip(ys.tolist(), xs.tolist())]
+        tmp = path.with_suffix(".part")
+        tmp.write_text(json.dumps({"type": "FeatureCollection", "features": feats}, separators=(",", ":")))
+        tmp.replace(path)
+    return FileResponse(path, media_type="application/json", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 ISOLINE_SPECS = {   # var → (interval, display transform, unit)

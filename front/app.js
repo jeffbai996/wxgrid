@@ -24,11 +24,12 @@
     { key: "msl", label: "Pressure", layers: ["msl"] },
     { key: "hum", label: "Humidity", layers: ["rh", "d2m"], variants: { rh: "RH %", d2m: "Dew pt" } },
     { key: "cape", label: "CAPE", layers: ["cape"] },
+    { key: "uvi", label: "UV index", layers: ["uvi"] },
     { key: "waves", label: "Waves", layers: ["waves", "wperiod"], variants: { waves: "Height", wperiod: "Period" }, section: "Sea" },
   ];
   const familyOf = (layer) => FAMILIES.find((f) => f.layers.includes(layer)) || FAMILIES[0];
-  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period" };
-  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8 };
+  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", uvi: "UV index" };
+  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, uvi: 0.8 };
   const LAYER_ICON = {
     wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/></svg>',
     temp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>',
@@ -42,11 +43,12 @@
     frz: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h10"/><path d="M9 4v16"/><path d="m3 9 3 3-3 3"/><path d="M12 6 9 9"/><path d="M12 18l-3-3"/><path d="M14 4v10.54a4 4 0 1 1-4 0"/></svg>',
     cape: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.326A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.973"/><path d="m13 12-3 5h4l-3 5"/></svg>',
     rh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>',
+    uvi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
     waves: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
   };
-  const FAMILY_ICON = { wind: "wind", gust: "gust", temp: "temp", rain: "tp6", snow: "sf6", sd: "sd_cm", frz: "frz", tcc: "tcc", msl: "msl", hum: "rh", cape: "cape", waves: "waves" };
-  const LEVEL_FT = { 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 500: "FL180", 300: "FL300", 250: "FL340" };
-  const LEVEL_M = { 925: "≈750 m", 850: "≈1.5 km", 700: "≈3 km", 500: "≈5.5 km", 300: "≈9 km", 250: "≈10.5 km" };
+  const FAMILY_ICON = { wind: "wind", gust: "gust", temp: "temp", rain: "tp6", snow: "sf6", sd: "sd_cm", frz: "frz", tcc: "tcc", msl: "msl", hum: "rh", cape: "cape", waves: "waves", uvi: "uvi" };
+  const LEVEL_FT = { 1000: "≈350 ft", 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 600: "14k ft", 500: "FL180", 400: "FL240", 300: "FL300", 250: "FL340", 200: "FL390" };
+  const LEVEL_M = { 1000: "≈100 m", 925: "≈750 m", 850: "≈1.5 km", 700: "≈3 km", 600: "≈4.2 km", 500: "≈5.5 km", 400: "≈7.2 km", 300: "≈9 km", 250: "≈10.5 km", 200: "≈12 km" };
   const RAINVIEWER = "https://api.rainviewer.com/public/weather-maps.json";
   const AVY_COLORS = { 0: "#8a8f98", 1: "#50b848", 2: "#fff200", 3: "#f7941e", 4: "#ed1c24", 5: "#231f20" };
 
@@ -56,7 +58,8 @@
     point: null, tapePoint: null, tab: "now",
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null, measure: false,
-    alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false,
+    alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false,
+    opacity: Number(localStorage.getItem("wxgrid.opacity") || 100),
   };
   let map, wind, catalog, playTimer = null, marker = null;
 
@@ -76,7 +79,7 @@
   // Functions the split-out modules (overlays.js, tape.js, search.js) call back into.
   window.WX.fn = { applyStep: (...a) => applyStep(...a), openPoint: (...a) => openPoint(...a), setStep: (...a) => setStep(...a), toast, firstSymbolId: () => firstSymbolId(),
                    renderPoint: () => renderPoint(), refreshPoint: () => refreshPoint(), closePoint: () => closePoint(), placeMarker: (...a) => placeMarker(...a),
-                   stepHours: () => stepHours(), steps: () => steps(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d) };
+                   stepHours: () => stepHours(), steps: () => steps(), layerUrl: () => layerUrl(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d) };
 
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
@@ -95,6 +98,7 @@
       pushHash();
     });
     wind = new WindLayer(map, $("#particles"));
+    WX.windLayer = wind;
     new ResizeObserver(() => document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px")).observe($("#timebar"));
     new ResizeObserver(() => document.documentElement.style.setProperty("--top-h", $("#topbar").offsetHeight + "px")).observe($("#topbar"));
 
@@ -120,8 +124,8 @@
         const avy = feats.find((x) => x.layer.id === "avy-fill");
         if (avy) { state.tab = "winter"; }
       });
-      map.on("mousemove", (e) => WX.provider && WX.provider.hover(e.lngLat));
-      map.on("mouseout", () => WX.provider && WX.provider.hover(null));
+      map.on("mousemove", (e) => { if (WX.provider) WX.provider.hover(e.lngLat); if (WX.probe) WX.probe.hover(e.lngLat); });
+      map.on("mouseout", () => { if (WX.provider) WX.provider.hover(null); if (WX.probe) WX.probe.hover(null); });
       map.on("moveend", () => { if (!matchMedia("(hover: hover)").matches && WX.provider) WX.provider.hover(map.getCenter()); });
       map.on("mouseenter", "resort-pts", () => map.getCanvas().style.cursor = "pointer");
       map.on("mouseleave", "resort-pts", () => map.getCanvas().style.cursor = "");
@@ -153,6 +157,8 @@
     if (state.smoke) WX.ov.loadSmoke();
     if (state.fires) WX.ov.loadFires();
     if (state.quakes) WX.ov.loadQuakes();
+    if (state.aod) WX.ov.loadAod();
+    if (state.thunder) WX.ov.loadThunder();
     if (marker) marker.addTo(map);
   }
   function applyTheme(theme, swapMap = true) {
@@ -265,6 +271,10 @@
       $("#units-toggle").querySelector(".val").textContent = speedUnit();
       renderLegend(); renderPoint(); WX.tape.renderTape();
     };
+    const op = $("#opacity"); op.value = String(state.opacity);
+    op.oninput = () => { state.opacity = Number(op.value); localStorage.setItem("wxgrid.opacity", op.value); applyStep(false); };
+    op.onclick = (e) => e.stopPropagation();
+    buildStrip();
     $("#share-btn").onclick = async () => { pushHash(); await new Promise((r) => setTimeout(r, 300)); try { await navigator.clipboard.writeText(location.href); toast("Link copied"); } catch (e) { toast(location.href, 6000); } };
     $("#keys-btn").onclick = () => toast("← → step · space play · / search · esc close · L layers", 6000);
     $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme === "light" ? "light" : "dark";
@@ -272,7 +282,7 @@
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
     $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) WX.ov.loadStorms(); else WX.ov.clearStorms(); };
     $("#sat-toggle").onclick = () => { state.sat = !state.sat; $("#sat-toggle").classList.toggle("on", state.sat); if (state.sat) WX.ov.loadSat(); else WX.ov.clearSat(); };
-    for (const [k, load, clear] of [["smoke", "loadSmoke", "clearSmoke"], ["fires", "loadFires", "clearFires"], ["quakes", "loadQuakes", "clearQuakes"]]) {
+    for (const [k, load, clear] of [["smoke", "loadSmoke", "clearSmoke"], ["fires", "loadFires", "clearFires"], ["quakes", "loadQuakes", "clearQuakes"], ["aod", "loadAod", "clearAod"], ["thunder", "loadThunder", "clearThunder"]]) {
       $(`#${k}-toggle`).onclick = () => { state[k] = !state[k]; $(`#${k}-toggle`).classList.toggle("on", state[k]); if (state[k]) WX.ov[load](); else WX.ov[clear](); };
     }
     $("#theme-toggle").onclick = () => { applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light"); $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme; };
@@ -302,6 +312,26 @@
     });
   }
 
+  // Desktop tool strip: icon proxies for the toggles that live in the topbar
+  // menus. Clicking proxies the real button; the observer below mirrors state.
+  const STRIP = [
+    ["radar", "Radar"], ["sat", "Satellite"], ["aod", "Aerosol"], ["iso", "Isolines"], null,
+    ["alerts", "Alerts", "warn"], ["storms", "Storms", "warn"], ["thunder", "Thunder", "warn"], ["fires", "Fires", "warn"], ["smoke", "Smoke"], ["quakes", "Quakes"], null,
+    ["avy", "Avalanche"], ["resorts", "Ski resorts"], null,
+    ["particles", "Particles"], ["barbs", "Barbs"], ["measure", "Measure"],
+  ];
+  function buildStrip() {
+    const st = $("#tstrip"); if (!st) return;
+    st.innerHTML = STRIP.map((it) => {
+      if (!it) return '<div class="sep"></div>';
+      const [k, tip, cls] = it; const src = $(`#${k}-toggle`); if (!src) return "";
+      const svg = src.querySelector("svg") ? src.querySelector("svg").outerHTML : "";
+      return `<button data-for="${k}-toggle" data-tip="${tip}" class="${cls || ""}${src.classList.contains("on") ? " on" : ""}" aria-label="${tip}">${svg}</button>`;
+    }).join("");
+    st.querySelectorAll("button").forEach((b) => b.onclick = () => $("#" + b.dataset.for).click());
+    new MutationObserver(() => st.querySelectorAll("button").forEach((b) => b.classList.toggle("on", $("#" + b.dataset.for).classList.contains("on")))).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
+  }
+
   function switchModel(key) {
     // Keep the VALID time, not the step index: comparing models means the same moment.
     const target = validDate().getTime();
@@ -326,7 +356,9 @@
     pushHash();
     const src = map.getSource("wx");
     if (src) { try { src.updateImage({ url: layerUrl(), coordinates: WORLD }); } catch (e) { /* superseded */ } }
-    if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", (state.radar || state.sat) ? Math.min(0.45, LAYER_ALPHA[state.layer]) : LAYER_ALPHA[state.layer]);
+    if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", ((state.radar || state.sat) ? Math.min(0.45, LAYER_ALPHA[state.layer]) : LAYER_ALPHA[state.layer]) * state.opacity / 100);
+    if (state.thunder && WX.ov) WX.ov.loadThunder();
+    if (WX.probe) WX.probe.refresh();
     const v = validDate();
     $("#valid-local").textContent = v.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";

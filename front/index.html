@@ -29,7 +29,7 @@
   <div class="spacer"></div>
   <div class="seg small levels" id="levels" hidden aria-label="Altitude"></div>
   <div class="menu" id="overlays-menu">
-    <button class="chip menu-btn" data-menu="overlays" aria-haspopup="true">layers ▾</button>
+    <button class="chip menu-btn iconbtn" data-menu="overlays" aria-haspopup="true" title="Overlays"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 4.5-9 4.5-9-4.5L12 2z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 17 9 4.5 9-4.5"/></svg><span>layers</span></button>
     <div class="menu-pop menu-list" hidden>
       <div class="menu-sec">Wind</div>
       <button id="particles-toggle" class="row chip on" title="Wind particles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20"/><path d="M6 8c2 0 3 4 6 4s4-4 6-4"/><path d="M6 16c2 0 3-4 6-4s4 4 6 4"/></svg><span>Particles</span><i class="sw"></i></button>
@@ -43,26 +43,32 @@
       <button id="smoke-toggle" class="row chip" title="Surface PM2.5 / wildfire smoke forecast (ECCC RAQDPS)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c4-2 4-6 8-6s4 4 8 6"/><path d="M6 14c3-2 3-5 6-5s3 3 6 5"/><path d="M8 8c2-1 2-3 4-3s2 2 4 3"/></svg><span>Smoke</span><i class="sw"></i></button>
       <button id="fires-toggle" class="row chip warn" title="Wildfire hotspots, last 24 h (NRCan CWFIS)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg><span>Fires</span><i class="sw"></i></button>
       <button id="quakes-toggle" class="row chip" title="Earthquakes M2.5+, past day (USGS)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l3-8 4 16 3-10 2 4h5"/></svg><span>Quakes</span><i class="sw"></i></button>
+      <button id="aod-toggle" class="row chip" title="Aerosol optical depth, MODIS Terra+Aqua, yesterday (NASA GIBS)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="8" r="2.5"/><circle cx="16" cy="6" r="2"/><circle cx="12" cy="14" r="3"/><circle cx="18" cy="16" r="2"/><circle cx="6" cy="17" r="2"/></svg><span>Aerosol</span><i class="sw"></i></button>
+      <button id="thunder-toggle" class="row chip warn" title="Thunderstorm marks where the model has CAPE and rain together"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg><span>Thunder</span><i class="sw"></i></button>
       <div class="menu-sec">Mountains</div>
       <button id="avy-toggle" class="row chip" title="Avalanche forecast regions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/><path d="M4 21 12 9"/></svg><span>Avalanche</span><i class="sw"></i></button>
       <button id="resorts-toggle" class="row chip" title="Ski resorts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20l6-10 4 6 3-4 7 8H2z"/><path d="M14 8V4l3 2-3 2"/></svg><span>Ski resorts</span><i class="sw"></i></button>
     </div>
   </div>
   <div class="menu" id="tools-menu">
-    <button class="chip menu-btn" data-menu="tools" aria-haspopup="true">tools ▾</button>
+    <button class="chip menu-btn iconbtn" data-menu="tools" aria-haspopup="true" title="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M2 14h4"/><path d="M10 8h4"/><path d="M18 16h4"/></svg><span>tools</span></button>
     <div class="menu-pop menu-list" hidden>
       <button id="units-toggle" class="row" title="Wind speed units"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="m12 12 4-4"/><path d="M12 3v2M3 12h2M19 12h2M12 19v2"/></svg><span>Wind units</span><b class="val mono">km/h</b></button>
       <button id="measure-toggle" class="row chip" title="Measure distance and bearing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg><span>Measure</span><b class="val">off</b></button>
       <button id="locate" class="row" title="My location"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg><span>My location</span></button>
       <button id="share-btn" class="row" title="Copy a link to this view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>Copy link</span></button>
       <button id="theme-toggle" class="row" title="Light / dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span>Theme</span><b class="val">dark</b></button>
+      <label class="row range" title="Layer opacity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg><span>Opacity</span><input id="opacity" type="range" min="20" max="100" value="100" aria-label="Layer opacity"></label>
       <button id="keys-btn" class="row" title="Keyboard shortcuts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 13h6"/></svg><span>Shortcuts</span></button>
     </div>
   </div>
 </header>
 <div id="search-results" class="results" hidden></div>
 
-<nav id="layers" class="rail" aria-label="Layers"></nav>
+<div id="side">
+  <nav id="tstrip" class="tstrip" aria-label="Overlays and tools"></nav>
+  <nav id="layers" class="rail" aria-label="Layers"></nav>
+</div>
 
 <footer id="timebar">
   <div class="tape-head">
@@ -119,6 +125,7 @@
 <script src="search.js"></script>
 <script src="private/theme.js"></script>
 <script src="provider.js"></script>
+<script src="probe.js"></script>
 <script src="panes.js"></script>
 </body>
 </html>
