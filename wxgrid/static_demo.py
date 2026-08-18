@@ -85,7 +85,10 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
     api = out / "api"
     # ── catalog ──────────────────────────────────────────────────────
     levels = _levels_for(r)
-    layers = [l for l in LAYERS if _available(r, l)]
+    # The demo trims the long-window and second-order layers to keep the Pages
+    # payload sane; the live app has them all.
+    STATIC_SKIP = {"tp72", "sf72", "rh", "wperiod"}
+    layers = [l for l in LAYERS if _available(r, l) and l not in STATIC_SKIP]
     catalog = {"models": [{"key": model_key, "label": model.label, "short": model.short, "attribution": model.attribution,
                            "runs": [{"run": rid, "steps": steps, "layers": layers,
                                      "levels": [l for l in levels if l in set(WIND_LEVELS) | set(TEMP_LEVELS)],
