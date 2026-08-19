@@ -497,16 +497,29 @@ table.bandtape .nil { color: var(--line-strong); }
   /* The model list gives ground so the run picker can share its row, but it
      keeps a floor: with min-width 0 it collapsed to nothing and the models
      vanished off the phone entirely. */
-  #models { order: 5; flex: 1 1 120px; min-width: 90px; overflow-x: auto; scrollbar-width: none; }
+  /* a zero-height break starts the models row and the altitude row where
+     they belong, whatever the phone's width — a wide phone used to fit the
+     model list onto the search row and push the run picker out on its own */
+  .rowbreak { display: block; flex: 0 0 100%; height: 0; margin: 0; }
+  .rowbreak:first-of-type { order: 5; }
+  #models { order: 6; flex: 1 1 120px; min-width: 90px; overflow-x: auto; scrollbar-width: none; }
   #models::-webkit-scrollbar { display: none; }
-  select.run { order: 6; flex: 0 0 auto; padding: 5px 22px 5px 8px; font-size: 11.5px; }
-  .seg.variant { order: 7; }
-  /* a zero-height break puts the altitude row on its own line while the pill
-     itself still hugs its buttons — a full-width flex item would paint a strip
-     of empty panel across the screen */
-  .rowbreak { display: block; order: 7; flex: 0 0 100%; height: 0; margin: 0; }
-  #levels { order: 8; flex: 0 1 auto; max-width: 100%; align-self: flex-start; }
-  body.no-levels #levels, body.no-levels .rowbreak { display: none; }
+  select.run { order: 7; flex: 0 0 auto; padding: 5px 22px 5px 8px; font-size: 11.5px; }
+  #tuck { order: 7; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; flex: 0 0 auto; }
+  #tuck svg { width: 15px; height: 15px; }
+  .rowbreak:last-of-type { order: 8; }
+  #levels { order: 9; flex: 0 1 auto; max-width: 100%; align-self: flex-start; }
+  #levels button { white-space: nowrap; }
+  #levels button .level-alt { display: none; }
+  body.no-levels #levels, body.no-levels .rowbreak:last-of-type { display: none; }
+  /* tucked: the model, run, level and layer rows fold into one chip that
+     says what the map is showing, and a tap brings them back */
+  body.tucked #models, body.tucked select.run, body.tucked #levels, body.tucked #tuck, body.tucked .rowbreak:last-of-type, body.tucked #side { display: none; }
+  body.tucked #tucked { display: inline-flex; order: 6; }
+  #tucked { align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 11px; font: 700 12px var(--font-display); color: var(--fg); white-space: nowrap; max-width: 100%; overflow: hidden; }
+  #tucked i { font-style: normal; color: var(--dim); font-weight: 600; }
+  #tucked .grid { font: 600 10px var(--font-display); opacity: .65; margin-left: 1px; }
+  #tucked svg { width: 13px; height: 13px; margin-left: 2px; flex: 0 0 auto; }
   #topbar > .seg:not(#models), #topbar > .menu, #topbar > select.run { flex-shrink: 0; }
   .seg button { padding: 5px 10px; }
   .seg.small button { padding: 4px 7px; }
@@ -518,17 +531,9 @@ table.bandtape .nil { color: var(--line-strong); }
   .locate-btn { display: grid; left: auto; right: 8px; width: 38px; height: 38px; bottom: calc(var(--tb-h) + 14px + env(safe-area-inset-bottom)); }
   .rail { flex: 1; min-width: 0; flex-direction: row; overflow-x: auto; scrollbar-width: none; border-radius: 999px; padding: 3px; }
   .rail::-webkit-scrollbar { display: none; }
-/* the rail's own height, dragged from its bottom edge */
-#side { flex-direction: column; }
-.side-resize-handle { position: relative; z-index: 3; align-self: center; flex: 0 0 18px; margin-top: -6px;
-  width: 64px; height: 18px; display: grid; place-items: center; cursor: ns-resize; touch-action: none; outline: none; }
-.side-resize-handle i { display: block; width: 34px; height: 4px; border-radius: 999px;
-  background: color-mix(in srgb, var(--fg-2) 55%, transparent); box-shadow: 0 0 0 4px var(--panel-solid), 0 2px 10px rgba(0,0,0,.28);
-  transition: width .14s ease, background .14s ease; }
-.side-resize-handle:hover i, .side-resize-handle:focus-visible i, #side.is-resizing .side-resize-handle i {
-  width: 44px; background: var(--accent); }
-@media (max-width: 820px) { .side-resize-handle { display: none; } }
-  .rail button { padding: 5px 9px; border-radius: 999px; box-shadow: none; }
+  .side-resize-handle { display: none; }
+  /* one thin row of chips, not a second toolbar */
+  .rail button { padding: 4px 9px; border-radius: 999px; box-shadow: none; font-size: 12px; }
   .rail button svg { display: none; }
   .rail .rail-sec { display: none; }
   .rail button .var { display: none; }
@@ -547,17 +552,29 @@ table.bandtape .nil { color: var(--line-strong); }
   #levels { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
   /* on a phone the legend gets its own full-width line under the controls,
      with its name and its two ends — a bare gradient means nothing */
-  .tape-head { flex-wrap: wrap; gap: 4px; }
-  #legend { order: 9; flex: 1 0 100%; width: auto; margin: 0; }
-  #legend .legend-ticks { display: flex; font-size: 9px; }
-  #legend .legend-head b { font-size: 10px; }
-  #legend .legend-ticks span:nth-child(2), #legend .legend-ticks span:nth-child(4) { display: none; }
-  #timebar { left: 8px; right: 8px; }
-  .time-meta { min-width: 0; flex: 1 1 96px; overflow: hidden; }
+  /* two rows: the time and its buttons, then the resolution. The fold
+     button rides the first row instead of owning a third. */
+  .tape-head { flex-wrap: wrap; gap: 4px 6px; }
+  #play { order: 1; } .time-meta { order: 2; min-width: 0; flex: 1 1 90px; overflow: hidden; }
+  #lead { order: 3; min-width: 0; } #tape-now { order: 4; } .tape-min { order: 5; margin-left: 0; }
+  #tape-res { order: 6; } #variant { order: 7; }
   #valid-local, #valid-utc { overflow: hidden; text-overflow: ellipsis; }
-  #lead { min-width: 40px; }
-  .tape-min { margin-left: 0; }
   #tape-where { display: none; }
+  /* The legend is about the map, not the tape, so on a phone it sits on the
+     map: a small card above the tape's left end that stays put however far
+     the tape folds. */
+  #timebar { left: 8px; right: 8px; overflow: visible; }
+  #legend { position: absolute; left: 0; bottom: calc(100% + 10px); width: 150px; margin: 0; padding: 6px 8px 5px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(10px); box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+  #legend .legend-head { margin-bottom: 4px; }
+  #legend .legend-head b { font-size: 10.5px; }
+  #legend .legend-head i { font-size: 9px; }
+  #legend .legend-bar { height: 7px; }
+  #legend .legend-ticks { display: flex; font-size: 9px; margin-top: 2px; }
+  #legend .legend-ticks span:nth-child(2), #legend .legend-ticks span:nth-child(4) { display: none; }
+  #timebar.tape-away { overflow: visible; }
+  #timebar.tape-away .tape-head { display: flex; }
+  #timebar.tape-away .tape-head > *:not(#legend) { display: none; }
   #point { left: 8px; right: 8px; width: auto; }
   .point-resize-handle { display: none; }
   #point-now { gap: 10px; }

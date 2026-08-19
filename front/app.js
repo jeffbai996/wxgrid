@@ -361,6 +361,26 @@
     if (rail) { rail.value = String(v); rail.parentElement.querySelector("i").textContent = `${v}%`; }
     applyStep(false);
   }
+  // Phone only: the model, run, level and layer rows fold into one chip that
+  // names what the map is showing. The chip is the way back out.
+  function renderTucked(showLevels) {
+    const el = $("#tucked"); if (!el) return;
+    const m = modelEntry();
+    const fam = FAMILIES.find((f) => f.layers.includes(state.layer));
+    const parts = [`${m.short}${m.grid ? `<i class="grid">${m.grid}</i>` : ""}`];
+    if (showLevels) parts.push(state.level ? `${state.level}` : "sfc");
+    parts.push(fam ? fam.label : LAYER_LABEL[state.layer] || state.layer);
+    el.innerHTML = parts.join(`<i>·</i>`) + `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+  }
+  const phoneMQ = matchMedia("(max-width: 820px)");
+  let softTucked = false;
+  function setTucked(on, persist = true) {
+    const phone = phoneMQ.matches;
+    document.body.classList.toggle("tucked", on && phone);
+    $("#tuck").hidden = !phone || on;
+    $("#tucked").hidden = !phone || !on;
+    if (persist) localStorage.setItem("wxgrid.tucked", on ? "1" : "0");
+  }
   function setParticleDensity(v) {
     state.particleDensity = Math.max(0, Math.min(100, v));
     localStorage.setItem("wxgrid.particleDensity", state.particleDensity);
@@ -496,6 +516,7 @@
     document.body.classList.toggle("no-levels", !showLevels);
     lv.classList.toggle("disabled", !showLevels);
     lv.title = showLevels ? "" : `${LAYER_LABEL[state.layer]} is a surface field`;
+    renderTucked(showLevels);
     if (!showLevels && levels.length) {
       renderSlidingSeg(lv, [0, ...levels].map((l) => `<button data-level="${l}" class="${l === 0 ? "on" : ""}" disabled>${l || "sfc"}</button>`).join(""));
     }
@@ -519,6 +540,15 @@
     // Back to the present in one tap: scrubbing four days out and finding your
     // way home by dragging is the kind of thing a button fixes.
     $("#tape-now").onclick = () => { setStep(currentStepIdx()); WX.tape.renderTapeSelection(); };
+    $("#tuck").onclick = () => setTucked(true);
+    $("#tucked").onclick = () => setTucked(false);
+    // A phone's search box is a third of the row; the long placeholder was
+    // always cut mid-word.
+    const fitPhone = () => {
+      $("#q").placeholder = phoneMQ.matches ? "Search" : "Search a location…";
+      setTucked(localStorage.getItem("wxgrid.tucked") === "1", false);
+    };
+    fitPhone(); phoneMQ.addEventListener("change", fitPhone);
     const tb = $("#timebar"), tmin = $("#tape-min");
     // Three states, because "collapsed" and "gone" are different wants: full
     // table, header only, or out of the way entirely with just its grip left.
@@ -957,7 +987,9 @@
     if (state.route && WX.route) WX.route.refresh();
     if (WX.probe) WX.probe.refresh();
     const v = validDate();
-    $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts({ weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
+    // the phone row has room for the weekday and the hour; the date is the UTC line under it
+    const narrow = matchMedia("(max-width: 820px)").matches;
+    $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts(narrow ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
     const atNow = state.stepIdx === currentStepIdx();
     $("#lead").textContent = atNow ? "current" : `+${stepHours()}h`;
@@ -1030,6 +1062,10 @@
     $("#point").hidden = false;
     restorePointPanelSize(); restoreSheetHeight();
     document.body.classList.add("has-point");
+    // A phone's card sits over the layer row anyway, so the controls fold
+    // while it is open and come back when it closes. A fold the user chose
+    // themselves stays.
+    if (phoneMQ.matches && !document.body.classList.contains("tucked")) { softTucked = true; setTucked(true, false); }
     $("#point-title").textContent = name || `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
     $("#point-local").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
     $("#point-now").textContent = "…";
@@ -1068,7 +1104,8 @@
     WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.tides = r; renderPoint(); } }).catch(() => { if (my === pointReq) state.point.tides = false; });
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
-  function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; document.body.classList.remove("has-point"); if (WX.provider) WX.provider.refresh(); if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
+  function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; document.body.classList.remove("has-point");
+    if (softTucked) { softTucked = false; setTucked(false, false); } if (WX.provider) WX.provider.refresh(); if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
   function placeMarker(lat, lon) {
     if (!marker) { const el = document.createElement("div"); el.className = "wx-marker"; marker = new maplibregl.Marker({ element: el, anchor: "center" }); }
     marker.setLngLat([lon, lat]).addTo(map);

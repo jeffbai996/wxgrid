@@ -32,8 +32,11 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
   <form id="search" class="search" role="search" autocomplete="off">
     <input id="q" type="search" placeholder="Search a location…" aria-label="Search a location" enterkeyhint="search">
   </form>
+  <span class="rowbreak" aria-hidden="true"></span>
   <div class="seg" id="models" role="tablist" aria-label="Model"></div>
   <select id="run" class="run" title="Model run (UTC)"></select>
+  <button id="tuck" class="chip iconbtn tuck" hidden title="Tuck the controls away" aria-label="Tuck the controls away"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+  <button id="tucked" class="chip tucked" hidden title="Show the controls"></button>
   <div class="spacer"></div>
   <span class="rowbreak" aria-hidden="true"></span>
   <div class="seg small levels" id="levels" hidden aria-label="Altitude"></div>
