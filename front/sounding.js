@@ -434,15 +434,15 @@
     });
 
     // ── caption ─────────────────────────────────────────────────────────
-    if (!prof.hasDewAloft) notes.push("No humidity aloft in this run — the green trace is the surface dew point only; there is no dew-point profile to draw.");
-    else notes.push("Dew-point profile from the run's humidity aloft.");
-    if (par) notes.push(`Parcel lifted from the surface: dry to the LCL, pseudoadiabatic above. CAPE/CIN estimated across ${prof.env.length} levels — coarse, and blind to any inversion between them.`);
-    else notes.push("No surface dew point in this run, so no parcel, no LCL and no CAPE estimate.");
-    if (modelCape != null) notes.push("CAPE (model) is the run's own field and is the number to trust.");
+    if (!prof.hasDewAloft) notes.push("No humidity aloft in this run. Green is the surface dew point only.");
+    else notes.push("Dew point from the run's humidity aloft.");
+    if (par) notes.push(`Surface parcel, dry to the LCL then pseudoadiabatic. CAPE and CIN across ${prof.env.length} levels, so an inversion between them is invisible.`);
+    else notes.push("No surface dew point: no parcel, no LCL, no CAPE.");
+    if (modelCape != null) notes.push("Model CAPE is the run's own field. Trust that one.");
     if (obs && obs.levels && obs.levels.length > 4) {
       const when = obs.time ? new Date(obs.time).toUTCString().replace(/^\w+, /, "").replace(":00 GMT", "Z") : "";
       const st = obs.station || {};
-      notes.unshift(`Observed ascent from ${st.name || st.id || "the nearest station"}${st.distance_km != null ? `, ${Math.round(st.distance_km)} km` : ""}, ${when}: temperature in white, dew point dashed blue. The orange and green traces are the model.`);
+      notes.unshift(`Ascent from ${st.name || st.id || "the nearest station"}${st.distance_km != null ? `, ${Math.round(st.distance_km)} km` : ""}, ${when}. White is temperature, dashed blue is dew point. Orange and green are the model.`);
     }
     const caption = notes.join(" ");
     ctx.fillStyle = P.dim; ctx.font = `500 9px ${P.mono}`; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";

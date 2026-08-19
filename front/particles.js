@@ -14,6 +14,7 @@
   "use strict";
 
   const TAU = Math.PI * 2;
+  const MAX_STEP_DEG = 1.5;      // per frame, per axis
 
   class WindLayer {
     constructor(map, canvas) {
@@ -29,6 +30,17 @@
       this.lastFrame = 0;
       this._resize = () => this.resize();
       this._moveEnd = () => { if (this.mode === "barbs") this.drawBarbs(); };
+      // Barbs are drawn in screen space from the field underneath. Drawing them
+      // only at the end of a movement left them pinned to the glass while the
+      // map slid beneath — the same complaint the particle trails had.
+      this._moving = false;
+      this._onMove = () => {
+        if (this.mode !== "barbs" || this._moving) return;
+        this._moving = true;
+        requestAnimationFrame(() => { this._moving = false; if (this.mode === "barbs") this.drawBarbs(); });
+      };
+      map.on("move", this._onMove);
+      map.on("zoom", this._onMove);
       window.addEventListener("resize", this._resize);
       map.on("resize", this._resize);
       map.on("moveend", this._moveEnd);
@@ -149,7 +161,11 @@
       const yS = Math.log(Math.tan(Math.PI / 4 + (b.s * Math.PI / 180) / 2));
       const y = yS + Math.random() * (yN - yS);
       const lat = (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180 / Math.PI;
-      const maxAge = 40 + Math.random() * 60;
+      // Zoomed out, a particle covers tens of degrees a second and the flow
+      // packs them into its convergence zones within a few seconds — the dense
+      // band. Short lives at low zoom keep the field evenly seeded.
+      const wide = this.map.getZoom() < 3.5;
+      const maxAge = wide ? 18 + Math.random() * 22 : 40 + Math.random() * 60;
       return { lon, lat, age: randomAge ? Math.random() * maxAge : 0, maxAge, px: null, py: null };
     }
 
@@ -222,8 +238,13 @@
         if (!uv || p.age > p.maxAge || p.lat > 85 || p.lat < -85 || p.lon < b.w - 360 || p.lon > b.e + 360) { Object.assign(p, this.spawn(b, false)); continue; }
         const [u, v] = uv;
         const cosLat = Math.max(0.05, Math.cos(p.lat * Math.PI / 180));
-        const nlon = p.lon + u * speed * dt / cosLat;
-        const nlat = p.lat + v * speed * dt;
+        // A single frame must not teleport a particle across a continent: at
+        // world zoom the screen-relative speed works out to many degrees per
+        // frame, which both smears the trail and empties the rest of the map.
+        const dlon = Math.max(-MAX_STEP_DEG, Math.min(MAX_STEP_DEG, u * speed * dt / cosLat));
+        const dlat = Math.max(-MAX_STEP_DEG, Math.min(MAX_STEP_DEG, v * speed * dt));
+        const nlon = p.lon + dlon;
+        const nlat = p.lat + dlat;
         const a = this.map.project([p.lon, p.lat]);
         const q = this.map.project([nlon, nlat]);
         // Keep longitude in the CONTINUOUS space of the current view instead
@@ -251,6 +272,8 @@
       window.removeEventListener("resize", this._resize);
       this.map.off("resize", this._resize);
       this.map.off("moveend", this._moveEnd);
+      this.map.off("move", this._onMove);
+      this.map.off("zoom", this._onMove);
     }
   }
 

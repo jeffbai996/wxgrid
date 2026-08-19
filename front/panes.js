@@ -53,8 +53,15 @@
   // is read off the numbers, nothing is invented, and missing inputs simply
   // remove that sentence. This deliberately reads like a weather report, not
   // a row of database tags joined with middle dots.
-  function summarise(d, i) {
+  function summarise(d, sel) {
+    // Anchored at now, not at the step being scrubbed. The numbers above it
+    // follow the slider; this line is the standing answer to "what is coming",
+    // and it rewriting itself every time you dragged the tape made it useless
+    // as either.
     const s = d.series, U = W().units, at = (k) => new Date(d.valid[k]);
+    const nowMs = Date.now();
+    let i = d.valid.findIndex((v) => new Date(v).getTime() >= nowMs);
+    if (i < 0) i = Math.min(sel, d.valid.length - 1);
     // The hour where the weather is, not where the browser is.
     const hourFmt = new Intl.DateTimeFormat("en-CA", U.timeOpts({ year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hour12: false }));
     const stamp = (dt) => { const o = {}; for (const x of hourFmt.formatToParts(dt)) o[x.type] = x.value;
@@ -148,7 +155,7 @@
     }
 
     // Two warnings nothing else carries.
-    if (dp != null && t0 != null && t0 - dp < 1 && (w0 == null || w0 * 3.6 < 12)) rest.push("Air is at its dew point — expect fog.");
+    if (dp != null && t0 != null && t0 - dp < 1 && (w0 == null || w0 * 3.6 < 12)) rest.push("Air is at its dew point. Expect fog.");
     const uvMax = Math.max(...idx.map((k) => val("uvi", k) ?? -1));
     if (uvMax >= 8) rest.push(`UV reaches ${Math.round(uvMax)} today — burn weather.`);
 
@@ -236,7 +243,29 @@
     if (!sea && s.sd_cm && s.sd_cm[i] >= 0.5) normal.push(`<span class="chipv" style="color:#9fd3ff">depth <b>${W().units.snow(s.sd_cm[i]).v}</b> ${W().units.snowUnit}</span>`);
     if (s.tcc) normal.push(`<span class="chipv" style="color:#9fb0c8">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
     if (s.d2m) normal.push(`<span class="chipv" style="color:#6cd7c4">dew <b>${f(s.d2m[i], (v) => W().units.temp(v).v)}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
-    if (s.msl) normal.push(`<span class="chipv" style="color:#b7a6f0"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}</span>`);
+    // Pressure with its direction: the number alone says nothing, the trend is
+    // the whole reason a barometer is on the wall.
+    if (s.msl) {
+      const later = s.msl[Math.min(i + Math.max(1, Math.round(6 / stepHrs(d, i))), s.msl.length - 1)];
+      const dP = later != null && s.msl[i] != null ? (later - s.msl[i]) / 100 : 0;
+      const trend = Math.abs(dP) < 1 ? "" : dP > 0 ? " ↗" : " ↘";
+      normal.push(`<span class="chipv" style="color:#b7a6f0"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}${trend}</span>`);
+    }
+    // What it feels like, when that is not what the thermometer says.
+    if (t != null) {
+      const c = t - K, w = s.wind ? s.wind[i] : null, dpK = s.d2m ? s.d2m[i] : null;
+      let feels = c;
+      if (w != null && c <= 10 && w * 3.6 >= 4.8) { const q = Math.pow(w * 3.6, 0.16); feels = 13.12 + 0.6215 * c - 11.37 * q + 0.3965 * c * q; }
+      else if (dpK != null && c >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / dpK)); feels = c + 0.5555 * (e - 10); }
+      if (Math.abs(Math.round(feels) - Math.round(c)) >= 2)
+        normal.push(`<span class="chipv" style="color:${tempColor(feels)}">feels <b>${W().units.tempC(feels).v}°</b></span>`);
+    }
+    // Cloud base from the temperature/dew-point spread: ~125 m per °C. Only
+    // worth saying when there is cloud to have a base.
+    if (!sea && s.tcc && s.tcc[i] > 0.2 && s.d2m && s.d2m[i] != null && t != null) {
+      const spread = (t - s.d2m[i]);
+      if (spread > 0.3 && spread < 25) normal.push(`<span class="chipv" style="color:#a9c4d8">base ≈ <b>${W().units.alt(Math.round(spread * 125 / 50) * 50).v}</b> ${W().units.altUnit}</span>`);
+    }
     if (s.cape && s.cape[i] >= 100) normal.push(`<span class="chipv" style="color:${s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)"}">CAPE <b>${s.cape[i].toFixed(0)}</b> J/kg</span>`);
     const freezing = d.derived && d.derived.freezing_level_m && d.derived.freezing_level_m[i];
     if (!sea && freezing != null) normal.push(`<span class="chipv" style="color:#7fd8e8">freezing <b>${W().units.alt(freezing).v}</b> ${W().units.altUnit}</span>`);
@@ -250,7 +279,7 @@
           ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span>${sun.len ? `<span class="len">${sun.len} of daylight</span>` : ""}</div>` : ""}
         </div>
       </div>
-      ${(() => { const t = summarise(d, i); return t ? `<p class="summary">${t}</p>` : ""; })()}
+      ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}</p>` : ""; })()}
       <div class="meta">${chips.join("")}</div>
       ${daysStrip(d, i)}
       ${alertsHtml(pt)}${airHtml(pt)}`;

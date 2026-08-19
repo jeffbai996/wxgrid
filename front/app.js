@@ -107,7 +107,7 @@
   window.WX.fn = { applyStep: (...a) => applyStep(...a), openPoint: (...a) => openPoint(...a), setStep: (...a) => setStep(...a), toast, firstSymbolId: () => firstSymbolId(),
                    renderPoint: () => renderPoint(), refreshPoint: () => refreshPoint(), closePoint: () => closePoint(), placeMarker: (...a) => placeMarker(...a),
                    stepHours: () => stepHours(), steps: () => steps(), layerUrl: () => layerUrl(),
-                   applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), fitStrip: () => fitStrip(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d) };
+                   applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), fitStrip: () => fitStrip(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d), clearOtherCover: (k) => clearOtherCover(k) };
 
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
@@ -351,6 +351,21 @@
     if (rail) { rail.value = String(v); rail.parentElement.querySelector("i").textContent = `${v}%`; }
     applyStep(false);
   }
+  // Overlays that paint the whole ground — radar, satellite, smoke, aerosol,
+  // air quality — cannot be read two at a time; the top one just hides the one
+  // under it. Turning one on turns the others off. Overlays that draw MARKS on
+  // the map (fires, quakes, alerts, storms, SIGMET, aurora, lightning) stack
+  // fine and are left alone.
+  const GROUND_COVER = [["radar", "#radar-toggle"], ["sat", "#sat-toggle"], ["smoke", "#smoke-toggle"],
+                        ["aod", "#aod-toggle"], ["aq", "#aq-toggle"]];
+  function clearOtherCover(keep) {
+    for (const [key, sel] of GROUND_COVER) {
+      if (key === keep || !state[key]) continue;
+      const btn = $(sel);
+      if (btn) btn.click();                      // each toggle owns its own teardown
+    }
+  }
+
   function renderControls() {
     const ms = $("#models");
     // The selected model also says what it resolves. Only the selected one:
@@ -441,6 +456,15 @@
 
     renderLegend();
     $("#play").onclick = togglePlay;
+    // Back to the present in one tap: scrubbing four days out and finding your
+    // way home by dragging is the kind of thing a button fixes.
+    const nowStep = () => {
+      const ms = Date.now(), valid = steps().map((h) => runDate().getTime() + h * 3600e3);
+      let best = 0;
+      valid.forEach((t, k) => { if (Math.abs(t - ms) < Math.abs(valid[best] - ms)) best = k; });
+      return best;
+    };
+    $("#tape-now").onclick = () => { setStep(nowStep()); WX.tape.renderTapeSelection(); };
     const tb = $("#timebar"), tmin = $("#tape-min");
     // Three states, because "collapsed" and "gone" are different wants: full
     // table, header only, or out of the way entirely with just its grip left.
@@ -482,7 +506,7 @@
     $("#aurora-toggle").onclick = () => { if (!WX.sky) return; state.aurora = !state.aurora; $("#aurora-toggle").classList.toggle("on", state.aurora); if (state.aurora) WX.sky.aurora.load(); else WX.sky.aurora.clear(); };
     $("#lightning-toggle").onclick = () => WX.sky && WX.sky.lightning.load();
     $("#sigmet-toggle").onclick = () => { if (!WX.sigmet) return; state.sigmet = !state.sigmet; $("#sigmet-toggle").classList.toggle("on", state.sigmet); if (state.sigmet) WX.sigmet.load(); else WX.sigmet.clear(); };
-    $("#aq-toggle").onclick = () => { if (!WX.cams) return; state.aq = !state.aq; $("#aq-toggle").classList.toggle("on", state.aq); if (state.aq) WX.cams.load(state.aqVar); else WX.cams.clear(); };
+    $("#aq-toggle").onclick = () => { if (!WX.cams) return; state.aq = !state.aq; $("#aq-toggle").classList.toggle("on", state.aq); if (state.aq) { clearOtherCover("aq"); WX.cams.load(state.aqVar); } else WX.cams.clear(); };
     $("#fires-toggle").onclick = () => { if (!WX.fires) { toast("Fire overlay is still loading", 2500); return; } state.fires = !state.fires; $("#fires-toggle").classList.toggle("on", state.fires); if (state.fires) WX.fires.load(); else WX.fires.clear(); };
     $("#share-btn").onclick = async () => { pushHash(); await new Promise((r) => setTimeout(r, 300)); try { await navigator.clipboard.writeText(location.href); toast("Link copied"); } catch (e) { toast(location.href, 6000); } };
     $("#settings-btn").onclick = () => { $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(); };
@@ -493,9 +517,10 @@
     $("#radar-toggle").onclick = () => WX.ov.toggleRadar();
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
     $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) WX.ov.loadStorms(); else WX.ov.clearStorms(); };
-    $("#sat-toggle").onclick = () => { state.sat = !state.sat; $("#sat-toggle").classList.toggle("on", state.sat); if (state.sat) WX.ov.loadSat(); else WX.ov.clearSat(); };
+    $("#sat-toggle").onclick = () => { state.sat = !state.sat; $("#sat-toggle").classList.toggle("on", state.sat); if (state.sat) { clearOtherCover("sat"); WX.ov.loadSat(); } else WX.ov.clearSat(); };
     for (const [k, load, clear] of [["smoke", "loadSmoke", "clearSmoke"], ["quakes", "loadQuakes", "clearQuakes"], ["aod", "loadAod", "clearAod"], ["thunder", "loadThunder", "clearThunder"]]) {
-      $(`#${k}-toggle`).onclick = () => { state[k] = !state[k]; $(`#${k}-toggle`).classList.toggle("on", state[k]); if (state[k]) WX.ov[load](); else WX.ov[clear](); };
+      $(`#${k}-toggle`).onclick = () => { state[k] = !state[k]; $(`#${k}-toggle`).classList.toggle("on", state[k]);
+        if (state[k]) { if (k === "smoke" || k === "aod") clearOtherCover(k); WX.ov[load](); } else WX.ov[clear](); };
     }
     $("#theme-toggle").onclick = () => { applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light"); $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme; };
     $("#route-toggle").onclick = () => {

@@ -165,7 +165,7 @@
     const c = gj.counts || {};
     const fires = (c["CA:incident"] || 0) + (c["US:incident"] || 0);
     const perims = (c["CA:perimeter"] || 0) + (c["US:perimeter"] || 0);
-    toast(`${fires} incidents, ${perims} perimeters. Tap one for the agency record.`, 6000);
+    toast(`${fires} incidents, ${perims} perimeters. Tap for details.`, 6000);
   }
 
   function clear() {

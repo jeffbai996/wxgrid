@@ -184,7 +184,7 @@
         M().on("click", "storm-now", (e) => { const p = e.features[0].properties; WX.fn.toast(`${p.class} ${p.name} · ${p.intensity_kt} kt · ${p.pressure_mb} mb · moving ${p.movement} · adv ${p.advisory}`, 8000); });
       }
       const names = (gj.storms || []).map((x) => `${x.class} ${x.name}`).join(", ");
-      WX.fn.toast(names ? `Active: ${names}` : "No active tropical systems (NHC/CPHC)", 5000);
+      WX.fn.toast(names ? `Tropical systems: ${names}` : "No tropical systems in the NHC and CPHC feeds.", 5000);
       if (gj.storms && gj.storms.length && !state.point) { const st = gj.storms[0]; const f = gj.features.find((x) => x.properties.kind === "current" && x.properties.id === st.id); if (f) M().flyTo({ center: f.geometry.coordinates, zoom: Math.max(3.5, Math.min(M().getZoom(), 5)), duration: 1200 }); }
     } catch (e) { WX.fn.toast("Storm feed unavailable", 4000, "error"); state.storms = false; $("#storms-toggle").classList.remove("on"); }
   }
@@ -251,6 +251,7 @@
 
   async function toggleRadar() {
     state.radar = !state.radar;
+    if (state.radar && WX.fn.clearOtherCover) WX.fn.clearOtherCover("radar");
     $("#radar-toggle").classList.toggle("on", state.radar);
     if (!state.radar) { clearRadar(); WX.tape.renderTape(); WX.fn.applyStep(); return; }
     await loadRadar();

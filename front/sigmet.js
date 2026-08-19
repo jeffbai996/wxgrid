@@ -175,7 +175,7 @@
     const c = gj.counts || {};
     const total = (gj.features || []).length;
     const parts = ["CONVECTIVE", "TS", "TURB", "ICE", "IFR", "MTW", "ASH", "TC"].filter((h) => c[h]).map((h) => `${c[h]} ${h}`);
-    toast(total ? `SIGMET/AIRMET: ${total} areas in force — ${parts.join(", ")}. Tap one for altitudes, validity and the raw bulletin.`
+    toast(total ? `${total} SIGMET/AIRMET areas in force: ${parts.join(", ")}. Tap for details.`
                 : "No SIGMETs or AIRMETs in force right now.", 6500);
   }
 
