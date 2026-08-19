@@ -160,4 +160,7 @@
   document.addEventListener("click", (e) => { if (e.target.closest("#strip-settings")) open(); });
   document.addEventListener("wx-units", paint);
   WX.settings = { open, close, toggle: () => ($("#settings") && !$("#settings").hidden ? close() : open()) };
+  // Build once while the module loads. It stays hidden, but every settings
+  // entry point now targets a stable drawer instead of creating UI mid-click.
+  build();
 })();
