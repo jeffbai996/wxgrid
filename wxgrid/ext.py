@@ -124,13 +124,14 @@ def _reverse_place_name(address: dict, fallback: str = "") -> str:
                   or address.get("hamlet"))
     municipality = address.get("municipality") or ""
     county = address.get("county") or ""
+    administrative_name = settlement or municipality
     if address.get("state") == "British Columbia" and (
-            re.match(r"^(?:Electoral )?Area\s+[A-Z0-9]\b", municipality, re.I)
-            or "electoral area" in municipality.lower()):
+            re.match(r"^(?:Electoral )?Area\s+[A-Z0-9]\b", administrative_name, re.I)
+            or "electoral area" in administrative_name.lower()):
         district = county if "regional district" in county.lower() else ""
         if district.lower().startswith("regional district of "):
             district = district[len("Regional District of "):] + " Regional District"
-        return settlement or district or fallback
+        return district or fallback
     return settlement or municipality or county or fallback
 
 

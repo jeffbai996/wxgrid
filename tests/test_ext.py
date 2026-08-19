@@ -34,7 +34,7 @@ def test_geocoding_requests_english_names(monkeypatch):
 
 def test_bc_electoral_area_uses_regional_district_name():
     assert ext._reverse_place_name({
-        "municipality": "Area C (Pemberton Valley/Mount Currie/D'Arcy)",
+        "city": "Area C (Pemberton Valley/Mount Currie/D'Arcy)",
         "county": "Squamish-Lillooet Regional District",
         "state": "British Columbia",
     }) == "Squamish-Lillooet Regional District"

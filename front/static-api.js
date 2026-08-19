@@ -120,10 +120,11 @@
       fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`).then((r) => r.json()).catch(() => null)]);
     const a = g.address || {};
     const settlement = a.city || a.town || a.village || a.hamlet || "";
-    const electoralArea = a.state === "British Columbia" && (/^(?:Electoral )?Area\s+[A-Z0-9]\b/i.test(a.municipality || "") || /electoral area/i.test(a.municipality || ""));
+    const administrativeName = settlement || a.municipality || "";
+    const electoralArea = a.state === "British Columbia" && (/^(?:Electoral )?Area\s+[A-Z0-9]\b/i.test(administrativeName) || /electoral area/i.test(administrativeName));
     let district = /regional district/i.test(a.county || "") ? a.county : "";
     if (/^Regional District of /i.test(district)) district = district.replace(/^Regional District of /i, "") + " Regional District";
-    const place = electoralArea ? (settlement || district || g.name || "") : (settlement || a.municipality || a.county || g.name || "");
+    const place = electoralArea ? (district || g.name || "") : (settlement || a.municipality || a.county || g.name || "");
     return { place: { name: place, region: a.state || a.province || "", country: (a.country_code || "").toUpperCase(), display: g.display_name || "" },
              elevation_m: e && e.elevation ? e.elevation[0] : null };
   }
