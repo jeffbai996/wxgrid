@@ -50,6 +50,7 @@
   const FAMILY_ICON = { wind: "wind", gust: "gust", temp: "temp", rain: "tp6", snow: "sf6", sd: "sd_cm", frz: "frz", tcc: "tcc", msl: "msl", hum: "rh", cape: "cape", waves: "waves", uvi: "uvi" };
   const LEVEL_FT = { 1000: "≈350 ft", 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 600: "14k ft", 500: "FL180", 400: "FL240", 300: "FL300", 250: "FL340", 200: "FL390" };
   const LEVEL_M = { 1000: "≈100 m", 925: "≈750 m", 850: "≈1.5 km", 700: "≈3 km", 600: "≈4.2 km", 500: "≈5.5 km", 400: "≈7.2 km", 300: "≈9 km", 250: "≈10.5 km", 200: "≈12 km" };
+  const levelBadge = (level) => (LEVEL_FT[level] || "").startsWith("FL") ? LEVEL_FT[level] : (LEVEL_M[level] || "").replace(/^≈/, "");
   const RAINVIEWER = "https://api.rainviewer.com/public/weather-maps.json";
   const AVY_COLORS = { 0: "#8a8f98", 1: "#50b848", 2: "#fff200", 3: "#f7941e", 4: "#ed1c24", 5: "#231f20" };
 
@@ -107,7 +108,8 @@
   window.WX.fn = { applyStep: (...a) => applyStep(...a), openPoint: (...a) => openPoint(...a), setStep: (...a) => setStep(...a), toast, firstSymbolId: () => firstSymbolId(),
                    renderPoint: () => renderPoint(), refreshPoint: () => refreshPoint(), closePoint: () => closePoint(), placeMarker: (...a) => placeMarker(...a),
                    stepHours: () => stepHours(), steps: () => steps(), layerUrl: () => layerUrl(),
-                   applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), fitStrip: () => fitStrip(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d), clearOtherCover: (k) => clearOtherCover(k) };
+                   applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), fitStrip: () => fitStrip(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d), clearOtherCover: (k) => clearOtherCover(k),
+                   jumpModelTime: (key, iso) => switchModel(key, new Date(iso).getTime()) };
 
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
@@ -351,6 +353,34 @@
     if (rail) { rail.value = String(v); rail.parentElement.querySelector("i").textContent = `${v}%`; }
     applyStep(false);
   }
+  // The model and pressure pickers share one sliding selection plate. Keep the
+  // old plate's geometry across a re-render so changing model metadata (the
+  // selected grid badge) does not turn a smooth move into a flash.
+  function renderSlidingSeg(el, buttons) {
+    const old = el.querySelector(".seg-cursor");
+    const prior = old ? old.getBoundingClientRect() : null;
+    el.classList.add("sliding");
+    el.innerHTML = `<i class="seg-cursor" aria-hidden="true"></i>${buttons}`;
+    const cursor = el.querySelector(".seg-cursor");
+    const place = () => {
+      const active = el.querySelector("button.on");
+      if (!active) { cursor.style.opacity = "0"; return; }
+      cursor.style.opacity = "1";
+      cursor.style.width = `${active.offsetWidth}px`;
+      cursor.style.transform = `translateX(${active.offsetLeft}px)`;
+    };
+    if (prior && prior.width) {
+      const box = el.getBoundingClientRect();
+      cursor.style.width = `${prior.width}px`;
+      cursor.style.transform = `translateX(${prior.left - box.left + el.scrollLeft}px)`;
+      cursor.getBoundingClientRect();
+      cursor.classList.add("ready");
+      requestAnimationFrame(place);
+    } else {
+      place();
+      requestAnimationFrame(() => cursor.classList.add("ready"));
+    }
+  }
   // Overlays that paint the whole ground — radar, satellite, smoke, aerosol,
   // air quality — cannot be read two at a time; the top one just hides the one
   // under it. Turning one on turns the others off. Overlays that draw MARKS on
@@ -369,9 +399,9 @@
   function renderControls() {
     const ms = $("#models");
     // The selected model also says what it resolves. Only the selected one:
-    // five grid figures across the top bar is noise, one is information.
-    ms.innerHTML = catalog.models.map((m) => { const on = m.key === state.model;
-      return `<button data-model="${m.key}" class="${on ? "on" : ""}" ${m.runs.length ? "" : "disabled"} title="${m.label}${m.grid ? ` · ${m.grid}` : ""}">${m.short}${on && m.grid ? `<i class="grid">${m.grid}</i>` : ""}</button>`; }).join("");
+    // six grid figures across the top bar is noise, one is information.
+    renderSlidingSeg(ms, catalog.models.map((m) => { const on = m.key === state.model;
+      return `<button data-model="${m.key}" class="${on ? "on" : ""}" ${m.runs.length ? "" : "disabled"} title="${m.label}${m.grid ? ` · ${m.grid}` : ""}">${m.short}${on && m.grid ? `<i class="grid">${m.grid}</i>` : ""}</button>`; }).join(""));
     ms.querySelectorAll("button").forEach((b) => b.onclick = () => switchModel(b.dataset.model));
 
     const rs = $("#run");
@@ -445,13 +475,13 @@
     lv.classList.toggle("disabled", !showLevels);
     lv.title = showLevels ? "" : `${LAYER_LABEL[state.layer]} is a surface field`;
     if (!showLevels && levels.length) {
-      lv.innerHTML = [0, ...levels].map((l) => `<button data-level="${l}" class="${l === 0 ? "on" : ""}" disabled>${l || "sfc"}</button>`).join("");
+      renderSlidingSeg(lv, [0, ...levels].map((l) => `<button data-level="${l}" class="${l === 0 ? "on" : ""}" disabled>${l || "sfc"}</button>`).join(""));
     }
     if (showLevels) {
       const opts = [0, ...levels];
       if (!opts.includes(state.level)) state.level = 0;
       // Native title tooltips: hover a level for a beat and the metres/FL show.
-      lv.innerHTML = opts.map((l) => `<button data-level="${l}" class="${l === state.level ? "on" : ""}" title="${l ? `${l} hPa · ${LEVEL_M[l]} · ${LEVEL_FT[l]}` : "surface · 10 m wind · 2 m temperature"}">${l ? l : "sfc"}</button>`).join("");
+      renderSlidingSeg(lv, opts.map((l) => `<button data-level="${l}" class="${l === state.level ? "on" : ""}" title="${l ? `${l} hPa · ${LEVEL_M[l]} · ${LEVEL_FT[l]}` : "surface · 10 m wind · 2 m temperature"}">${l ? `${l}${l === state.level ? `<i class="level-alt">${levelBadge(l)}</i>` : ""}` : "sfc"}</button>`).join(""));
       lv.querySelectorAll("button").forEach((b) => b.onclick = () => { state.level = Number(b.dataset.level); renderControls(); applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); });
     }
 
@@ -465,13 +495,7 @@
     $("#play").onclick = togglePlay;
     // Back to the present in one tap: scrubbing four days out and finding your
     // way home by dragging is the kind of thing a button fixes.
-    const nowStep = () => {
-      const ms = Date.now(), valid = steps().map((h) => runDate().getTime() + h * 3600e3);
-      let best = 0;
-      valid.forEach((t, k) => { if (Math.abs(t - ms) < Math.abs(valid[best] - ms)) best = k; });
-      return best;
-    };
-    $("#tape-now").onclick = () => { setStep(nowStep()); WX.tape.renderTapeSelection(); };
+    $("#tape-now").onclick = () => { setStep(currentStepIdx()); WX.tape.renderTapeSelection(); };
     const tb = $("#timebar"), tmin = $("#tape-min");
     // Three states, because "collapsed" and "gone" are different wants: full
     // table, header only, or out of the way entirely with just its grip left.
@@ -572,6 +596,12 @@
   ];
   function buildStrip() {
     const st = $("#tstrip"); if (!st) return;
+    // renderControls runs for every model, level and layer change. The strip is
+    // structural, not model data: building it again appended another flyout
+    // to body and duplicated the overflow controls on every selection.
+    if (st.dataset.built === "1") { fitStrip(); return; }
+    document.querySelectorAll("#strip-more-pop").forEach((el) => el.remove());
+    st.dataset.built = "1";
     st.innerHTML = STRIP.map((it) => {
       if (!it) return '<div class="sep"></div>';
       const [k, tip, cls] = it; const src = $(`#${k}-toggle`); if (!src) return "";
@@ -593,7 +623,7 @@
     $("#strip-more").onclick = (e) => { e.stopPropagation(); st.classList.toggle("more-open"); positionMorePop(); };
     document.addEventListener("click", (e) => { if (!e.target.closest("#tstrip") && !e.target.closest("#strip-more-pop")) st.classList.remove("more-open"); });
     fitStrip();
-    addEventListener("resize", fitStrip);
+    addEventListener("resize", () => { if (!pageIsPinchZoomed()) fitStrip(); });
     new MutationObserver(() => st.querySelectorAll("button[data-for]").forEach((b) => b.classList.toggle("on", $("#" + b.dataset.for).classList.contains("on")))).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
   }
 
@@ -606,6 +636,10 @@
     let id = 0, args = null;
     return (...a) => { args = a; if (id) return; id = requestAnimationFrame(() => { id = 0; fn(...args); }); };
   };
+  // Safari emits resize events while page pinch-zooming. That is visual
+  // magnification, not a new layout viewport; re-clamping the panels against
+  // it makes the card and tape jump under the user's fingers.
+  const pageIsPinchZoomed = () => window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.02;
 
   function wireSheet() {
     const grip = $(".sheet-grip"), card = $("#point");
@@ -616,7 +650,7 @@
     // visualViewport is what the reader can actually see; innerHeight on iOS
     // still counts the strip behind Safari's toolbars, and a card sized to that
     // hides its own header — and its close button — off the top.
-    const viewH = () => Math.round((window.visualViewport && window.visualViewport.height) || innerHeight);
+    const viewH = () => Math.round((window.visualViewport && !pageIsPinchZoomed() && window.visualViewport.height) || innerHeight);
     const bounds = () => {
       const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
       return { min: 168, max: Math.max(220, viewH() - top - 18) };
@@ -663,8 +697,8 @@
     };
     grip.addEventListener("pointerup", () => end(false));
     grip.addEventListener("pointercancel", () => end(true));
-    addEventListener("resize", () => restoreSheetHeight());
-    if (window.visualViewport) window.visualViewport.addEventListener("resize", () => restoreSheetHeight());
+    addEventListener("resize", () => { if (!pageIsPinchZoomed()) restoreSheetHeight(); });
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", () => { if (!pageIsPinchZoomed()) restoreSheetHeight(); });
   }
 
   // Persisted panel sizing. Pointer capture keeps each drag stable even when
@@ -808,7 +842,7 @@
         localStorage.setItem("wxgrid.railHeight", railH);
       });
     }
-    addEventListener("resize", () => { if (tapeHeight) setTapeHeight(tapeHeight); restorePointPanelSize(); });
+    addEventListener("resize", () => { if (pageIsPinchZoomed()) return; if (tapeHeight) setTapeHeight(tapeHeight); restorePointPanelSize(); });
   }
 
   // Size the strip's buttons so the whole set fits between the top bar and the
@@ -859,9 +893,9 @@
     pop.style.top = Math.max(sr.top, Math.min(floor - pop.offsetHeight, r.top - pop.offsetHeight + r.height)) + "px";
   }
 
-  function switchModel(key) {
+  function switchModel(key, target = validDate().getTime()) {
     // Keep the VALID time, not the step index: comparing models means the same moment.
-    const target = validDate().getTime();
+    if (WX.tape) WX.tape.clearFineSelection();
     state.model = key; localStorage.setItem("wxgrid.model", key);
     state.run = modelEntry().runs[0].run;
     if (!runEntry().layers.includes(state.layer)) state.layer = runEntry().layers[0];
@@ -873,11 +907,18 @@
   }
 
   function clampStep() { state.stepIdx = Math.min(state.stepIdx, steps().length - 1); }
+  function currentStepIdx() {
+    const ms = Date.now(), valid = steps().map((h) => runDate().getTime() + h * 3600e3);
+    let best = 0;
+    valid.forEach((t, k) => { if (Math.abs(t - ms) < Math.abs(valid[best] - ms)) best = k; });
+    return best;
+  }
   function nudge(d) {
     if (state.radar && state.radarFrames.length) { state.radarIdx = (state.radarIdx + d + state.radarFrames.length) % state.radarFrames.length; WX.ov.applyRadarFrame(); return; }
+    if (WX.tape) WX.tape.clearFineSelection();
     state.stepIdx = (state.stepIdx + d + steps().length) % steps().length; $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) WX.ov.loadIso();
   }
-  function setStep(i) { state.stepIdx = Math.max(0, Math.min(steps().length - 1, i)); $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); }
+  function setStep(i) { if (WX.tape) WX.tape.clearFineSelection(); state.stepIdx = Math.max(0, Math.min(steps().length - 1, i)); $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); }
 
   function applyStep(prefetch = true) {
     pushHash();
@@ -893,6 +934,8 @@
     $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts({ weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
     $("#lead").textContent = `+${stepHours()}h`;
+    $("#tape-now").classList.toggle("on", state.stepIdx === currentStepIdx());
+    $("#tape-now").setAttribute("aria-pressed", state.stepIdx === currentStepIdx() ? "true" : "false");
     if (prefetch) { const img = new Image(); img.src = layerUrl(steps()[(state.stepIdx + 1) % steps().length]); if (state.resorts && WX.ov) WX.ov.loadResorts(); }
     WX.tape.renderTapeSelection();
     if (state.point) renderPoint();
@@ -956,7 +999,7 @@
     const my = ++pointReq;
     const keepResort = state.resort && Math.abs(state.resort.resort.lat - lat) < 1e-4 && Math.abs(state.resort.resort.lon - lon) < 1e-4;
     if (!keepResort) { state.resort = null; if (state.tab === "resort") state.tab = "now"; }
-    state.point = { lat, lon, data: null, name: name || null, local: null, obs: null, avy: null, profile: null, cmp: null };
+    state.point = { lat, lon, data: null, ai: null, name: name || null, local: null, obs: null, avy: null, profile: null, cmp: null };
     $("#point").hidden = false;
     restorePointPanelSize(); restoreSheetHeight();
     document.body.classList.add("has-point");
@@ -975,9 +1018,23 @@
       renderPoint(); WX.tape.renderTape();
       const rd = new Date(d.run + ":00Z");
       $("#point-foot").textContent = `${modelEntry().short} run ${rd.toLocaleString(undefined, { day: "numeric", month: "short", timeZone: "UTC" })} ${String(rd.getUTCHours()).padStart(2, "0")}Z · 0.25° gridpoint · ${modelEntry().attribution.replace("ECMWF open data", "ECMWF").replace(" (AIFS)", "").replace("NOAA NCEP GFS via NOMADS", "NOAA")}`;
+      // A shorter model can hand the daily outlook to AI-GFS after its own
+      // final valid time. Keep the primary series untouched: only the day
+      // strip uses this continuation, and labels the change of model plainly.
+      const aiModel = catalog.models.find((m) => m.key === "aigfs" && m.runs.length);
+      if (state.model !== "aigfs" && aiModel) {
+        const aiRun = aiModel.runs[0];
+        const aiEnd = new Date(aiRun.valid_from).getTime() + Math.max(...aiRun.steps) * 3600e3;
+        const primaryEnd = new Date(d.valid[d.valid.length - 1]).getTime();
+        if (aiEnd > primaryEnd + 3600e3) {
+          WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}&model=aigfs&run=${aiRun.run}`)
+            .then((r) => { if (my === pointReq) { state.point.ai = r; renderPoint(); } })
+            .catch(() => {});
+        }
+      }
     } catch (e) { $("#point-now").textContent = "point forecast unavailable"; }
     // local context arrives lazily and re-renders as it lands
-    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if ((!state.point.name || hasNonLatinScript(state.point.name)) && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; WX.tape.renderTape(); } renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if ((!state.point.name || hasNonLatinScript(state.point.name)) && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; } WX.tape.renderTape(); renderPoint(); } }).catch(() => {});
     WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.obs = r; renderPoint(); } }).catch(() => {});
     WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.alerts = r.alerts || []; renderPoint(); } }).catch(() => {});
     WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.air = r; renderPoint(); } }).catch(() => {});

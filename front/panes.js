@@ -281,7 +281,7 @@
       </div>
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}</p>` : ""; })()}
       <div class="meta">${chips.join("")}</div>
-      ${daysStrip(d, i)}
+      ${daysStrip(pt, d, i)}
       ${alertsHtml(pt)}${airHtml(pt)}`;
     // local context
     const loc = pt.local || {};
@@ -331,33 +331,59 @@
     drawMeteogram(d, i);
   }
 
-  // Seven-day strip: one cell per local calendar day (icon, hi/lo, precip,
-  // max wind); tapping a day jumps the timeline to its midday step.
-  function daysStrip(d, i) {
+  // One cell per local calendar day. A short physics run hands only this strip
+  // to AI-GFS after its last complete day; the primary series and every other
+  // pane remain the model the user selected.
+  function daysStrip(pt, d, i) {
     const s = d.series; if (!s.t2m) return "";
+    const primaryModel = d.model || W().state.model;
     const days = new Map();
-    d.valid.forEach((v, k) => { const dt = new Date(v); const key = dt.toDateString(); if (!days.has(key)) days.set(key, { dt, ks: [] }); days.get(key).ks.push(k); });
+    const addDays = (src, model, ai, after = -Infinity, exclude = new Set()) => {
+      if (!src || !src.series || !src.series.t2m) return;
+      src.valid.forEach((v, k) => {
+        const dt = new Date(v), key = dt.toDateString();
+        if (dt.getTime() <= after || exclude.has(key)) return;
+        if (!days.has(key)) days.set(key, { dt, ks: [], src, model, ai });
+        days.get(key).ks.push(k);
+      });
+    };
+    addDays(d, primaryModel, false);
+    const primaryKeys = new Set(days.keys());
+    const primaryEnd = Math.max(...d.valid.map((v) => new Date(v).getTime()));
+    if (pt.ai && pt.ai.model === "aigfs") addDays(pt.ai, "aigfs", true, primaryEnd, primaryKeys);
     const cur = new Date(d.valid[i]).toDateString();
-    const cells = [...days.values()].slice(0, 8).map(({ dt, ks }) => {
+    const usable = [...days.values()].filter(({ src, ks }) => ks.filter((k) => src.series.t2m[k] != null).length >= 2).slice(0, 16);
+    const cells = usable.map(({ dt, ks, src, model, ai }) => {
+      const s = src.series;
       const ts = ks.map((k) => s.t2m[k]).filter((x) => x != null);
-      if (ts.length < 2) return "";
       const hi = Math.max(...ts) - K, lo = Math.min(...ts) - K;
       const rain = ks.reduce((a, k) => a + ((s.tp6 && s.tp6[k]) || 0), 0), snow = ks.reduce((a, k) => a + ((s.sf6 && s.sf6[k]) || 0), 0);
       const wmax = s.wind ? Math.max(...ks.map((k) => s.wind[k] || 0)) : null;
-      const noon = ks.reduce((b, k) => Math.abs(new Date(d.valid[k]).getHours() - 13) < Math.abs(new Date(d.valid[b]).getHours() - 13) ? k : b, ks[0]);
+      const noon = ks.reduce((b, k) => Math.abs(new Date(src.valid[k]).getHours() - 13) < Math.abs(new Date(src.valid[b]).getHours() - 13) ? k : b, ks[0]);
       const cloud = ks.map((k) => s.tcc ? s.tcc[k] : null).filter((x) => x != null); const cl = cloud.length ? cloud.reduce((a, b) => a + b, 0) / cloud.length : null;
       const g = W().tape && W().tape.glyph ? W().tape.glyph(cl, (rain + snow) / Math.max(1, ks.length) * (24 / 6), s.t2m[noon], false) : "";
-      const on = dt.toDateString() === cur;
+      const on = model === primaryModel && dt.toDateString() === cur;
       const wet = snow >= 1 ? `<span class="sn">${W().units.snow(snow).txt}</span>` : rain >= 0.5 ? W().units.precip(rain).txt : "";
-      return `<button class="day${on ? " on" : ""}" data-k="${noon}" title="${dt.toDateString()}">
-        <span class="dn">${dt.toLocaleDateString(undefined, { weekday: "short" })}</span>
+      return `<button class="day${on ? " on" : ""}${ai ? " ai" : ""}" data-k="${noon}" data-model="${model}" data-valid="${src.valid[noon]}" title="${dt.toDateString()}${ai ? " · NOAA AI-GFS" : ""}">
+        <span class="dn">${dt.toLocaleDateString(undefined, { weekday: "short" })}${ai ? `<i>AI</i>` : ""}</span>
         <span class="dg">${g}</span>
         <span class="hl"><b style="color:${tempColor(hi)}">${W().units.tempC(hi).v}°</b><i>${W().units.tempC(lo).v}°</i></span>
         <span class="pr">${wet || "&nbsp;"}</span>
         ${wmax != null ? `<span class="wd" style="background:${W().rampColor("wind", wmax, 0.55)}">${Math.round(W().speed(wmax))}<em>${W().speedUnit()}</em></span>` : ""}</button>`;
     }).join("");
-    setTimeout(() => document.querySelectorAll(".days .day").forEach((b) => b.onclick = () => W().setStep(Number(b.dataset.k))), 0);
-    return `<div class="days">${cells}</div>`;
+    setTimeout(() => document.querySelectorAll(".days .day").forEach((b) => b.onclick = () => {
+      if (b.dataset.model !== W().state.model) W().fn.jumpModelTime(b.dataset.model, b.dataset.valid);
+      else W().setStep(Number(b.dataset.k));
+    }), 0);
+    const extended = usable.filter((x) => x.ai);
+    let note = "";
+    if (extended.length) {
+      const first = extended[0].dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      const short = (W().catalog.models.find((m) => m.key === primaryModel) || {}).short || primaryModel.toUpperCase();
+      const physics = !["aifs", "aigfs"].includes(primaryModel);
+      note = `<div class="days-note"><b>AI-GFS</b> from ${first}${physics ? ` · AI after ${short}’s physics range` : ` · continues after ${short}`}</div>`;
+    }
+    return `<div class="days${usable.length > 8 ? " extended" : ""}">${cells}</div>${note}`;
   }
 
   const AQI_BANDS = [[50, "Good", "#2f9e44"], [100, "Moderate", "#e6b800"], [150, "Unhealthy for sensitive", "#f08c00"], [200, "Unhealthy", "#e03131"], [300, "Very unhealthy", "#9c36b5"], [9999, "Hazardous", "#7f1d1d"]];

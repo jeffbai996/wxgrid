@@ -49,6 +49,31 @@ def test_bc_electoral_area_uses_regional_district_name():
     }) == "Kelowna"
 
 
+def test_reverse_prefers_containing_water_over_distant_admin_boundary(monkeypatch):
+    monkeypatch.setattr(ext, "_nominatim", lambda *a, **k: {
+        "name": "Bainbridge Island", "category": "boundary", "type": "administrative",
+        "address": {"town": "Bainbridge Island", "county": "Kitsap County",
+                    "state": "Washington", "country": "United States"},
+    })
+    monkeypatch.setattr(ext, "elevation", lambda *a: 0.0)
+    monkeypatch.setattr(ext, "nearby_named_water", lambda *a: "Puget Sound")
+    ext.cache._d.clear()
+    assert ext.reverse(47.7, -122.45) == {
+        "name": "Puget Sound", "region": "", "country": "", "display": "", "water": True,
+    }
+
+
+def test_reverse_keeps_land_when_no_water_area_contains_point(monkeypatch):
+    monkeypatch.setattr(ext, "_nominatim", lambda *a, **k: {
+        "name": "Lowland", "category": "boundary",
+        "address": {"town": "Lowland", "state": "Washington", "country": "United States"},
+    })
+    monkeypatch.setattr(ext, "elevation", lambda *a: 0.0)
+    monkeypatch.setattr(ext, "nearby_named_water", lambda *a: "")
+    ext.cache._d.clear()
+    assert ext.reverse(47.0, -122.0)["name"] == "Lowland"
+
+
 def test_nearest_metar_picks_closest_station(monkeypatch):
     fake = [{"icaoId": "CYVR", "lat": 49.19, "lon": -123.18, "temp": 17.0, "rawOb": "METAR CYVR", "reportTime": "t"},
             {"icaoId": "CWWA", "lat": 49.347, "lon": -123.193, "temp": 17.4, "rawOb": "METAR CWWA", "reportTime": "t"}]
@@ -347,6 +372,12 @@ def test_place_names_prefer_a_latin_script():
     # accented Latin is still Latin
     assert ext._latin_first("Zürich") == "Zürich"
     assert ext._latin_first("Genève", "Geneva") == "Genève"
-    # nothing readable: keep what exists rather than showing an empty card
+    # OSM has no English tag for many Siberian districts: transliterate the
+    # supplied name instead of putting Cyrillic back into the card.
+    assert ext._latin_first("Тындинский муниципальный округ") == "Tyndinskiy munitsipalnyy okrug"
+    assert ext._latin_first("Амурская область") == "Amurskaya oblast"
+    assert ext._latin_first("Өлөксөй") == "Oloksoy"
+    # Scripts without a deterministic fallback stay truthful rather than being
+    # guessed or dropped.
     assert ext._latin_first("北京") == "北京"
     assert ext._latin_first(None, "") == ""

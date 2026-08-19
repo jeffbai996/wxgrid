@@ -48,6 +48,7 @@
     }
 
     resize() {
+      if (window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.02) return;
       const w = this.map.getContainer().clientWidth, h = this.map.getContainer().clientHeight;
       this.canvas.width = Math.round(w * this.dpr);
       this.canvas.height = Math.round(h * this.dpr);

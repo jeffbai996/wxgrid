@@ -390,18 +390,53 @@ def api_thunder(model: str, run: str, step: int):
 
 
 ISOLINE_SPECS = {   # var → (interval, display transform, unit)
-    "msl": (4.0, lambda x: x / 100.0, "hPa"),
-    "gh_500": (60.0, lambda x: x, "m"),
-    "temp": (5.0, lambda x: x - 273.15, "°C"),
-    "frz": (500.0, lambda x: x, "m"),
+    "msl": (2.0, lambda x: x / 100.0, "hPa"),
+    "gh_500": (30.0, lambda x: x, "m"),
+    "temp": (2.0, lambda x: x - 273.15, "°C"),
+    "frz": (250.0, lambda x: x, "m"),
 }
+
+
+def _isoline_geojson(src: np.ndarray, interval: float, disp, unit: str) -> dict:
+    """Trace contours on the stored grid without inventing extra resolution.
+
+    contourpy linearly locates crossings inside each native/common-grid cell.
+    Keeping the full grid and every returned vertex removes the old 0.5° input
+    decimation plus every-other-vertex decimation that made fronts look blocky.
+    """
+    import contourpy
+
+    z = disp(src).astype(np.float64)
+    ny, nx = z.shape
+    lats = np.linspace(90.0, -90.0, ny)
+    lons = -180.0 + np.arange(nx) * (360.0 / nx)
+    finite = np.isfinite(z)
+    if not finite.any():
+        raise ValueError("field is empty")
+    lo = np.floor(np.nanmin(z) / interval) * interval
+    hi = np.ceil(np.nanmax(z) / interval) * interval
+    gen = contourpy.contour_generator(
+        lons, lats, np.where(finite, z, np.nan), name="serial",
+        corner_mask=True, line_type=contourpy.LineType.Separate,
+    )
+    feats = []
+    for lv in np.arange(lo, hi + interval, interval):
+        for line in gen.lines(lv):
+            if len(line) < 4:
+                continue
+            coords = [[round(float(x), 3), round(float(y), 3)] for x, y in line]
+            feats.append({"type": "Feature", "properties": {"value": float(lv), "label": f"{lv:g}"},
+                          "geometry": {"type": "LineString", "coordinates": coords}})
+    return {"type": "FeatureCollection", "unit": unit, "interval": interval,
+            "grid_degrees": round(360.0 / nx, 3), "features": feats}
 
 
 @app.get("/api/isolines/{model}/{run}/{step}/{var}.json")
 def api_isolines(model: str, run: str, step: int, var: str, level: int | None = None):
     """Contour lines (GeoJSON) for pressure, 500 hPa height, temperature or
-    freezing level — the classic isobar/isohypse overlay. Computed on a 2×
-    coarsened grid; that's ~1° lines, plenty for a screen and cheap."""
+    freezing level — the classic isobar/isohypse overlay. Crossings are
+    interpolated on every cell of the stored grid; the source resolution is
+    reported in the response and is not presented as higher-resolution data."""
     if var not in ISOLINE_SPECS:
         raise HTTPException(404, "no isolines for that variable")
     r = _reader(model, run)
@@ -409,9 +444,8 @@ def api_isolines(model: str, run: str, step: int, var: str, level: int | None = 
         raise HTTPException(404, "step not in run")
     step = _level_step(r, step, level is not None or var in ("frz", "gh_500"))
     tag = f"{var}{'' if level is None else '-' + str(level)}"
-    path = CACHE_DIR / model / r.rid / f"{step:03d}-iso-{tag}.json"
+    path = CACHE_DIR / model / r.rid / f"{step:03d}-iso-v2-{tag}.json"
     if not path.exists():
-        import contourpy
         interval, disp, unit = ISOLINE_SPECS[var]
         if var == "temp":
             src = r.slab("t2m" if not level else f"t_{level}", step)
@@ -421,26 +455,14 @@ def api_isolines(model: str, run: str, step: int, var: str, level: int | None = 
             if var not in r.variables:
                 raise HTTPException(404, "variable not in run")
             src = r.slab(var, step)
-        z = disp(src[::2, ::2]).astype(np.float64)
-        lats = np.linspace(90, -90, z.shape[0]); lons = np.linspace(-180, 179.5, z.shape[1])
-        finite = np.isfinite(z)
-        if not finite.any():
+        try:
+            payload = _isoline_geojson(src, interval, disp, unit)
+        except ValueError:
             raise HTTPException(404, "field is empty")
-        lo = np.floor(np.nanmin(z) / interval) * interval; hi = np.ceil(np.nanmax(z) / interval) * interval
-        levels_ = np.arange(lo, hi + interval, interval)
-        gen = contourpy.contour_generator(lons, lats, np.where(finite, z, np.nan), name="serial", corner_mask=True, line_type=contourpy.LineType.Separate)
-        feats = []
-        for lv in levels_:
-            for line in gen.lines(lv):
-                if len(line) < 6:
-                    continue
-                coords = [[round(float(x), 2), round(float(y), 2)] for x, y in line[::2]]
-                feats.append({"type": "Feature", "properties": {"value": float(lv), "label": f"{lv:g}"},
-                              "geometry": {"type": "LineString", "coordinates": coords}})
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = _tmp_for(path)
         import json as _json
-        tmp.write_text(_json.dumps({"type": "FeatureCollection", "unit": unit, "interval": interval, "features": feats}, separators=(",", ":")))
+        tmp.write_text(_json.dumps(payload, separators=(",", ":")))
         tmp.replace(path)
     return FileResponse(path, media_type="application/json",
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})

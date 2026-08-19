@@ -72,7 +72,7 @@
     box.querySelector(".skip").onclick = done;
     box.querySelector(".next").onclick = next;
     document.addEventListener("keydown", (e) => { if (!box) return; if (e.key === "Escape") done(); if (e.key === "Enter") next(); });
-    addEventListener("resize", () => box && place());
+  addEventListener("resize", () => { if (window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.02) return; if (box) place(); });
     i = 0; place();
   }
   WX.tour = { start, done };

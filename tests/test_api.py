@@ -61,6 +61,7 @@ def test_freezing_level_layer_profile_and_isolines():
     assert warm["snow_cm"][0] == 0 and warm["rain_mm"][0] > 0
     assert api._snow_ratio(-20) == 15.0 and api._snow_ratio(5) == 5.0 and api._snow_ratio(None) == 10.0
     iso = c.get("/api/isolines/aifs/latest/6/temp.json").json()
-    assert iso["unit"] == "°C" and "features" in iso              # a flat field has no lines; shape only
+    assert iso["unit"] == "°C" and iso["interval"] == 2.0 and iso["grid_degrees"] == 0.25
+    assert "features" in iso                                        # a flat field has no lines; shape only
     frz_iso = c.get("/api/isolines/aifs/latest/6/frz.json")
     assert frz_iso.status_code == 200

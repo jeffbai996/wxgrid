@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776ab)](https://www.python.org/)
 [![API keys: none](https://img.shields.io/badge/API%20keys-none-brightgreen)](#overlays-and-external-feeds)
-[![Models: IFS · AIFS · GFS · GEM · GEFS](https://img.shields.io/badge/models-IFS%20%C2%B7%20AIFS%20%C2%B7%20GFS%20%C2%B7%20GEM%20%C2%B7%20GEFS-ff8a3d)](#models)
+[![Models: IFS · AIFS · GFS · AI-GFS · GEM · GEFS](https://img.shields.io/badge/models-IFS%20%C2%B7%20AIFS%20%C2%B7%20GFS%20%C2%B7%20AI--GFS%20%C2%B7%20GEM%20%C2%B7%20GEFS-ff8a3d)](#models)
 [![Live demo](https://img.shields.io/badge/demo-jeffbai996.github.io%2Fwxgrid-ff8a3d)](https://jeffbai996.github.io/wxgrid/)
 
 ![wxgrid](docs/img/01-hero.jpg)
@@ -16,7 +16,7 @@ model data all of them run on is free — ECMWF, NOAA and Environment Canada
 publish it, keyless, several times a day. wxgrid pulls it, stores it once, and
 draws it.
 
-Five models on one grid, ten pressure levels, particles, agency radar, warnings
+Six global models on one grid, ten pressure levels, particles, agency radar, warnings
 from four national services, wildfires with the incident records attached,
 aerosols, cross-sections, soundings against real balloon ascents, ensemble
 spread, and a forecast along a route at the time you would arrive. Runs on one
@@ -25,9 +25,10 @@ is a Zarr store, a FastAPI app and a folder of static JavaScript — no build
 step, no bundler, no node_modules.
 
 ```
-ECMWF open data (IFS, AIFS, waves) ─┐
-NOAA NOMADS (GFS, GEFS mean, GEFS-Aerosol) ├─ wxgrid.ingest ─▶ data/store/<model>/<run>.zarr
-ECCC dd.weather.gc.ca (GEM GDPS) ───┘        (GRIB2 → common 0.25° grid → Zarr, one step per chunk,
+ECMWF open data (IFS, AIFS, waves) ──────────┐
+NOAA NOMADS (GFS, GEFS mean, GEFS-Aerosol) ─┤
+NOAA AWS Open Data (AI-GFS) ────────────────┼─ wxgrid.ingest ─▶ data/store/<model>/<run>.zarr
+ECCC dd.weather.gc.ca (GEM GDPS) ───────────┘        (GRIB2 → common 0.25° grid → Zarr, one step per chunk,
                                               plus a point cube for fast column reads)
                                              │
               ┌──────────────────────────────┴──────────────────────────┐
@@ -44,10 +45,12 @@ ECCC dd.weather.gc.ca (GEM GDPS) ───┘        (GRIB2 → common 0.25° gr
 
 ## What you get
 
-**Tap anywhere.** Hero conditions, a 7-day strip, the nearest station's actual
+**Tap anywhere.** Hero conditions, a scrollable forecast strip out to 16 days,
+the nearest station's actual
 METAR, air quality, warnings in force, and a meteogram — then tabs for aloft
 winds, an airgram, a Skew-T, winter, outdoors, and every model side by side on
-the same valid times.
+the same valid times. When a shorter physics-model run ends, the extra days are
+labelled AI-GFS and switch to that model when selected.
 
 ![point card](docs/img/02-card.jpg)
 
@@ -97,6 +100,10 @@ with the hazardous stretches marked and any warning polygon you cross named.
 
 ![route forecast](docs/img/14-route.jpg)
 
+**The valley-scale check.** Inside the United States, the Compare pane can add
+a point-only NOAA HRRR forecast at 3 km for the next 48 hours. It is fetched
+keylessly on demand and never passed off as a global layer.
+
 **Radar from the agency that owns the radars.** ECCC's 1 km mosaic over Canada,
 NOAA MRMS over the US, RainViewer everywhere else — and it changes source by
 itself as you pan across the border, with a badge naming whichever one you are
@@ -124,7 +131,9 @@ overlays, same card.
 <img src="docs/img/07-mobile.jpg" width="19%" align="top">
 </p>
 
-Also in there: live radar with its own timeline, GOES satellite, isolines,
+Also in there: live radar with its own timeline, GOES satellite, isolines
+traced at the stored grid's full 0.25° spacing (2 hPa isobars, with no invented
+sub-grid detail),
 official warnings from NWS / Environment Canada / MeteoAlarm / BoM, tropical
 cyclones from the NHC, SIGMET and AIRMET hazard areas, earthquakes, avalanche
 forecasts, 1,000-odd ski resorts with lifts and elevation-band forecasts,
@@ -143,7 +152,8 @@ against an older level set keep working.
 |------|------------------|-------------------|-------------|-------------------------------|------------------------------------------------------|------------------|
 | ifs  | ECMWF IFS        | ecmwf-opendata    | 0.25°       | 3 h to 144 h, then 6 h to 240 | u10 v10 t2m d2m msl tp sf sd gust tcc cape + waves swh mwd mwp (6 h) | all 10 levels |
 | aifs | ECMWF AIFS (AI)  | ecmwf-opendata    | 0.25°       | 6 h to 240 h                  | u10 v10 t2m d2m msl tp sf tcc                        | all 10 levels |
-| gfs  | NOAA GFS         | NOMADS filter CGI | 0.25°       | 3 h to 240 h                  | u10 v10 t2m d2m msl tp sf(derived) sd gust tcc cape  | all 10 levels |
+| gfs  | NOAA GFS         | NOMADS filter CGI | 0.25°       | 3 h to 240 h, then 6 h to 384 | u10 v10 t2m d2m msl tp sf(derived) sd gust tcc cape  | all 10 levels |
+| aigfs | NOAA AI-GFS (AI) | AWS Open Data    | 0.25°       | 6 h to 384 h                  | u10 v10 t2m d2m msl tp                               | all 10 levels |
 | gem  | ECCC GEM GDPS    | MSC datamart      | 0.15° →     | 3 h to 240 h                  | u10 v10 t2m d2m msl tp sf sd gust tcc cape           | all 10 levels |
 | gefs | NOAA GEFS mean   | NOMADS filter CGI | 0.25° / 0.5° → | 3 h to 240 h               | u10 v10 t2m d2m msl tp sf(derived) sd gust tcc cape  | 1000 925 850 700 500 250 200 |
 
@@ -159,11 +169,19 @@ parameters are outside the stock eccodes tables and decode as shortName
 ingest forces that name on the message. Runs are 00 and 12 Z; there is no
 hour-000 accumulation file, so the first precipitation bucket is hour 003.
 
+**AI-GFS** is NOAA's GraphCast-lineage global model. wxgrid reads its public
+GRIB index on AWS and fetches only the byte ranges for the fields it stores;
+the model runs every 6 h through hour 384. It does not publish the cloud, CAPE,
+gust, snow or snow-depth fields used here, so those layers are absent rather
+than inferred. A shorter selected model can hand only the card's later daily
+outlook to AI-GFS; every continuation day is visibly labelled `AI`.
+
 **GEFS** is the `geavg` ensemble-mean member. Surface comes from the 0.25°
 `pgrb2s` product; the mean has no 0.25° pressure levels, so those come from the
 0.5° `pgrb2a` product and are regridded. That product carries no 600 hPa at all
 and ships 300/400 hPa without temperature, so `gefs` stores seven levels rather
-than ten. Ensemble spread (`gespr`) is not ingested.
+than ten. Its published standard-deviation fields drive the Spread pane; the
+bands are explicitly labelled Gaussian from σ, not presented as member traces.
 
 Precipitation and snowfall are stored as the amount since the previous stored
 step (`tp6`/`sf6` — the names predate the 3-hourly tier); snow depth is `sd_cm`.
@@ -181,10 +199,11 @@ chunk instead of every step (~50 ms instead of seconds). Runs ingested before
 this existed: `python -m wxgrid.ingest --model <m> --point-cube`; older IFS
 runs can pick up waves with `--augment-waves`.
 
-All free and keyless. ECMWF data is CC BY 4.0 (attribute ECMWF); GFS is public
-domain. `tp6` is precipitation over the previous 6 h in mm for every model
-(ECMWF's since-start accumulation is differenced; GFS's 6 h buckets are used
-as-is). Store units: K, Pa, m/s, mm — the API converts for display.
+All free and keyless. ECMWF data is CC BY 4.0 (attribute ECMWF); NOAA model
+data is public domain. `tp6` is precipitation over the previous stored step
+(usually 3 h despite the historical name): ECMWF's since-start accumulation is
+differenced and GFS's published buckets are used as-is. Store units: K, Pa,
+m/s, mm — the API converts for display.
 
 Adding a model = one entry in `wxgrid/models.py` (params map + precip mode)
 and, if it is a new source, a fetcher in `wxgrid/fetch.py`.
@@ -241,12 +260,14 @@ shim). MapLibre GL (vendored) on OpenFreeMap's dark style (positron in the
 light theme; dark theme is OLED black), one
 `image` source draped over the world in Web Mercator (the server reprojects
 the lat/lon grid so the drape is exact), a 2-D canvas particle layer above it
-(cambecc/earth lineage), a weather tape + scrubber (← → keys,
+(cambecc/earth lineage), a resizable weather tape + scrubber (← → keys,
 space to play), a model picker that keeps the *valid time* when you switch,
-altitude picker for wind/temp (surface, 925…250 hPa), live radar overlay with
+altitude picker for wind/temp (surface, 1000…200 hPa, with altitude or flight
+level on the selection), live radar overlay with
 its own timeline (RainViewer, last 2 h + nowcast), place search (Nominatim),
-and a tap-anywhere point card: Now (hero, alerts, air quality, station obs,
-meteogram), Aloft (winds/temps per level, freezing level, cloud, CAPE, QNH,
+and a tap-anywhere, resizable point card: Now (hero, alerts, air quality,
+station obs, up to 16 daily cells with a labelled AI-GFS extension, meteogram),
+Aloft (winds/temps per level, freezing level, cloud, CAPE, QNH,
 TAF), Airgram, Winter (new snow, snow depth, freezing/snow level, ridge wind,
 rain-on-snow, avalanche forecast), Outdoors (precip type, 24 h rain, gusts,
 wind chill/humidex, dry windows, tides), Compare (all models on the same valid
@@ -264,7 +285,7 @@ Right-click (or long-press) anywhere on the map for forecast-here,
 cross-section-from-here, measure-from-here, save, copy coordinates. On a phone
 the card is a bottom sheet you drag up over the tape. Permalinks live in the
 URL hash and are applied when one is pasted into an open tab. Measure tool,
-saved places, first-run tour. Fonts: Inter / Urbanist / Geist
+saved places, first-run tour. Fonts: DM Sans / Urbanist / Geist
 Mono (OFL, see `front/fonts/LICENSES.md`).
 
 The met-service badge names whoever forecasts for the country under the
@@ -311,7 +332,7 @@ lifts) degrade quietly.
 - WeatherNext 2 (DeepMind FGN ensemble) via BigQuery once the data-request
   form clears — needs a GCP project. AIFS-ENS member columns for true plumes
   (GEFS spread ships today; the bands are Gaussian from σ, not from members).
-- HRRR 3 km, ICON; hourly GFS surface tier; GFS waves (WW3).
+- ICON; hourly GFS surface tier; GFS waves (WW3).
 - Model split-screen; webcams (needs a keyed API).
 - Self-hosted AI model via ECMWF `ai-models` (Aurora / GraphCast-small).
 

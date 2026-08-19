@@ -118,6 +118,27 @@ def geocode(q: str, limit: int = 6) -> list[dict]:
 
 _NON_LATIN = re.compile(r"[^\u0000-\u024f\u1e00-\u1eff]")
 
+# Nominatim can only return an English name when OSM has one. Rural Russia and
+# Siberia often have none, so the final honest fallback is a transliteration of
+# the supplied name — never an invented translation, but always readable in
+# the site's Latin-script UI. The extra letters cover Yakut, Buryat, Kazakh,
+# Kyrgyz, Ukrainian and Belarusian names encountered across the same map.
+_CYRILLIC = {
+    "А": "A", "Б": "B", "В": "V", "Г": "G", "Д": "D", "Е": "E", "Ё": "Yo",
+    "Ж": "Zh", "З": "Z", "И": "I", "Й": "Y", "К": "K", "Л": "L", "М": "M",
+    "Н": "N", "О": "O", "П": "P", "Р": "R", "С": "S", "Т": "T", "У": "U",
+    "Ф": "F", "Х": "Kh", "Ц": "Ts", "Ч": "Ch", "Ш": "Sh", "Щ": "Shch",
+    "Ъ": "", "Ы": "Y", "Ь": "", "Э": "E", "Ю": "Yu", "Я": "Ya",
+    "І": "I", "Ї": "Yi", "Є": "Ye", "Ґ": "G", "Ў": "U", "Ә": "A", "Ғ": "Gh",
+    "Қ": "Q", "Ң": "Ng", "Ұ": "U", "Ү": "U", "Ө": "O", "Һ": "H", "Ҕ": "Gh",
+    "Ҥ": "Ng", "Ҷ": "J", "Ӣ": "I", "Ӯ": "U", "№": "No.",
+}
+_CYRILLIC.update({k.lower(): v.lower() for k, v in list(_CYRILLIC.items()) if k.isalpha()})
+
+
+def _latinize_cyrillic(value: str) -> str:
+    return "".join(_CYRILLIC.get(ch, ch) for ch in value)
+
 
 def _latin_first(*candidates: str | None) -> str:
     """The first candidate that reads in a Latin script, else the first that
@@ -127,6 +148,10 @@ def _latin_first(*candidates: str | None) -> str:
     for c in present:
         if not _NON_LATIN.search(c):
             return c
+    for c in present:
+        latin = _latinize_cyrillic(c)
+        if latin != c and not _NON_LATIN.search(latin):
+            return latin
     return present[0] if present else ""
 
 
@@ -218,8 +243,37 @@ def nearest_water(lat: float, lon: float, nodes: list[dict], sea_km: float = 150
     return pick[1]["name"] if pick else ocean_name(lat, lon)
 
 
+def nearby_named_water(lat: float, lon: float) -> str:
+    """Named bay, sound, sea or strait containing a likely water pin.
+
+    Nominatim reverse-geocodes marine points to the nearest administrative
+    boundary. OSM still has the water feature, but it must be queried by
+    containment. Cache on a 0.001° cell so opposite sides of a shoreline never
+    share a result.
+    """
+    key = f"water-in-v1:{lat:.3f}:{lon:.3f}"
+    def fetch():
+        q = (f'[out:json][timeout:25];is_in({lat:.4f},{lon:.4f})->.a;'
+             'area.a["name"]["natural"~"^(bay|strait)$"];out tags center qt;')
+        try:
+            r = requests.post("https://overpass-api.de/api/interpreter", data={"data": q},
+                              headers={"User-Agent": UA}, timeout=35)
+            r.raise_for_status()
+            elements = r.json().get("elements", [])
+        except Exception as exc:                       # noqa: BLE001
+            log.debug("nearby water lookup failed: %s", exc)
+            return ""
+        for e in elements:
+            tags = e.get("tags") or {}
+            name = tags.get("name:en") or tags.get("name")
+            if name:
+                return _latin_first(name)
+        return ""
+    return cache.get(key, 30 * 24 * 3600, fetch)
+
+
 def reverse(lat: float, lon: float) -> dict:
-    key = f"rgeo-en-v4:{lat:.2f}:{lon:.2f}"
+    key = f"rgeo-en-v7:{lat:.3f}:{lon:.3f}"
     def fetch():
         try:
             h = _nominatim("reverse", {"lat": lat, "lon": lon, "zoom": 10,
@@ -234,6 +288,15 @@ def reverse(lat: float, lon: float) -> dict:
         place = _latin_first(nd.get("name:en"), _reverse_place_name(a, h.get("name") or ""))
         region = _latin_first(a.get("state"), a.get("province"), "")
         country = a.get("country") or a.get("country_code", "").upper()
+        # Marine coordinates often inherit a town/county boundary. Only ask
+        # the exact OSM containment areas for sea-level boundary results; land
+        # gets no matching water area and keeps its administrative place.
+        consider_water = h.get("category") == "boundary" or (not place and not country)
+        elev = elevation(lat, lon) if consider_water else None
+        likely_water = h.get("category") == "boundary" and elev is not None and elev <= 1.0
+        water = nearby_named_water(lat, lon) if likely_water or (consider_water and not place and not country) else ""
+        if water:
+            return {"name": water, "region": "", "country": "", "display": "", "water": True}
         if not place and not country:
             # No address at all means open water.
             return {"name": nearest_water(lat, lon, water_nodes()), "region": "", "country": "",

@@ -609,7 +609,7 @@
     get data() { return data; },
   };
 
-  window.addEventListener("resize", () => { if (active && data) draw(); });
+  window.addEventListener("resize", () => { if (window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.02) return; if (active && data) draw(); });
   // units.js announces a preference change; every number on the strip is
   // rendered through it, so the whole panel just redraws.
   document.addEventListener("wx-units", () => { if (active) { const el = $("#wxr"); if (el) el.querySelector(".wxr-speed").value = Math.round(fromKmh(speedKmh)); render(); } });

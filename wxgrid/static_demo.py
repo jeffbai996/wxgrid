@@ -29,7 +29,7 @@ import numpy as np
 from PIL import Image
 
 from wxgrid import render
-from wxgrid.api import ISOLINE_SPECS, LAYERS, _available, _freezing_level_grid, _levels_for, _vars_for, field_for
+from wxgrid.api import ISOLINE_SPECS, LAYERS, _available, _freezing_level_grid, _isoline_geojson, _levels_for, _vars_for, field_for
 from wxgrid.config import BASE_DIR, DATA_DIR, FRONT_DIR
 from wxgrid.models import MODELS
 from wxgrid.store import RunReader, list_runs, parse_run_id
@@ -144,27 +144,16 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
                 if layer == "wind":
                     (wdir / f"{h}{'' if lvl is None else '-' + str(lvl)}.json").write_bytes(render.wind_json(r.slab(vars_[0], h), r.slab(vars_[1], h), factor=6, decimals=0))
         # isolines: msl + frz (+ temp) at this step
-        import contourpy
         for var in ("msl", "frz"):
             interval, disp_fn, unit = ISOLINE_SPECS[var]
             if var == "msl" and "msl" not in r.variables:
                 continue
             src = _freezing_level_grid(r, h) if var == "frz" else r.slab("t2m" if var == "temp" else var, h)
-            z = disp_fn(src[::2, ::2]).astype(np.float64)
-            lats = np.linspace(90, -90, z.shape[0]); lons = np.linspace(-180, 179.5, z.shape[1])
-            finite = np.isfinite(z)
-            if not finite.any():
+            try:
+                payload = _isoline_geojson(src, interval, disp_fn, unit)
+            except ValueError:
                 continue
-            lo = np.floor(np.nanmin(z) / interval) * interval; hi = np.ceil(np.nanmax(z) / interval) * interval
-            gen = contourpy.contour_generator(lons, lats, np.where(finite, z, np.nan), name="serial", corner_mask=True, line_type=contourpy.LineType.Separate)
-            feats = []
-            for lv in np.arange(lo, hi + interval, interval):
-                for line in gen.lines(lv):
-                    if len(line) < 6:
-                        continue
-                    feats.append({"type": "Feature", "properties": {"value": float(lv), "label": f"{lv:g}"},
-                                  "geometry": {"type": "LineString", "coordinates": [[round(float(x), 1), round(float(y), 1)] for x, y in line[::3]]}})
-            (idir / f"{var}.json").write_text(json.dumps({"type": "FeatureCollection", "unit": unit, "interval": interval, "features": feats}, separators=(",", ":")))
+            (idir / f"{var}.json").write_text(json.dumps(payload, separators=(",", ":")))
         log.info("step %03d done", h)
 
     # ── point tiles ──────────────────────────────────────────────────

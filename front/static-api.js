@@ -8,6 +8,12 @@
   const K = 273.15;
   const tileCache = new Map();
   const cache = new Map();
+  const CYR = {
+    А:"A",Б:"B",В:"V",Г:"G",Д:"D",Е:"E",Ё:"Yo",Ж:"Zh",З:"Z",И:"I",Й:"Y",К:"K",Л:"L",М:"M",Н:"N",О:"O",П:"P",Р:"R",С:"S",Т:"T",У:"U",Ф:"F",Х:"Kh",Ц:"Ts",Ч:"Ch",Ш:"Sh",Щ:"Shch",Ъ:"",Ы:"Y",Ь:"",Э:"E",Ю:"Yu",Я:"Ya",
+    І:"I",Ї:"Yi",Є:"Ye",Ґ:"G",Ў:"U",Ә:"A",Ғ:"Gh",Қ:"Q",Ң:"Ng",Ұ:"U",Ү:"U",Ө:"O",Һ:"H",Ҕ:"Gh",Ҥ:"Ng",Ҷ:"J",Ӣ:"I",Ӯ:"U"
+  };
+  Object.entries({...CYR}).forEach(([k, v]) => { CYR[k.toLowerCase()] = v.toLowerCase(); });
+  const latinize = (value) => Array.from(value || "").map((ch) => CYR[ch] ?? ch).join("");
 
   function url(u) {
     // strip our own query strings, encode ?level=X into the filename
@@ -116,7 +122,7 @@
   async function reverse(q) {
     const lat = q.get("lat"), lon = q.get("lon");
     const [g, e] = await Promise.all([
-      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=en&zoom=10&lat=${lat}&lon=${lon}`).then((r) => r.json()).catch(() => ({})),
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=en&namedetails=1&zoom=10&lat=${lat}&lon=${lon}`).then((r) => r.json()).catch(() => ({})),
       fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`).then((r) => r.json()).catch(() => null)]);
     const a = g.address || {};
     const settlement = a.city || a.town || a.village || a.hamlet || "";
@@ -124,8 +130,9 @@
     const electoralArea = a.state === "British Columbia" && (/^(?:Electoral )?Area\s+[A-Z0-9]\b/i.test(administrativeName) || /electoral area/i.test(administrativeName));
     let district = /regional district/i.test(a.county || "") ? a.county : "";
     if (/^Regional District of /i.test(district)) district = district.replace(/^Regional District of /i, "") + " Regional District";
-    const place = electoralArea ? (district || g.name || "") : (settlement || a.municipality || a.county || g.name || "");
-    return { place: { name: place, region: a.state || a.province || "", country: (a.country_code || "").toUpperCase(), display: g.display_name || "" },
+    const english = (g.namedetails || {})["name:en"] || "";
+    const place = latinize(english || (electoralArea ? (district || g.name || "") : (settlement || a.municipality || a.county || g.name || "")));
+    return { place: { name: place, region: latinize(a.state || a.province || ""), country: (a.country_code || "").toUpperCase(), display: g.display_name || "" },
              elevation_m: e && e.elevation ? e.elevation[0] : null };
   }
   async function obs(q) {

@@ -24,6 +24,20 @@
     } catch (e) { if (my === tapeReq) tapeKey = ""; /* keep last, allow retry */ }
   }
   function tapeData() { return (state.point && state.point.data) || state.tapePoint; }
+  function renderTapePlace() {
+    const el = $("#tape-where");
+    el.replaceChildren();
+    if (!state.point) { el.textContent = "map centre"; return; }
+    const name = state.point.name || `${state.point.lat.toFixed(2)}, ${state.point.lon.toFixed(2)}`;
+    el.append(document.createTextNode(name));
+    const region = state.point.local && state.point.local.place && state.point.local.place.region;
+    if (region && region.toLocaleLowerCase() !== name.toLocaleLowerCase()) {
+      const suffix = document.createElement("span");
+      suffix.className = "tape-region";
+      suffix.textContent = `, ${region}`;
+      el.append(suffix);
+    }
+  }
 
   // The tape: a table whose columns are forecast steps grouped under
   // day headers and whose rows are variables (icon, temp, feels like, rain,
@@ -32,6 +46,7 @@
   // interpolates; above it, the tape stops sampling one instant and reports
   // what the whole period did.
   let tapeRes = Number(localStorage.getItem("wxgrid.tapeRes") || 0);      // 0 = the model's own steps
+  let fineSelectedValid = null;
   const nativeStep = (d) => (d && d.steps && d.steps.length > 1 ? d.steps[1] - d.steps[0] : 3);
   function renderRes(d) {
     const box = $("#tape-res"); if (!box) return;
@@ -209,13 +224,18 @@
       <tr class="r-icon">${label("")}${iconRow}</tr>
       <tr class="r-temp">${label(agg ? "Temp high / low" : "Temp", WX.units.tempUnit)}${tempRow}</tr>
       <tr class="r-feels">${label(agg ? "Feels high / low" : "Feels like", WX.units.tempUnit)}${feelsRow}</tr>
-      <tr class="r-rain">${label("Rain / snow", `${WX.units.precipUnit} · ${WX.units.snowUnit}`)}${rainRow}</tr>
+      <tr class="r-rain">${label("Precip", `${WX.units.precipUnit} · ${WX.units.snowUnit}`)}${rainRow}</tr>
       <tr class="r-wind">${label("Wind", speedUnit())}${windRow}</tr>
       ${gustRow ? `<tr class="r-wind">${label("Gusts", speedUnit())}${gustRow}</tr>` : ""}
-      <tr class="r-dir">${label("Wind dir.")}${dirRow}</tr>
+      <tr class="r-dir">${label("Direction")}${dirRow}</tr>
     </tbody></table>`;
-    tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => WX.fn.setStep(keep ? keep[Number(c.dataset.i)] : Number(c.dataset.i)));
-    $("#tape-where").textContent = state.point ? (state.point.name || `${state.point.lat.toFixed(2)}, ${state.point.lon.toFixed(2)}`) : "map centre";
+    tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => {
+      const shown = Number(c.dataset.i), native = keep ? keep[shown] : shown;
+      WX.fn.setStep(native);
+      fineSelectedValid = d.valid[shown];
+      renderTapeSelection();
+    });
+    renderTapePlace();
     renderTapeSelection();
   }
 
@@ -226,8 +246,10 @@
     const keep = d0 ? resample(d0).keep : null;
     // the shown column for a step: exact when the tape is at full resolution,
     // otherwise the nearest kept column
-    const shown = !keep ? state.stepIdx
-      : keep.reduce((best, idx, k) => Math.abs(idx - state.stepIdx) < Math.abs(keep[best] - state.stepIdx) ? k : best, 0);
+    const sampled = d0 ? resample(d0).d : null;
+    const shown = fineSelectedValid && sampled
+      ? sampled.valid.reduce((best, iso, k, vals) => Math.abs(new Date(iso) - new Date(fineSelectedValid)) < Math.abs(new Date(vals[best]) - new Date(fineSelectedValid)) ? k : best, 0)
+      : !keep ? state.stepIdx : keep.reduce((best, idx, k) => Math.abs(idx - state.stepIdx) < Math.abs(keep[best] - state.stepIdx) ? k : best, 0);
     let on = null;
     tape.querySelectorAll(radar ? ".tape-col" : "td[data-i]").forEach((c) => {
       const isOn = radar ? Number(c.dataset.radar) === state.radarIdx : Number(c.dataset.i) === shown;
@@ -247,5 +269,6 @@
     return `<svg class="tape-glyph" viewBox="0 0 20 16">${c < 0.9 ? body : ""}${cl}${rn}</svg>`;
   }
 
-  WX.tape = { renderTape, renderTapeSelection, refreshTapePoint, tapeData, glyph };
+  WX.tape = { renderTape, renderTapeSelection, refreshTapePoint, tapeData, glyph,
+              clearFineSelection: () => { fineSelectedValid = null; } };
 })();

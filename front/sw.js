@@ -53,7 +53,7 @@ const at = (p) => new URL(p, BASE).href;
 // (referenced from styles.css) and the icons (referenced from the manifest).
 const SHELL_EXTRA = [
   "", "index.html", "manifest.webmanifest",
-  "fonts/inter.woff2", "fonts/GeistMono-Variable.woff2", "fonts/Urbanist-Variable.woff2",
+  "fonts/inter.woff2", "fonts/DMSans-Variable.woff2", "fonts/GeistMono-Variable.woff2", "fonts/Urbanist-Variable.woff2",
   "logo.svg", "icon-32.png", "icon-180.png", "icon-512.png",
 ];
 // Used only if index.html cannot be read at install time.
