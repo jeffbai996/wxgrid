@@ -525,7 +525,7 @@
       tapeGrip.setPointerCapture(e.pointerId); tb.classList.add("is-resizing"); document.body.classList.add("resizing-tape");
     });
     tapeGrip.addEventListener("pointermove", (e) => {
-      if (tapeDrag && e.pointerId === tapeDrag.id) setTapeHeight(tapeDrag.height + tapeDrag.y - e.clientY);
+      if (tapeDrag && e.pointerId === tapeDrag.id) setTapeHeight(tapeDrag.height + tapeDrag.y - e.clientY, true);
     });
     const finishTape = (e) => {
       if (!tapeDrag || (e && e.pointerId !== tapeDrag.id)) return;
