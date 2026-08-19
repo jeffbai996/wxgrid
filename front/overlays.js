@@ -31,7 +31,7 @@
         M().addLayer({ id: "iso-line", type: "line", source: "iso", paint: { "line-color": "rgba(255,255,255,0.55)", "line-width": ["case", ["==", ["%", ["get", "value"], ["*", 4, gj.interval || 4]], 0], 1.4, 0.7] } }, WX.fn.firstSymbolId());
         M().addLayer({ id: "iso-label", type: "symbol", source: "iso", layout: { "symbol-placement": "line", "text-field": ["get", "label"], "text-size": 10, "text-font": ["Noto Sans Regular"], "symbol-spacing": 320 }, paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.7)", "text-halo-width": 1.2 } });
       }
-    } catch (e) { WX.fn.toast("Isolines unavailable for this layer", 4000, "error"); }
+    } catch (e) { WX.fn.toast("No isolines for this layer.", 4000, "error"); }
   }
   function clearIso() { ["iso-label", "iso-line"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("iso")) M().removeSource("iso"); }
 
@@ -162,7 +162,7 @@
           tiles: ["https://geo.weather.gc.ca/geomet?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ALERTS&CRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=true&STYLES="] });
         M().addLayer({ id: "ec-alerts", type: "raster", source: "ec-alerts", paint: { "raster-opacity": 0.55, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
       }
-      WX.fn.toast(`Alerts: ${gj.features.length} NWS polygon alerts + Environment Canada layer`, 4000);
+      WX.fn.toast(`${gj.features.length} NWS alerts, plus the Environment Canada layer.`, 4000);
     } catch (e) { WX.fn.toast("Alerts unavailable", 4000, "error"); state.alerts = false; $("#alerts-toggle").classList.remove("on"); }
   }
   function clearAlerts() { ["alerts-line", "alerts-fill", "ec-alerts"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); ["alerts", "ec-alerts"].forEach((sname) => M().getSource(sname) && M().removeSource(sname)); }
@@ -199,7 +199,7 @@
       M().addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, "wx");
     }
     if (M().getLayer("wx")) M().setPaintProperty("wx", "raster-opacity", Math.min(0.5, LAYER_ALPHA[state.layer]));
-    WX.fn.toast("Satellite: GOES-East/West GeoColor, latest available (~1 h lag). Americas + Pacific.", 5000);
+    WX.fn.toast("GOES GeoColor over the Americas and Pacific, about an hour behind.", 5000);
   }
   function clearSat() { ["sat-east", "sat-west"].forEach((l) => { if (M().getLayer(l)) M().removeLayer(l); if (M().getSource(l)) M().removeSource(l); }); WX.fn.applyStep(); }
 
@@ -279,7 +279,7 @@
     if (!picked) { try { picked = await rainviewerDirect(); } catch (e) { /* nothing left */ } }
     if (my !== radarReq || !state.radar) return;
     if (!picked) {
-      WX.fn.toast("Radar unavailable right now — no source answered", 4500, "error");
+      WX.fn.toast("No radar source answered.", 4500, "error");
       state.radar = false; $("#radar-toggle").classList.remove("on"); clearRadar();
       return;
     }
@@ -302,7 +302,7 @@
     const failed = (catalog && (catalog.sources || []).filter((s) => s.error).map((s) => s.id)) || [];
     if (!quiet) {
       const span = state.radarFrames.length ? Math.round((state.radarFrames[state.radarFrames.length - 1].time - state.radarFrames[0].time) / 60) : 0;
-      WX.fn.toast(`Radar: ${picked.label} — ${picked.detail}. ${state.radarFrames.length} frames over ${span} min.`
+      WX.fn.toast(`${picked.label}, ${picked.detail}. ${state.radarFrames.length} frames over ${span} min.`
         + (failed.length ? ` (${failed.join(", ")} unavailable, fell back)` : ""), 5500);
     }
   }
@@ -388,7 +388,7 @@
     if (M().getSource("fires")) return;
     M().addSource("fires", { type: "raster", tileSize: 256, attribution: "Hotspots: NRCan CWFIS", tiles: [WMS("public:hotspots_last24hrs", "https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms")] });
     M().addLayer({ id: "fires", type: "raster", source: "fires", paint: { "raster-opacity": 0.95, "raster-fade-duration": 0 } });
-    toast("Fires: satellite hotspots, last 24 h (NRCan CWFIS — Canada + border states)", 4500);
+    toast("Satellite hotspots, last 24 h. NRCan CWFIS, Canada and border states.", 4500);
   }
   function clearFires() { if (M().getLayer("fires")) M().removeLayer("fires"); if (M().getSource("fires")) M().removeSource("fires"); }
   async function loadQuakes() {
@@ -401,7 +401,7 @@
         M().addLayer({ id: "quakes", type: "circle", source: "quakes", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "mag"], 2.5, 4, 5, 9, 7, 18], "circle-color": ["interpolate", ["linear"], ["get", "mag"], 2.5, "#f5d33c", 5, "#e8590c", 7, "#b30000"], "circle-opacity": 0.75, "circle-stroke-color": "#000", "circle-stroke-width": 1 } });
         M().on("click", "quakes", (e) => { const p = e.features[0].properties; toast(`M${p.mag} · ${p.place} · ${new Date(p.time).toLocaleString()}`, 7000); });
       }
-      toast(`Quakes: ${gj.features.length} events M2.5+ in the past day (USGS)`, 4000);
+      toast(`${gj.features.length} quakes M2.5 and up in the past day. USGS.`, 4000);
     } catch (e) { toast("USGS feed unavailable", 4000, "error"); }
   }
   // ── aerosol optical depth: MODIS Terra+Aqua combined, yesterday (NASA GIBS)
@@ -411,7 +411,7 @@
     M().addSource("aod", { type: "raster", tileSize: 256, maxzoom: 6, attribution: "Aerosol: NASA GIBS MODIS",
       tiles: [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Combined_Value_Added_AOD/default/${d}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`] });
     M().addLayer({ id: "aod", type: "raster", source: "aod", paint: { "raster-opacity": 0.75, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
-    toast(`Aerosol optical depth, MODIS combined, ${d}. Gaps are cloud or no overpass.`, 5000);
+    toast(`Aerosol optical depth, MODIS, ${d}. Gaps are cloud, or no pass.`, 5000);
   }
   function clearAod() { if (M().getLayer("aod")) M().removeLayer("aod"); if (M().getSource("aod")) M().removeSource("aod"); }
 
@@ -429,7 +429,7 @@
         M().addLayer({ id: "thunder", type: "symbol", source: "thunder", layout: { "icon-image": "bolt", "icon-size": ["interpolate", ["linear"], ["get", "cape"], 800, 0.55, 3000, 1.0], "icon-allow-overlap": true, "icon-ignore-placement": true },
                        paint: { "icon-opacity": 0.95 } });
       }
-    } catch (e) { if (my === thunderReq) toast("Thunder marks unavailable for this model", 4000, "error"); }
+    } catch (e) { if (my === thunderReq) toast("No thunder marks for this model.", 4000, "error"); }
   }
   // A yellow lightning bolt with a dark outline, drawn once into a canvas.
   function boltIcon() {

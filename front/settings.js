@@ -24,7 +24,7 @@
     ] },
     { title: "Time", rows: [
       { key: "clock", label: "Clock", opts: [["auto", "auto"], ["24", "24 h"], ["12", "12 h"]] },
-      { key: "tz", label: "Zone", opts: [["local", "mine"], ["point", "the place"], ["utc", "UTC"]] },
+      { key: "tz", label: "Zone", opts: [["local", "mine"], ["point", "pin"], ["utc", "UTC"]] },
     ] },
   ];
 

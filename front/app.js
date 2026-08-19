@@ -151,9 +151,9 @@
     wirePanelResizers();
 
     catalog = await WX.api(`${API}/models?ts=${Date.now()}`);
-    if (catalog.static) toast(`Static demo snapshot — ${catalog.static.note}. Run ${catalog.static.built}Z. Self-host for the full thing.`, 9000);
+    if (catalog.static) toast(`Static demo, run ${catalog.static.built}Z. ${catalog.static.note}.`, 9000);
     const withRuns = catalog.models.filter((m) => m.runs.length);
-    if (!withRuns.length) { toast("No model runs in the store yet — ingest is still running.", 8000); return; }
+    if (!withRuns.length) { toast("No model runs yet. Ingest is still running.", 8000); return; }
     const pref = localStorage.getItem("wxgrid.model");
     state.model = (withRuns.find((m) => m.key === pref) || withRuns[0]).key;
     state.run = modelEntry().runs[0].run;
@@ -475,19 +475,19 @@
     }
     $("#theme-toggle").onclick = () => { applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light"); $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme; };
     $("#route-toggle").onclick = () => {
-      if (!WX.route) { toast("Route forecast is unavailable in this build", 4000, "error"); return; }
+      if (!WX.route) { toast("Route forecast is not in this build.", 4000, "error"); return; }
       const on = !state.route; state.route = on; $("#route-toggle").classList.toggle("on", on);
       if (on) WX.route.start(); else WX.route.stop();
     };
     $("#xsection-toggle").onclick = () => { if (!WX.xs) { toast("Cross section is still loading", 2500); return; } const on = !state.xsection; $("#xsection-toggle").classList.toggle("on", on); if (on) WX.xs.start(); else WX.xs.stop(); };
-    $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); $("#measure-toggle").querySelector(".val").textContent = state.measure ? "on" : "off"; if (!state.measure) WX.ov.clearMeasure(); else toast("Measure: tap two points"); };
+    $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); $("#measure-toggle").querySelector(".val").textContent = state.measure ? "on" : "off"; if (!state.measure) WX.ov.clearMeasure(); else toast("Tap two points to measure."); };
     $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) WX.ov.loadIso(); else WX.ov.clearIso(); };
     $("#avy-toggle").onclick = () => { state.avy = !state.avy; $("#avy-toggle").classList.toggle("on", state.avy); if (state.avy) WX.ov.loadAvy(); else WX.ov.clearAvy(); };
     $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) WX.ov.loadResorts(); else WX.ov.clearResorts(); };
     $("#locate").onclick = goToMe;
     $("#point-close").onclick = closePoint;
     wireSheet();
-    $("#point-fav").onclick = () => { if (!state.point) return; const on = WX.search.toggleFav(state.point.lat, state.point.lon, state.point.name); $("#point-fav").classList.toggle("on", on); $("#point-fav").title = on ? "Saved place" : "Save place"; toast(on ? "Saved. Focus the search box to see your places." : "Removed", 2500); };
+    $("#point-fav").onclick = () => { if (!state.point) return; const on = WX.search.toggleFav(state.point.lat, state.point.lon, state.point.name); $("#point-fav").classList.toggle("on", on); $("#point-fav").title = on ? "Saved place" : "Save place"; toast(on ? "Saved. Find it in the search box." : "Removed", 2500); };
     WX.search.wireSearch();
     $$(".menu .menu-btn").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const m = b.parentElement; const open = m.classList.contains("open"); $$(".menu.open").forEach((x) => x.classList.remove("open")); if (!open) m.classList.add("open"); });
     // menu buttons show a tick when any of their toggles is on
@@ -557,9 +557,13 @@
     // The phone card is a sheet you size with your thumb: the drag sets its
     // height directly and keeps it, rather than snapping to two fixed stops.
     // Pulling it below the minimum still closes it.
+    // visualViewport is what the reader can actually see; innerHeight on iOS
+    // still counts the strip behind Safari's toolbars, and a card sized to that
+    // hides its own header — and its close button — off the top.
+    const viewH = () => Math.round((window.visualViewport && window.visualViewport.height) || innerHeight);
     const bounds = () => {
       const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
-      return { min: 168, max: Math.max(220, Math.round(innerHeight - top - 18)) };
+      return { min: 168, max: Math.max(220, viewH() - top - 18) };
     };
     const stored = Number(localStorage.getItem("wxgrid.sheetHeight")) || 0;
     let y0 = 0, dy = 0, startH = 0, dragging = false, closing = false, height = stored;
@@ -604,6 +608,7 @@
     grip.addEventListener("pointerup", () => end(false));
     grip.addEventListener("pointercancel", () => end(true));
     addEventListener("resize", () => restoreSheetHeight());
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", () => restoreSheetHeight());
   }
 
   // Persisted panel sizing. Pointer capture keeps each drag stable even when
@@ -897,7 +902,7 @@
     if (!keepResort) { state.resort = null; if (state.tab === "resort") state.tab = "now"; }
     state.point = { lat, lon, data: null, name: name || null, local: null, obs: null, avy: null, profile: null, cmp: null };
     $("#point").hidden = false;
-    restorePointPanelSize();
+    restorePointPanelSize(); restoreSheetHeight();
     document.body.classList.add("has-point");
     $("#point-title").textContent = name || `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
     $("#point-local").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;

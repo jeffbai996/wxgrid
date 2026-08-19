@@ -583,7 +583,11 @@ def _nws_point(lat: float, lon: float) -> list[dict]:
             out.append({"id": p.get("id"), "event": p.get("event"), "severity": p.get("severity"), "sev": sev, "color": _SEV_COLOR[sev],
                         "headline": p.get("headline"), "area": p.get("areaDesc"), "onset": p.get("onset"), "ends": p.get("ends") or p.get("expires"),
                         "description": (p.get("description") or "")[:900], "instruction": (p.get("instruction") or "")[:400],
-                        "sender": p.get("senderName"), "url": f.get("id"), "source": "NWS"})
+                        # The feature id is the API's own JSON document. Linking a
+                        # reader to it dumped raw CAP on their phone, so NWS
+                        # alerts carry no link: the full text is in this payload
+                        # and the card shows it.
+                        "sender": p.get("senderName"), "url": None, "source": "NWS"})
         return out
     except Exception as exc:
         log.info("nws point alerts: %s", exc)

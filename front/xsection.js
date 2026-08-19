@@ -48,7 +48,7 @@
   function start() {
     pts = []; data = null;
     WX.state.xsection = true;
-    WX.fn.toast("Cross section: tap the two ends of the line", 4000);
+    WX.fn.toast("Tap the two ends of the section.", 4000);
     paintLine();
   }
   function stop() {
@@ -82,7 +82,7 @@
       const d = await WX.api(`${WX.API}/xsection?lat1=${a[1].toFixed(3)}&lon1=${WX.wlon(a[0]).toFixed(3)}&lat2=${b[1].toFixed(3)}&lon2=${WX.wlon(b[0]).toFixed(3)}&step=${WX.stepHours}&model=${WX.state.model}&run=${WX.state.run}&n=100`);
       if (my !== req) return;
       data = d; draw();
-    } catch (e) { if (my === req) { data = null; el.querySelector(".xs-sub").textContent = ""; el.querySelector("canvas").getContext("2d").clearRect(0, 0, 3000, 600); WX.fn.toast("Cross section unavailable for this model", 4000, "error"); } }
+    } catch (e) { if (my === req) { data = null; el.querySelector(".xs-sub").textContent = ""; el.querySelector("canvas").getContext("2d").clearRect(0, 0, 3000, 600); WX.fn.toast("No cross section for this model.", 4000, "error"); } }
   }
 
   // ── drawing ────────────────────────────────────────────────────────────

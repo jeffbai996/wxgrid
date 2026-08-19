@@ -240,7 +240,12 @@
       const cl = (o.clouds || []).map((c) => `${c.cover}${c.base != null ? "@" + W().units.alt(c.base / 3.28084).txt : ""}`).join(" ");
       const obsDist = o.distance_km != null ? W().units.dist(o.distance_km).txt : "";
       const obsVis = o.visib != null ? W().units.dist(o.visib * 1.609344).txt : "";
-      obsHtml = `<div class="obs"><div class="obs-head"><span>Observed · ${esc(o.station)} ${esc(o.name || "")}${obsDist ? ` · ${obsDist}` : ""}</span><span>${tm ? W().units.time(tm) : ""} ${o.flight_category ? `<span class="fc ${esc(o.flight_category)}">${esc(o.flight_category)}</span>` : ""}</span></div>
+      // Station first, because that is the subject; the pill sits on its line
+      // instead of drifting to the end of a wrap; time and distance are the
+      // caveat under it, not part of the title.
+      obsHtml = `<div class="obs">
+        <div class="obs-head"><span class="stn"><b>${esc(o.station)}</b>${o.name ? `<span class="nm">${esc(o.name)}</span>` : ""}</span>${o.flight_category ? `<span class="fc ${esc(o.flight_category)}">${esc(o.flight_category)}</span>` : ""}</div>
+        <div class="obs-when">Observed <b>${tm ? W().units.time(tm) : "—"}</b>${obsDist ? `<span>${obsDist} away</span>` : ""}</div>
         <div class="obs-vals">${o.temp_c != null ? `<span><b style="color:${tempColor(o.temp_c)}">${W().units.tempC(o.temp_c).v}°</b> ${W().units.tempUnit.replace("°", "")}</span>` : ""}${o.dewpoint_c != null ? `<span>dew <b>${W().units.tempC(o.dewpoint_c).v}°</b></span>` : ""}${o.wspd_kt != null ? `<span><b>${speed(o.wspd_kt / 1.943844).toFixed(0)}</b> ${speedUnit()} ${o.wdir != null && o.wdir !== 0 ? String(o.wdir).padStart(3, "0") + "°" : "calm"}${o.wgst_kt ? ` · gusts ${speed(o.wgst_kt / 1.943844).toFixed(0)}` : ""}</span>` : ""}${obsVis ? `<span>vis <b>${obsVis}</b></span>` : ""}${o.altim_hpa != null ? `<span>QNH <b>${W().units.press(o.altim_hpa * 100).txt}</b></span>` : ""}${cl ? `<span>${esc(cl)}</span>` : ""}${o.wx ? `<span>${esc(o.wx)}</span>` : ""}</div>
         <div class="raw">${esc(o.raw || "")}</div></div>`;
     }
@@ -296,9 +301,19 @@
       ${a.uv != null ? `<span class="chipv" style="color:#f0c46a">UV now <b>${a.uv.toFixed(1)}</b></span>` : ""}${a.uv_clear != null ? `<span class="chipv" style="color:#f0c46a">clear-sky UV <b>${a.uv_clear.toFixed(1)}</b></span>` : ""}
       ${uvb ? `<span class="chipv" style="color:${uvb[1]}">UV max <b>${uvMax.toFixed(0)}</b> ${uvb[0]}</span>` : ""}</div>`;
   }
+  // An alert opens where its text is: in the card. Only the services that
+  // publish a readable page get a link out; the ones that publish an API
+  // document used to send the reader to raw CAP JSON.
   function alertsHtml(pt) {
     const al = pt.alerts; if (!al || !al.length) return "";
-    return `<div class="alerts">${al.slice(0, 3).map((a) => `<a class="alert" href="${esc(a.url || "#")}" target="_blank" rel="noopener" style="border-color:${esc(a.color)}"><i class="sw" style="background:${esc(a.color)}"></i><b>${esc(a.event)}</b>${a.ends ? `<span class="dim"> until ${new Date(a.ends).toLocaleString(undefined, { weekday: "short", hour: "numeric" })}</span>` : ""}<span class="hl">${esc((a.headline || a.area || "").slice(0, 120))}</span></a>`).join("")}${al.length > 3 ? `<div class="note">+${al.length - 3} more</div>` : ""}</div>`;
+    const head = (a) => `<i class="sw" style="background:${esc(a.color)}"></i><b>${esc(a.event)}</b>${a.ends ? `<span class="dim"> until ${new Date(a.ends).toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }))}</span>` : ""}<span class="hl">${esc((a.headline || a.area || "").slice(0, 140))}</span>`;
+    const body = (a) => {
+      const text = [a.description, a.instruction].filter(Boolean).join("\n\n");
+      return text ? `<div class="alert-text selectable">${esc(text)}</div>` : "";
+    };
+    return `<div class="alerts">${al.slice(0, 3).map((a) => (a.url
+      ? `<a class="alert" href="${esc(a.url)}" target="_blank" rel="noopener" style="border-color:${esc(a.color)}">${head(a)}</a>`
+      : `<details class="alert" style="border-color:${esc(a.color)}"><summary>${head(a)}</summary>${body(a)}</details>`)).join("")}${al.length > 3 ? `<div class="note">+${al.length - 3} more</div>` : ""}</div>`;
   }
 
   // NOAA sunrise/sunset (good to a minute or two), shown in the viewer's clock.
@@ -709,7 +724,9 @@
     const head = cols.map((t) => `<th>${new Date(t).toLocaleString(undefined, { weekday: "short", hour: "numeric" }).replace(" ", "<br>")}</th>`).join("");
     const rowFor = (label, pick) => Object.values(pt.cmp.rows).map(({ model, data }) => {
       const cells = cols.map((t) => { const k = data.valid.findIndex((v) => new Date(v).getTime() === t); return `<td>${k >= 0 ? pick(data.series, k) : "—"}</td>`; }).join("");
-      return `<tr><td>${model.short}</td>${cells}</tr>`;
+      // Each model's own resolution beside its name: the reason two rows differ
+      // is usually that one of them resolves the terrain and the other does not.
+      return `<tr><td class="mdl">${model.short}${model.grid ? `<i>${model.grid}</i>` : ""}</td>${cells}</tr>`;
     }).join("");
     $("#compare").innerHTML = `<table class="cmp"><thead><tr><th>Temp ${W().units.tempUnit}</th>${head}</tr></thead><tbody>${rowFor("t", (s, k) => s.t2m && s.t2m[k] != null ? W().units.temp(s.t2m[k]).v : "—")}</tbody>
       <thead><tr><th>Wind ${speedUnit()}</th>${head}</tr></thead><tbody>${rowFor("w", (s, k) => s.wind && s.wind[k] != null ? Math.round(speed(s.wind[k])) : "—")}</tbody>
