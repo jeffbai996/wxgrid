@@ -17,6 +17,7 @@ The snapshot is a demo: one model, 12-hourly, coarse points — the README says 
 """
 from __future__ import annotations
 
+import re
 import argparse
 import json
 import logging
@@ -53,6 +54,33 @@ def _shrink_png(png: bytes, factor: int) -> bytes:
     return buf.getvalue()
 
 
+
+def _rewrite_index(html: str) -> str:
+    """Turn the live index.html into the static-demo one.
+
+    Every edit here is asserted. These used to be literal `str.replace` calls,
+    which return the input unchanged when the markup drifts — adding `defer`
+    to the script tags silently stopped static-api.js from being injected and
+    shipped a demo that booted against an API that does not exist on Pages.
+    A build that cannot patch the page must fail, not publish.
+    """
+    subs = [
+        # the private overlay is not part of the public build
+        (r'[ \t]*<link rel="stylesheet" href="private/theme\.css">\n', "", 1),
+        (r'[ \t]*<script[^>]*\bsrc="private/theme\.js"[^>]*></script>\n', "", 1),
+        (r"<title>wxgrid</title>",
+         '<title>wxgrid</title>\n<meta name="wxgrid-mode" content="static">', 1),
+        # the shim must run before app.js, so it goes immediately in front of it
+        # and carries the same defer/async attributes to keep execution order
+        (r'<script([^>]*)\bsrc="app\.js"([^>]*)></script>',
+         r'<script\1src="static-api.js"\2></script>\n<script\1src="app.js"\2></script>', 1),
+    ]
+    for pattern, repl, count in subs:
+        html, n = re.subn(pattern, repl, html, count=count)
+        if n != count:
+            raise RuntimeError(f"static build could not patch index.html: {pattern!r} matched {n} times")
+    return html
+
 def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
     model = MODELS[model_key]
     runs = list_runs(model_key)
@@ -74,11 +102,7 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
             shutil.copytree(item, out / item.name)
         else:
             shutil.copy2(item, out / item.name)
-    html = (out / "index.html").read_text()
-    html = html.replace('<link rel="stylesheet" href="private/theme.css">\n', "")
-    html = html.replace('<script src="private/theme.js"></script>\n', "")
-    html = html.replace("<title>wxgrid</title>", '<title>wxgrid</title>\n<meta name="wxgrid-mode" content="static">')
-    html = html.replace('<script src="app.js"></script>', '<script src="static-api.js"></script>\n<script src="app.js"></script>')
+    html = _rewrite_index((out / "index.html").read_text())
     (out / "index.html").write_text(html)
     (out / ".nojekyll").write_text("")
 
