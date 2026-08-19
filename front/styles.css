@@ -374,16 +374,20 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
   #levels { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
   /* on a phone the legend gets its own full-width line under the controls,
      with its name and its two ends — a bare gradient means nothing */
-  .tape-head { flex-wrap: wrap; }
+  .tape-head { flex-wrap: wrap; gap: 4px; }
   #legend { order: 9; flex: 1 0 100%; width: auto; margin: 2px 0 0; }
   #legend .legend-ticks { display: flex; font-size: 9px; }
   #legend .legend-ticks span:nth-child(2), #legend .legend-ticks span:nth-child(4) { display: none; }
   #timebar { left: 8px; right: 8px; }
-  .time-meta { min-width: 112px; }
+  .time-meta { min-width: 0; flex: 1 1 96px; overflow: hidden; }
+  #valid-local, #valid-utc { overflow: hidden; text-overflow: ellipsis; }
+  #lead { min-width: 40px; }
+  .tape-min { margin-left: 0; }
   #tape-where { display: none; }
   #point { left: 8px; right: 8px; width: auto; }
   #point-now { gap: 10px; }
 }
+@media (max-width: 350px) { #lead { display: none; } }
 
 /* ── v3 additions ────────────────────────────────────────────────────── */
 
@@ -412,9 +416,9 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 @keyframes wx-pulse { 0% { transform: scale(.55); opacity: .9; } 70% { transform: scale(1.6); opacity: 0; } 100% { transform: scale(1.6); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .wx-marker::after { animation: none; opacity: .5; } }
 
-#point-local { font: 500 17px var(--font-num); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#point-local { font: 500 12px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #point-local b { color: var(--fg-2); font-weight: 600; }
-#point-local .sep { margin: 0 7px; opacity: .45; }
+#point-local .sep { margin: 0 6px; opacity: .5; }
 #point-local > span { white-space: nowrap; }
 .obs { margin: 6px 0 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.03); }
 .obs .obs-head { display: flex; justify-content: space-between; font: 700 11px var(--font-display); color: var(--fg-2); letter-spacing: .04em; text-transform: uppercase; }
@@ -489,7 +493,7 @@ table.wtape tr.r-dir td { height: 20px; }
 #tape-res button { border: 0; background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap;
   font: 700 10px var(--font-display); padding: 3px 7px; border-radius: 6px; letter-spacing: .02em; }
 #tape-res button.on { background: var(--accent); color: var(--accent-ink); }
-@media (max-width: 820px) { #tape-res { margin-left: 4px; } #tape-res button { padding: 3px 5px; } }
+@media (max-width: 820px) { #tape-res { margin-left: 0; } #tape-res button { padding: 3px; } }
 @media (max-width: 820px) { table.wtape th.lab { min-width: 64px; font-size: 9.5px; } table.wtape td { width: 40px; min-width: 40px; } }
 
 /* ── card: hero + colour ─────────────────────────────────────────────── */
