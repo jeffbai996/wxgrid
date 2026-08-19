@@ -1102,7 +1102,7 @@
     const my = ++pointReq;
     const keepResort = state.resort && Math.abs(state.resort.resort.lat - lat) < 1e-4 && Math.abs(state.resort.resort.lon - lon) < 1e-4;
     if (!keepResort) { state.resort = null; if (state.tab === "resort") state.tab = "now"; }
-    state.point = { lat, lon, data: null, ai: null, name: name || null, local: null, obs: null, avy: null, profile: null, cmp: null };
+    state.point = { lat, lon, data: null, ai: null, prob: null, name: name || null, local: null, obs: null, avy: null, profile: null, cmp: null };
     $("#point").hidden = false;
     restorePointPanelSize(); restoreSheetHeight();
     document.body.classList.add("has-point");
@@ -1145,6 +1145,7 @@
       alerts: (r) => { state.point.alerts = r.alerts || []; renderPoint(); },
       air: (r) => { state.point.air = r; renderPoint(); },
       tides: (r) => { state.point.tides = r || false; renderPoint(); },
+      prob: (r) => { if (r) { state.point.prob = r; renderPoint(); } },
     };
     // One streamed response instead of six requests: the six were queueing
     // behind map tiles on the browser's per-origin connection cap, so the
@@ -1184,6 +1185,7 @@
     WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.alerts(r); }).catch(() => {});
     WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.air(r); }).catch(() => {});
     WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.tides(r); }).catch(() => { if (my === pointReq) got.tides(false); });
+    WX.api(`${API}/prob?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.prob(r); }).catch(() => {});
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
   function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; document.body.classList.remove("has-point");

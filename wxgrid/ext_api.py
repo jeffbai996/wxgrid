@@ -27,7 +27,13 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
     Zarr read), the external lookups follow in completion order, and a line
     whose upstream fails is a {"error": ...} rather than a dropped connection.
     """
-    from wxgrid.api import api_point   # circular at module load, fine at call
+    from wxgrid.api import api_point, prob_point   # circular at module load, fine at call
+
+    def _prob(la, lo):
+        try:
+            return prob_point(la, lo)
+        except FileNotFoundError:
+            return None
 
     def line(kind, fn):
         try:
@@ -45,6 +51,7 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
             "alerts": lambda: {"alerts": ext.alerts_point(lat, lon)},
             "air": lambda: ext.air(lat, lon),
             "tides": lambda: ext.tides(lat, lon),
+            "prob": lambda: _prob(lat, lon),
         }
         futures = {_card_pool.submit(line, k, fn): k for k, fn in jobs.items()}
         from concurrent.futures import as_completed

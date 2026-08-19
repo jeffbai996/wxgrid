@@ -351,6 +351,31 @@ def _freezing_level(series: dict, levels: list[int], n: int) -> list:
     return out
 
 
+def prob_point(lat: float, lon: float) -> dict | None:
+    """The GEFS member probabilities at a point, whichever model the card is
+    on — the chance of rain does not care which deterministic run you read."""
+    runs = list_runs("gefs")
+    for rid in runs:                       # newest first; fall back if the
+        r = _reader("gefs", rid)           # newest cycle has no counts yet
+        if "prob_rain" not in r.variables:
+            continue
+        t0 = parse_run_id(r.rid)
+        series = {v: _clean(r.point(v, lat, lon)) for v in ("prob_rain", "prob_gust", "prob_frost") if v in r.variables}
+        if not any(x is not None for x in series.get("prob_rain", [])):
+            continue
+        return {"run": r.rid, "steps": r.steps, "members": 30,
+                "valid": [(t0 + timedelta(hours=h)).isoformat() for h in r.steps], "series": series}
+    return None
+
+
+@app.get("/api/prob")
+def api_prob(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-540, le=540)):
+    p = prob_point(lat, _wrap_lon(lon))
+    if p is None:
+        raise HTTPException(404, "no probability fields in the store yet")
+    return p
+
+
 @app.get("/api/point")
 def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-540, le=540),
               model: str = "aifs", run: str = "latest"):

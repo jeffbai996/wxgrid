@@ -713,6 +713,7 @@ table.wtape tr.r-temp td { font: 700 13px var(--font-num); font-variant-numeric:
 table.wtape tr.r-feels td { color: var(--fg-2); }
 table.wtape tr.r-rain td { color: var(--rain); font-weight: 600; }
 table.wtape tr.r-rain td .snow { color: #cfe8ff; }
+table.wtape tr.r-prob td { color: #71b8ff; font-weight: 600; font-size: 11px; }
 table.wtape tr.r-wind td span { display: inline-block; min-width: 28px; padding: 1px 3px; border-radius: 3px; color: var(--fg); font-size: 13.5px; line-height: 1.25; }
 table.wtape tr.r-dir td { height: 20px; }
 /* a real arrow, not a corner of a box: readable at 11 px and unambiguous

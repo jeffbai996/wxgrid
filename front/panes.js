@@ -245,6 +245,13 @@
       marine.push(`<span class="chipv" style="color:#7dd3fc">sea <b>${ds}</b> ${DOUGLAS_NAME[ds]}</span>`); }
     if (s.swh && s.swh[i] != null) marine.push(`<span class="chipv" style="color:#7dd3fc">〜 <b>${W().units.alt(s.swh[i], 1).v}</b> ${W().units.altUnit}${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` · ${arrow((s.mwd[i] + 180) % 360)}` : ""}</span>`);
     if (s.tp6 && s.tp6[i] > 0.05) normal.push(`<span class="chipv" style="color:var(--rain)"><b>${W().units.precip(s.tp6[i]).v}</b> ${W().units.precipUnit}/6h</span>`);
+    // Chance, from the GEFS members, whichever model the card is reading:
+    // the max over the next 24 h from the selected time, only when it says
+    // something (a 3 % chance is not a pill).
+    const chance = probMax(pt, d, i, "prob_rain", 24);
+    if (chance != null && chance >= 10) normal.push(`<span class="chipv" style="color:#71b8ff" title="Share of the 30 GEFS members giving rain in the next 24 h">rain chance <b>${chance}%</b></span>`);
+    const gustChance = probMax(pt, d, i, "prob_gust", 24);
+    if (gustChance != null && gustChance >= 20) normal.push(`<span class="chipv" style="color:#ffb454" title="Share of members with gusts over 50 km/h in the next 24 h">gale chance <b>${gustChance}%</b></span>`);
     if (s.sf6 && s.sf6[i] > 0.05) normal.push(`<span class="chipv" style="color:#cfe8ff"><b>${W().units.snow(s.sf6[i]).v}</b> ${W().units.snowUnit} snow</span>`);
     if (!sea && s.sd_cm && s.sd_cm[i] >= 0.5) normal.push(`<span class="chipv" style="color:#9fd3ff">depth <b>${W().units.snow(s.sd_cm[i]).v}</b> ${W().units.snowUnit}</span>`);
     if (s.tcc) normal.push(`<span class="chipv" style="color:#9fb0c8">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
@@ -340,6 +347,20 @@
   // One cell per local calendar day. A short physics run hands only this strip
   // to AI-GFS after its last complete day; the primary series and every other
   // pane remain the model the user selected.
+  // Max of a probability series over the `hours` after the card's selected
+  // valid time. The probabilities live on the GEFS run's own clock, which is
+  // not the viewed model's clock, so match by time and not by index.
+  function probMax(pt, d, i, key, hours) {
+    const p = pt && pt.prob; if (!p || !p.series[key] || !d.valid[i]) return null;
+    const t0 = new Date(d.valid[i]).getTime(), t1 = t0 + hours * 3600e3;
+    let best = null;
+    p.valid.forEach((iso, k) => {
+      const t = new Date(iso).getTime(), v = p.series[key][k];
+      if (t > t0 && t <= t1 && v != null && (best === null || v > best)) best = v;
+    });
+    return best === null ? null : Math.round(best);
+  }
+
   function daysStrip(pt, d, i) {
     const s = d.series; if (!s.t2m) return "";
     const primaryModel = d.model || W().state.model;

@@ -213,6 +213,15 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
     got = fetcher(model, run, grib_root, on_step=on_step)
 
     counts = writer.finish()
+    if model.key == "gefs":
+        # Member probabilities ride the same ingest, before the point cube is
+        # cut so the prob_* series reach the card. Never fatal: a cycle whose
+        # members lag just ships without the chance row until the next pass.
+        try:
+            from wxgrid.prob import ingest_probability
+            log.info("gefs %s probability: %s", rid, ingest_probability(rid, store_root))
+        except Exception:
+            log.exception("gefs %s probability failed (run ships without it)", rid)
     try:
         build_point_cube(model.key, rid, store_root)
     except Exception:
@@ -325,6 +334,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--keep-grib", action="store_true")
     ap.add_argument("--augment-waves", action="store_true", help="add wave fields to runs already in the store")
     ap.add_argument("--point-cube", action="store_true", help="build the point-read cube for runs already in the store")
+    ap.add_argument("--probability", action="store_true", help="count GEFS member probabilities for runs already in the store")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -343,6 +353,14 @@ def main(argv: list[str] | None = None) -> int:
             if args.point_cube:
                 for rid in list_runs(model.key):
                     log.info("point cube %s %s: %d variables", model.key, rid, build_point_cube(model.key, rid))
+                continue
+            if args.probability:
+                if model.key != "gefs":
+                    continue
+                from wxgrid.prob import ingest_probability
+                for rid in list_runs("gefs"):
+                    log.info("probability %s: %s", rid, ingest_probability(rid))
+                    log.info("point cube gefs %s: %d variables", rid, build_point_cube("gefs", rid))
                 continue
             try:
                 run = _resolve_run(model, args.run)

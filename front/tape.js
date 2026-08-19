@@ -214,6 +214,11 @@
     const feelsRow = dates.map((_, i) => { const v = agg ? null : feelsAt(s, i);
       return cell(i, agg ? pair(s.feels_hi && s.feels_hi[i], s.feels_lo && s.feels_lo[i], degC) : v == null ? "—" : degC(v), "feels"); }).join("");
     const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `<span class="snow">${WX.units.snow(sn).v}</span>`, "rain"); return cell(i, r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : "", "rain"); }).join("");
+    // Chance of rain, from the members, only where it says something —
+    // a row of zeros is noise dressed as information
+    const probRow = s.prob_rain && s.prob_rain.some((v) => v >= 10)
+      ? dates.map((_, i) => { const v = s.prob_rain[i]; return cell(i, v == null || v < 5 ? "" : `<span style="opacity:${0.45 + 0.55 * v / 100}">${Math.round(v)}</span>`, "prob"); }).join("")
+      : "";
     // the map's own wind ramp, so a colour in the tape means the colour on the
     // map — and light text on the dark end, dark text on the hot end
     const windCol = (v) => {
@@ -231,6 +236,7 @@
       <tr class="r-temp">${label(agg ? "Temp high / low" : "Temp", WX.units.tempUnit)}${tempRow}</tr>
       <tr class="r-feels">${label(agg ? "Feels high / low" : "Feels like", WX.units.tempUnit)}${feelsRow}</tr>
       <tr class="r-rain">${label("Precip", `${WX.units.precipUnit} · ${WX.units.snowUnit}`)}${rainRow}</tr>
+      ${probRow ? `<tr class="r-prob">${label("Chance", "%")}${probRow}</tr>` : ""}
       <tr class="r-wind">${label("Wind", speedUnit())}${windRow}</tr>
       ${gustRow ? `<tr class="r-wind">${label("Gusts", speedUnit())}${gustRow}</tr>` : ""}
       <tr class="r-dir">${label("Direction")}${dirRow}</tr>
