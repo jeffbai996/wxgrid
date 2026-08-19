@@ -55,13 +55,27 @@
   // a row of database tags joined with middle dots.
   function summarise(d, i) {
     const s = d.series, U = W().units, at = (k) => new Date(d.valid[k]);
+    // The hour where the weather is, not where the browser is.
+    const hourFmt = new Intl.DateTimeFormat("en-CA", U.timeOpts({ year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hour12: false }));
+    const stamp = (dt) => { const o = {}; for (const x of hourFmt.formatToParts(dt)) o[x.type] = x.value;
+      return { day: `${o.year}-${o.month}-${o.day}`, hour: Number(o.hour) % 24 }; };
+    const clock = (dt) => U.time(dt).replace(":00", "");
+    const partOf = (h) => (h < 6 ? "overnight" : h < 12 ? "morning" : h < 17 ? "afternoon" : h < 21 ? "evening" : "night");
+    // People say "tomorrow morning", not "Thu 08:00". Inside ten hours the
+    // clock is more use than the word, so that is what it gives.
     const when = (k) => {
-      const h = (at(k) - at(i)) / 3600e3;
-      if (h <= 1.5) return "now";
-      if (h <= 12) return U.time(at(k)).replace(":00", "");
-      const day = at(k).toLocaleDateString(undefined, U.timeOpts({ weekday: "short" }));
-      return `${day} ${U.time(at(k)).replace(":00", "")}`;
+      const hrs = (at(k) - at(i)) / 3600e3;
+      if (hrs <= 1.5) return "now";
+      if (hrs <= 10) return `around ${clock(at(k))}`;
+      const here = stamp(at(i)), there = stamp(at(k));
+      const days = Math.round((new Date(there.day) - new Date(here.day)) / 86400e3);
+      const part = partOf(there.hour);
+      if (days <= 0) return part === "night" ? "tonight" : part === "overnight" ? "overnight" : `this ${part}`;
+      if (days === 1) return part === "overnight" ? "overnight" : `tomorrow ${part}`;
+      const wd = at(k).toLocaleDateString(undefined, U.timeOpts({ weekday: "long" }));
+      return `${wd} ${part === "overnight" ? "night" : part}`;
     };
+
     const step = (d.steps[i + 1] || d.steps[i] + 3) - d.steps[i];
     const end = Math.min(d.steps.length - 1, i + Math.ceil(48 / step));
     const idx = Array.from({ length: end - i + 1 }, (_, k) => i + k);
@@ -72,68 +86,71 @@
     const wetSteps = idx.filter(wet), damp = idx.filter((k) => amountAt(k) > 0.01);
     const lead = [], rest = [];
 
-    // What it is doing right now, in the words a person would use — the sky,
-    // the temperature, and how it actually feels if that differs enough to
-    // matter. Everything else is what happens next.
+    // What it is doing right now: the sky, the temperature, and how it feels
+    // if that differs enough to be worth a coat.
     const t0 = val("t2m", i), cc = val("tcc", i), w0 = val("wind", i), dp = val("d2m", i);
+    const feelsAt = (k) => {
+      const c = val("t2m", k) == null ? null : val("t2m", k) - 273.15, w = val("wind", k), dew = val("d2m", k);
+      if (c == null) return null;
+      if (w != null && c <= 10 && w * 3.6 >= 4.8) { const v = Math.pow(w * 3.6, 0.16); return 13.12 + 0.6215 * c - 11.37 * v + 0.3965 * c * v; }
+      if (dew != null && c >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / dew)); return c + 0.5555 * (e - 10); }
+      return c;
+    };
     if (t0 != null) {
-      const c = t0 - 273.15;
       const sky = cc == null ? "" : cc > 0.85 ? "Overcast" : cc > 0.6 ? "Mostly cloudy" : cc > 0.3 ? "Partly cloudy" : "Clear";
-      const feels = (() => {
-        if (w0 != null && c <= 10 && w0 * 3.6 >= 4.8) { const v = Math.pow(w0 * 3.6, 0.16); return 13.12 + 0.6215 * c - 11.37 * v + 0.3965 * c * v; }
-        if (dp != null && c >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / dp)); return c + 0.5555 * (e - 10); }
-        return c;
-      })();
-      const gap = Math.round(feels) - Math.round(c);
+      const feels = feelsAt(i), gap = Math.round(feels) - Math.round(t0 - 273.15);
       const felt = Math.abs(gap) >= 2 ? `, feeling like ${U.tempC(feels).txt}` : "";
       lead.push(sky ? `${sky} and ${U.temp(t0).txt}${felt}.` : `${U.temp(t0).txt} right now${felt}.`);
     }
 
-    // Precipitation, with the total when there is enough of it to plan around.
+    // Precipitation, and — when the wind belongs to the same weather — the
+    // gusts in the same breath, because that is one event, not two.
+    const gusts = (s.gust || s.wind || []).slice(i, end + 1).map((v, k) => [v, i + k]).filter(([v]) => v != null);
+    const peak = gusts.length ? gusts.reduce((a, b) => (b[0] > a[0] ? b : a)) : null;
+    const windy = peak && peak[0] * 3.6 >= 35;
+    const gustPhrase = () => `${s.gust ? "gusting" : "winds"} to ${Math.round(W().speed(peak[0]))} ${W().speedUnit()}`;
+    let windSaid = false;
     if (s.tp6 || s.sf6) {
       const total = idx.reduce((a, k) => a + amountAt(k), 0);
-      const much = total >= 1 ? ` — ${U.precip(total).txt} in all` : "";
+      const much = total >= 1 ? `, ${U.precip(total).txt} of it` : "";
       if (wet(i)) {
         let k = i; while (k <= end && wet(k)) k++;
-        const snow = snowAt(i) > rainAt(i);
-        rest.push(k > end ? `${snow ? "Snow" : "Rain"} keeps up through the forecast${much}.`
-                          : `${snow ? "Snow" : "Rain"} eases around ${when(k)}${much}.`);
+        const snow = snowAt(i) > rainAt(i), what = snow ? "Snow" : "Rain";
+        const withWind = windy && peak[1] <= k ? `, ${gustPhrase()}` : "";
+        if (withWind) windSaid = true;
+        rest.push(k > end ? `${what} all the way through${much}${withWind}.` : `${what} eases ${when(k)}${much}${withWind}.`);
       } else if (wetSteps.length) {
         const first = wetSteps[0], snow = snowAt(first) > rainAt(first);
         const scattered = wetSteps.length <= Math.max(2, Math.ceil(idx.length * 0.35));
-        rest.push(scattered ? `Dry for now, with ${snow ? "some snow" : "showers"} around ${when(first)}.`
-                            : `Dry at first, then ${snow ? "snow" : "rain"} from about ${when(first)}${much}.`);
+        rest.push(scattered ? `Dry for now, ${snow ? "a little snow" : "showers"} ${when(first)}.`
+                            : `Dry until ${when(first)}, then ${snow ? "snow" : "rain"}${much}.`);
       } else if (damp.length) {
         rest.push(`Dry, give or take ${snowAt(damp[0]) > rainAt(damp[0]) ? "a flurry" : "a stray shower"}.`);
       } else {
-        const horizon = (at(end) - at(i)) / 3600e3;
-        rest.push(horizon >= 36 ? "Nothing falling for the next couple of days." : "Nothing falling through tomorrow.");
+        rest.push((at(end) - at(i)) / 3600e3 >= 36 ? "Nothing falling for the next couple of days." : "Nothing falling through tomorrow.");
       }
     }
-
-    // Wind, with the gust kept separate from the sustained wind.
-    const gs = (s.gust || s.wind || []).slice(i, end + 1).map((v, k) => [v, i + k]).filter(([v]) => v != null);
-    if (gs.length) {
-      const [gv, gk] = gs.reduce((a, b) => (b[0] > a[0] ? b : a));
-      const kmh = gv * 3.6;
-      if (kmh >= 35) rest.push(`${kmh >= 75 ? "Very windy" : kmh >= 55 ? "Windy" : "Breezy"}, ${s.gust ? "gusting" : "winds"} to ${Math.round(W().speed(gv))} ${W().speedUnit()}${gk > i + 1 ? ` around ${when(gk)}` : ""}.`);
+    if (windy && !windSaid) {
+      const kmh = peak[0] * 3.6;
+      rest.push(`${kmh >= 75 ? "Very windy" : kmh >= 55 ? "Windy" : "Breezy"}, ${gustPhrase()}${peak[1] > i + 1 ? ` ${when(peak[1])}` : ""}.`);
     }
 
-    // Where the temperature goes, and when it gets there.
+    // Where the temperature goes, said once, with the time it gets there.
     if (s.t2m && t0 != null) {
       const vals = idx.map((k) => [val("t2m", k), k]).filter(([v]) => v != null);
       if (vals.length > 2) {
         const hi = vals.reduce((a, b) => (b[0] > a[0] ? b : a)), lo = vals.reduce((a, b) => (b[0] < a[0] ? b : a));
-        if (hi[0] - t0 > 3) rest.push(`Up to ${U.temp(hi[0]).txt} by ${when(hi[1])}.`);
-        else if (t0 - lo[0] > 3) rest.push(`Down to ${U.temp(lo[0]).txt} by ${when(lo[1])}.`);
-        if (lo[0] - 273.15 <= 0 && t0 - 273.15 > 0) rest.push(`Freezing by ${when(lo[1])}.`);
+        const freezes = lo[0] - 273.15 <= 0 && t0 - 273.15 > 0;
+        if (freezes) rest.push(`Below freezing ${when(lo[1])}.`);
+        else if (hi[0] - t0 > 3) rest.push(`Warming to ${U.temp(hi[0]).txt} ${when(hi[1])}.`);
+        else if (t0 - lo[0] > 3) rest.push(`Cooling to ${U.temp(lo[0]).txt} ${when(lo[1])}.`);
       }
     }
 
-    // The two conditions worth a warning that no other sentence carries.
+    // Two warnings nothing else carries.
     if (dp != null && t0 != null && t0 - dp < 1 && (w0 == null || w0 * 3.6 < 12)) rest.push("Air is at its dew point — expect fog.");
     const uvMax = Math.max(...idx.map((k) => val("uvi", k) ?? -1));
-    if (uvMax >= 8) rest.push(`UV peaks at ${Math.round(uvMax)} today.`);
+    if (uvMax >= 8) rest.push(`UV reaches ${Math.round(uvMax)} today — burn weather.`);
 
     return [...lead, ...rest.slice(0, 3)].join(" ");
   }
