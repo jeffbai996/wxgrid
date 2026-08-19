@@ -163,11 +163,35 @@ def water_nodes() -> list[dict]:
     return cache.get("water-nodes-v1", 30 * 24 * 3600, fetch)
 
 
+# OSM maps named seas as nodes but not the oceans themselves, so open water
+# far from any sea falls back to this: the conventional division, roughly. It
+# is a label, not a boundary — nobody navigates by it.
+_OCEANS = [
+    ("Arctic Ocean", 66, 90, -180, 180),
+    ("Southern Ocean", -90, -60, -180, 180),
+    ("North Atlantic Ocean", 0, 66, -80, 20),
+    ("South Atlantic Ocean", -60, 0, -70, 20),
+    ("Indian Ocean", -60, 30, 20, 147),
+    ("North Pacific Ocean", 0, 66, 100, 180),
+    ("North Pacific Ocean", 0, 66, -180, -75),
+    ("South Pacific Ocean", -60, 0, 140, 180),
+    ("South Pacific Ocean", -60, 0, -180, -70),
+]
+
+
+def ocean_name(lat: float, lon: float) -> str:
+    lon = ((lon + 180) % 360) - 180
+    for name, s_lat, n_lat, w_lon, e_lon in _OCEANS:
+        if s_lat <= lat <= n_lat and w_lon <= lon <= e_lon:
+            return name
+    return "the open sea"
+
+
 def nearest_water(lat: float, lon: float, nodes: list[dict], sea_km: float = 1500.0) -> str:
     """The name of the water at a point: the nearest named sea if one is close,
-    otherwise the nearest ocean. Seas are small and specific and their labelling
-    node can sit well off centre, so they only win inside `sea_km`; the oceans
-    are the fallback that always answers."""
+    otherwise the ocean it sits in. Seas are small and specific and their
+    labelling node can sit well off centre, so they only win inside `sea_km`.
+    OSM has no `place=ocean` nodes to fall back on, so `ocean_name` does."""
     best_sea = best_ocean = None
     for n in nodes:
         d = _haversine_km(lat, lon, n["lat"], n["lon"])
@@ -177,7 +201,7 @@ def nearest_water(lat: float, lon: float, nodes: list[dict], sea_km: float = 150
         elif best_ocean is None or d < best_ocean[0]:
             best_ocean = (d, n)
     pick = best_sea or best_ocean
-    return pick[1]["name"] if pick else ""
+    return pick[1]["name"] if pick else ocean_name(lat, lon)
 
 
 def reverse(lat: float, lon: float) -> dict:

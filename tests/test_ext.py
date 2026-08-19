@@ -326,3 +326,15 @@ def test_alerts_point_adds_hits_from_meteoalarm_and_bom(monkeypatch):
     assert [a["source"] for a in ext.alerts_point(-37.5, 144.5)] == ["BoM"]
     ext.cache._d.clear()
     assert ext.alerts_point(0.0, 0.0) == []
+
+
+def test_open_water_gets_a_name_from_the_seas_then_the_oceans():
+    nodes = [{"name": "South China Sea", "lat": 15.0, "lon": 114.0, "kind": "sea"}]
+    # a named sea wins when it is close
+    assert ext.nearest_water(15.0, 115.0, nodes) == "South China Sea"
+    # far from any of them, the ocean answers rather than nothing
+    assert ext.nearest_water(35.0, -150.0, nodes) == "North Pacific Ocean"
+    assert ext.nearest_water(-40.0, -30.0, []) == "South Atlantic Ocean"
+    assert ext.nearest_water(-70.0, 100.0, []) == "Southern Ocean"
+    # longitudes arrive wrapped past the antimeridian from the map
+    assert ext.ocean_name(35.0, 210.0) == "North Pacific Ocean"
