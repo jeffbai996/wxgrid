@@ -282,7 +282,7 @@ input#step { width: 100%; accent-color: var(--accent); height: 14px; margin: 2px
 .point-head { display: flex; align-items: flex-start; gap: 8px; }
 .sheet-grip { display: none; }
 .point-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.point-head #point-title { font: 750 16.5px/1.2 var(--font-display); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.point-head #point-title { font: 750 19.5px/1.2 var(--font-display); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #point .point-tabs { display: flex; align-items: center; margin: 9px 0 3px; max-width: none; padding: 3px; }
 #point .point-tabs button { flex: 1 1 auto; padding: 6px 5px; font-size: 11px; line-height: 1.15; white-space: nowrap; letter-spacing: -.01em; }
 .point-head .icon { width: 26px; height: 26px; font-size: 13px; }
@@ -416,7 +416,7 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 @keyframes wx-pulse { 0% { transform: scale(.55); opacity: .9; } 70% { transform: scale(1.6); opacity: 0; } 100% { transform: scale(1.6); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .wx-marker::after { animation: none; opacity: .5; } }
 
-#point-local { font: 500 12px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#point-local { font: 500 13px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #point-local b { color: var(--fg-2); font-weight: 600; }
 #point-local .sep { margin: 0 6px; opacity: .5; }
 #point-local > span { white-space: nowrap; }
@@ -592,7 +592,7 @@ body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 116px + env(safe-area-
 /* current time on the tape: a thin accent line down the column, "now" tag on the hour row */
 /* "now" is a hairline down the column with one small tag, so it never fights
    the selected column's tint */
-table.wtape td.now { box-shadow: inset 1px 0 0 var(--accent); }
+table.wtape td.now { border-left-color: var(--accent); }
 table.wtape tr.r-hour td.now { position: relative; overflow: visible; }
 /* the tag lives in the day-header band above the hours, so it never sits on
    top of a time */

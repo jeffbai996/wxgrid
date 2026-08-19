@@ -3,8 +3,9 @@
 // Lineage: cambecc/earth → leaflet-velocity. Particles live in lon/lat, are
 // advected by the coarse u/v grid (bilinear), and drawn as short segments in
 // screen space through map.project(). The canvas is faded a little every
-// frame instead of cleared, which is what gives the trails. Any map movement
-// wipes the canvas — redrawing mid-pan smears — and particles are reseeded.
+// frame instead of cleared, which is what gives the trails. Particles stay in
+// geographic space and are reprojected every frame, including while the map
+// is moving, so dragging never pauses or resets the flow.
 //
 // Contract with app.js:  const wl = new WindLayer(map, canvas)
 //                        wl.setField(json)   // /api/wind payload
@@ -27,14 +28,10 @@
       this.dpr = Math.min(window.devicePixelRatio || 1, 2);
       this.lastFrame = 0;
       this._resize = () => this.resize();
-      this._wipe = () => this.wipe();
+      this._moveEnd = () => { if (this.mode === "barbs") this.drawBarbs(); };
       window.addEventListener("resize", this._resize);
-      // Wiping on every move made the map look dead while you dragged it. Keep
-      // the last frame on screen instead: it is stale for the length of a drag,
-      // and reseeded the moment the map settles.
-      map.on("movestart", () => { this.dragging = true; });
       map.on("resize", this._resize);
-      map.on("moveend", () => { this.dragging = false; this.reseed(); if (this.mode === "barbs") this.drawBarbs(); });
+      map.on("moveend", this._moveEnd);
       this.resize();
     }
 
@@ -168,10 +165,6 @@
     }
 
     frame(t) {
-      // While the map moves, particles would be advected against a canvas that
-      // no longer matches the projection — so hold the last frame rather than
-      // clearing it, and pick up again on moveend.
-      if (this.map.isMoving()) { this.lastFrame = t; return; }
       const dt = Math.min(50, t - (this.lastFrame || t)) / 1000;   // s, capped for tab wake-ups
       this.lastFrame = t;
       const ctx = this.ctx, w = this.canvas.clientWidth, h = this.canvas.clientHeight;
@@ -226,7 +219,8 @@
     destroy() {
       this.stop();
       window.removeEventListener("resize", this._resize);
-      this.map.off("movestart", this._wipe);
+      this.map.off("resize", this._resize);
+      this.map.off("moveend", this._moveEnd);
     }
   }
 
