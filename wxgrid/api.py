@@ -199,7 +199,7 @@ def api_models() -> dict:
     out = []
     summary = store_summary()
     for key, m in MODELS.items():
-        entry = {"key": key, "label": m.label, "short": m.short, "attribution": m.attribution, "runs": []}
+        entry = {"key": key, "label": m.label, "short": m.short, "grid": m.grid, "attribution": m.attribution, "runs": []}
         for rid in summary.get(key, []):
             r = _reader(key, rid)
             entry["runs"].append({
