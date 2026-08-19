@@ -401,3 +401,17 @@ def test_place_names_prefer_a_latin_script():
     # guessed or dropped.
     assert ext._latin_first("北京") == "北京"
     assert ext._latin_first(None, "") == ""
+
+
+def test_health_marks_a_failing_upstream_down(monkeypatch):
+    import time as _t
+    ext.upstream_health.clear()
+    ext._mark("https://api.example.com/x", True)
+    ext._mark("https://dead.example.com/y", False, "boom")
+    from wxgrid.ext_api import api_health
+    h = api_health()
+    assert h["down"] == ["dead.example.com"]
+    assert h["upstreams"]["api.example.com"]["down"] is False
+    # recovery clears it
+    ext._mark("https://dead.example.com/y", True)
+    assert api_health()["down"] == []

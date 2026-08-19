@@ -83,9 +83,34 @@ _nominatim_lock = threading.Lock()
 _nominatim_last = 0.0
 
 
+# Upstream health, by host: when each last answered and when each last failed.
+# Written by _get_json (the path nearly every proxy uses), read by /api/health;
+# the front end turns "failing and not recovering" into a dot on the wordmark.
+upstream_health: dict[str, dict] = {}
+
+
+def _mark(url: str, ok: bool, error: str = "") -> None:
+    from urllib.parse import urlsplit
+    host = urlsplit(url).netloc
+    h = upstream_health.setdefault(host, {"ok": 0.0, "fail": 0.0, "error": ""})
+    h["ok" if ok else "fail"] = time.time()
+    if not ok:
+        h["error"] = error[:120]
+
+
 def _get_json(url: str, params: dict | None = None, timeout: int = 20) -> Any:
-    r = _session.get(url, params=params, timeout=timeout)
-    r.raise_for_status()
+    try:
+        r = _session.get(url, params=params, timeout=timeout)
+        r.raise_for_status()
+    except Exception as exc:
+        _mark(url, False, str(exc))
+        raise
+    # The upstream answered: that is "up" for health purposes. An empty 200
+    # is a real answer too (AWC's TAF endpoint sends one for stations with no
+    # TAF product) — None, not an outage.
+    _mark(url, True)
+    if not r.content.strip():
+        return None
     return r.json()
 
 

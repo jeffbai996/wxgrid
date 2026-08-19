@@ -90,6 +90,9 @@ button { font: inherit; color: inherit; }
 #topbar > * { pointer-events: auto; }
 .brand { font: 800 16px/1 var(--font-display); letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; margin-right: 2px; color: var(--fg); text-decoration: none; }
 .brand img { display: block; border-radius: 7px; }
+.brand { position: relative; }
+.brand.degraded::after { content: ""; position: absolute; top: -1px; left: 19px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--warm); box-shadow: 0 0 0 2px var(--panel-solid), 0 0 8px var(--warm); }
 .search { display: flex; position: relative; align-items: center; }
 /* the magnifier is the input's own background, not a sibling element: as a
    sibling it sat under the input's background and vanished (twice) */

@@ -380,6 +380,8 @@
     setTimeout(() => document.querySelectorAll(".days .day").forEach((b) => b.onclick = () => {
       if (b.dataset.model !== W().state.model) W().fn.jumpModelTime(b.dataset.model, b.dataset.valid);
       else W().setStep(Number(b.dataset.k));
+      // the tape follows the day: scroll its selected column into the middle
+      setTimeout(() => { const on = document.querySelector("#tape td.on"); if (on) on.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" }); }, 60);
     }), 0);
     const extended = usable.filter((x) => x.ai);
     let note = "";

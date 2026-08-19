@@ -558,6 +558,17 @@
       setTucked(localStorage.getItem("wxgrid.tucked") === "1", false);
     };
     fitPhone(); phoneMQ.addEventListener("change", fitPhone);
+    // An upstream going dark used to announce itself only as a blank pane.
+    // The wordmark wears a small amber dot instead; hover names the culprits.
+    const health = async () => {
+      try {
+        const h = await WX.api(`${API}/health`);
+        const brand = $(".brand");
+        brand.classList.toggle("degraded", h.down.length > 0);
+        brand.title = h.down.length ? `Not answering: ${h.down.join(", ")}` : "wxgrid";
+      } catch (e) { /* the app itself being down needs no dot */ }
+    };
+    if (!window.WXStatic) { setTimeout(health, 15e3); setInterval(health, 300e3); }
     const tb = $("#timebar"), tmin = $("#tape-min");
     // Three states, because "collapsed" and "gone" are different wants: full
     // table, header only, or out of the way entirely with just its grip left.
@@ -654,6 +665,14 @@
       else if (e.key === "Escape") { closePoint(); WX.search.hideResults(); $$(".menu.open").forEach((x) => x.classList.remove("open")); }
       else if (e.key === "/") { e.preventDefault(); $("#q").focus(); }
       else if (e.key === "l" || e.key === "L") { $("#overlays-menu").classList.toggle("open"); }
+      else if (e.key >= "1" && e.key <= "9") {                 // 1-9 pick a layer
+        const btns = $$(".rail button[data-family]:not(:disabled)");
+        const b = btns[Number(e.key) - 1]; if (b) b.click();
+      } else if (e.key === "[" || e.key === "]") {             // walk the altitude
+        const opts = $$("#levels button:not(:disabled)");
+        const k = opts.findIndex((b) => b.classList.contains("on"));
+        const next = opts[k + (e.key === "]" ? 1 : -1)]; if (k >= 0 && next) next.click();
+      }
     });
   }
 

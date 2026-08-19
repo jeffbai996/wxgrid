@@ -55,6 +55,20 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
                              headers={"Cache-Control": "no-store"})
 
 
+@router.get("/health")
+def api_health():
+    """Which upstreams are answering. An upstream is "down" when its last
+    failure is newer than its last success and less than 30 min old."""
+    import time as _t
+    now = _t.time()
+    out = {}
+    for host, h in sorted(ext.upstream_health.items()):
+        down = h["fail"] > h["ok"] and now - h["fail"] < 1800
+        out[host] = {"down": down, "last_ok_s": round(now - h["ok"]) if h["ok"] else None,
+                     "error": h["error"] if down else ""}
+    return {"upstreams": out, "down": sorted(k for k, v in out.items() if v["down"])}
+
+
 @router.get("/geo")
 def api_geo(q: str = Query(..., min_length=1, max_length=120), limit: int = Query(6, ge=1, le=10)):
     return {"hits": ext.geocode(q, limit)}
