@@ -65,6 +65,9 @@
   };
   let map, wind, catalog, playTimer = null, marker = null;
   let restorePointPanelSize = () => {};
+  let restoreSheetHeight = () => {};
+  let setTapeState = () => {};
+  let tapeState = "full";
 
   // ── shared helpers (used by panes.js) ────────────────────────────────
   const speed = (ms) => ms == null ? null : state.units === "kt" ? ms * 1.943844 : state.units === "ms" ? ms : state.units === "mph" ? ms * 2.236936 : ms * 3.6;
@@ -136,7 +139,11 @@
     });
     wind = new WindLayer(map, $("#particles"));
     WX.windLayer = wind;
-    new ResizeObserver(() => { document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px"); if (WX.fn.fitStrip) WX.fn.fitStrip(); }).observe($("#timebar"));
+    // A taller tape leaves less room for a hand-sized card, so re-clamp it —
+    // but never mid-drag, where it would fight the pointer.
+    new ResizeObserver(() => { document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px");
+      if (WX.fn.fitStrip) WX.fn.fitStrip();
+      if (!document.body.classList.contains("resizing-tape")) restorePointPanelSize(); }).observe($("#timebar"));
     new ResizeObserver(() => document.documentElement.style.setProperty("--top-h", $("#topbar").offsetHeight + "px")).observe($("#topbar"));
     wirePanelResizers();
 
@@ -389,10 +396,20 @@
     renderLegend();
     $("#play").onclick = togglePlay;
     const tb = $("#timebar"), tmin = $("#tape-min");
-    const setMini = (on) => { tb.classList.toggle("mini", on); localStorage.setItem("wxgrid.tapeMini", on ? "1" : "0");
-      tmin.title = on ? "Show the forecast table" : "Hide the forecast table"; };
-    setMini(localStorage.getItem("wxgrid.tapeMini") === "1");
-    tmin.onclick = () => setMini(!tb.classList.contains("mini"));
+    // Three states, because "collapsed" and "gone" are different wants: full
+    // table, header only, or out of the way entirely with just its grip left.
+    setTapeState = (s, persist = true) => {
+      tapeState = s;
+      tb.classList.toggle("mini", s === "mini");
+      tb.classList.toggle("tape-away", s === "away");
+      if (persist) localStorage.setItem("wxgrid.tapeState", s);
+      tmin.title = s === "full" ? "Collapse the forecast table" : "Show the forecast table";
+      requestAnimationFrame(() => document.documentElement.style.setProperty("--tb-h", tb.offsetHeight + "px"));
+    };
+    const savedState = localStorage.getItem("wxgrid.tapeState")
+      || (localStorage.getItem("wxgrid.tapeMini") === "1" ? "mini" : "full");
+    setTapeState(["full", "mini", "away"].includes(savedState) ? savedState : "full", false);
+    tmin.onclick = () => setTapeState(tapeState === "full" ? "mini" : "full");
     // the crosshair button map apps have: centre here and open the card
     const goToMe = () => {
       if (!navigator.geolocation) { toast("This browser has no location service", 4000, "error"); return; }
@@ -504,28 +521,67 @@
 
   // Bottom-sheet drag on phones: pull the grip up to cover the tape, down to
   // put it back or close it. Pointer events so a mouse works too.
+  // One write per animation frame, whatever the pointer does. Pointer events
+  // fire faster than the screen refreshes and each of these handlers writes
+  // layout; without the gate a drag stutters instead of following the finger.
+  const perFrame = (fn) => {
+    let id = 0, args = null;
+    return (...a) => { args = a; if (id) return; id = requestAnimationFrame(() => { id = 0; fn(...args); }); };
+  };
+
   function wireSheet() {
     const grip = $(".sheet-grip"), card = $("#point");
     if (!grip) return;
-    let y0 = 0, dy = 0, full = false, dragging = false;
-    const setFull = (on) => { full = on; card.classList.toggle("sheet-full", on); };
+    // The phone card is a sheet you size with your thumb: the drag sets its
+    // height directly and keeps it, rather than snapping to two fixed stops.
+    // Pulling it below the minimum still closes it.
+    const bounds = () => {
+      const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
+      return { min: 168, max: Math.max(220, Math.round(innerHeight - top - 18)) };
+    };
+    const stored = Number(localStorage.getItem("wxgrid.sheetHeight")) || 0;
+    let y0 = 0, dy = 0, startH = 0, dragging = false, closing = false, height = stored;
+    const setHeight = (h, persist) => {
+      const b = bounds();
+      height = Math.max(b.min, Math.min(b.max, Math.round(h)));
+      card.style.height = `${height}px`;
+      card.classList.add("sheet-sized");
+      if (persist) localStorage.setItem("wxgrid.sheetHeight", String(height));
+      return height;
+    };
+    restoreSheetHeight = () => {
+      if (innerWidth > 820) { card.style.height = ""; card.classList.remove("sheet-sized"); return; }
+      if (height) setHeight(height, false);
+    };
+    const track = perFrame((clientY) => {
+      if (!dragging) return;
+      dy = clientY - y0;
+      const b = bounds();
+      closing = startH - dy < b.min - 64;
+      card.style.opacity = closing ? ".62" : "";
+      setHeight(startH - dy, false);
+    });
     grip.addEventListener("pointerdown", (e) => {
-      dragging = true; y0 = e.clientY; dy = 0;
+      if (innerWidth > 820) return;
+      dragging = true; y0 = e.clientY; dy = 0; closing = false;
+      startH = card.getBoundingClientRect().height;
       card.classList.add("sheet-drag"); grip.setPointerCapture(e.pointerId);
     });
-    grip.addEventListener("pointermove", (e) => {
+    grip.addEventListener("pointermove", (e) => { if (dragging) track(e.clientY); });
+    const end = (cancel) => {
       if (!dragging) return;
-      dy = e.clientY - y0;
-      card.style.transform = `translateY(${Math.max(-40, dy)}px)`;
-    });
-    grip.addEventListener("pointerup", () => {
-      if (!dragging) return;
-      dragging = false; card.classList.remove("sheet-drag"); card.style.transform = "";
-      if (dy < -40) setFull(true);
-      else if (dy > 90) { if (full) setFull(false); else closePoint(); }
-      else if (Math.abs(dy) < 6) setFull(!full);          // a tap on the grip toggles
-    });
-    grip.addEventListener("pointercancel", () => { dragging = false; card.classList.remove("sheet-drag"); card.style.transform = ""; });
+      dragging = false; card.classList.remove("sheet-drag"); card.style.opacity = "";
+      if (!cancel && closing) { closePoint(); return; }
+      if (!cancel && Math.abs(dy) < 6) {                    // a tap toggles tall / short
+        const b = bounds();
+        setHeight(height > (b.min + b.max) / 2 ? Math.round(b.max * 0.5) : b.max, true);
+        return;
+      }
+      localStorage.setItem("wxgrid.sheetHeight", String(height));
+    };
+    grip.addEventListener("pointerup", () => end(false));
+    grip.addEventListener("pointercancel", () => end(true));
+    addEventListener("resize", () => restoreSheetHeight());
   }
 
   // Persisted panel sizing. Pointer capture keeps each drag stable even when
@@ -553,19 +609,30 @@
     if (tapeHeight) setTapeHeight(tapeHeight);
     else requestAnimationFrame(() => tapeGrip.setAttribute("aria-valuenow", Math.round(tb.getBoundingClientRect().height)));
     let tapeDrag = null;
+    // The grip drags through the three states: pull it down past the minimum
+    // and the tape collapses to its header, further and it goes away. The
+    // height itself is only written once per frame — see perFrame.
+    const trackTape = perFrame((clientY) => {
+      if (!tapeDrag) return;
+      tapeDrag.want = tapeDrag.height + tapeDrag.y - clientY;
+      const min = tapeBounds().min;
+      if (tapeDrag.want >= min) { if (tapeState !== "full") setTapeState("full", false); setTapeHeight(tapeDrag.want); }
+      else if (tapeState === "full" && tapeDrag.want < min - 40) setTapeState("mini", false);
+      else if (tapeState === "mini" && tapeDrag.want < min - 110) setTapeState("away", false);
+    });
     tapeGrip.addEventListener("pointerdown", (e) => {
-      if (tb.classList.contains("mini")) return;
       e.preventDefault(); e.stopPropagation();
-      tapeDrag = { id: e.pointerId, y: e.clientY, height: tb.getBoundingClientRect().height };
+      tapeDrag = { id: e.pointerId, y: e.clientY, height: tb.getBoundingClientRect().height, want: 0, from: tapeState };
       tapeGrip.setPointerCapture(e.pointerId); tb.classList.add("is-resizing"); document.body.classList.add("resizing-tape");
     });
-    tapeGrip.addEventListener("pointermove", (e) => {
-      if (tapeDrag && e.pointerId === tapeDrag.id) setTapeHeight(tapeDrag.height + tapeDrag.y - e.clientY, true);
-    });
+    tapeGrip.addEventListener("pointermove", (e) => { if (tapeDrag && e.pointerId === tapeDrag.id) trackTape(e.clientY); });
     const finishTape = (e) => {
       if (!tapeDrag || (e && e.pointerId !== tapeDrag.id)) return;
+      const tap = Math.abs(tapeDrag.want - tapeDrag.height) < 5;
       tapeDrag = null; tb.classList.remove("is-resizing"); document.body.classList.remove("resizing-tape");
-      if (tapeHeight) localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
+      if (tap) setTapeState(tapeState === "full" ? "mini" : "full");     // a tap on the grip cycles
+      else localStorage.setItem("wxgrid.tapeState", tapeState);
+      if (tapeHeight && tapeState === "full") localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
       restorePointPanelSize();
     };
     tapeGrip.addEventListener("pointerup", finishTape); tapeGrip.addEventListener("pointercancel", finishTape);
@@ -608,9 +675,11 @@
       pointDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, width: rect.width, height: rect.height };
       cardGrip.setPointerCapture(e.pointerId); card.classList.add("is-resizing"); document.body.classList.add("resizing-point");
     });
-    cardGrip.addEventListener("pointermove", (e) => {
-      if (pointDrag && e.pointerId === pointDrag.id) setPointSize(pointDrag.width + e.clientX - pointDrag.x, pointDrag.height + e.clientY - pointDrag.y);
+    const trackPoint = perFrame((x, y) => {
+      if (!pointDrag) return;
+      setPointSize(pointDrag.width + x - pointDrag.x, pointDrag.height + y - pointDrag.y);
     });
+    cardGrip.addEventListener("pointermove", (e) => { if (pointDrag && e.pointerId === pointDrag.id) trackPoint(e.clientX, e.clientY); });
     const finishPoint = (e) => {
       if (!pointDrag || (e && e.pointerId !== pointDrag.id)) return;
       pointDrag = null; card.classList.remove("is-resizing"); document.body.classList.remove("resizing-point");

@@ -109,7 +109,7 @@ button { font: inherit; color: inherit; }
 
 .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; backdrop-filter: blur(8px); }
 .seg button { border: 0; background: transparent; color: var(--fg-2); padding: 5px 11px; border-radius: 7px; font: 700 12.5px var(--font-display); cursor: pointer; letter-spacing: .01em; }
-#models button .grid { font: 600 9.5px var(--font-mono); font-style: normal; margin-left: 5px; opacity: .62; }
+#models button .grid { font: 600 10px var(--font-display); font-style: normal; margin-left: 5px; opacity: .6; letter-spacing: 0; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .35; cursor: default; }
 .seg.small button { padding: 4px 8px; font-size: 11.5px; }
@@ -259,7 +259,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .legend-head b { font: 700 11px var(--font-display); color: var(--fg); letter-spacing: .01em; white-space: nowrap; }
 .legend-head i { font: 600 9.5px var(--font-display); font-style: normal; color: var(--dim); text-transform: uppercase; letter-spacing: .07em; }
 .legend-bar { height: 9px; border-radius: 5px; }
-.legend-ticks { display: flex; justify-content: space-between; font: 600 10.5px var(--font-num); font-variant-numeric: tabular-nums; color: var(--dim); margin-top: 4px; }
+.legend-ticks { display: flex; justify-content: space-between; font: 600 10.5px var(--font-num); font-variant-numeric: tabular-nums; color: var(--dim); margin-top: 3px; }
 .legend-ticks b { color: var(--fg); font-weight: 600; font-family: var(--font-display); }
 
 /* ── time bar + tape ─────────────────────────────────────────────────── */
@@ -279,8 +279,11 @@ button:focus:not(:focus-visible) { outline: none; }
 #timebar.user-sized .tape { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 #timebar.user-sized table.wtape { min-height: 100%; }
 #timebar.mini { height: auto !important; }
-#timebar.mini .tape-resize-handle { display: none; }
-.tape-head { display: flex; align-items: center; gap: 10px; padding: 0 2px 4px; }
+/* out of the way entirely: only the grip is left to pull it back */
+#timebar.tape-away { height: 14px !important; min-height: 0; padding: 0; overflow: hidden; }
+#timebar.tape-away > *:not(.tape-resize-handle) { display: none; }
+#timebar.tape-away .tape-resize-handle, #timebar.mini .tape-resize-handle { display: grid; }
+.tape-head { display: flex; align-items: center; gap: 10px; padding: 0 2px 2px; }
 .tape-head .icon { flex: 0 0 auto; }                    /* never squash the play circle */
 .time-meta { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
 #valid-local { font: 700 13px var(--font-num); white-space: nowrap; }
@@ -294,7 +297,7 @@ button:focus:not(:focus-visible) { outline: none; }
 #timebar.mini .tape, #timebar.mini #step { display: none; }
 #timebar.mini { padding-bottom: 4px; }
 #timebar.mini .tape-head { padding-bottom: 0; }
-.tape { display: block; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-width: 0; max-width: 100%; border-top: 1px solid var(--line); padding-top: 4px; }
+.tape { display: block; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-width: 0; max-width: 100%; border-top: 1px solid var(--line); padding-top: 2px; }
 .tape.radar { display: flex; }
 .tape::-webkit-scrollbar { display: none; }
 .tape-day { display: flex; flex-direction: column; flex: 0 0 auto; border-right: 1px solid var(--line); }
@@ -425,13 +428,14 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
     transition: bottom .22s cubic-bezier(.4,0,.2,1), max-height .22s cubic-bezier(.4,0,.2,1); }
   #point.sheet-full { bottom: calc(6px + env(safe-area-inset-bottom)); max-height: calc(100vh - var(--top-h) - 20px); }
   #point.sheet-drag { transition: none; }
+  #point.sheet-sized { max-height: calc(100vh - var(--top-h) - 18px); }
   .sheet-grip { display: block; padding: 2px 0 6px; margin: -4px 0 0; touch-action: none; cursor: grab; }
   .sheet-grip i { display: block; width: 38px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 0 auto; }
   #levels { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
   /* on a phone the legend gets its own full-width line under the controls,
      with its name and its two ends — a bare gradient means nothing */
   .tape-head { flex-wrap: wrap; gap: 4px; }
-  #legend { order: 9; flex: 1 0 100%; width: auto; margin: 2px 0 0; }
+  #legend { order: 9; flex: 1 0 100%; width: auto; margin: 0; }
   #legend .legend-ticks { display: flex; font-size: 9px; }
   #legend .legend-head b { font-size: 10px; }
   #legend .legend-ticks span:nth-child(2), #legend .legend-ticks span:nth-child(4) { display: none; }
@@ -668,9 +672,9 @@ table.wtape tbody tr:first-child td.now { position: relative; overflow: visible;
    padding IS that lane. Sharing the line with the date put "now" on top of it.
    First body row, whichever it is: at 24 h columns there is no hours row. */
 table.wtape tbody tr:first-child td.now::after { content: "now"; position: absolute; left: 50%; transform: translateX(-50%);
-  top: -30px; z-index: 3; font: 700 7.5px var(--font-display); color: var(--accent-ink); background: var(--accent);
+  top: -27px; z-index: 3; font: 700 7.5px var(--font-display); color: var(--accent-ink); background: var(--accent);
   letter-spacing: .06em; text-transform: uppercase; padding: 1px 4px; border-radius: 3px; line-height: 1.3; }
-table.wtape th.day { padding-top: 17px; }
+table.wtape th.day { padding-top: 14px; }
 /* the cold end of an aggregated column, beside the warm one */
 table.wtape .lo { color: var(--fg-2); font-weight: 600; font-size: .82em; margin-left: 4px; }
 
