@@ -138,6 +138,16 @@
     return [...lead, ...rest.slice(0, 3)].join(" ");
   }
 
+  // Two readings that only mean anything at sea. Both are the scales a mariner
+  // actually uses, not a restatement of the numbers already on the card.
+  const BEAUFORT = [0.5, 1.6, 3.4, 5.5, 8.0, 10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.7];
+  const BEAUFORT_NAME = ["calm", "light air", "light breeze", "gentle breeze", "moderate breeze",
+    "fresh breeze", "strong breeze", "near gale", "gale", "strong gale", "storm", "violent storm", "hurricane"];
+  const beaufort = (ms) => { let f = 0; while (f < BEAUFORT.length && ms >= BEAUFORT[f]) f++; return f; };
+  const DOUGLAS = [0.1, 0.5, 1.25, 2.5, 4, 6, 9, 14];
+  const DOUGLAS_NAME = ["calm", "rippled", "smooth", "slight", "moderate", "rough", "very rough", "high", "phenomenal"];
+  const douglas = (m) => { let d = 0; while (d < DOUGLAS.length && m >= DOUGLAS[d]) d++; return d; };
+
   // ── Now: hero, local context, station obs, meteogram ─────────────────
   function renderNow(pt, d, i) {
     const { speed, speedUnit, f, arrow } = W();
@@ -153,16 +163,28 @@
       <span class="wind-main"><small>Wind ${compass(s.wdir && s.wdir[i])}</small><b>${f(s.wind[i], (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b></span>
       ${s.gust && s.gust[i] != null ? `<span class="wind-gust"><small>Gusts</small><b>${speed(s.gust[i]).toFixed(0)} <i>${speedUnit()}</i></b></span>` : ""}
     </span>`);
-    if (s.tp6 && s.tp6[i] > 0.05) chips.push(`<span class="chipv" style="color:var(--rain)"><b>${W().units.precip(s.tp6[i]).v}</b> ${W().units.precipUnit}/6h</span>`);
-    if (s.sf6 && s.sf6[i] > 0.05) chips.push(`<span class="chipv" style="color:#cfe8ff"><b>${W().units.snow(s.sf6[i]).v}</b> ${W().units.snowUnit} snow</span>`);
-    if (s.sd_cm && s.sd_cm[i] != null) chips.push(`<span class="chipv" style="color:#9fd3ff">depth <b>${W().units.snow(s.sd_cm[i]).v}</b> ${W().units.snowUnit}</span>`);
-    if (s.tcc) chips.push(`<span class="chipv" style="color:#9fb0c8">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
-    if (s.d2m) chips.push(`<span class="chipv" style="color:#6cd7c4">dew <b>${f(s.d2m[i], (v) => W().units.temp(v).v)}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
-    if (s.msl) chips.push(`<span class="chipv" style="color:#b7a6f0"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}</span>`);
-    if (s.swh && s.swh[i] != null) chips.push(`<span class="chipv" style="color:#7dd3fc">〜 <b>${W().units.alt(s.swh[i], 1).v}</b> ${W().units.altUnit}${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` · ${arrow((s.mwd[i] + 180) % 360)}` : ""}</span>`);
-    if (s.cape && s.cape[i] != null) chips.push(`<span class="chipv" style="color:${s.cape[i] > 1000 ? "var(--bad)" : s.cape[i] > 100 ? "var(--warm)" : "var(--fg-2)"}">CAPE <b>${s.cape[i].toFixed(0)}</b> J/kg</span>`);
+    // Which readings are worth the space depends on where the pin landed. A
+    // snow depth of zero in August tells you nothing; wave height does, if you
+    // clicked the sea. So: a value that is only news when it is non-zero stays
+    // hidden at zero, and the marine readings lead over water while the
+    // land-only ones step aside.
+    const sea = !!(pt.local && pt.local.place && pt.local.place.water);
+    const marine = [], normal = [];
+    if (sea && s.wind && s.wind[i] != null) { const bf = beaufort(s.wind[i]);
+      marine.push(`<span class="chipv" style="color:#8ec5f0">force <b>${bf}</b> ${BEAUFORT_NAME[bf]}</span>`); }
+    if (sea && s.swh && s.swh[i] != null) { const ds = douglas(s.swh[i]);
+      marine.push(`<span class="chipv" style="color:#7dd3fc">sea <b>${ds}</b> ${DOUGLAS_NAME[ds]}</span>`); }
+    if (s.swh && s.swh[i] != null) marine.push(`<span class="chipv" style="color:#7dd3fc">〜 <b>${W().units.alt(s.swh[i], 1).v}</b> ${W().units.altUnit}${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` · ${arrow((s.mwd[i] + 180) % 360)}` : ""}</span>`);
+    if (s.tp6 && s.tp6[i] > 0.05) normal.push(`<span class="chipv" style="color:var(--rain)"><b>${W().units.precip(s.tp6[i]).v}</b> ${W().units.precipUnit}/6h</span>`);
+    if (s.sf6 && s.sf6[i] > 0.05) normal.push(`<span class="chipv" style="color:#cfe8ff"><b>${W().units.snow(s.sf6[i]).v}</b> ${W().units.snowUnit} snow</span>`);
+    if (!sea && s.sd_cm && s.sd_cm[i] >= 0.5) normal.push(`<span class="chipv" style="color:#9fd3ff">depth <b>${W().units.snow(s.sd_cm[i]).v}</b> ${W().units.snowUnit}</span>`);
+    if (s.tcc) normal.push(`<span class="chipv" style="color:#9fb0c8">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
+    if (s.d2m) normal.push(`<span class="chipv" style="color:#6cd7c4">dew <b>${f(s.d2m[i], (v) => W().units.temp(v).v)}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
+    if (s.msl) normal.push(`<span class="chipv" style="color:#b7a6f0"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}</span>`);
+    if (s.cape && s.cape[i] >= 100) normal.push(`<span class="chipv" style="color:${s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)"}">CAPE <b>${s.cape[i].toFixed(0)}</b> J/kg</span>`);
     const freezing = d.derived && d.derived.freezing_level_m && d.derived.freezing_level_m[i];
-    if (freezing != null) chips.push(`<span class="chipv" style="color:#7fd8e8">freezing <b>${W().units.alt(freezing).v}</b> ${W().units.altUnit}</span>`);
+    if (!sea && freezing != null) normal.push(`<span class="chipv" style="color:#7fd8e8">freezing <b>${W().units.alt(freezing).v}</b> ${W().units.altUnit}</span>`);
+    chips.push(...(sea ? [...marine, ...normal] : [...normal, ...marine]));
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
     $("#point-now").innerHTML = `<div class="hero">
         ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
@@ -179,8 +201,13 @@
     // local context
     const loc = pt.local || {};
     const bits = [];
-    if (loc.place && loc.place.name && loc.place.name !== pt.name) bits.push(`<span><b>${esc(loc.place.name)}</b>${loc.place.region ? ", " + esc(loc.place.region) : ""}${loc.place.country ? " · " + esc(loc.place.country) : ""}</span>`);
-    else if (loc.place && (loc.place.region || loc.place.country)) bits.push(`<span>${esc(loc.place.region || "")}${loc.place.country ? " · " + esc(loc.place.country) : ""}</span>`);
+    // Join only the parts that exist. A country with no region above it used to
+    // print a leading "· SE" — a separator dangling off nothing.
+    const where = [];
+    if (loc.place && loc.place.name && loc.place.name !== pt.name) where.push(`<b>${esc(loc.place.name)}</b>${loc.place.region ? ", " + esc(loc.place.region) : ""}`);
+    else if (loc.place && loc.place.region) where.push(esc(loc.place.region));
+    if (loc.place && loc.place.country) where.push(esc(loc.place.country));
+    if (where.length) bits.push(`<span>${where.join(" · ")}</span>`);
     if (loc.elevation_m != null) bits.push(`<span>elev <b>${W().units.alt(loc.elevation_m).txt}</b></span>`);
     if (W().units.followsPoint && loc.timezone && loc.timezone.abbr) bits.push(`<span>${esc(loc.timezone.abbr)}</span>`);
     // the title already carries the coordinates when there is no place name —
@@ -357,6 +384,92 @@
   }
 
   // ── Winter: new snow, snow depth, levels, wind loading, avalanche forecast
+  // ── the elevation board ───────────────────────────────────────────────
+  // Bands down, time across. A 0.25° gridpoint gives one number for a valley
+  // and the ridge above it; /api/profile interpolates the column, so each band
+  // can report what actually falls at ITS height. That difference — 20 cm on
+  // top, a wet afternoon at the car park — is the entire reason this view
+  // exists. Morning / afternoon / night, the way a mountain forecast reads.
+  const BOARD_SLOTS = 18;                       // six days of morning/afternoon/night
+
+  function bandBuckets(valid) {
+    const fmt = new Intl.DateTimeFormat("en-CA", W().units.timeOpts({ year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hour12: false }));
+    const part = (dt) => { const o = {}; for (const x of fmt.formatToParts(dt)) o[x.type] = x.value;
+      return { day: `${o.year}-${o.month}-${o.day}`, hour: Number(o.hour) % 24 }; };
+    const out = [];
+    valid.forEach((iso, i) => {
+      const dt = new Date(iso), hour = part(dt).hour;
+      // The small hours belong to the night that started the evening before —
+      // otherwise every day opens and closes with a "night" column and reads
+      // like two nights.
+      const day = part(new Date(dt.getTime() - 6 * 3600e3)).day;
+      const slot = hour < 6 ? "night" : hour < 12 ? "AM" : hour < 18 ? "PM" : "night";
+      const key = `${day}#${slot}`;
+      const last = out[out.length - 1];
+      if (last && last.key === key) last.idx.push(i);
+      else out.push({ key, day, slot, date: dt, idx: [i] });
+    });
+    // Six days is a forecast; ten is a horoscope. Start at the column that
+    // holds now and stop there.
+    const now = Date.now();
+    let from = out.findIndex((b) => new Date(valid[b.idx[b.idx.length - 1]]).getTime() >= now);
+    if (from < 0) from = 0;
+    return out.slice(from, from + BOARD_SLOTS);
+  }
+
+  function bandTable(prof, bands) {
+    if (!prof || !prof.valid || !prof.bands || !prof.bands.length) return "";
+    const U = W().units, speed = W().speed, unit = W().speedUnit();
+    const buckets = bandBuckets(prof.valid);
+    if (buckets.length < 3) return "";
+    const days = [];
+    buckets.forEach((b) => { const last = days[days.length - 1];
+      if (last && last.day === b.day) last.span++; else days.push({ day: b.day, date: b.date, span: 1 }); });
+    const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day">${dy.date.toLocaleDateString(undefined, U.timeOpts({ weekday: "short", day: "numeric" }))}</th>`).join("");
+    const slotRow = buckets.map((b) => `<th class="slot ${b.slot === "night" ? "nite" : ""}">${b.slot}</th>`).join("");
+    const total = (arr, ix) => ix.reduce((a, k) => a + ((arr && arr[k]) || 0), 0);
+    const pick = (arr, ix, fn) => { const v = ix.map((k) => arr && arr[k]).filter((x) => x != null); return v.length ? fn(v) : null; };
+
+    const rows = bands.map(([name, z]) => {
+      // match by height, not by position: callers hand the bands over in the
+      // order they want them drawn, which is not the order they were asked for
+      const b = prof.bands.find((x) => Math.abs(x.elev_m - z) < 1);
+      if (!b) return "";
+      const cells = (cls, fn) => buckets.map((bu) => fn(bu)).map((c) => `<td class="${cls}">${c}</td>`).join("");
+      // Below half a unit there is nothing to plan around; a rounded "0" in a
+      // snow column is worse than an honest dot.
+      const snowRow = cells("num", (bu) => { const v = total(b.snow_cm, bu.idx), u = U.snow(v, v < 5 ? 1 : 0);
+        return Number(u.v) <= 0 ? '<span class="nil">·</span>' : `<span class="fall snow" style="--w:${Math.min(1, v / 20).toFixed(2)}">${u.v}</span>`; });
+      const rainRow = cells("num", (bu) => { const v = total(b.rain_mm, bu.idx), u = U.precip(v, v < 5 ? 1 : 0);
+        return Number(u.v) <= 0 ? '<span class="nil">·</span>' : `<span class="fall rain" style="--w:${Math.min(1, v / 12).toFixed(2)}">${u.v}</span>`; });
+      const hiRow = cells("num", (bu) => { const v = pick(b.temp, bu.idx, (x) => Math.max(...x));
+        return v == null ? "—" : `<b style="color:${tempColor(v - K)}">${U.temp(v).v}°</b>`; });
+      const loRow = cells("num dimrow", (bu) => { const v = pick(b.temp, bu.idx, (x) => Math.min(...x));
+        return v == null ? "—" : `${U.temp(v).v}°`; });
+      const windRow = cells("num", (bu) => {
+        const v = pick(b.wind, bu.idx, (x) => Math.max(...x));
+        if (v == null) return "—";
+        const k = bu.idx.reduce((best, q) => (b.wind[q] != null && (b.wind[best] == null || b.wind[q] > b.wind[best]) ? q : best), bu.idx[0]);
+        const dir = b.wdir ? b.wdir[k] : null;
+        return `<span class="wv" style="background:${W().rampColor("wind", v, 0.9)};color:${v * 3.6 > 45 ? "#160b03" : "var(--fg)"}">${Math.round(speed(v))}</span>${dir == null ? "" : `<i class="dirarrow" style="${W().arrowRot(dir)}"></i>`}`;
+      });
+      return `<tr class="bandrow"><th class="lab band" colspan="${buckets.length + 1}"><span>${esc(name)}</span><i>${U.alt(z).txt}</i></th></tr>
+        <tr><th class="lab">Snow<small>${U.snowUnit}</small></th>${snowRow}</tr>
+        <tr><th class="lab">Rain<small>${U.precipUnit}</small></th>${rainRow}</tr>
+        <tr><th class="lab">High<small>${U.tempUnit}</small></th>${hiRow}</tr>
+        <tr><th class="lab">Low<small>${U.tempUnit}</small></th>${loRow}</tr>
+        <tr><th class="lab">Wind<small>${unit}</small></th>${windRow}</tr>`;
+    }).join("");
+
+    const flRow = prof.freezing_level_m ? `<tr class="frzrow"><th class="lab">Freezing lvl<small>${U.altUnit}</small></th>${buckets.map((bu) => {
+      const v = pick(prof.freezing_level_m, bu.idx, (x) => x.reduce((a, c) => a + c, 0) / x.length);
+      return `<td class="num">${v == null ? "—" : U.alt(Math.round(v / 50) * 50).v}</td>`; }).join("")}</tr>` : "";
+
+    return `<div class="board"><table class="bandtape">
+      <thead><tr><th class="lab corner"></th>${dayRow}</tr><tr><th class="lab corner"></th>${slotRow}</tr></thead>
+      <tbody>${rows}${flRow}</tbody></table></div>`;
+  }
+
   // The nearest ski area to this point, if one is close enough to be the same
   // weather. Asked once per point; `null` means there isn't one.
   function fetchNearestResort(pt) {
@@ -371,6 +484,27 @@
         if (W().state.point === pt && W().state.tab === "winter") W().renderPoint();
       })
       .catch(() => {});
+  }
+
+  // The bands the board draws for a plain point: a nearby ski area's own
+  // base/mid/summit when there is one, otherwise the point's elevation and two
+  // steps above it. The offsets are stated on the card — a gridpoint has no
+  // idea what the terrain around it does.
+  function winterBands(pt) {
+    const near = pt.near, base = near && near.ele_base_m, summit = near && near.ele_summit_m;
+    if (near && base != null && summit != null && summit - base > 250) {
+      return [["Summit", Math.round(summit)], ["Mid", Math.round((base + summit) / 2)], ["Base", Math.round(base)]];
+    }
+    const e = Math.round((pt.local && pt.local.elevation_m) || 0);
+    return [["+900 m", e + 900], ["+450 m", e + 450], ["Here", e]];
+  }
+
+  function fetchWinterBands(pt) {
+    const bands = winterBands(pt);
+    pt.wbands = { loading: true, bands };
+    W().api(`${W().API}/profile?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}&model=${W().state.model}&elevs=${bands.map((b) => b[1]).join(",")}`)
+      .then((r) => { pt.wbands.data = r; pt.wbands.loading = false; if (W().state.point === pt && W().state.tab === "winter") W().renderPoint(); })
+      .catch(() => { pt.wbands.loading = false; pt.wbands.error = true; if (W().state.point === pt && W().state.tab === "winter") W().renderPoint(); });
   }
 
   function renderWinter(pt, d, i) {
@@ -406,12 +540,18 @@
     if (pt.near === undefined) fetchNearestResort(pt);
     else if (pt.near) resortHtml = `<button class="resort-link" data-resort="${esc(pt.near.id)}">
       <span class="k">Elevation bands</span><span class="v">${esc(pt.near.name)}<i>${W().units.dist(pt.near.distance_km).txt} away</i></span></button>`;
+    // The board: what falls at each height, morning by morning.
+    if (pt.wbands === undefined && pt.near !== undefined && pt.local) fetchWinterBands(pt);
+    const B = pt.wbands;
+    const boardHtml = !B ? "" : B.error ? `<div class="note">Elevation bands unavailable.</div>`
+      : B.data ? `<div class="board-head"><span>Elevation bands</span><span class="dim">${esc(B.bands[0][0])} → ${esc(B.bands[B.bands.length - 1][0])}</span></div>${bandTable(B.data, B.bands)}`
+      : `<div class="note">Reading the column…</div>`;
     let avyHtml = `<div class="avy"><div class="avy-head"><span>Avalanche forecast</span><span class="dim">loading…</span></div></div>`;
     if (pt.avy === false) avyHtml = `<div class="avy"><div class="avy-head"><span>Avalanche forecast</span></div><div class="avy-note">No public forecast region covers this point (Avalanche Canada / avalanche.org).</div></div>`;
     else if (pt.avy) avyHtml = avyBlock(pt.avy, AVY_COLORS);
     else fetchAvy(pt);
-    $("#winter").innerHTML = `${resortHtml}<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${avyHtml}
-      <div class="note">Snow is model water-equivalent; the bracket applies a temperature-based ratio. Depth is the model snowpack, not a station. 0.25° grid: a valley and a ridge share one value.</div>`;
+    $("#winter").innerHTML = `${resortHtml}${boardHtml}<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${avyHtml}
+      <div class="note">Board: the model column interpolated to each height, so snow and rain are what falls THERE. Depth ratios come from the band temperature. Without a ski area nearby the bands are this point's elevation and 450/900 m above it — the gridpoint does not know what the terrain does. Snow depth is the model snowpack, not a station.</div>`;
     const link = $("#winter .resort-link");
     if (link) link.onclick = () => W().ov.selectResort(link.dataset.resort);
   }
@@ -593,7 +733,8 @@
       const fl = p.freezing_level_m ? p.freezing_level_m[k] : null;
       const snow72 = (() => { let s3 = 0; const b = p.bands[p.bands.length - 1]; for (let q = k + 1; q < p.steps.length && p.steps[q] <= p.steps[k] + 72; q++) if (b.ptype[q] === "snow") s3 += (p.tp6 && p.tp6[q]) || 0; return s3; })();
       bandsHtml = `<div class="snowline"><span>freezing level <b>${fl != null ? W().units.alt(fl).txt : "—"}</b></span><span>peak snow 72 h <b>${W().units.snow(snow72).txt}</b></span><span>lifts mapped <b>${lifts}</b></span></div>
-        <table class="bands"><thead><tr><th>Band</th><th>Temp</th><th>Wind</th><th>Precip type</th><th>Next 24 h</th></tr></thead><tbody>${rows}</tbody></table>`;
+        <table class="bands"><thead><tr><th>Band</th><th>Temp</th><th>Wind</th><th>Precip type</th><th>Next 24 h</th></tr></thead><tbody>${rows}</tbody></table>
+        <div class="board-head"><span>Morning / afternoon / night</span></div>${bandTable(p, P.bands.slice().reverse())}`;
     }
     $("#resort").innerHTML = `<div class="avy-head" style="margin-top:6px"><span>${esc(r.name)} <span class="dim">· ${esc(r.region || "")} ${esc(r.country || "")}</span></span>${r.website ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">site ↗</a>` : ""}</div>
       ${bandsHtml}

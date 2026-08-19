@@ -446,6 +446,45 @@ def api_isolines(model: str, run: str, step: int, var: str, level: int | None = 
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
+def _snow_ratio(temp_c: float | None) -> float:
+    """Snow-to-liquid ratio from the temperature the snow falls through. Cold
+    powder stacks far higher than the 10:1 rule of thumb; warm snow settles
+    below it. Same ladder the winter pane uses, so one number never disagrees
+    with the other."""
+    if temp_c is None:
+        return 10.0
+    if temp_c < -12:
+        return 15.0
+    if temp_c < -6:
+        return 12.0
+    if temp_c < 0:
+        return 10.0
+    if temp_c < 1.5:
+        return 7.0
+    return 5.0
+
+
+def _band_precip(tp6: list | None, temps: list, ptype: list, n: int) -> tuple[list, list]:
+    """Split the column's precipitation into what reaches THIS band as snow
+    (cm of settled depth) and what reaches it as rain (mm). The model gives one
+    liquid-equivalent total per step; which form it takes depends on the
+    temperature at the height you are standing, which is the whole point of an
+    elevation-band forecast."""
+    snow_cm: list[float | None] = []
+    rain_mm: list[float | None] = []
+    for i in range(n):
+        total = (tp6[i] if tp6 and i < len(tp6) else None)
+        if total is None:
+            snow_cm.append(None); rain_mm.append(None); continue
+        kind = ptype[i]
+        share = 1.0 if kind == "snow" else 0.5 if kind == "mixed" else 0.0
+        we = total * share
+        t_c = None if temps[i] is None else temps[i] - 273.15
+        snow_cm.append(round(we * _snow_ratio(t_c) / 10.0, 2))
+        rain_mm.append(round(total - we, 2))
+    return snow_cm, rain_mm
+
+
 def _interp_column(series: dict, levels: list[int], n: int, z_m: float) -> dict:
     """Temperature (K) and wind (u, v) at height z above sea level, by linear
     interpolation in geopotential height between stored levels; below the
@@ -514,11 +553,15 @@ def api_profile(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., 
     for z in zs:
         col = _interp_column(series, levels, n, z)
         spd, dr = _wind_pair(col["u"], col["v"])
-        # precip type at this altitude: snow when the band is below ~1 °C
-        ptype = [None if (col["temp"][i] is None or not series.get("tp6")) else
+        # What precipitation WOULD fall as at this altitude — a property of the
+        # band's temperature, not of whether the model happens to be raining.
+        # The amounts below carry the zeros; this says what form they take.
+        ptype = [None if col["temp"][i] is None else
                  ("snow" if col["temp"][i] - 273.15 < 1.0 else "rain" if col["temp"][i] - 273.15 > 2.5 else "mixed")
                  for i in range(n)]
-        bands.append({"elev_m": z, "temp": col["temp"], "wind": spd, "wdir": dr, "ptype": ptype})
+        snow_cm, rain_mm = _band_precip(series.get("tp6"), col["temp"], ptype, n)
+        bands.append({"elev_m": z, "temp": col["temp"], "wind": spd, "wdir": dr, "ptype": ptype,
+                      "snow_cm": snow_cm, "rain_mm": rain_mm})
     return {"model": model, "run": r.rid, "lat": lat, "lon": lon, "steps": r.steps,
             "valid": [(t0 + timedelta(hours=h)).isoformat() for h in r.steps],
             "bands": bands, "tp6": series.get("tp6"), "sf6": series.get("sf6"),
