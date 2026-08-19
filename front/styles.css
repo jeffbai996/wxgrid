@@ -141,6 +141,7 @@ select.run {
    state lives in one place. */
 #side { position: absolute; right: 12px; top: calc(var(--top-h) + 6px); z-index: 5; display: flex; align-items: flex-start; gap: 6px;
         max-height: calc(100vh - var(--top-h) - var(--tb-h) - 34px); }
+body.has-point #side { max-height: calc(100vh - var(--top-h) - var(--tb-h) - 78px); }
 /* desktop: pinned to the bottom of the strip. phone: floating, bottom right. */
 .locate-btn { position: absolute; left: 12px; z-index: 5; width: 40px; height: 40px; border-radius: 12px;
   bottom: calc(var(--tb-h) + 22px + env(safe-area-inset-bottom)); display: none; place-items: center; cursor: pointer;
@@ -191,6 +192,20 @@ select.run {
 .rail .rail-sec:first-child { border-top: 0; margin-top: 0; padding-top: 4px; }
 .seg.variant { margin-left: 8px; }
 .seg.variant button { white-space: nowrap; }
+/* Keep all ten pressure levels on screen without shrinking the type. */
+@media (min-width: 821px) and (max-width: 1180px) {
+  #topbar { gap: 6px; }
+  .search input { width: 160px; }
+  #models button { padding-left: 8px; padding-right: 8px; }
+  #levels button { padding-left: 5px; padding-right: 5px; }
+  select.run { max-width: 94px; }
+}
+@media (min-width: 821px) and (max-width: 1010px) {
+  #topbar { flex-wrap: wrap; }
+  .spacer { display: none; }
+  .rowbreak { display: block; flex: 0 0 100%; height: 0; }
+  #levels { margin-left: auto; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+}
 @media (max-width: 820px) { .seg.variant { margin-left: 4px; padding: 2px; } .seg.variant button { padding: 3px 6px; font-size: 10.5px; } }
 
 /* ── topbar menus: layers ▾ / tools ▾ popovers (all widths) ──────────── */
@@ -526,12 +541,12 @@ table.wtape tr.r-dir td { height: 20px; }
 .wind-main b, .wind-gust b { font: 650 17px/1 var(--font-num) !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wind-main b i, .wind-gust b i { font: 550 10px var(--font-mono); color: var(--fg-2); font-style: normal; }
 .wind-gust { padding-left: 12px; border-left: 1px solid var(--line); align-items: flex-end; }
-/* Readings are set as small editorial tags: a coloured rule, a micro label
-   and the number in the numeral face. Flat, square-ish, no pill. */
-.chipv { display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 8px 3px 7px; border-radius: 3px;
-  background: rgba(127,127,127,.09); box-shadow: inset 2px 0 0 currentColor;
-  font: 500 11px var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: .01em; color: var(--fg-2); }
-.chipv b { font-weight: 650; font-size: 12.5px; color: var(--fg); }
+/* Compact weather readouts: soft pills, with the number kept in the numeral face. */
+.chipv { display: inline-flex; align-items: baseline; gap: 6px; min-height: 28px; padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent); border-radius: 999px;
+  background: rgba(127,127,127,.09); box-shadow: 0 1px 2px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.04);
+  font: 600 11.5px var(--font-body); font-variant-numeric: tabular-nums; color: var(--fg-2); }
+.chipv b { font: 700 14px/1 var(--font-num); color: var(--fg); }
 .chipv i.sw { display: none; }
 .meta { gap: 5px 6px; }
 .hero .sun { display: flex; gap: 10px; align-items: center; font: 500 11.5px var(--font-mono); color: var(--fg-2); }

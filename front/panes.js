@@ -135,11 +135,14 @@
     </span>`);
     if (s.tp6 && s.tp6[i] > 0.05) chips.push(`<span class="chipv" style="color:var(--rain)"><b>${W().units.precip(s.tp6[i]).v}</b> ${W().units.precipUnit}/6h</span>`);
     if (s.sf6 && s.sf6[i] > 0.05) chips.push(`<span class="chipv" style="color:#cfe8ff"><b>${W().units.snow(s.sf6[i]).v}</b> ${W().units.snowUnit} snow</span>`);
+    if (s.sd_cm && s.sd_cm[i] != null) chips.push(`<span class="chipv" style="color:#cfe8ff">depth <b>${W().units.snow(s.sd_cm[i]).v}</b> ${W().units.snowUnit}</span>`);
     if (s.tcc) chips.push(`<span class="chipv">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
     if (s.d2m) chips.push(`<span class="chipv">dew <b>${f(s.d2m[i], (v) => W().units.temp(v).v)}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
     if (s.msl) chips.push(`<span class="chipv"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}</span>`);
     if (s.swh && s.swh[i] != null) chips.push(`<span class="chipv" style="color:#7dd3fc">〜 <b>${W().units.alt(s.swh[i], 1).v}</b> ${W().units.altUnit}${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` · ${arrow((s.mwd[i] + 180) % 360)}` : ""}</span>`);
-    if (s.cape && s.cape[i] > 100) chips.push(`<span class="chipv" style="color:${s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)"}">⚡ <b>${s.cape[i].toFixed(0)}</b> J/kg</span>`);
+    if (s.cape && s.cape[i] != null) chips.push(`<span class="chipv" style="color:${s.cape[i] > 1000 ? "var(--bad)" : s.cape[i] > 100 ? "var(--warm)" : "var(--fg-2)"}">CAPE <b>${s.cape[i].toFixed(0)}</b> J/kg</span>`);
+    const freezing = d.derived && d.derived.freezing_level_m && d.derived.freezing_level_m[i];
+    if (freezing != null) chips.push(`<span class="chipv">freezing <b>${W().units.alt(freezing).v}</b> ${W().units.altUnit}</span>`);
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
     $("#point-now").innerHTML = `<div class="hero">
         ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
@@ -216,12 +219,17 @@
   const aqiBand = (v) => AQI_BANDS.find((b) => v <= b[0]) || AQI_BANDS[AQI_BANDS.length - 1];
   const uvBand = (v) => v < 3 ? ["Low", "#2f9e44"] : v < 6 ? ["Moderate", "#e6b800"] : v < 8 ? ["High", "#f08c00"] : v < 11 ? ["Very high", "#e03131"] : ["Extreme", "#9c36b5"];
   function airHtml(pt) {
-    const a = pt.air; if (!a || a.us_aqi == null) return "";
-    const b = aqiBand(a.us_aqi);
-    const uvMax = a.hourly && a.hourly.uv ? Math.max(...a.hourly.uv.slice(0, 24).filter((x) => x != null)) : null;
+    const a = pt.air;
+    if (!a || [a.us_aqi, a.eu_aqi, a.pm2_5, a.pm10, a.ozone, a.no2, a.uv, a.uv_clear].every((v) => v == null)) return "";
+    const b = a.us_aqi != null ? aqiBand(a.us_aqi) : null;
+    const uvValues = a.hourly && a.hourly.uv ? a.hourly.uv.slice(0, 24).filter((x) => x != null) : [];
+    const uvMax = uvValues.length ? Math.max(...uvValues) : null;
     const uvb = uvMax != null ? uvBand(uvMax) : null;
-    return `<div class="air"><span class="chipv" style="background:${b[2]}22;color:${b[2]}"><i class="sw" style="background:${b[2]}"></i>AQI <b>${a.us_aqi}</b> ${b[1]}</span>
-      ${a.pm2_5 != null ? `<span class="chipv">PM2.5 <b>${a.pm2_5.toFixed(0)}</b> µg/m³</span>` : ""}${a.ozone != null ? `<span class="chipv">O₃ <b>${a.ozone.toFixed(0)}</b></span>` : ""}
+    return `<div class="air">${b ? `<span class="chipv" style="background:${b[2]}22;color:${b[2]}"><i class="sw" style="background:${b[2]}"></i>US AQI <b>${a.us_aqi}</b> ${b[1]}</span>` : ""}
+      ${a.eu_aqi != null ? `<span class="chipv">EU AQI <b>${a.eu_aqi}</b></span>` : ""}
+      ${a.pm2_5 != null ? `<span class="chipv">PM2.5 <b>${a.pm2_5.toFixed(0)}</b> µg/m³</span>` : ""}${a.pm10 != null ? `<span class="chipv">PM10 <b>${a.pm10.toFixed(0)}</b> µg/m³</span>` : ""}
+      ${a.ozone != null ? `<span class="chipv">O₃ <b>${a.ozone.toFixed(0)}</b> µg/m³</span>` : ""}${a.no2 != null ? `<span class="chipv">NO₂ <b>${a.no2.toFixed(0)}</b> µg/m³</span>` : ""}
+      ${a.uv != null ? `<span class="chipv">UV now <b>${a.uv.toFixed(1)}</b></span>` : ""}${a.uv_clear != null ? `<span class="chipv">clear-sky UV <b>${a.uv_clear.toFixed(1)}</b></span>` : ""}
       ${uvb ? `<span class="chipv" style="color:${uvb[1]}">UV max <b>${uvMax.toFixed(0)}</b> ${uvb[0]}</span>` : ""}</div>`;
   }
   function alertsHtml(pt) {

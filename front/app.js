@@ -76,6 +76,7 @@
   // the user clicked); every API call gets the wrapped one, since the store
   // is one world wide.
   const wlon = (x) => ((x + 180) % 360 + 360) % 360 - 180;
+  const hasNonLatinScript = (s) => /[\u0370-\u052f\u0590-\u08ff\u0900-\u1cff\u2c00-\ud7ff\uf900-\ufaff]/u.test(s || "");
   // The map's ramps come from the server (`/api/models` → layers[].stops). Any
   // chip that colours a value uses THIS, so a colour means the same thing in
   // the tape, the card and the map instead of three private gradients.
@@ -106,11 +107,13 @@
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
     const saved = JSON.parse(localStorage.getItem("wxgrid.view") || "null");
+    const currentMapScale = localStorage.getItem("wxgrid.mapScaleVersion") === "3";
+    if (!currentMapScale) localStorage.setItem("wxgrid.mapScaleVersion", "3");
     applyTheme(localStorage.getItem("wxgrid.theme") || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"), false);
     const hash = readHash();
     map = new maplibregl.Map({
       container: "map", style: mapStyle(),
-      center: hash ? [hash.lon, hash.lat] : saved ? saved.center : [-123, 47], zoom: hash ? hash.zoom : saved ? saved.zoom : 4,
+      center: hash ? [hash.lon, hash.lat] : saved ? saved.center : [-123, 47], zoom: hash ? hash.zoom : saved && currentMapScale ? saved.zoom : 3,
       minZoom: 1.2, maxZoom: 11, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
     });
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
@@ -631,6 +634,7 @@
     if (!keepResort) { state.resort = null; if (state.tab === "resort") state.tab = "now"; }
     state.point = { lat, lon, data: null, name: name || null, local: null, obs: null, avy: null, profile: null, cmp: null };
     $("#point").hidden = false;
+    document.body.classList.add("has-point");
     $("#point-title").textContent = name || `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
     $("#point-local").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
     $("#point-now").textContent = "…";
@@ -648,14 +652,14 @@
       $("#point-foot").textContent = `${modelEntry().short} run ${rd.toLocaleString(undefined, { day: "numeric", month: "short", timeZone: "UTC" })} ${String(rd.getUTCHours()).padStart(2, "0")}Z · 0.25° gridpoint · ${modelEntry().attribution.replace("ECMWF open data", "ECMWF").replace(" (AIFS)", "").replace("NOAA NCEP GFS via NOMADS", "NOAA")}`;
     } catch (e) { $("#point-now").textContent = "point forecast unavailable"; }
     // local context arrives lazily and re-renders as it lands
-    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if (!state.point.name && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; WX.tape.renderTape(); } renderPoint(); } }).catch(() => {});
+    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if ((!state.point.name || hasNonLatinScript(state.point.name)) && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; WX.tape.renderTape(); } renderPoint(); } }).catch(() => {});
     WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.obs = r; renderPoint(); } }).catch(() => {});
     WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.alerts = r.alerts || []; renderPoint(); } }).catch(() => {});
     WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.air = r; renderPoint(); } }).catch(() => {});
     WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.tides = r; renderPoint(); } }).catch(() => { if (my === pointReq) state.point.tides = false; });
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
-  function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; if (WX.provider) WX.provider.refresh(); if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
+  function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; document.body.classList.remove("has-point"); if (WX.provider) WX.provider.refresh(); if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
   function placeMarker(lat, lon) {
     if (!marker) { const el = document.createElement("div"); el.className = "wx-marker"; marker = new maplibregl.Marker({ element: el, anchor: "center" }); }
     marker.setLngLat([lon, lat]).addTo(map);

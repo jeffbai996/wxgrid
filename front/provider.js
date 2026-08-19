@@ -88,6 +88,9 @@
         const needsChip = light ? logo.light_bg_ok === false : logo.dark_bg_ok === false;
         const cls = needsChip ? (light ? "chip chip-dark" : "chip") : "";
         dot.innerHTML = `<img src="${logo.file}" alt="" class="${cls}">`;
+        dot.querySelector("img").addEventListener("error", () => {
+          dot.innerHTML = monogram(p[2] || iso, p[1]);
+        }, { once: true });
         dot.classList.add("logo"); dot.style.background = "transparent";
       }
       else if (p[2]) { dot.innerHTML = monogram(p[2], p[1]); dot.classList.add("logo"); dot.style.background = "transparent"; }

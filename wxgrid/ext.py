@@ -98,7 +98,9 @@ def _nominatim(path: str, params: dict) -> Any:
         if wait > 0:
             time.sleep(wait)
         _nominatim_last = time.time()
-    return _get_json(f"https://nominatim.openstreetmap.org/{path}", {**params, "format": "jsonv2"})
+    return _get_json(f"https://nominatim.openstreetmap.org/{path}", {
+        **params, "format": "jsonv2", "accept-language": "en",
+    })
 
 
 def geocode(q: str, limit: int = 6) -> list[dict]:
@@ -111,18 +113,36 @@ def geocode(q: str, limit: int = 6) -> list[dict]:
                  "display": h.get("display_name", ""), "lat": float(h["lat"]), "lon": float(h["lon"]),
                  "type": h.get("type"), "country": (h.get("address") or {}).get("country_code", "").upper()}
                 for h in hits]
-    return cache.get(f"geo:{q.lower()}:{limit}", 24 * 3600, fetch)
+    return cache.get(f"geo-en:{q.lower()}:{limit}", 24 * 3600, fetch)
+
+
+def _reverse_place_name(address: dict, fallback: str = "") -> str:
+    """Prefer a real settlement; B.C. electoral areas fall back to their
+    regional district instead of presenting an administrative letter as a
+    place name."""
+    settlement = (address.get("city") or address.get("town") or address.get("village")
+                  or address.get("hamlet"))
+    municipality = address.get("municipality") or ""
+    county = address.get("county") or ""
+    if address.get("state") == "British Columbia" and (
+            re.match(r"^(?:Electoral )?Area\s+[A-Z0-9]\b", municipality, re.I)
+            or "electoral area" in municipality.lower()):
+        district = county if "regional district" in county.lower() else ""
+        if district.lower().startswith("regional district of "):
+            district = district[len("Regional District of "):] + " Regional District"
+        return settlement or district or fallback
+    return settlement or municipality or county or fallback
 
 
 def reverse(lat: float, lon: float) -> dict:
-    key = f"rgeo:{lat:.2f}:{lon:.2f}"
+    key = f"rgeo-en:{lat:.2f}:{lon:.2f}"
     def fetch():
         try:
             h = _nominatim("reverse", {"lat": lat, "lon": lon, "zoom": 10, "addressdetails": 1})
         except requests.RequestException:
             return {}
         a = h.get("address") or {}
-        place = a.get("city") or a.get("town") or a.get("village") or a.get("hamlet") or a.get("municipality") or a.get("county") or h.get("name") or ""
+        place = _reverse_place_name(a, h.get("name") or "")
         region = a.get("state") or a.get("province") or ""
         return {"name": place, "region": region, "country": a.get("country_code", "").upper(),
                 "display": h.get("display_name", "")}

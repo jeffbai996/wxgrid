@@ -109,17 +109,22 @@
   }
 
   async function geo(q) {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=${q.get("limit") || 5}&q=${encodeURIComponent(q.get("q") || "")}`);
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&accept-language=en&limit=${q.get("limit") || 5}&q=${encodeURIComponent(q.get("q") || "")}`);
     const hits = await r.json();
     return { hits: hits.map((h) => ({ name: h.name || h.display_name.split(",")[0], display: h.display_name, lat: parseFloat(h.lat), lon: parseFloat(h.lon), type: h.type })) };
   }
   async function reverse(q) {
     const lat = q.get("lat"), lon = q.get("lon");
     const [g, e] = await Promise.all([
-      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&lat=${lat}&lon=${lon}`).then((r) => r.json()).catch(() => ({})),
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=en&zoom=10&lat=${lat}&lon=${lon}`).then((r) => r.json()).catch(() => ({})),
       fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`).then((r) => r.json()).catch(() => null)]);
     const a = g.address || {};
-    return { place: { name: a.city || a.town || a.village || a.hamlet || a.municipality || a.county || g.name || "", region: a.state || a.province || "", country: (a.country_code || "").toUpperCase(), display: g.display_name || "" },
+    const settlement = a.city || a.town || a.village || a.hamlet || "";
+    const electoralArea = a.state === "British Columbia" && (/^(?:Electoral )?Area\s+[A-Z0-9]\b/i.test(a.municipality || "") || /electoral area/i.test(a.municipality || ""));
+    let district = /regional district/i.test(a.county || "") ? a.county : "";
+    if (/^Regional District of /i.test(district)) district = district.replace(/^Regional District of /i, "") + " Regional District";
+    const place = electoralArea ? (settlement || district || g.name || "") : (settlement || a.municipality || a.county || g.name || "");
+    return { place: { name: place, region: a.state || a.province || "", country: (a.country_code || "").toUpperCase(), display: g.display_name || "" },
              elevation_m: e && e.elevation ? e.elevation[0] : null };
   }
   async function obs(q) {

@@ -11,6 +11,44 @@ def test_point_in_multipolygon_and_haversine():
     assert abs(ext._haversine_km(49.28, -123.12, 49.28, -122.12) - 72.7) < 1.5
 
 
+def test_geocoding_requests_english_names(monkeypatch):
+    calls = []
+
+    def fake_get(url, params=None, timeout=20):
+        calls.append((url, params))
+        if url.endswith("/search"):
+            return [{"name": "Al Aflaj", "display_name": "Al Aflaj, Riyadh Region, Saudi Arabia",
+                     "lat": "22.282", "lon": "46.683", "type": "administrative",
+                     "address": {"country_code": "sa"}}]
+        return {"address": {"county": "Al Aflaj", "state": "Riyadh Region", "country_code": "sa"},
+                "display_name": "Al Aflaj, Riyadh Region, Saudi Arabia"}
+
+    monkeypatch.setattr(ext, "_get_json", fake_get)
+    monkeypatch.setattr(ext.time, "sleep", lambda _: None)
+    ext.cache._d.clear()
+    assert ext.geocode("Al Aflaj", 1)[0]["name"] == "Al Aflaj"
+    assert ext.reverse(22.282, 46.683)["name"] == "Al Aflaj"
+    assert len(calls) == 2
+    assert all(params["accept-language"] == "en" for _, params in calls)
+
+
+def test_bc_electoral_area_uses_regional_district_name():
+    assert ext._reverse_place_name({
+        "municipality": "Area C (Pemberton Valley/Mount Currie/D'Arcy)",
+        "county": "Squamish-Lillooet Regional District",
+        "state": "British Columbia",
+    }) == "Squamish-Lillooet Regional District"
+    assert ext._reverse_place_name({
+        "municipality": "Electoral Area A",
+        "county": "Regional District of Okanagan-Similkameen",
+        "state": "British Columbia",
+    }) == "Okanagan-Similkameen Regional District"
+    assert ext._reverse_place_name({
+        "city": "Kelowna", "municipality": "Central Okanagan",
+        "county": "Regional District of Central Okanagan", "state": "British Columbia",
+    }) == "Kelowna"
+
+
 def test_nearest_metar_picks_closest_station(monkeypatch):
     fake = [{"icaoId": "CYVR", "lat": 49.19, "lon": -123.18, "temp": 17.0, "rawOb": "METAR CYVR", "reportTime": "t"},
             {"icaoId": "CWWA", "lat": 49.347, "lon": -123.193, "temp": 17.4, "rawOb": "METAR CWWA", "reportTime": "t"}]
