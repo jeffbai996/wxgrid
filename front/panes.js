@@ -135,14 +135,14 @@
     </span>`);
     if (s.tp6 && s.tp6[i] > 0.05) chips.push(`<span class="chipv" style="color:var(--rain)"><b>${W().units.precip(s.tp6[i]).v}</b> ${W().units.precipUnit}/6h</span>`);
     if (s.sf6 && s.sf6[i] > 0.05) chips.push(`<span class="chipv" style="color:#cfe8ff"><b>${W().units.snow(s.sf6[i]).v}</b> ${W().units.snowUnit} snow</span>`);
-    if (s.sd_cm && s.sd_cm[i] != null) chips.push(`<span class="chipv" style="color:#cfe8ff">depth <b>${W().units.snow(s.sd_cm[i]).v}</b> ${W().units.snowUnit}</span>`);
-    if (s.tcc) chips.push(`<span class="chipv">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
-    if (s.d2m) chips.push(`<span class="chipv">dew <b>${f(s.d2m[i], (v) => W().units.temp(v).v)}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
-    if (s.msl) chips.push(`<span class="chipv"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}</span>`);
+    if (s.sd_cm && s.sd_cm[i] != null) chips.push(`<span class="chipv" style="color:#9fd3ff">depth <b>${W().units.snow(s.sd_cm[i]).v}</b> ${W().units.snowUnit}</span>`);
+    if (s.tcc) chips.push(`<span class="chipv" style="color:#9fb0c8">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
+    if (s.d2m) chips.push(`<span class="chipv" style="color:#6cd7c4">dew <b>${f(s.d2m[i], (v) => W().units.temp(v).v)}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
+    if (s.msl) chips.push(`<span class="chipv" style="color:#b7a6f0"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}</span>`);
     if (s.swh && s.swh[i] != null) chips.push(`<span class="chipv" style="color:#7dd3fc">〜 <b>${W().units.alt(s.swh[i], 1).v}</b> ${W().units.altUnit}${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` · ${arrow((s.mwd[i] + 180) % 360)}` : ""}</span>`);
     if (s.cape && s.cape[i] != null) chips.push(`<span class="chipv" style="color:${s.cape[i] > 1000 ? "var(--bad)" : s.cape[i] > 100 ? "var(--warm)" : "var(--fg-2)"}">CAPE <b>${s.cape[i].toFixed(0)}</b> J/kg</span>`);
     const freezing = d.derived && d.derived.freezing_level_m && d.derived.freezing_level_m[i];
-    if (freezing != null) chips.push(`<span class="chipv">freezing <b>${W().units.alt(freezing).v}</b> ${W().units.altUnit}</span>`);
+    if (freezing != null) chips.push(`<span class="chipv" style="color:#7fd8e8">freezing <b>${W().units.alt(freezing).v}</b> ${W().units.altUnit}</span>`);
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
     $("#point-now").innerHTML = `<div class="hero">
         ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
@@ -226,10 +226,10 @@
     const uvMax = uvValues.length ? Math.max(...uvValues) : null;
     const uvb = uvMax != null ? uvBand(uvMax) : null;
     return `<div class="air">${b ? `<span class="chipv" style="background:${b[2]}22;color:${b[2]}"><i class="sw" style="background:${b[2]}"></i>US AQI <b>${a.us_aqi}</b> ${b[1]}</span>` : ""}
-      ${a.eu_aqi != null ? `<span class="chipv">EU AQI <b>${a.eu_aqi}</b></span>` : ""}
-      ${a.pm2_5 != null ? `<span class="chipv">PM2.5 <b>${a.pm2_5.toFixed(0)}</b> µg/m³</span>` : ""}${a.pm10 != null ? `<span class="chipv">PM10 <b>${a.pm10.toFixed(0)}</b> µg/m³</span>` : ""}
-      ${a.ozone != null ? `<span class="chipv">O₃ <b>${a.ozone.toFixed(0)}</b> µg/m³</span>` : ""}${a.no2 != null ? `<span class="chipv">NO₂ <b>${a.no2.toFixed(0)}</b> µg/m³</span>` : ""}
-      ${a.uv != null ? `<span class="chipv">UV now <b>${a.uv.toFixed(1)}</b></span>` : ""}${a.uv_clear != null ? `<span class="chipv">clear-sky UV <b>${a.uv_clear.toFixed(1)}</b></span>` : ""}
+      ${a.eu_aqi != null ? `<span class="chipv" style="color:#8fd6a8">EU AQI <b>${a.eu_aqi}</b></span>` : ""}
+      ${a.pm2_5 != null ? `<span class="chipv" style="color:#e0b57a">PM2.5 <b>${a.pm2_5.toFixed(0)}</b> µg/m³</span>` : ""}${a.pm10 != null ? `<span class="chipv" style="color:#d8a06a">PM10 <b>${a.pm10.toFixed(0)}</b> µg/m³</span>` : ""}
+      ${a.ozone != null ? `<span class="chipv" style="color:#8ec7f0">O₃ <b>${a.ozone.toFixed(0)}</b> µg/m³</span>` : ""}${a.no2 != null ? `<span class="chipv" style="color:#d79ac0">NO₂ <b>${a.no2.toFixed(0)}</b> µg/m³</span>` : ""}
+      ${a.uv != null ? `<span class="chipv" style="color:#f0c46a">UV now <b>${a.uv.toFixed(1)}</b></span>` : ""}${a.uv_clear != null ? `<span class="chipv" style="color:#f0c46a">clear-sky UV <b>${a.uv_clear.toFixed(1)}</b></span>` : ""}
       ${uvb ? `<span class="chipv" style="color:${uvb[1]}">UV max <b>${uvMax.toFixed(0)}</b> ${uvb[0]}</span>` : ""}</div>`;
   }
   function alertsHtml(pt) {

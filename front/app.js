@@ -107,13 +107,16 @@
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
     const saved = JSON.parse(localStorage.getItem("wxgrid.view") || "null");
-    const currentMapScale = localStorage.getItem("wxgrid.mapScaleVersion") === "3";
-    if (!currentMapScale) localStorage.setItem("wxgrid.mapScaleVersion", "3");
+    const currentMapScale = localStorage.getItem("wxgrid.mapScaleVersion") === "4";
+    if (!currentMapScale) localStorage.setItem("wxgrid.mapScaleVersion", "4");
+    // Opening on a hemisphere shows weather nobody asked about. A first view is
+    // regional: close enough that the coastline under the field is a place.
+    const defaultZoom = innerWidth > 820 ? 5 : 4;
     applyTheme(localStorage.getItem("wxgrid.theme") || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"), false);
     const hash = readHash();
     map = new maplibregl.Map({
       container: "map", style: mapStyle(),
-      center: hash ? [hash.lon, hash.lat] : saved ? saved.center : [-123, 47], zoom: hash ? hash.zoom : saved && currentMapScale ? saved.zoom : 3,
+      center: hash ? [hash.lon, hash.lat] : saved ? saved.center : [-123, 47], zoom: hash ? hash.zoom : saved && currentMapScale ? saved.zoom : defaultZoom,
       minZoom: 1.2, maxZoom: 11, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
     });
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
@@ -203,10 +206,26 @@
     if (map.getSource("wx")) return;
     map.addSource("wx", { type: "image", url: layerUrl(), coordinates: WORLD });
     map.addLayer({ id: "wx", type: "raster", source: "wx", paint: { "raster-opacity": LAYER_ALPHA[state.layer], "raster-fade-duration": 0, "raster-resampling": "linear" } }, firstSymbolId());
+    ensureCoastLayer();
+  }
+  // A weather field painted over the whole world hides the one thing you need
+  // to read it: where the land stops. The basemap's own coastline is under the
+  // field, so trace it again on top — thin, low contrast, wider as you zoom in.
+  function ensureCoastLayer() {
+    if (!map.getSource("openmaptiles") || map.getLayer("wx-coast")) return;
+    const light = document.documentElement.dataset.theme === "light";
+    map.addLayer({
+      id: "wx-coast", type: "line", source: "openmaptiles", "source-layer": "water",
+      paint: {
+        "line-color": light ? "rgba(22,32,48,.62)" : "rgba(226,238,255,.66)",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.5, 4, 0.9, 7, 1.3, 11, 2],
+        "line-blur": 0.3,
+      },
+    }, firstSymbolId());
   }
   // After a basemap swap every custom source is gone; put back whatever was on.
   function restoreLayers() {
-    ensureWxLayer(); applyStep();
+    ensureWxLayer(); ensureCoastLayer(); applyStep();
     if (state.radar && state.radarFrames.length) WX.ov.applyRadarFrame();
     if (state.iso) WX.ov.loadIso();
     if (state.avy) WX.ov.loadAvy();
@@ -290,9 +309,22 @@
   const windUrl = (h = stepHours()) => U(`${API}/wind/${state.model}/${state.run}/${h}.json${isWaves() ? "?field=waves" : state.level ? `?level=${state.level}` : ""}`);
 
   // ── controls ──────────────────────────────────────────────────────────
+  // Opacity has two entry points — the settings drawer and the rail — so it
+  // gets one setter that leaves both showing the same number.
+  function setOpacity(v) {
+    state.opacity = v;
+    localStorage.setItem("wxgrid.opacity", v);
+    const drawer = $("#opacity"), rail = document.querySelector(".rail-opacity input");
+    if (drawer) drawer.value = String(v);
+    if (rail) { rail.value = String(v); rail.parentElement.querySelector("i").textContent = `${v}%`; }
+    applyStep(false);
+  }
   function renderControls() {
     const ms = $("#models");
-    ms.innerHTML = catalog.models.map((m) => `<button data-model="${m.key}" class="${m.key === state.model ? "on" : ""}" ${m.runs.length ? "" : "disabled"} title="${m.label}">${m.short}</button>`).join("");
+    // The selected model also says what it resolves. Only the selected one:
+    // five grid figures across the top bar is noise, one is information.
+    ms.innerHTML = catalog.models.map((m) => { const on = m.key === state.model;
+      return `<button data-model="${m.key}" class="${on ? "on" : ""}" ${m.runs.length ? "" : "disabled"} title="${m.label}${m.grid ? ` · ${m.grid}` : ""}">${m.short}${on && m.grid ? `<i class="grid">${m.grid}</i>` : ""}</button>`; }).join("");
     ms.querySelectorAll("button").forEach((b) => b.onclick = () => switchModel(b.dataset.model));
 
     const rs = $("#run");
@@ -307,7 +339,10 @@
       const ok = f.layers.some((l) => avail.includes(l));
       const on = f.key === fam.key;
       return `${f.section ? `<div class="rail-sec">${f.section}</div>` : ""}<button class="${on ? "on" : ""}" data-family="${f.key}" ${ok ? "" : "disabled"} title="${f.label}${ok ? "" : " (not in this model)"}">${LAYER_ICON[FAMILY_ICON[f.key]]}<span>${f.label}</span>${f.variants ? `<i class="var">${f.variants[on ? state.layer : f.layers.find((l) => avail.includes(l)) || f.layers[0]] || ""}</i>` : ""}</button>`;
-    }).join("");
+    }).join("") + `<div class="rail-sec">Field</div><label class="rail-opacity" title="Layer opacity">
+      <span>Opacity</span><input type="range" min="20" max="100" step="5" value="${state.opacity}"><i>${state.opacity}%</i></label>`;
+    const railOp = rail.querySelector(".rail-opacity input");
+    railOp.oninput = () => { setOpacity(Number(railOp.value)); };
     rail.querySelectorAll("button").forEach((b) => b.onclick = () => {
       const f = FAMILIES.find((x) => x.key === b.dataset.family);
       // remember the last variant used per family
@@ -376,7 +411,7 @@
       renderLegend(); renderPoint(); WX.tape.renderTape();
     };
     const op = $("#opacity"); op.value = String(state.opacity);
-    op.oninput = () => { state.opacity = Number(op.value); localStorage.setItem("wxgrid.opacity", op.value); applyStep(false); };
+    op.oninput = () => setOpacity(Number(op.value));
     op.onclick = (e) => e.stopPropagation();
     buildStrip();
     $("#aurora-toggle").onclick = () => { if (!WX.sky) return; state.aurora = !state.aurora; $("#aurora-toggle").classList.toggle("on", state.aurora); if (state.aurora) WX.sky.aurora.load(); else WX.sky.aurora.clear(); };
@@ -622,8 +657,12 @@
     const conv = (v) => isSpeed ? Math.round(speed(v)) : cv ? cv(v).v : Math.round(v);
     const unit = isSpeed ? speedUnit() : cv ? cv(0).unit : lg.units;
     const ticks = [0, 0.25, 0.5, 0.75, 1].map((q) => lg.lo + (lg.hi - lg.lo) * q);
+    // The layer's name belongs over the bar, not wedged into the middle tick
+    // where it collided with the value under it. Ticks are numbers only.
     const name = LAYER_LABEL[state.layer] + (state.level && hasLevel() ? ` ${state.level}` : "");
-    $(".legend-ticks").innerHTML = ticks.map((t, i) => `<span>${i === 2 ? `<b>${name}</b> ` : ""}${conv(t)}${i === 4 ? " " + unit : ""}</span>`).join("");
+    $("#legend .legend-head b").textContent = name;
+    $("#legend .legend-head i").textContent = unit;
+    $(".legend-ticks").innerHTML = ticks.map((t) => `<span>${conv(t)}</span>`).join("");
   }
 
   // ── point card ────────────────────────────────────────────────────────

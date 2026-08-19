@@ -14,6 +14,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#000000">
+<script>
+// iOS Safari ignores user-scalable=no, so pinching zooms the whole document —
+// chrome, card and map together, which is never what the gesture meant here.
+// WebKit's gesture events are what drive that page zoom; MapLibre reads raw
+// touch events instead, so cancelling these leaves map pinch-zoom untouched.
+for (const ev of ["gesturestart", "gesturechange", "gestureend"])
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+</script>
 </head>
 <body>
 <div id="map"></div>
@@ -92,6 +100,7 @@
     <button id="tape-min" class="icon tape-min" title="Hide the forecast table" aria-label="Hide the forecast table"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
     <div id="variant" class="seg small variant" hidden aria-label="Layer variant"></div>
     <aside id="legend" hidden>
+      <div class="legend-head"><b></b><i></i></div>
       <div class="legend-bar"></div>
       <div class="legend-ticks"></div>
     </aside>
