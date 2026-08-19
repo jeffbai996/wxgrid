@@ -24,6 +24,7 @@
       this.field = null;
       this.enabled = true;
       this.mode = "particles";
+      this.density = 50;
       this.particles = [];
       this.raf = 0;
       this.dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -67,6 +68,12 @@
     setEnabled(on) {
       this.enabled = on;
       if (on) this.start(); else { this.stop(); this.wipe(); }
+    }
+
+    setDensity(value) {
+      this.density = Math.max(0, Math.min(100, Number(value) || 0));
+      this.reseed();
+      if (this.mode === "barbs") this.drawBarbs();
     }
 
     // "particles" (animated) or "barbs" (static station-model barbs on a grid).
@@ -135,6 +142,11 @@
       const x1 = Math.min(x0 + 1, f.nx - 1), y1 = Math.min(y0 + 1, f.ny - 1);
       const fx = x - x0, fy = y - y0;
       const i00 = y0 * f.nx + x0, i01 = y0 * f.nx + x1, i10 = y1 * f.nx + x0, i11 = y1 * f.nx + x1;
+      if (f.mask) {
+        const valid = (f.mask[i00] * (1 - fx) + f.mask[i01] * fx) * (1 - fy)
+          + (f.mask[i10] * (1 - fx) + f.mask[i11] * fx) * fy;
+        if (valid < 0.9) return null;
+      }
       const u = (f.u[i00] * (1 - fx) + f.u[i01] * fx) * (1 - fy) + (f.u[i10] * (1 - fx) + f.u[i11] * fx) * fy;
       const v = (f.v[i00] * (1 - fx) + f.v[i01] * fx) * (1 - fy) + (f.v[i10] * (1 - fx) + f.v[i11] * fx) * fy;
       return [u, v];
@@ -148,8 +160,10 @@
     reseed() {
       const b = this.bounds();
       const area = this.canvas.clientWidth * this.canvas.clientHeight;
-      // Density tuned so a laptop screen gets ~4-6k particles, a phone ~1.5k.
-      const n = Math.max(600, Math.min(7000, Math.round(area / 220)));
+      // 50% is the quieter default and equals about 70% of the old particle
+      // count. The full control ranges from off to 1.4x the old density.
+      const base = Math.max(600, Math.min(7000, Math.round(area / 220)));
+      const n = Math.max(0, Math.min(9800, Math.round(base * this.density * 0.014)));
       this.particles = new Array(n);
       for (let i = 0; i < n; i++) this.particles[i] = this.spawn(b, true);
       this.wipe();

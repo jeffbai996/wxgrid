@@ -313,7 +313,8 @@ def legend(layer: str) -> dict:
 
 # ── wind vectors for particles ────────────────────────────────────────────
 
-def wind_json(u: np.ndarray, v: np.ndarray, factor: int = 4, decimals: int = 1) -> bytes:
+def wind_json(u: np.ndarray, v: np.ndarray, factor: int = 4, decimals: int = 1,
+              mask: np.ndarray | None = None) -> bytes:
     """Coarsen 0.25° u/v to `factor`×0.25° (default 1°) and emit compact JSON.
     Row 0 = 90°N, col 0 = 180°W; last column duplicates the first so the
     client can wrap longitude without a special case."""
@@ -321,6 +322,10 @@ def wind_json(u: np.ndarray, v: np.ndarray, factor: int = 4, decimals: int = 1) 
     vv = v[::factor, ::factor]
     uu = np.concatenate([uu, uu[:, :1]], axis=1)
     vv = np.concatenate([vv, vv[:, :1]], axis=1)
+    mm = None
+    if mask is not None:
+        mm = np.asarray(mask, dtype=bool)[::factor, ::factor]
+        mm = np.concatenate([mm, mm[:, :1]], axis=1)
     ny, nx = uu.shape
     payload = {
         "lat0": 90.0, "lon0": -180.0, "dlat": -GRID_RES * factor, "dlon": GRID_RES * factor,
@@ -328,6 +333,8 @@ def wind_json(u: np.ndarray, v: np.ndarray, factor: int = 4, decimals: int = 1) 
         "u": (np.round(np.nan_to_num(uu), decimals) if decimals else np.rint(np.nan_to_num(uu)).astype(int)).ravel().tolist(),
         "v": (np.round(np.nan_to_num(vv), decimals) if decimals else np.rint(np.nan_to_num(vv)).astype(int)).ravel().tolist(),
     }
+    if mm is not None:
+        payload["mask"] = mm.astype(np.uint8).ravel().tolist()
     return json.dumps(payload, separators=(",", ":")).encode()
 
 

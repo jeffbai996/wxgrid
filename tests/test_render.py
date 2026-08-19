@@ -49,3 +49,16 @@ def test_wind_json_coarsens_and_wraps():
     assert d["ny"] == 181 and d["nx"] == 361 and len(d["u"]) == 181 * 361
     assert d["u"][0] == d["u"][360]            # last column duplicates the first
     assert d["dlat"] == -1.0 and d["lat0"] == 90.0
+
+
+def test_wind_json_optional_mask_coarsens_and_wraps():
+    import json
+    u = np.ones((GRID_LAT_N, GRID_LON_N), dtype=np.float32)
+    v = np.ones_like(u)
+    mask = np.zeros_like(u, dtype=bool)
+    mask[0, 0] = True
+    d = json.loads(render.wind_json(u, v, factor=4, mask=mask))
+    assert len(d["mask"]) == d["ny"] * d["nx"]
+    assert d["mask"][0] == 1
+    assert d["mask"][360] == 1
+    assert d["mask"][1] == 0

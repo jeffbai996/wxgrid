@@ -254,6 +254,7 @@
     if (state.radar && WX.fn.clearOtherCover) WX.fn.clearOtherCover("radar");
     $("#radar-toggle").classList.toggle("on", state.radar);
     if (!state.radar) { clearRadar(); WX.tape.renderTape(); WX.fn.applyStep(); return; }
+    if (WX.fn.setTapeState) WX.fn.setTapeState("mini", false);
     await loadRadar();
   }
 

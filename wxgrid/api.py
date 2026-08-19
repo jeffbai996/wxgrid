@@ -246,14 +246,16 @@ def api_wind(model: str, run: str, step: int, level: int | None = None, field: s
         if step not in r.steps or not _available(r, "waves"):
             raise HTTPException(404, "no waves in run")
         step = _level_step(r, step, True)
-        path = CACHE_DIR / model / r.rid / f"{step:03d}-wavevec.json"
+        path = CACHE_DIR / model / r.rid / f"{step:03d}-wavevec-v2.json"
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
-            swh = r.slab("swh", step); mwd = np.deg2rad(r.slab("mwd", step))
+            swh = r.slab("swh", step); mwd_raw = r.slab("mwd", step)
+            valid = np.isfinite(swh) & np.isfinite(mwd_raw) & (swh > 0.05)
+            mwd = np.deg2rad(mwd_raw)
             # mwd is the direction waves come FROM (met convention): propagation is the opposite way
             u = -np.sin(mwd) * swh * 3.0; v = -np.cos(mwd) * swh * 3.0
             tmp = _tmp_for(path)
-            tmp.write_bytes(render.wind_json(u, v))
+            tmp.write_bytes(render.wind_json(u, v, mask=valid))
             tmp.replace(path)
         return FileResponse(path, media_type="application/json", headers={"Cache-Control": "public, max-age=31536000, immutable"})
     level = _norm_level(level, "wind")

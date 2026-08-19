@@ -62,7 +62,8 @@
     iso: false, avy: false, resorts: false, resort: null, measure: false,
     alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false,
     sigmet: false, aurora: false, lightning: false, aq: false, route: false, aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
-    opacity: Number(localStorage.getItem("wxgrid.opacity") || 100), xsection: false,
+    opacity: Number(localStorage.getItem("wxgrid.opacity") || 100),
+    particleDensity: Number(localStorage.getItem("wxgrid.particleDensity") || 50), xsection: false,
     playMs: Number(localStorage.getItem("wxgrid.playMs") || 900),
   };
   let map, wind, catalog, playTimer = null, marker = null;
@@ -109,6 +110,7 @@
                    renderPoint: () => renderPoint(), refreshPoint: () => refreshPoint(), closePoint: () => closePoint(), placeMarker: (...a) => placeMarker(...a),
                    stepHours: () => stepHours(), steps: () => steps(), layerUrl: () => layerUrl(),
                    applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), fitStrip: () => fitStrip(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d), clearOtherCover: (k) => clearOtherCover(k),
+                   setTapeState: (s, persist) => setTapeState(s, persist), getTapeState: () => tapeState,
                    jumpModelTime: (key, iso) => switchModel(key, new Date(iso).getTime()) };
 
   // ── boot ──────────────────────────────────────────────────────────────
@@ -145,6 +147,7 @@
     });
     wind = new WindLayer(map, $("#particles"));
     WX.windLayer = wind;
+    wind.setDensity(state.particleDensity);
     // A taller tape leaves less room for a hand-sized card, so re-clamp it —
     // but never mid-drag, where it would fight the pointer.
     new ResizeObserver(() => { document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px");
@@ -353,6 +356,16 @@
     if (rail) { rail.value = String(v); rail.parentElement.querySelector("i").textContent = `${v}%`; }
     applyStep(false);
   }
+  function setParticleDensity(v) {
+    state.particleDensity = Math.max(0, Math.min(100, v));
+    localStorage.setItem("wxgrid.particleDensity", state.particleDensity);
+    const rail = document.querySelector(".rail-density input");
+    if (rail) {
+      rail.value = String(state.particleDensity);
+      rail.parentElement.querySelector("i").textContent = `${state.particleDensity}%`;
+    }
+    if (wind) wind.setDensity(state.particleDensity);
+  }
   // The model and pressure pickers share one sliding selection plate. Keep the
   // old plate's geometry across a re-render so changing model metadata (the
   // selected grid badge) does not turn a smooth move into a flash.
@@ -431,9 +444,13 @@
       </div>
       <button class="rail-flat ${state.iso ? "on" : ""}" data-rail="iso">${LAYER_ICON.iso || ""}<span>Isolines</span></button>
       <label class="rail-opacity" title="Layer opacity">
-        <span>Opacity</span><input type="range" min="20" max="100" step="5" value="${state.opacity}"><i>${state.opacity}%</i></label>`;
+        <span>Opacity</span><input type="range" min="20" max="100" step="5" value="${state.opacity}"><i>${state.opacity}%</i></label>
+      <label class="rail-opacity rail-density" title="Particle density">
+        <span>Density</span><input type="range" min="0" max="100" step="5" value="${state.particleDensity}"><i>${state.particleDensity}%</i></label>`;
     const railOp = rail.querySelector(".rail-opacity input");
     railOp.oninput = () => { setOpacity(Number(railOp.value)); };
+    const density = rail.querySelector(".rail-density input");
+    density.oninput = () => { setParticleDensity(Number(density.value)); };
     // The rail proxies the buttons that already own this state, so there is
     // still one place a toggle actually lives.
     rail.querySelectorAll("[data-motion]").forEach((b) => b.onclick = () => {
@@ -933,9 +950,10 @@
     const v = validDate();
     $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts({ weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
-    $("#lead").textContent = `+${stepHours()}h`;
-    $("#tape-now").classList.toggle("on", state.stepIdx === currentStepIdx());
-    $("#tape-now").setAttribute("aria-pressed", state.stepIdx === currentStepIdx() ? "true" : "false");
+    const atNow = state.stepIdx === currentStepIdx();
+    $("#lead").textContent = atNow ? "current" : `+${stepHours()}h`;
+    $("#tape-now").classList.toggle("on", atNow);
+    $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
     if (prefetch) { const img = new Image(); img.src = layerUrl(steps()[(state.stepIdx + 1) % steps().length]); if (state.resorts && WX.ov) WX.ov.loadResorts(); }
     WX.tape.renderTapeSelection();
     if (state.point) renderPoint();
