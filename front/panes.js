@@ -254,7 +254,7 @@
     if (gustChance != null && gustChance >= 20) normal.push(`<span class="chipv" style="color:#ffb454" title="Share of members with gusts over 50 km/h in the next 24 h">gale chance <b>${gustChance}%</b></span>`);
     if (s.sf6 && s.sf6[i] > 0.05) normal.push(`<span class="chipv" style="color:#cfe8ff"><b>${W().units.snow(s.sf6[i]).v}</b> ${W().units.snowUnit} snow</span>`);
     if (!sea && s.sd_cm && s.sd_cm[i] >= 0.5) normal.push(`<span class="chipv" style="color:#9fd3ff">depth <b>${W().units.snow(s.sd_cm[i]).v}</b> ${W().units.snowUnit}</span>`);
-    if (s.tcc) normal.push(`<span class="chipv" style="color:#9fb0c8">☁ <b>${f(s.tcc[i], (v) => (v * 100).toFixed(0))}</b>%</span>`);
+    if (s.tcc && s.tcc[i] != null) normal.push(`<span class="chipv" style="color:#9fb0c8">☁ <b>${(s.tcc[i] * 100).toFixed(0)}</b>%</span>`);
     if (s.d2m) normal.push(`<span class="chipv" style="color:#6cd7c4">dew <b>${f(s.d2m[i], (v) => W().units.temp(v).v)}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
     // Pressure with its direction: the number alone says nothing, the trend is
     // the whole reason a barometer is on the wall.
