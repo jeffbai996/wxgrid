@@ -6,16 +6,22 @@
   const { $, $$, API, LAYER_ALPHA, state, speed, speedUnit, arrowRot, toast, url: U } = WX;
   const M = () => WX.map;
   // ── weather tape ──────────────────────────────────────────────────────
-  let tapeReq = 0;
+  let tapeReq = 0, tapeKey = "";
   async function refreshTapePoint() {
     const c = M().getCenter();
+    const key = `${c.lat.toFixed(2)},${WX.wlon(c.lng).toFixed(2)};${state.model};${state.run}`;
+    // Initial map settlement emits moveend after boot has already requested
+    // this exact column. Keep the in-flight/result instead of doing the same
+    // point-cube read twice.
+    if (key === tapeKey) return;
+    tapeKey = key;
     const my = ++tapeReq;
     try {
       const d = await WX.api(`${API}/point?lat=${c.lat.toFixed(2)}&lon=${WX.wlon(c.lng).toFixed(2)}&model=${state.model}&run=${state.run}`);
       if (my !== tapeReq) return;
       state.tapePoint = d;
       renderTape();
-    } catch (e) { /* keep last */ }
+    } catch (e) { if (my === tapeReq) tapeKey = ""; /* keep last, allow retry */ }
   }
   function tapeData() { return (state.point && state.point.data) || state.tapePoint; }
 

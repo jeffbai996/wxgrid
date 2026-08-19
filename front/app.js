@@ -114,6 +114,12 @@
       minZoom: 1.2, maxZoom: 11, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
     });
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+    // Subscribe before the catalog request. A cached style can emit
+    // `style.load` while /api/models is still in flight.
+    const styleReady = new Promise((resolve) => {
+      map.once("style.load", resolve);
+      if (map.isStyleLoaded()) resolve();
+    });
     map.on("moveend", () => {
       localStorage.setItem("wxgrid.view", JSON.stringify({ center: map.getCenter().toArray(), zoom: map.getZoom() }));
       if (!state.point) WX.tape.refreshTapePoint();
@@ -137,32 +143,53 @@
     if (!runEntry().layers.includes(state.layer)) state.layer = runEntry().layers[0];
 
     if (hash) { if (hash.model && catalog.models.some((m) => m.key === hash.model && m.runs.length)) state.model = hash.model; if (hash.layer && LAYERS.includes(hash.layer)) state.layer = hash.layer; state.level = hash.level || 0; state.run = modelEntry().runs[0].run; if (hash.step != null) state.stepIdx = Math.min(hash.step, steps().length - 1); }
-    map.on("load", () => {
-      ensureWxLayer();
-      map.on("click", (e) => {
-        if (state.measure) { WX.ov.measureClick(e.lngLat); return; }
-        if (state.xsection) { WX.xs.click(e.lngLat); return; }
-        if (state.route && WX.route && !WX.route.active) { WX.route.addPoint(e.lngLat); return; }
-        const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter((l) => map.getLayer(l)) });
-        const resort = feats.find((x) => x.layer.id === "resort-pts");
-        if (resort) { WX.ov.selectResort(resort.properties.id); return; }
-        openPoint(e.lngLat.lat, e.lngLat.lng);
-        const avy = feats.find((x) => x.layer.id === "avy-fill");
-        if (avy) { state.tab = "winter"; }
-      });
-      map.on("mousemove", (e) => { if (WX.probe) WX.probe.hover(e.lngLat); });
-      map.on("mouseout", () => { if (WX.probe) WX.probe.hover(null); });
-      map.on("moveend", () => { if (WX.provider) WX.provider.refresh(); });
-      map.on("mouseenter", "resort-pts", () => map.getCanvas().style.cursor = "pointer");
-      map.on("mouseleave", "resort-pts", () => map.getCanvas().style.cursor = "");
-      renderControls();
-      if (WX.mapmenu) WX.mapmenu.wire();
-      applyStep();
-      loadWind();
-      WX.tape.refreshTapePoint();
-      if (hash && hash.pt) openPoint(hash.pt[0], hash.pt[1]);
-      if (WX.tour) setTimeout(() => WX.tour.start(), 1200);
+    // The controls and forecast table only need the local catalog. Painting
+    // them behind MapLibre's `load` event made a cold start wait for the
+    // remote basemap's tiles, glyphs and sprites before showing local data.
+    renderControls();
+    if (WX.mapmenu) WX.mapmenu.wire();
+    applyStep(false);
+    const tapeReady = hash && hash.pt ? Promise.resolve() : WX.tape.refreshTapePoint();
+    if (hash && hash.pt) openPoint(hash.pt[0], hash.pt[1]);
+    const windReady = loadWind(false);
+    if (WX.tour) setTimeout(() => WX.tour.start(), 1200);
+
+    map.on("click", (e) => {
+      if (!map.isStyleLoaded()) return;
+      if (state.measure) { WX.ov.measureClick(e.lngLat); return; }
+      if (state.xsection) { WX.xs.click(e.lngLat); return; }
+      if (state.route && WX.route && !WX.route.active) { WX.route.addPoint(e.lngLat); return; }
+      const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter((l) => map.getLayer(l)) });
+      const resort = feats.find((x) => x.layer.id === "resort-pts");
+      if (resort) { WX.ov.selectResort(resort.properties.id); return; }
+      openPoint(e.lngLat.lat, e.lngLat.lng);
+      const avy = feats.find((x) => x.layer.id === "avy-fill");
+      if (avy) { state.tab = "winter"; }
     });
+    map.on("mousemove", (e) => { if (WX.probe) WX.probe.hover(e.lngLat); });
+    map.on("mouseout", () => { if (WX.probe) WX.probe.hover(null); });
+    map.on("moveend", () => { if (WX.provider) WX.provider.refresh(); });
+    map.on("mouseenter", "resort-pts", () => map.getCanvas().style.cursor = "pointer");
+    map.on("mouseleave", "resort-pts", () => map.getCanvas().style.cursor = "");
+
+    const loadInitialWeather = () => {
+      // Add the selected image as soon as the style exists; `load` waits for
+      // the basemap's initial tiles as well. Do not immediately update the
+      // source to the same URL or prefetch the next 1 MB frame alongside it.
+      const prefetchNext = (e) => {
+        if (e.sourceId !== "wx" || !e.isSourceLoaded) return;
+        map.off("sourcedata", prefetchNext);
+        // The next frame is useful, but only after the current image, wind
+        // field and tape have finished. It must not compete with first paint.
+        Promise.allSettled([windReady, tapeReady]).then(() => {
+          const img = new Image();
+          img.src = layerUrl(steps()[(state.stepIdx + 1) % steps().length]);
+        });
+      };
+      map.on("sourcedata", prefetchNext);
+      ensureWxLayer();
+    };
+    styleReady.then(loadInitialWeather).catch(() => ensureWxLayer());
   }
   const firstSymbolId = () => { const l = map.getStyle().layers.find((x) => x.type === "symbol"); return l ? l.id : undefined; };
   const mapStyle = () => document.documentElement.dataset.theme === "light" ? "https://tiles.openfreemap.org/styles/positron" : "https://tiles.openfreemap.org/styles/dark";
@@ -546,14 +573,14 @@
   }
 
   let windReq = 0;
-  async function loadWind() {
+  async function loadWind(prefetch = true) {
     if (!runEntry().layers.includes(isWaves() ? "waves" : "wind")) { wind.setField(null); return; }
     const my = ++windReq;
     try {
       const fld = await WX.api(windUrl());
       if (my !== windReq) return;
       wind.setField(fld);
-      fetch(windUrl(steps()[(state.stepIdx + 1) % steps().length])).catch(() => {});
+      if (prefetch) fetch(windUrl(steps()[(state.stepIdx + 1) % steps().length])).catch(() => {});
     } catch (e) { /* keep the previous field */ }
   }
 
