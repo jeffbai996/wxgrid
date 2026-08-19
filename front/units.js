@@ -5,7 +5,7 @@
 //   WX.units.temp(273.15) -> {v: 0, unit: "°C", txt: "0 °C"}
 //
 // Stored preferences (localStorage): wxgrid.u.temp | .wind | .precip | .snow
-// | .dist | .press | .clock. Wind stays on the legacy wxgrid.units key so an
+// | .dist | .press | .baro | .clock. Wind stays on the legacy wxgrid.units key so an
 // existing visitor keeps their choice.
 (function () {
   "use strict";
@@ -21,6 +21,7 @@
     clock: LS("clock", "auto"),     // auto | 24 | 12
     tz: LS("tz", "local"),          // local | point | utc
     alt: LS("alt", "m"),            // m | ft
+    baro: LS("baro", "metric"),     // metric | feet | flight
   };
 
   const round = (v, n) => Number(v.toFixed(n));

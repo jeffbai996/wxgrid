@@ -7,9 +7,9 @@
   const $ = (s) => document.querySelector(s);
 
   const PRESETS = {
-    metric: { label: "Metric", note: "°C · km/h · mm", values: { temp: "c", wind: "kmh", precip: "mm", snow: "cm", dist: "km", alt: "m", press: "hpa" } },
-    us: { label: "US", note: "°F · mph · inches", values: { temp: "f", wind: "mph", precip: "in", snow: "in", dist: "mi", alt: "ft", press: "inhg" } },
-    aviation: { label: "Aviation", note: "°C · kt · NM · ft", values: { temp: "c", wind: "kt", precip: "mm", snow: "cm", dist: "nm", alt: "ft", press: "hpa" } },
+    metric: { label: "Metric", note: "°C · km/h · mm", values: { temp: "c", wind: "kmh", precip: "mm", snow: "cm", dist: "km", alt: "m", baro: "metric", press: "hpa" } },
+    us: { label: "US", note: "°F · mph · inches", values: { temp: "f", wind: "mph", precip: "in", snow: "in", dist: "mi", alt: "ft", baro: "feet", press: "inhg" } },
+    aviation: { label: "Aviation", note: "°C · kt · NM · FL", values: { temp: "c", wind: "kt", precip: "mm", snow: "cm", dist: "nm", alt: "ft", baro: "flight", press: "hpa" } },
   };
 
   const GROUPS = [
@@ -20,6 +20,7 @@
       { key: "snow", label: "Snow", opts: [["cm", "cm"], ["in", "in"]] },
       { key: "dist", label: "Distance", opts: [["km", "km"], ["mi", "mi"], ["nm", "nm"]] },
       { key: "alt", label: "Altitude", opts: [["m", "m"], ["ft", "ft"]] },
+      { key: "baro", label: "Pressure levels", opts: [["metric", "m / km"], ["feet", "ft"], ["flight", "FL"]] },
       { key: "press", label: "Pressure", opts: [["hpa", "hPa"], ["inhg", "inHg"], ["mmhg", "mmHg"]] },
     ] },
     { title: "Time", rows: [

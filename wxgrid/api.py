@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -48,6 +49,20 @@ _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72":
 _SIX_HOURLY = ("frz", "waves", "wperiod")
 _readers: dict[tuple[str, str], RunReader] = {}
 _pool = ThreadPoolExecutor(max_workers=8)
+_cache_locks: dict[str, threading.Lock] = {}
+_cache_locks_guard = threading.Lock()
+
+
+def _cache_lock(path) -> threading.Lock:
+    """One renderer per immutable cache key; concurrent clients wait for it.
+
+    Private temp names prevent collisions, but without this lock a cold image
+    requested four times still did four global-grid renders and exhausted the
+    worker's memory before any caller received the shared result.
+    """
+    key = str(path)
+    with _cache_locks_guard:
+        return _cache_locks.setdefault(key, threading.Lock())
 
 
 def _reader(model: str, run: str) -> RunReader:
@@ -227,12 +242,14 @@ def api_layer(request: Request, model: str, run: str, step: int, layer: str, lev
     name, fmt, media = render.layer_cache_name(step, tag, request.headers.get("accept"))
     path = CACHE_DIR / model / r.rid / name
     if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        field = field_for(r, layer, level, step)
-        disp = render.DISPLAY[layer](render.to_mercator(field))
-        tmp = _tmp_for(path)
-        tmp.write_bytes(render.colorize(disp, layer, fmt=fmt))
-        tmp.replace(path)
+        with _cache_lock(path):
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                field = field_for(r, layer, level, step)
+                disp = render.DISPLAY[layer](render.to_mercator(field))
+                tmp = _tmp_for(path)
+                tmp.write_bytes(render.colorize(disp, layer, fmt=fmt))
+                tmp.replace(path)
     return FileResponse(path, media_type=media,
                         headers={"Cache-Control": "public, max-age=31536000, immutable", "Vary": "Accept"})
 
@@ -248,15 +265,17 @@ def api_wind(model: str, run: str, step: int, level: int | None = None, field: s
         step = _level_step(r, step, True)
         path = CACHE_DIR / model / r.rid / f"{step:03d}-wavevec-v2.json"
         if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            swh = r.slab("swh", step); mwd_raw = r.slab("mwd", step)
-            valid = np.isfinite(swh) & np.isfinite(mwd_raw) & (swh > 0.05)
-            mwd = np.deg2rad(mwd_raw)
-            # mwd is the direction waves come FROM (met convention): propagation is the opposite way
-            u = -np.sin(mwd) * swh * 3.0; v = -np.cos(mwd) * swh * 3.0
-            tmp = _tmp_for(path)
-            tmp.write_bytes(render.wind_json(u, v, mask=valid))
-            tmp.replace(path)
+            with _cache_lock(path):
+                if not path.exists():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    swh = r.slab("swh", step); mwd_raw = r.slab("mwd", step)
+                    valid = np.isfinite(swh) & np.isfinite(mwd_raw) & (swh > 0.05)
+                    mwd = np.deg2rad(mwd_raw)
+                    # mwd is the direction waves come FROM (met convention): propagation is the opposite way
+                    u = -np.sin(mwd) * swh * 3.0; v = -np.cos(mwd) * swh * 3.0
+                    tmp = _tmp_for(path)
+                    tmp.write_bytes(render.wind_json(u, v, mask=valid))
+                    tmp.replace(path)
         return FileResponse(path, media_type="application/json", headers={"Cache-Control": "public, max-age=31536000, immutable"})
     level = _norm_level(level, "wind")
     if step not in r.steps or not _available(r, "wind", level):
@@ -265,11 +284,13 @@ def api_wind(model: str, run: str, step: int, level: int | None = None, field: s
     tag = "wind" if level is None else f"wind-{level}"
     path = CACHE_DIR / model / r.rid / f"{step:03d}-{tag}.json"
     if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        u, v = _vars_for("wind", level)
-        tmp = _tmp_for(path)
-        tmp.write_bytes(render.wind_json(r.slab(u, step), r.slab(v, step)))
-        tmp.replace(path)
+        with _cache_lock(path):
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                u, v = _vars_for("wind", level)
+                tmp = _tmp_for(path)
+                tmp.write_bytes(render.wind_json(r.slab(u, step), r.slab(v, step)))
+                tmp.replace(path)
     return FileResponse(path, media_type="application/json",
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
