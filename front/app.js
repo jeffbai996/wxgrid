@@ -177,6 +177,10 @@
       if (state.measure) { WX.ov.measureClick(e.lngLat); return; }
       if (state.xsection) { WX.xs.click(e.lngLat); return; }
       if (state.route && WX.route && !WX.route.active) { WX.route.addPoint(e.lngLat); return; }
+      // Something on the map that has its own popup owns the click. Without
+      // this a fire report opened underneath a location card nobody asked for.
+      const owned = ["fire-inc", "fire-perim-fill", "sigmet-fill", "quakes", "storm-pts"].filter((l) => map.getLayer(l));
+      if (owned.length && map.queryRenderedFeatures(e.point, { layers: owned }).length) return;
       const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter((l) => map.getLayer(l)) });
       const resort = feats.find((x) => x.layer.id === "resort-pts");
       if (resort) { WX.ov.selectResort(resort.properties.id); return; }
