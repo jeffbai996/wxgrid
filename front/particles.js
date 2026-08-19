@@ -164,10 +164,40 @@
       this.raf = 0;
     }
 
+    // The trail buffer is a picture of where the wind has just been, painted in
+    // screen space. When the map moves, that picture has to move with it — or
+    // the trails smear across the display and the field reads as animating the
+    // user's drag instead of the weather. Pan and zoom of a north-up map are a
+    // similarity transform, so a single drawImage relocates the whole buffer
+    // exactly: scale by the zoom ratio, then put the old centre back where the
+    // new view says that place now is.
+    warpTrails() {
+      const m = this.map, z = m.getZoom(), c = m.getCenter();
+      const prev = this._view;
+      this._view = { z, lng: c.lng, lat: c.lat };
+      if (!prev || (prev.z === z && prev.lng === c.lng && prev.lat === c.lat)) return;
+      const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      const s = Math.pow(2, z - prev.z);
+      const p = m.project([prev.lng, prev.lat]);
+      const tx = p.x - s * w / 2, ty = p.y - s * h / 2;
+      // A jump across the antimeridian projects into another world copy; there
+      // is nothing sensible to warp then, so start the trails over.
+      if (!isFinite(tx) || !isFinite(ty) || Math.abs(tx) > 2 * w || Math.abs(ty) > 2 * h) { this.wipe(); return; }
+      const buf = this._buf || (this._buf = document.createElement("canvas"));
+      if (buf.width !== this.canvas.width || buf.height !== this.canvas.height) { buf.width = this.canvas.width; buf.height = this.canvas.height; }
+      const bx = buf.getContext("2d");
+      bx.setTransform(1, 0, 0, 1, 0, 0);
+      bx.clearRect(0, 0, buf.width, buf.height);
+      bx.drawImage(this.canvas, 0, 0);
+      this.ctx.clearRect(0, 0, w, h);
+      this.ctx.drawImage(buf, tx, ty, w * s, h * s);
+    }
+
     frame(t) {
       const dt = Math.min(50, t - (this.lastFrame || t)) / 1000;   // s, capped for tab wake-ups
       this.lastFrame = t;
       const ctx = this.ctx, w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      this.warpTrails();
       // Fade the previous frame: this is the trail.
       ctx.globalCompositeOperation = "destination-out";
       ctx.fillStyle = "rgba(0,0,0,0.06)";
