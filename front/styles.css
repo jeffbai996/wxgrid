@@ -142,6 +142,7 @@ select.run {
 #side { position: absolute; right: 12px; top: calc(var(--top-h) + 6px); z-index: 5; display: flex; align-items: flex-start; gap: 6px;
         max-height: calc(100vh - var(--top-h) - var(--tb-h) - 34px); }
 body.has-point #side { max-height: calc(100vh - var(--top-h) - var(--tb-h) - 78px); }
+#side:hover, #side:focus-within { z-index: 12; }
 /* desktop: pinned to the bottom of the strip. phone: floating, bottom right. */
 .locate-btn { position: absolute; left: 12px; z-index: 5; width: 40px; height: 40px; border-radius: 12px;
   bottom: calc(var(--tb-h) + 22px + env(safe-area-inset-bottom)); display: none; place-items: center; cursor: pointer;
@@ -170,6 +171,7 @@ body.has-point #side { max-height: calc(100vh - var(--top-h) - var(--tb-h) - 78p
 .tstrip { position: absolute; left: 12px; top: calc(var(--top-h) + 6px); z-index: 5;
   --strip-btn: 36px;
   display: flex; flex-direction: column; gap: 3px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; backdrop-filter: blur(10px); overflow: visible; }
+.tstrip:hover, .tstrip:focus-within { z-index: 12; }
 .tstrip button { position: relative; width: var(--strip-btn); height: var(--strip-btn); border: 0; border-radius: 10px; background: transparent; color: var(--fg-2); display: flex; align-items: center; justify-content: center; line-height: 0; cursor: pointer; transition: background .15s, color .15s; }
 .tstrip button svg { width: calc(var(--strip-btn) * 0.5); height: calc(var(--strip-btn) * 0.5); opacity: .85; display: block; }
 .tstrip button:hover { background: rgba(255,255,255,.06); color: var(--fg); }
@@ -250,8 +252,19 @@ button:focus:not(:focus-visible) { outline: none; }
   position: absolute; left: 12px; right: 12px; z-index: 5;
   bottom: calc(10px + env(safe-area-inset-bottom));
   padding: 6px 10px 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px); display: flex; flex-direction: column;
 }
+.tape-resize-handle { position: absolute; z-index: 2; left: 50%; top: -9px; width: 72px; height: 18px;
+  transform: translateX(-50%); display: grid; place-items: center; cursor: ns-resize; touch-action: none; outline: none; }
+.tape-resize-handle i { display: block; width: 42px; height: 4px; border-radius: 999px;
+  background: color-mix(in srgb, var(--fg-2) 58%, transparent); box-shadow: 0 0 0 4px var(--panel), 0 2px 10px rgba(0,0,0,.28);
+  transition: width .14s ease, background .14s ease, box-shadow .14s ease; }
+.tape-resize-handle:hover i, .tape-resize-handle:focus-visible i, #timebar.is-resizing .tape-resize-handle i {
+  width: 52px; background: var(--accent); box-shadow: 0 0 0 4px var(--panel), 0 0 16px var(--accent-glow); }
+#timebar.user-sized .tape { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+#timebar.user-sized table.wtape { min-height: 100%; }
+#timebar.mini { height: auto !important; }
+#timebar.mini .tape-resize-handle { display: none; }
 .tape-head { display: flex; align-items: center; gap: 10px; padding: 0 2px 4px; }
 .tape-head .icon { flex: 0 0 auto; }                    /* never squash the play circle */
 .time-meta { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
@@ -288,6 +301,15 @@ input#step { width: 100%; accent-color: var(--accent); height: 14px; margin: 2px
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 8px;
   backdrop-filter: blur(10px);
 }
+.point-resize-handle { position: absolute; z-index: 3; right: 2px; bottom: 2px; width: 24px; height: 24px;
+  display: grid; place-items: center; border-radius: 8px 0 10px 0; color: var(--dim); cursor: nwse-resize;
+  touch-action: none; outline: none; transition: color .14s ease, background .14s ease; }
+.point-resize-handle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.point-resize-handle:hover, .point-resize-handle:focus-visible, #point.is-resizing .point-resize-handle {
+  color: var(--accent); background: var(--accent-soft); }
+body.resizing-tape, body.resizing-tape * { cursor: ns-resize !important; }
+body.resizing-point, body.resizing-point * { cursor: nwse-resize !important; }
+#timebar.is-resizing, #point.is-resizing { border-color: color-mix(in srgb, var(--accent) 58%, var(--line)); }
 /* the head and tabs stay put; the body scrolls, so a late METAR or a long
    Winter pane grows downward inside the card instead of pushing the title
    off the top of the screen */
@@ -400,6 +422,7 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
   .tape-min { margin-left: 0; }
   #tape-where { display: none; }
   #point { left: 8px; right: 8px; width: auto; }
+  .point-resize-handle { display: none; }
   #point-now { gap: 10px; }
 }
 @media (max-width: 350px) { #lead { display: none; } }

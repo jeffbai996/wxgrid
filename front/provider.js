@@ -87,7 +87,7 @@
         const light = document.documentElement.dataset.theme === "light";
         const needsChip = light ? logo.light_bg_ok === false : logo.dark_bg_ok === false;
         const cls = needsChip ? (light ? "chip chip-dark" : "chip") : "";
-        dot.innerHTML = `<img src="${logo.file}" alt="" class="${cls}">`;
+        dot.innerHTML = `<img src="${logo.file}" alt="" class="${cls}" data-agency="${iso}">`;
         dot.querySelector("img").addEventListener("error", () => {
           dot.innerHTML = monogram(p[2] || iso, p[1]);
         }, { once: true });

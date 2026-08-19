@@ -64,6 +64,7 @@
     playMs: Number(localStorage.getItem("wxgrid.playMs") || 900),
   };
   let map, wind, catalog, playTimer = null, marker = null;
+  let restorePointPanelSize = () => {};
 
   // ── shared helpers (used by panes.js) ────────────────────────────────
   const speed = (ms) => ms == null ? null : state.units === "kt" ? ms * 1.943844 : state.units === "ms" ? ms : state.units === "mph" ? ms * 2.236936 : ms * 3.6;
@@ -134,6 +135,7 @@
     WX.windLayer = wind;
     new ResizeObserver(() => { document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px"); if (WX.fn.fitStrip) WX.fn.fitStrip(); }).observe($("#timebar"));
     new ResizeObserver(() => document.documentElement.style.setProperty("--top-h", $("#topbar").offsetHeight + "px")).observe($("#topbar"));
+    wirePanelResizers();
 
     catalog = await WX.api(`${API}/models?ts=${Date.now()}`);
     if (catalog.static) toast(`Static demo snapshot — ${catalog.static.note}. Run ${catalog.static.built}Z. Self-host for the full thing.`, 9000);
@@ -491,6 +493,107 @@
     grip.addEventListener("pointercancel", () => { dragging = false; card.classList.remove("sheet-drag"); card.style.transform = ""; });
   }
 
+  // Persisted panel sizing. Pointer capture keeps each drag stable even when
+  // the cursor outruns its handle; double-click or Home returns to the default.
+  function wirePanelResizers() {
+    const tb = $("#timebar"), tapeGrip = $("#tape-resize"), card = $("#point"), cardGrip = $("#point-resize");
+    if (!tb || !tapeGrip || !card || !cardGrip || tb.dataset.resizeWired) return;
+    tb.dataset.resizeWired = "1";
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const topHeight = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
+    const tapeBounds = () => ({ min: 118, max: Math.max(118, Math.min(480, Math.round(innerHeight * 0.58), innerHeight - topHeight() - 180)) });
+    let tapeHeight = Number(localStorage.getItem("wxgrid.tapeHeight")) || null;
+    const setTapeHeight = (height, persist = false) => {
+      const bounds = tapeBounds();
+      tapeHeight = clamp(Math.round(height), bounds.min, bounds.max);
+      tb.style.height = `${tapeHeight}px`; tb.classList.add("user-sized");
+      tapeGrip.setAttribute("aria-valuemin", bounds.min); tapeGrip.setAttribute("aria-valuemax", bounds.max); tapeGrip.setAttribute("aria-valuenow", tapeHeight);
+      if (persist) localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
+    };
+    const resetTapeHeight = () => {
+      tapeHeight = null; localStorage.removeItem("wxgrid.tapeHeight");
+      tb.style.height = ""; tb.classList.remove("user-sized");
+      requestAnimationFrame(() => tapeGrip.setAttribute("aria-valuenow", Math.round(tb.getBoundingClientRect().height)));
+    };
+    if (tapeHeight) setTapeHeight(tapeHeight);
+    else requestAnimationFrame(() => tapeGrip.setAttribute("aria-valuenow", Math.round(tb.getBoundingClientRect().height)));
+    let tapeDrag = null;
+    tapeGrip.addEventListener("pointerdown", (e) => {
+      if (tb.classList.contains("mini")) return;
+      e.preventDefault(); e.stopPropagation();
+      tapeDrag = { id: e.pointerId, y: e.clientY, height: tb.getBoundingClientRect().height };
+      tapeGrip.setPointerCapture(e.pointerId); tb.classList.add("is-resizing"); document.body.classList.add("resizing-tape");
+    });
+    tapeGrip.addEventListener("pointermove", (e) => {
+      if (tapeDrag && e.pointerId === tapeDrag.id) setTapeHeight(tapeDrag.height + tapeDrag.y - e.clientY);
+    });
+    const finishTape = (e) => {
+      if (!tapeDrag || (e && e.pointerId !== tapeDrag.id)) return;
+      tapeDrag = null; tb.classList.remove("is-resizing"); document.body.classList.remove("resizing-tape");
+      if (tapeHeight) localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
+      restorePointPanelSize();
+    };
+    tapeGrip.addEventListener("pointerup", finishTape); tapeGrip.addEventListener("pointercancel", finishTape);
+    tapeGrip.addEventListener("dblclick", (e) => { e.preventDefault(); resetTapeHeight(); restorePointPanelSize(); });
+    tapeGrip.addEventListener("keydown", (e) => {
+      if (e.key === "Home") { e.preventDefault(); resetTapeHeight(); restorePointPanelSize(); return; }
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault(); setTapeHeight((tb.getBoundingClientRect().height || 180) + (e.key === "ArrowUp" ? 16 : -16), true); restorePointPanelSize();
+    });
+
+    let pointSize = null;
+    try { pointSize = JSON.parse(localStorage.getItem("wxgrid.pointSize") || "null"); } catch (_) { pointSize = null; }
+    const pointBounds = () => {
+      const rect = card.getBoundingClientRect();
+      const tbHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tb-h")) || tb.getBoundingClientRect().height || 150;
+      return { minW: 340, maxW: Math.max(340, innerWidth - rect.left - 12), minH: 230, maxH: Math.max(230, innerHeight - rect.top - tbHeight - 20) };
+    };
+    const setPointSize = (width, height, persist = false) => {
+      if (innerWidth <= 820) { card.style.width = ""; card.style.height = ""; card.classList.remove("user-sized"); return; }
+      const bounds = pointBounds();
+      pointSize = { width: clamp(Math.round(width), bounds.minW, bounds.maxW), height: clamp(Math.round(height), bounds.minH, bounds.maxH) };
+      card.style.width = `${pointSize.width}px`; card.style.height = `${pointSize.height}px`; card.classList.add("user-sized");
+      cardGrip.setAttribute("aria-valuetext", `${pointSize.width} by ${pointSize.height} pixels`);
+      if (persist) localStorage.setItem("wxgrid.pointSize", JSON.stringify(pointSize));
+    };
+    restorePointPanelSize = () => {
+      if (innerWidth <= 820) { card.style.width = ""; card.style.height = ""; card.classList.remove("user-sized"); return; }
+      if (!card.hidden && pointSize && pointSize.width && pointSize.height) setPointSize(pointSize.width, pointSize.height);
+    };
+    const resetPointSize = () => {
+      pointSize = null; localStorage.removeItem("wxgrid.pointSize");
+      card.style.width = ""; card.style.height = ""; card.classList.remove("user-sized"); cardGrip.removeAttribute("aria-valuetext");
+      if (state.point) renderPoint();
+    };
+    let pointDrag = null;
+    cardGrip.addEventListener("pointerdown", (e) => {
+      if (innerWidth <= 820) return;
+      e.preventDefault(); e.stopPropagation();
+      const rect = card.getBoundingClientRect();
+      pointDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, width: rect.width, height: rect.height };
+      cardGrip.setPointerCapture(e.pointerId); card.classList.add("is-resizing"); document.body.classList.add("resizing-point");
+    });
+    cardGrip.addEventListener("pointermove", (e) => {
+      if (pointDrag && e.pointerId === pointDrag.id) setPointSize(pointDrag.width + e.clientX - pointDrag.x, pointDrag.height + e.clientY - pointDrag.y);
+    });
+    const finishPoint = (e) => {
+      if (!pointDrag || (e && e.pointerId !== pointDrag.id)) return;
+      pointDrag = null; card.classList.remove("is-resizing"); document.body.classList.remove("resizing-point");
+      if (pointSize) localStorage.setItem("wxgrid.pointSize", JSON.stringify(pointSize));
+      if (state.point) renderPoint();
+    };
+    cardGrip.addEventListener("pointerup", finishPoint); cardGrip.addEventListener("pointercancel", finishPoint);
+    cardGrip.addEventListener("dblclick", (e) => { e.preventDefault(); resetPointSize(); });
+    cardGrip.addEventListener("keydown", (e) => {
+      if (e.key === "Home") { e.preventDefault(); resetPointSize(); return; }
+      if (!e.key.startsWith("Arrow") || innerWidth <= 820) return;
+      e.preventDefault(); const rect = card.getBoundingClientRect(), step = e.shiftKey ? 32 : 16;
+      setPointSize(rect.width + (e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0), rect.height + (e.key === "ArrowDown" ? step : e.key === "ArrowUp" ? -step : 0), true);
+      if (state.point) renderPoint();
+    });
+    addEventListener("resize", () => { if (tapeHeight) setTapeHeight(tapeHeight); restorePointPanelSize(); });
+  }
+
   // Size the strip's buttons so the whole set fits between the top bar and the
   // time bar. It never scrolls: a toolbar that scrolls hides its own controls.
   function fitStrip() {
@@ -634,6 +737,7 @@
     if (!keepResort) { state.resort = null; if (state.tab === "resort") state.tab = "now"; }
     state.point = { lat, lon, data: null, name: name || null, local: null, obs: null, avy: null, profile: null, cmp: null };
     $("#point").hidden = false;
+    restorePointPanelSize();
     document.body.classList.add("has-point");
     $("#point-title").textContent = name || `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
     $("#point-local").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
