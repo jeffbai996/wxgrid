@@ -135,7 +135,7 @@ _ECMWF_PL = {"u": "u", "v": "v", "t": "t", "gh": "gh"}
 
 MODELS: dict[str, Model] = {
     "ifs": Model(
-        key="ifs", label="ECMWF IFS", short="IFS", grid="9 km", source="ecmwf", ecmwf_model="ifs", steps=STEPS_IFS,
+        key="ifs", label="ECMWF IFS", short="IFS", grid="9km", source="ecmwf", ecmwf_model="ifs", steps=STEPS_IFS,
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "msl": "msl", "tp": "tp",
                     "10fg": "gust", "tcc": "tcc", "mucape": "cape", "2d": "d2m", "sf": "sf", "sd": "sd"},
         pl_params=_ECMWF_PL,
@@ -144,7 +144,7 @@ MODELS: dict[str, Model] = {
         wave_params={"swh": "swh", "mwd": "mwd", "mwp": "mwp"},
     ),
     "aifs": Model(
-        key="aifs", label="ECMWF AIFS (AI)", short="AIFS", grid="28 km", source="ecmwf", ecmwf_model="aifs-single",
+        key="aifs", label="ECMWF AIFS (AI)", short="AIFS", grid="28km", source="ecmwf", ecmwf_model="aifs-single",
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "msl": "msl", "tp": "tp", "tcc": "tcc",
                     "2d": "d2m", "sf": "sf"},
         pl_params=_ECMWF_PL,
@@ -152,7 +152,7 @@ MODELS: dict[str, Model] = {
         attribution="ECMWF open data (AIFS), CC BY 4.0",
     ),
     "gfs": Model(
-        key="gfs", label="NOAA GFS", short="GFS", grid="13 km", source="nomads", steps=STEPS_3H,
+        key="gfs", label="NOAA GFS", short="GFS", grid="13km", source="nomads", steps=STEPS_3H,
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "prmsl": "msl", "tp": "tp",
                     "gust": "gust", "tcc": "tcc", "cape": "cape", "2d": "d2m", "sde": "sd", "csnow": "csnow"},
         pl_params=_ECMWF_PL,
@@ -161,7 +161,7 @@ MODELS: dict[str, Model] = {
         attribution="NOAA NCEP GFS via NOMADS, public domain",
     ),
     "gem": Model(
-        key="gem", label="ECCC GEM GDPS", short="GEM", grid="15 km", source="datamart", steps=STEPS_3H,
+        key="gem", label="ECCC GEM GDPS", short="GEM", grid="15km", source="datamart", steps=STEPS_3H,
         # Keys are the shortNames we force on each single-variable file.
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "2d": "d2m", "prmsl": "msl",
                     "tp": "tp", "sf": "sf", "sde": "sd", "gust": "gust", "tcc": "tcc", "cape": "cape"},
@@ -177,7 +177,7 @@ MODELS: dict[str, Model] = {
         attribution="Environment and Climate Change Canada, Open Government Licence",
     ),
     "gefs": Model(
-        key="gefs", label="NOAA GEFS mean", short="GEFS", grid="25 km", source="nomads-gefs", steps=STEPS_3H,
+        key="gefs", label="NOAA GEFS mean", short="GEFS", grid="25km", source="nomads-gefs", steps=STEPS_3H,
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "prmsl": "msl", "tp": "tp",
                     "gust": "gust", "tcc": "tcc", "cape": "cape", "2d": "d2m", "sde": "sd",
                     "csnow": "csnow"},
