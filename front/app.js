@@ -375,7 +375,11 @@
     ms.querySelectorAll("button").forEach((b) => b.onclick = () => switchModel(b.dataset.model));
 
     const rs = $("#run");
-    rs.innerHTML = modelEntry().runs.map((r) => `<option value="${r.run}">${r.run.slice(5).replace("T", " ")}Z</option>`).join("");
+    // On a phone the month is dead weight: two runs of the same model are hours
+    // apart, never months. Dropping it buys the run picker a place on the
+    // model row instead of a row of its own.
+    const narrow = innerWidth <= 820;
+    rs.innerHTML = modelEntry().runs.map((r) => `<option value="${r.run}">${(narrow ? r.run.slice(8) : r.run.slice(5)).replace("T", " ")}Z</option>`).join("");
     rs.value = state.run;
     rs.onchange = () => { state.run = rs.value; clampStep(); renderControls(); applyStep(); loadWind(); refreshPoint(); };
 
@@ -432,9 +436,12 @@
     const lv = $("#levels");
     const levels = runEntry().levels || [];
     const showLevels = hasLevel() && levels.length;
-    // The row stays on screen for every layer: disappearing chrome makes the
-    // whole bar jump and reads like a bug (Jeff 2026-08-18).
+    // Desktop keeps the row for every layer, greyed out: disappearing chrome
+    // makes the bar jump and reads like a bug (Jeff 2026-08-18). A phone has
+    // four rows of chrome and no room for one that cannot be pressed, so there
+    // it goes away — see `body.no-levels` (Jeff 2026-08-19).
     lv.hidden = !levels.length;
+    document.body.classList.toggle("no-levels", !showLevels);
     lv.classList.toggle("disabled", !showLevels);
     lv.title = showLevels ? "" : `${LAYER_LABEL[state.layer]} is a surface field`;
     if (!showLevels && levels.length) {
