@@ -135,17 +135,67 @@ def _reverse_place_name(address: dict, fallback: str = "") -> str:
     return settlement or municipality or county or fallback
 
 
+# Named water bodies, from OSM `place=ocean|sea` nodes: about a thousand points
+# for the whole planet, fetched once and kept for a month. A pin dropped at sea
+# has no address, but it is still somewhere — "North Pacific Ocean" beats a pair
+# of coordinates.
+_WATER_QL = '[out:json][timeout:90];node["place"~"^(ocean|sea)$"]["name"];out qt;'
+
+
+def water_nodes() -> list[dict]:
+    def fetch():
+        try:
+            r = requests.post("https://overpass-api.de/api/interpreter", data={"data": _WATER_QL},
+                              headers={"User-Agent": UA}, timeout=120)
+            r.raise_for_status()
+            els = r.json().get("elements", [])
+        except Exception as exc:                       # noqa: BLE001
+            log.debug("overpass water nodes failed: %s", exc)
+            return []
+        out = []
+        for e in els:
+            tags = e.get("tags") or {}
+            name = tags.get("name:en") or tags.get("name")
+            if not name or e.get("lat") is None or e.get("lon") is None:
+                continue
+            out.append({"name": name, "lat": float(e["lat"]), "lon": float(e["lon"]), "kind": tags.get("place")})
+        return out
+    return cache.get("water-nodes-v1", 30 * 24 * 3600, fetch)
+
+
+def nearest_water(lat: float, lon: float, nodes: list[dict], sea_km: float = 1500.0) -> str:
+    """The name of the water at a point: the nearest named sea if one is close,
+    otherwise the nearest ocean. Seas are small and specific and their labelling
+    node can sit well off centre, so they only win inside `sea_km`; the oceans
+    are the fallback that always answers."""
+    best_sea = best_ocean = None
+    for n in nodes:
+        d = _haversine_km(lat, lon, n["lat"], n["lon"])
+        if n.get("kind") == "sea":
+            if d <= sea_km and (best_sea is None or d < best_sea[0]):
+                best_sea = (d, n)
+        elif best_ocean is None or d < best_ocean[0]:
+            best_ocean = (d, n)
+    pick = best_sea or best_ocean
+    return pick[1]["name"] if pick else ""
+
+
 def reverse(lat: float, lon: float) -> dict:
-    key = f"rgeo-en-v2:{lat:.2f}:{lon:.2f}"
+    key = f"rgeo-en-v3:{lat:.2f}:{lon:.2f}"
     def fetch():
         try:
             h = _nominatim("reverse", {"lat": lat, "lon": lon, "zoom": 10, "addressdetails": 1})
         except requests.RequestException:
-            return {}
+            h = {}
         a = h.get("address") or {}
         place = _reverse_place_name(a, h.get("name") or "")
         region = a.get("state") or a.get("province") or ""
-        return {"name": place, "region": region, "country": a.get("country_code", "").upper(),
+        country = a.get("country_code", "").upper()
+        if not place and not country:
+            # No address at all means open water.
+            return {"name": nearest_water(lat, lon, water_nodes()), "region": "", "country": "",
+                    "display": "", "water": True}
+        return {"name": place, "region": region, "country": country,
                 "display": h.get("display_name", "")}
     return cache.get(key, 24 * 3600, fetch)
 
