@@ -136,7 +136,7 @@ def _reverse_place_name(address: dict, fallback: str = "") -> str:
 
 
 def reverse(lat: float, lon: float) -> dict:
-    key = f"rgeo-en:{lat:.2f}:{lon:.2f}"
+    key = f"rgeo-en-v2:{lat:.2f}:{lon:.2f}"
     def fetch():
         try:
             h = _nominatim("reverse", {"lat": lat, "lon": lon, "zoom": 10, "addressdetails": 1})
