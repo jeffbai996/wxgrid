@@ -25,6 +25,10 @@
     try {
       const gj = await WX.api(url);
       if (my !== isoReq || !state.iso) return;
+      // the rail's Isolines row says what the numbers are (12° needs no help;
+      // a bare 4514 does)
+      const flat = document.querySelector('.rail-flat[data-rail="iso"] span');
+      if (flat) flat.textContent = gj.unit ? `Isolines · ${gj.unit}` : "Isolines";
       if (M().getSource("iso")) M().getSource("iso").setData(gj);
       else {
         M().addSource("iso", { type: "geojson", data: gj });

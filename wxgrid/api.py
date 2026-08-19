@@ -36,17 +36,18 @@ log = logging.getLogger("wxgrid.api")
 app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=2048)   # wind JSON shrinks ~5x
 
-LAYERS = ("wind", "temp", "gust", "msl", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "uvi", "frz", "waves", "wperiod")
+LAYERS = ("wind", "temp", "feels", "gust", "msl", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "uvi", "frz", "waves", "wperiod", "prob_rain", "prob_gust")
 LEVEL_LAYERS = ("wind", "temp")
 _ALIAS = {"t2m": "temp", "snow": "sf6", "snowdepth": "sd_cm", "dewpt": "d2m", "swh": "waves", "mwp": "wperiod"}
 # Layers computed from several store variables at request time.
 _DERIVED = {"frz": tuple(f"{p}_{l}" for l in LEVELS for p in ("t", "gh")),
             "rh": ("t2m", "d2m"), "tp24": ("tp6",), "tp72": ("tp6",), "sf24": ("sf6",), "sf72": ("sf6",),
-            "waves": ("swh",), "wperiod": ("mwp",), "uvi": ("tcc",)}
+            "waves": ("swh",), "wperiod": ("mwp",), "uvi": ("tcc",),
+            "feels": ("t2m", "u10", "v10", "d2m")}
 # Accumulation windows (hours) for the derived precip/snow layers.
 _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72": ("sf6", 72)}
 # Layers that live only on LEVEL_EVERY steps (like the pressure levels).
-_SIX_HOURLY = ("frz", "waves", "wperiod")
+_SIX_HOURLY = ("frz", "waves", "wperiod", "prob_rain", "prob_gust")
 _readers: dict[tuple[str, str], RunReader] = {}
 _pool = ThreadPoolExecutor(max_workers=8)
 _cache_locks: dict[str, threading.Lock] = {}
@@ -157,7 +158,26 @@ def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndar
         return _accumulate(r, var, step, hours)
     if layer == "uvi":
         return render.uv_index(r.slab("tcc", step), parse_run_id(r.rid) + timedelta(hours=step))
+    if layer == "feels":
+        return _feels_grid(r, step)
     return r.slab(vars_[0], step)
+
+
+def _feels_grid(r: RunReader, step: int) -> np.ndarray:
+    """Apparent temperature, the same blend the tape uses per point: wind
+    chill below 10 °C with wind, humidex above 20 °C, the air itself between.
+    Returned in kelvin so the display transform matches temp's."""
+    t = r.slab("t2m", step) - 273.15
+    w = render.wind_speed(r.slab("u10", step), r.slab("v10", step)) * 3.6
+    out = t.copy()
+    chill = (t <= 10) & (w >= 4.8)
+    v = np.power(w, 0.16, where=chill, out=np.ones_like(w))
+    out[chill] = (13.12 + 0.6215 * t + (0.3965 * t - 11.37) * v)[chill]
+    d = r.slab("d2m", step)
+    warm = (t >= 20) & np.isfinite(d)
+    e = 6.11 * np.exp(5417.753 * (1 / 273.16 - 1 / np.where(warm, d, 273.16)))
+    out[warm] = (t + 0.5555 * (e - 10))[warm]
+    return (out + 273.15).astype(np.float32)
 
 
 def _available(reader: RunReader, layer: str, level: int | None = None) -> bool:
@@ -455,6 +475,16 @@ def _isoline_geojson(src: np.ndarray, interval: float, disp, unit: str) -> dict:
     import contourpy
 
     z = disp(src).astype(np.float64)
+    # A 0.25° temperature field wiggles cell to cell over terrain and the
+    # contours inherit every wiggle. A light nan-aware blur (~1 cell) keeps
+    # the synoptic shape and loses the sawtooth; pressure needs less.
+    from scipy.ndimage import gaussian_filter
+    sigma = 0.7 if interval >= 2.0 and unit == "hPa" else 1.1
+    good = np.isfinite(z)
+    filled = np.where(good, z, 0.0)
+    weight = gaussian_filter(good.astype(np.float64), sigma)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        z = np.where(good, gaussian_filter(filled, sigma) / np.maximum(weight, 1e-9), np.nan)
     ny, nx = z.shape
     lats = np.linspace(90.0, -90.0, ny)
     lons = -180.0 + np.arange(nx) * (360.0 / nx)
@@ -473,7 +503,8 @@ def _isoline_geojson(src: np.ndarray, interval: float, disp, unit: str) -> dict:
             if len(line) < 4:
                 continue
             coords = [[round(float(x), 3), round(float(y), 3)] for x, y in line]
-            feats.append({"type": "Feature", "properties": {"value": float(lv), "label": f"{lv:g}"},
+            label = f"{lv:g}°" if unit.startswith("°") else f"{lv:g}"
+            feats.append({"type": "Feature", "properties": {"value": float(lv), "label": label},
                           "geometry": {"type": "LineString", "coordinates": coords}})
     return {"type": "FeatureCollection", "unit": unit, "interval": interval,
             "grid_degrees": round(360.0 / nx, 3), "features": feats}

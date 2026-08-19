@@ -15,7 +15,7 @@
   const FAMILIES = [
     { key: "wind", label: "Wind", layers: ["wind"] },
     { key: "gust", label: "Gusts", layers: ["gust"] },
-    { key: "temp", label: "Temp", layers: ["temp"] },
+    { key: "temp", label: "Temp", layers: ["temp", "feels"], variants: { temp: "Air", feels: "Feels" } },
     { key: "rain", label: "Rain", layers: ["tp6", "tp24", "tp72"], variants: { tp6: "6 h", tp24: "24 h", tp72: "72 h" }, section: "Precipitation" },
     { key: "snow", label: "New snow", layers: ["sf6", "sf24", "sf72"], variants: { sf6: "6 h", sf24: "24 h", sf72: "72 h" } },
     { key: "sd", label: "Snow depth", layers: ["sd_cm"] },
@@ -26,10 +26,12 @@
     { key: "cape", label: "CAPE", layers: ["cape"] },
     { key: "uvi", label: "UV index", layers: ["uvi"] },
     { key: "waves", label: "Waves", layers: ["waves", "wperiod"], variants: { waves: "Height", wperiod: "Period" }, section: "Sea" },
+    // member counts, drawn from the GEFS run only — the one model that has them
+    { key: "chance", label: "Chance", layers: ["prob_rain", "prob_gust"], variants: { prob_rain: "Rain", prob_gust: "Gale" }, section: "Ensemble" },
   ];
   const familyOf = (layer) => FAMILIES.find((f) => f.layers.includes(layer)) || FAMILIES[0];
-  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", uvi: "UV index" };
-  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, uvi: 0.8 };
+  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", feels: "Feels like", prob_rain: "Rain chance", prob_gust: "Gale chance", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", uvi: "UV index" };
+  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, uvi: 0.8, feels: 0.78, prob_rain: 0.82, prob_gust: 0.82 };
   const LAYER_ICON = {
     iso: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15c3-4 6-4 9 0s6 4 9 0"/><path d="M3 9c3-4 6-4 9 0s6 4 9 0"/></svg>',
     wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/></svg>',
@@ -47,7 +49,7 @@
     uvi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
     waves: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
   };
-  const FAMILY_ICON = { wind: "wind", gust: "gust", temp: "temp", rain: "tp6", snow: "sf6", sd: "sd_cm", frz: "frz", tcc: "tcc", msl: "msl", hum: "rh", cape: "cape", waves: "waves", uvi: "uvi" };
+  const FAMILY_ICON = { wind: "wind", gust: "gust", temp: "temp", rain: "tp6", snow: "sf6", sd: "sd_cm", frz: "frz", tcc: "tcc", msl: "msl", hum: "rh", cape: "cape", waves: "waves", uvi: "uvi", chance: "tp6" };
   const LEVEL_FT = { 1000: "≈350 ft", 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 600: "14k ft", 500: "FL180", 400: "FL240", 300: "FL300", 250: "FL340", 200: "FL390" };
   const LEVEL_FEET = { 1000: "≈350 ft", 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 600: "14k ft", 500: "18k ft", 400: "24k ft", 300: "30k ft", 250: "34k ft", 200: "39k ft" };
   const LEVEL_M = { 1000: "≈100 m", 925: "≈750 m", 850: "≈1.5 km", 700: "≈3 km", 600: "≈4.2 km", 500: "≈5.5 km", 400: "≈7.2 km", 300: "≈9 km", 250: "≈10.5 km", 200: "≈12 km" };
@@ -448,9 +450,20 @@
     // apart, never months. Dropping it buys the run picker a place on the
     // model row instead of a row of its own.
     const narrow = innerWidth <= 820;
-    rs.innerHTML = modelEntry().runs.map((r) => `<option value="${r.run}">${(narrow ? r.run.slice(8) : r.run.slice(5)).replace("T", " ")}Z</option>`).join("");
+    // Say what the picker IS: the model's runs, newest first. "12Z · latest"
+    // reads as a choice; a bare "06Z" read as decoration (Jeff 2026-08-19).
+    rs.innerHTML = modelEntry().runs.map((r, k) => {
+      const base = (narrow ? r.run.slice(8) : r.run.slice(5)).replace("T", " ") + "Z";
+      const age = k === 0 ? "latest" : `${Math.round((new Date(modelEntry().runs[0].run + ":00Z") - new Date(r.run + ":00Z")) / 3600e3)} h older`;
+      return `<option value="${r.run}">${base}${narrow ? "" : ` · ${age}`}</option>`;
+    }).join("");
     rs.value = state.run;
-    rs.onchange = () => { state.run = rs.value; clampStep(); renderControls(); applyStep(); loadWind(); refreshPoint(); };
+    rs.title = "Model run (UTC). Pick the previous run to see how the forecast moved.";
+    rs.onchange = () => {
+      state.run = rs.value; clampStep(); renderControls(); applyStep(); loadWind(); refreshPoint();
+      const k = modelEntry().runs.findIndex((r) => r.run === state.run);
+      if (k > 0) toast(`Viewing the ${state.run.slice(11)}Z run. Newest is ${modelEntry().runs[0].run.slice(11)}Z.`, 4000);
+    };
 
     const rail = $("#layers");
     const avail = runEntry().layers;

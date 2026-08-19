@@ -116,6 +116,17 @@ RAMPS: dict[str, dict] = {
     "wperiod": {"units": "s", "lo": 0, "hi": 20, "stops": [
         (0, (40, 40, 80)), (5, (60, 100, 190)), (8, (60, 180, 170)), (11, (150, 210, 90)),
         (14, (240, 200, 60)), (17, (240, 120, 40)), (20, (200, 30, 60))]},
+    "feels": {"units": "°C", "lo": -70, "hi": 45, "stops": [
+        (-70, (40, 10, 70)), (-55, (90, 20, 130)), (-40, (130, 22, 146)), (-30, (75, 42, 180)),
+        (-20, (35, 90, 200)), (-10, (40, 150, 220)), (0, (100, 200, 200)), (10, (110, 210, 110)),
+        (20, (240, 220, 80)), (30, (240, 130, 40)), (40, (200, 30, 30)), (45, (140, 0, 60))]},
+    # member share, not intensity: cool neutral up to a warm certainty
+    "prob_rain": {"units": "%", "lo": 0, "hi": 100, "stops": [
+        (0, (30, 40, 70)), (20, (45, 90, 160)), (40, (35, 130, 210)), (60, (30, 175, 190)),
+        (80, (90, 210, 120)), (100, (240, 220, 70))]},
+    "prob_gust": {"units": "%", "lo": 0, "hi": 100, "stops": [
+        (0, (40, 35, 60)), (20, (120, 80, 170)), (40, (190, 80, 170)), (60, (240, 100, 110)),
+        (80, (250, 150, 60)), (100, (250, 220, 60))]},
 }
 
 # canonical store variable → display transform (store units → ramp units)
@@ -139,6 +150,9 @@ DISPLAY = {
     "waves": lambda m: m,
     "wperiod": lambda s: s,
     "uvi": lambda u: u,
+    "feels": lambda k: k - 273.15,
+    "prob_rain": lambda pct: pct,
+    "prob_gust": lambda pct: pct,
 }
 
 
@@ -204,7 +218,7 @@ _LUTS = {k: _lut(v) for k, v in RAMPS.items()}
 
 IMAGE_FORMATS = {"png": "image/png", "webp": "image/webp"}
 # Layers whose alpha varies with the value, so they cannot be palette images.
-_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi")
+_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi", "prob_rain", "prob_gust")
 
 
 def pick_format(accept: str | None) -> str:
@@ -287,6 +301,8 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: st
             a = np.clip(x / 2.0, 0, 1)
         elif layer == "cape":
             a = np.clip(x / 300.0, 0, 1)            # nothing to see under ~300 J/kg
+        elif layer in ("prob_rain", "prob_gust"):
+            a = np.clip(x / 30.0, 0, 1)             # a 5 % chance is the map, not a colour
         else:
             a = np.clip(x / 100.0, 0, 1) ** 0.7     # clear sky shows the map through
         rgba[..., 3] = (a * alpha * 255).astype(np.uint8)
