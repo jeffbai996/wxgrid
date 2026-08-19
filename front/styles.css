@@ -344,6 +344,7 @@ button:focus:not(:focus-visible) { outline: none; }
 #timebar.mini .tape { padding-top: 1px; }
 #timebar.mini { padding-bottom: 4px; }
 #timebar.mini .tape-head { padding-bottom: 0; }
+.tape-empty { padding: 10px 4px 6px; color: var(--dim); font: 500 11.5px var(--font-body); }
 .tape { display: block; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-width: 0; max-width: 100%; border-top: 1px solid var(--line); padding-top: 2px; }
 .tape.radar { display: flex; }
 .tape::-webkit-scrollbar { display: none; }
@@ -360,7 +361,7 @@ input#step { width: 100%; accent-color: var(--accent); height: 14px; margin: 2px
 
 /* ── point card ──────────────────────────────────────────────────────── */
 #point {
-  position: absolute; z-index: 6; left: 62px; top: calc(var(--top-h) + 8px); width: min(440px, calc(100vw - 24px));
+  position: absolute; z-index: 6; left: 62px; top: calc(var(--top-h) + 8px); width: min(480px, calc(100vw - 24px));
   max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 30px - env(safe-area-inset-bottom));
   display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 8px;
@@ -460,7 +461,7 @@ table.bandtape .nil { color: var(--line-strong); }
 /* Notifications: the same surface and the same type as every other panel,
    with a coloured edge doing the work a second background colour used to. */
 #toast {
-  position: absolute; z-index: 14; top: calc(var(--top-h) + 10px); left: 50%; transform: translateX(-50%);
+  position: absolute; z-index: 17; top: calc(var(--top-h) + 10px); left: 50%; transform: translateX(-50%);
   max-width: min(520px, calc(100vw - 32px)); padding: 10px 15px 11px;
   background: var(--panel-solid); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent);
   border-radius: 12px; box-shadow: 0 14px 40px rgba(0,0,0,.45);
@@ -576,6 +577,8 @@ table.bandtape .nil { color: var(--line-strong); }
   #timebar.tape-away .tape-head { display: flex; }
   #timebar.tape-away .tape-head > *:not(#legend) { display: none; }
   #point { left: 8px; right: 8px; width: auto; }
+  /* the place line wraps rather than losing the elevation off its end */
+  #point-local { white-space: normal; line-height: 1.35; }
   .point-resize-handle { display: none; }
   #point-now { gap: 10px; }
 }
@@ -674,7 +677,8 @@ table.wtape th, table.wtape td { padding: 0; text-align: center; white-space: no
 table.wtape th.lab { position: sticky; left: 0; z-index: 2; background: var(--panel-solid); text-align: left; font: 500 10.5px var(--font-body); color: var(--dim); padding: 0 10px 0 4px; min-width: 84px; }
 table.wtape th.lab small { color: var(--dim); opacity: .7; margin-left: 4px; font: 500 9.5px var(--font-mono); }
 table.wtape th.corner { background: transparent; }
-table.wtape th.day { text-align: left; font: 700 12px var(--font-display); color: var(--fg); padding: 2px 8px 3px; border-left: 1px solid var(--line-strong); letter-spacing: .01em; }
+table.wtape th.day { text-align: left; font: 700 12px var(--font-display); color: var(--fg); padding: 2px 8px 3px; border-left: 1px solid var(--line-strong); letter-spacing: .01em; cursor: pointer; }
+table.wtape th.day[data-first]:hover { color: var(--accent); }
 table.wtape th.day:first-of-type { border-left: 0; }
 table.wtape td { width: 44px; min-width: 44px; height: 20px; border-left: 1px solid transparent; cursor: pointer; }
 table.wtape td.night { background: var(--tape-night); }

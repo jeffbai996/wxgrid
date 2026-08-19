@@ -272,14 +272,19 @@ def nearby_named_water(lat: float, lon: float) -> str:
     return cache.get(key, 30 * 24 * 3600, fetch)
 
 
+class _GeocoderDown(Exception):
+    """Nominatim did not answer. Distinct from "answered with no address",
+    which is what open water looks like."""
+
+
 def reverse(lat: float, lon: float) -> dict:
-    key = f"rgeo-en-v7:{lat:.3f}:{lon:.3f}"
+    key = f"rgeo-en-v8:{lat:.3f}:{lon:.3f}"
     def fetch():
         try:
             h = _nominatim("reverse", {"lat": lat, "lon": lon, "zoom": 10,
                                        "addressdetails": 1, "namedetails": 1})
-        except requests.RequestException:
-            h = {}
+        except requests.RequestException as exc:
+            raise _GeocoderDown from exc
         a = h.get("address") or {}
         nd = h.get("namedetails") or {}
         # accept-language=en only translates what OSM has translated. Where it
@@ -303,7 +308,12 @@ def reverse(lat: float, lon: float) -> dict:
                     "display": "", "water": True}
         return {"name": place, "region": region, "country": country,
                 "display": h.get("display_name", "")}
-    return cache.get(key, 24 * 3600, fetch)
+    try:
+        return cache.get(key, 24 * 3600, fetch)
+    except _GeocoderDown:
+        # Nothing cached: the next request asks again. A transient failure
+        # once named Whistler "North Pacific Ocean" for a day.
+        return {"name": "", "region": "", "country": "", "display": "", "error": "geocoder unavailable"}
 
 
 def station_info(ids: str) -> list[dict]:

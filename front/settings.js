@@ -31,9 +31,9 @@
 
   const style = document.createElement("style");
   style.textContent = `
-  #settings-scrim{position:absolute;inset:0;z-index:11;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);opacity:0;transition:opacity .18s}
+  #settings-scrim{position:absolute;inset:0;z-index:15;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);opacity:0;transition:opacity .18s}
   #settings-scrim.on{opacity:1}
-  #settings{position:absolute;top:0;right:0;bottom:0;width:min(360px,100%);z-index:12;display:flex;flex-direction:column;
+  #settings{position:absolute;top:0;right:0;bottom:0;width:min(360px,100%);z-index:16;display:flex;flex-direction:column;
     background:var(--panel-solid);border-left:1px solid var(--line-strong);box-shadow:-20px 0 60px rgba(0,0,0,.5);
     transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);
     padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}

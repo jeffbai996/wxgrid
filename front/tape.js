@@ -21,7 +21,11 @@
       if (my !== tapeReq) return;
       state.tapePoint = d;
       renderTape();
-    } catch (e) { if (my === tapeReq) tapeKey = ""; /* keep last, allow retry */ }
+    } catch (e) {
+      if (my !== tapeReq) return;
+      tapeKey = "";                       // allow the next moveend to try again
+      if (!state.tapePoint) { renderTape(); setTimeout(() => { if (my === tapeReq) refreshTapePoint(); }, 4000); }
+    }
   }
   function tapeData() { return (state.point && state.point.data) || state.tapePoint; }
   function renderTapePlace() {
@@ -173,7 +177,8 @@
       return;
     }
     const d0 = tapeData();
-    if (!d0) { tape.innerHTML = ""; return; }
+    // An empty tape under a live scrubber reads as broken. Say what is happening.
+    if (!d0) { tape.innerHTML = `<div class="tape-empty">${tapeKey ? "loading the forecast for the map centre…" : "forecast unavailable here"}</div>`; return; }
     renderRes(d0);
     // resampling maps every series onto the chosen columns, so the rest of the
     // renderer never has to know whether it is showing model steps, columns
@@ -185,8 +190,9 @@
     // day header cells: colspan per day, grouped in the zone the times are
     // shown in so the header cannot disagree with the columns under it
     const days = [];
-    dates.forEach((dt, i) => { const k = zk(dt).day; if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, span: 0 }); days[days.length - 1].span++; });
-    const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}</th>`).join("");
+    dates.forEach((dt, i) => { const k = zk(dt).day; if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, first: i, span: 0 }); days[days.length - 1].span++; });
+    // a day header is a jump: sixteen days of tape is a long way to scrub
+    const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day" data-first="${dy.first}" title="Jump to this day">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}</th>`).join("");
     // the column whose interval holds the current wall-clock time gets a mark
     const nowMs = Date.now();
     const nowIdx = dates.findIndex((dt, i) => nowMs >= dt.getTime() && (i + 1 >= n || nowMs < dates[i + 1].getTime()));
@@ -229,12 +235,14 @@
       ${gustRow ? `<tr class="r-wind">${label("Gusts", speedUnit())}${gustRow}</tr>` : ""}
       <tr class="r-dir">${label("Direction")}${dirRow}</tr>
     </tbody></table>`;
-    tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => {
-      const shown = Number(c.dataset.i), native = keep ? keep[shown] : shown;
+    const pick = (shown) => {
+      const native = keep ? keep[shown] : shown;
       WX.fn.setStep(native);
       fineSelectedValid = d.valid[shown];
       renderTapeSelection();
-    });
+    };
+    tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => pick(Number(c.dataset.i)));
+    tape.querySelectorAll("th.day[data-first]").forEach((c) => c.onclick = () => pick(Number(c.dataset.first)));
     renderTapePlace();
     renderTapeSelection();
   }

@@ -814,29 +814,30 @@
   function renderCompare(pt, d, i) {
     const { speed, speedUnit, catalog, API, api } = W();
     if (!pt.cmp) {
-      pt.cmp = { loading: true, rows: {} };
       const models = catalog.models.filter((m) => m.runs.length);
+      pt.cmp = { rows: {}, order: [...models.map((m) => m.key), "hrrr"], pending: models.length + 1 };
+      // Rows land one at a time: the store answers in milliseconds, HRRR comes
+      // over the public internet. Waiting for the slowest before showing any
+      // of them made the tab look broken for seconds at a time.
+      const land = (m, r) => {
+        if (r) pt.cmp.rows[m.key] = { model: m, data: r };
+        pt.cmp.pending -= 1;
+        if (W().state.point === pt && W().state.tab === "cmp") W().renderPoint();
+      };
+      models.forEach((m) => api(`${API}/point?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}&model=${m.key}`).then((r) => land(m, r)).catch(() => land(m, null)));
       // HRRR is not in the store — it is 3 km over CONUS and the store is one
       // global 0.25° grid — so it comes from the point API instead. It only
       // answers inside its own domain, and it stops two days out; both show up
       // in the table as missing columns rather than as a footnote.
-      const fromStore = models.map((m) => api(`${API}/point?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}&model=${m.key}`).then((r) => [m, r]).catch(() => null));
-      const hires = api(`${API}/hires/hrrr?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}`)
-        .then((r) => (r && r.available ? [{ key: "hrrr", short: r.short, grid: r.grid, label: r.label }, r] : null))
-        .catch(() => null);
-      Promise.all([...fromStore, hires]).then((rs) => {
-        rs.filter(Boolean).forEach(([m, r]) => { pt.cmp.rows[m.key] = { model: m, data: r }; });
-        pt.cmp.loading = false;
-        if (W().state.point === pt && W().state.tab === "cmp") W().renderPoint();
-      });
-      $("#compare").innerHTML = `<div class="note">loading other models…</div>`;
-      return;
+      api(`${API}/hires/hrrr?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}`)
+        .then((r) => land({ key: "hrrr", short: r && r.short, grid: r && r.grid, label: r && r.label }, r && r.available ? r : null))
+        .catch(() => land({ key: "hrrr" }, null));
     }
-    if (pt.cmp.loading) return;
+    if (!Object.keys(pt.cmp.rows).length) { $("#compare").innerHTML = `<div class="note">${pt.cmp.pending ? "loading other models…" : "no other model has this point"}</div>`; return; }
     const t0 = new Date(d.valid[i]).getTime();
     const cols = Array.from({ length: 8 }, (_, k) => t0 + k * 12 * 3600e3);      // 4 days at 12 h
     const head = cols.map((t) => `<th>${new Date(t).toLocaleString(undefined, { weekday: "short", hour: "numeric" }).replace(" ", "<br>")}</th>`).join("");
-    const rowFor = (label, pick) => Object.values(pt.cmp.rows).map(({ model, data }) => {
+    const rowFor = (label, pick) => pt.cmp.order.map((k) => pt.cmp.rows[k]).filter(Boolean).map(({ model, data }) => {
       const cells = cols.map((t) => { const k = data.valid.findIndex((v) => new Date(v).getTime() === t); return `<td>${k >= 0 ? pick(data.series, k) : "—"}</td>`; }).join("");
       // Each model's own resolution beside its name: the reason two rows differ
       // is usually that one of them resolves the terrain and the other does not.
@@ -845,7 +846,7 @@
     $("#compare").innerHTML = `<table class="cmp"><thead><tr><th>Temp ${W().units.tempUnit}</th>${head}</tr></thead><tbody>${rowFor("t", (s, k) => s.t2m && s.t2m[k] != null ? W().units.temp(s.t2m[k]).v : "—")}</tbody>
       <thead><tr><th>Wind ${speedUnit()}</th>${head}</tr></thead><tbody>${rowFor("w", (s, k) => s.wind && s.wind[k] != null ? Math.round(speed(s.wind[k])) : "—")}</tbody>
       <thead><tr><th>Rain ${W().units.precipUnit}/12h</th>${head}</tr></thead><tbody>${rowFor("r", (s, k) => s.tp6 ? `<span class="r">${W().units.precip((s.tp6[k] || 0) + (s.tp6[k + 1] || 0)).v}</span>` : "—")}</tbody></table>
-      <div class="note">Same valid times, each model's latest run. Disagreement is the error bar. HRRR is 3 km over the United States and runs two days out; blanks are outside its reach.</div>`;
+      <div class="note">${pt.cmp.pending ? "still loading… " : ""}Same valid times, each model's latest run. Disagreement is the error bar. HRRR is 3 km over the United States and runs two days out; blanks are outside its reach.</div>`;
   }
 
   // ── Resort: elevation-band forecast, whistlerpeak-style ───────────────

@@ -74,6 +74,26 @@ def test_reverse_keeps_land_when_no_water_area_contains_point(monkeypatch):
     assert ext.reverse(47.0, -122.0)["name"] == "Lowland"
 
 
+def test_reverse_does_not_name_the_ocean_when_the_geocoder_is_down(monkeypatch):
+    """A 429 or a timeout is not "no address"; it must not become a sea name
+    that then sits in the cache for a day."""
+    import requests
+    def boom(*a, **k):
+        raise requests.ConnectionError("rate limited")
+    monkeypatch.setattr(ext, "_nominatim", boom)
+    monkeypatch.setattr(ext, "nearest_water", lambda *a: "North Pacific Ocean")
+    monkeypatch.setattr(ext, "water_nodes", lambda: [])
+    ext.cache._d.clear()
+    r = ext.reverse(50.116, -122.957)
+    assert r["name"] == "" and not r.get("water")
+    assert not any(k.startswith("rgeo") for k in ext.cache._d)
+    # and the next call asks again instead of replaying the failure
+    monkeypatch.setattr(ext, "_nominatim", lambda *a, **k: {
+        "name": "Whistler", "category": "place", "type": "town",
+        "address": {"town": "Whistler", "state": "British Columbia", "country": "Canada"}})
+    assert ext.reverse(50.116, -122.957)["name"] == "Whistler"
+
+
 def test_nearest_metar_picks_closest_station(monkeypatch):
     fake = [{"icaoId": "CYVR", "lat": 49.19, "lon": -123.18, "temp": 17.0, "rawOb": "METAR CYVR", "reportTime": "t"},
             {"icaoId": "CWWA", "lat": 49.347, "lon": -123.193, "temp": 17.4, "rawOb": "METAR CWWA", "reportTime": "t"}]
