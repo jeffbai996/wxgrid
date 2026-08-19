@@ -129,6 +129,29 @@ def reverse(lat: float, lon: float) -> dict:
     return cache.get(key, 24 * 3600, fetch)
 
 
+def station_info(ids: str) -> list[dict]:
+    """Airport/station metadata by ICAO, IATA or WMO id (aviationweather.gov).
+    Used by search so `CYVR` finds the field rather than a street in Vancouver."""
+    ids = ",".join(i.strip().upper() for i in ids.split(",") if i.strip())[:60]
+    if not ids:
+        return []
+    def fetch():
+        try:
+            j = _get_json("https://aviationweather.gov/api/data/stationinfo", {"ids": ids, "format": "json"}, timeout=15)
+        except Exception as exc:                              # noqa: BLE001
+            log.debug("stationinfo failed: %s", exc)
+            return []
+        out = []
+        for st in j if isinstance(j, list) else []:
+            if st.get("lat") is None:
+                continue
+            out.append({"icao": st.get("icaoId"), "iata": st.get("iataId"), "name": st.get("site"),
+                        "lat": float(st["lat"]), "lon": float(st["lon"]),
+                        "elev_m": st.get("elev"), "country": st.get("country"), "region": st.get("state")})
+        return out
+    return cache.get(f"station:{ids}", 30 * 24 * 3600, fetch)
+
+
 def timezone(lat: float, lon: float) -> dict:
     """The IANA zone and current UTC offset at a point, so the app can show a
     forecast in the *place's* clock rather than the reader's. Open-Meteo's

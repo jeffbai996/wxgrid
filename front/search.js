@@ -43,11 +43,40 @@
     $("#search").onsubmit = (e) => { e.preventDefault(); clearTimeout(searchTimer); if (searchHits.length) pickResult(searchHits[Math.max(0, searchSel)]); else runSearch(q.value.trim(), true); };
     document.addEventListener("click", (e) => { if (!e.target.closest("#search") && !e.target.closest("#search-results")) hideResults(); });
   }
+  // "49.28, -123.12" · "49°17'N 123°07'W" · "CYVR" · "YVR" — answered locally
+  // or from the station list, before anyone bothers a geocoder with it.
+  function parseCoords(t) {
+    const dec = t.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,; ]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+    if (dec) { const la = +dec[1], lo = +dec[2]; if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) return { lat: la, lon: lo }; }
+    const dms = t.match(/^\s*(\d{1,2})[°: ]\s*(\d{1,2}(?:\.\d+)?)?['′: ]?\s*(\d{1,2}(?:\.\d+)?)?["″]?\s*([NS])[ ,]+(\d{1,3})[°: ]\s*(\d{1,2}(?:\.\d+)?)?['′: ]?\s*(\d{1,2}(?:\.\d+)?)?["″]?\s*([EW])\s*$/i);
+    if (dms) {
+      const v = (d, m, s) => (+d) + (+(m || 0)) / 60 + (+(s || 0)) / 3600;
+      const lat = v(dms[1], dms[2], dms[3]) * (/s/i.test(dms[4]) ? -1 : 1);
+      const lon = v(dms[5], dms[6], dms[7]) * (/w/i.test(dms[8]) ? -1 : 1);
+      if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return { lat, lon };
+    }
+    return null;
+  }
+
   async function runSearch(text, go = false) {
     if (text.length < 2) { hideResults(); return; }
+    const c = parseCoords(text);
+    if (c) {
+      // no name: let the reverse geocode put a place to it
+      searchHits = [{ kind: "point", name: `${c.lat.toFixed(3)}°, ${c.lon.toFixed(3)}°`, sub: "coordinates", lat: c.lat, lon: c.lon, unnamed: true }];
+      searchSel = 0;
+      if (go) { pickResult(searchHits[0]); return; }
+      paintResults(); return;
+    }
     try {
-      const [geo, res] = await Promise.all([WX.api(`${API}/geo?q=${encodeURIComponent(text)}&limit=5`).catch(() => ({ hits: [] })), WX.api(`${API}/resorts?q=${encodeURIComponent(text)}&limit=5`).catch(() => ({ resorts: [] }))]);
-      searchHits = [...res.resorts.map((r) => ({ kind: "resort", name: r.name, sub: `${r.region || ""} ${r.country || ""}`.trim(), lat: r.lat, lon: r.lon, id: r.id })),
+      const code = /^[A-Za-z]{3,4}$/.test(text.trim()) ? text.trim().toUpperCase() : null;
+      const [geo, res, sta] = await Promise.all([
+        WX.api(`${API}/geo?q=${encodeURIComponent(text)}&limit=5`).catch(() => ({ hits: [] })),
+        WX.api(`${API}/resorts?q=${encodeURIComponent(text)}&limit=5`).catch(() => ({ resorts: [] })),
+        code ? WX.api(`${API}/station?ids=${code}`).catch(() => ({ stations: [] })) : Promise.resolve({ stations: [] }),
+      ]);
+      searchHits = [...(sta.stations || []).map((s) => ({ kind: "airport", name: `${s.icao || s.iata} · ${s.name || ""}`.trim(), sub: `${s.region || ""} ${s.country || ""}`.trim(), lat: s.lat, lon: s.lon })),
+                    ...res.resorts.map((r) => ({ kind: "resort", name: r.name, sub: `${r.region || ""} ${r.country || ""}`.trim(), lat: r.lat, lon: r.lon, id: r.id })),
                     ...geo.hits.map((h) => ({ kind: "place", name: h.name, sub: h.display.split(",").slice(1, 3).join(",").trim(), lat: h.lat, lon: h.lon }))];
       searchSel = searchHits.length ? 0 : -1;
       if (go && searchHits.length) { pickResult(searchHits[0]); return; }
@@ -67,7 +96,7 @@
     pushRecent(h);
     if (h.kind === "resort" || (h.kind === "recent" && h.srcKind === "resort")) { WX.ov.selectResort(h.id); return; }
     M().flyTo({ center: [h.lon, h.lat], zoom: Math.max(M().getZoom(), 7), duration: 900 });
-    WX.fn.openPoint(h.lat, h.lon, h.name);
+    WX.fn.openPoint(h.lat, h.lon, h.unnamed ? undefined : h.name);
   }
 
   WX.search = { wireSearch, hideResults, runSearch, paintResults, pickResult, favs, isFav, toggleFav, showFavs };

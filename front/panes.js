@@ -47,6 +47,57 @@
   W_ICONS = { rise: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v8M4.93 10.93l1.41 1.41M2 18h2M20 18h2M19.07 10.93l-1.41 1.41M22 22H2M16 6l-4-4-4 4M16 18a4 4 0 0 0-8 0"/></svg>',
               set: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 10V2M4.93 10.93l1.41 1.41M2 18h2M20 18h2M19.07 10.93l-1.41 1.41M22 22H2M16 6l-4 4-4-4M16 18a4 4 0 0 0-8 0"/></svg>' };
 
+  // A sentence built from the series — onset and end of precipitation, the
+  // gust peak, where the temperature goes. Rules only: every clause is read
+  // off the numbers, nothing is invented, and a clause is dropped when the
+  // data for it is missing.
+  function summarise(d, i) {
+    const s = d.series, U = W().units, out = [];
+    const at = (k) => new Date(d.valid[k]);
+    const when = (k) => {
+      const h = (at(k) - at(i)) / 3600e3;
+      if (h <= 1.5) return "now";
+      if (h <= 12) return U.time(at(k)).replace(":00", "");
+      const day = at(k).toLocaleDateString(undefined, U.timeOpts({ weekday: "short" }));
+      return `${day} ${U.time(at(k)).replace(":00", "")}`;
+    };
+    const wet = (k) => (s.tp6 && s.tp6[k] > 0.2) || (s.sf6 && s.sf6[k] > 0.2);
+    const end = Math.min(d.steps.length - 1, i + Math.ceil(48 / ((d.steps[i + 1] || d.steps[i] + 3) - d.steps[i])));
+    // precipitation: when it starts, or when it stops
+    if (s.tp6) {
+      if (wet(i)) {
+        let k = i; while (k <= end && wet(k)) k++;
+        const snow = s.sf6 && s.sf6[i] > 0.2;
+        out.push(k > end ? `${snow ? "Snow" : "Rain"} continuing` : `${snow ? "Snow" : "Rain"} easing around ${when(k)}`);
+      } else {
+        let k = i; while (k <= end && !wet(k)) k++;
+        if (k <= end) {
+          const snow = s.sf6 && s.sf6[k] > 0.2;
+          const tot = s.tp6.slice(k, Math.min(end, k + 8)).reduce((a, b) => a + (b || 0), 0);
+          out.push(`${snow ? "Snow" : "Rain"} from ${when(k)}${tot >= 1 ? `, ${U.precip(tot).txt}` : ""}`);
+        } else out.push("Dry");
+      }
+    }
+    // wind: the peak gust if it is worth mentioning
+    const gs = (s.gust || s.wind || []).slice(i, end + 1).map((v, k) => [v, i + k]).filter(([v]) => v != null);
+    if (gs.length) {
+      const [gv, gk] = gs.reduce((a, b) => (b[0] > a[0] ? b : a));
+      const kmh = gv * 3.6;
+      if (kmh >= 35) out.push(`${s.gust ? "gusts" : "wind"} to ${Math.round(W().speed(gv))} ${W().speedUnit()}${gk > i + 1 ? ` ${when(gk)}` : ""}`);
+    }
+    // temperature: the direction of travel over the next day
+    if (s.t2m && s.t2m[i] != null) {
+      const day = s.t2m.slice(i, end + 1).filter((v) => v != null);
+      if (day.length > 2) {
+        const dmax = Math.max(...day), dmin = Math.min(...day), now = s.t2m[i];
+        if (dmax - now > 3) out.push(`up to ${U.temp(dmax).txt}`);
+        else if (now - dmin > 3) out.push(`down to ${U.temp(dmin).txt}`);
+      }
+    }
+    if (!out.length) return "";
+    return out.join(" · ").replace(/^./, (c) => c.toUpperCase()) + ".";
+  }
+
   // ── Now: hero, local context, station obs, meteogram ─────────────────
   function renderNow(pt, d, i) {
     const { speed, speedUnit, f, arrow } = W();
@@ -74,6 +125,7 @@
           ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span>${sun.len ? `<span class="len">${sun.len} of daylight</span>` : ""}</div>` : ""}
         </div>
       </div>
+      ${(() => { const t = summarise(d, i); return t ? `<p class="summary">${t}</p>` : ""; })()}
       <div class="meta">${chips.join("")}</div>
       ${daysStrip(d, i)}
       ${alertsHtml(pt)}${airHtml(pt)}`;

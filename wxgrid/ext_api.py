@@ -13,6 +13,12 @@ def api_geo(q: str = Query(..., min_length=1, max_length=120), limit: int = Quer
     return {"hits": ext.geocode(q, limit)}
 
 
+@router.get("/station")
+def api_station(ids: str = Query(..., min_length=3, max_length=60)):
+    """Airports/stations by ICAO, IATA or WMO id."""
+    return {"stations": ext.station_info(ids)}
+
+
 @router.get("/geo/reverse")
 def api_reverse(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
     return {"place": ext.reverse(lat, lon), "elevation_m": ext.elevation(lat, lon),
