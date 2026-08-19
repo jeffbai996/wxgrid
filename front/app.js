@@ -176,15 +176,19 @@
     if (WX.tour) setTimeout(() => WX.tour.start(), 1200);
 
     map.on("click", (e) => {
-      if (!map.isStyleLoaded()) return;
+      // isStyleLoaded() is about TILES, not the style: it goes false whenever a
+      // source is streaming, which at street zoom is most of the time. Guarding
+      // on it swallowed clicks — resort pins stopped opening. Ask instead
+      // whether the layer we are about to query exists.
+      const has = (l) => { try { return !!map.getLayer(l); } catch (_) { return false; } };
       if (state.measure) { WX.ov.measureClick(e.lngLat); return; }
       if (state.xsection) { WX.xs.click(e.lngLat); return; }
       if (state.route && WX.route && !WX.route.active) { WX.route.addPoint(e.lngLat); return; }
       // Something on the map that has its own popup owns the click. Without
       // this a fire report opened underneath a location card nobody asked for.
-      const owned = ["fire-inc", "fire-perim-fill", "sigmet-fill", "quakes", "storm-pts"].filter((l) => map.getLayer(l));
+      const owned = ["fire-inc", "fire-perim-fill", "sigmet-fill", "quakes", "storm-pts"].filter(has);
       if (owned.length && map.queryRenderedFeatures(e.point, { layers: owned }).length) return;
-      const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter((l) => map.getLayer(l)) });
+      const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter(has) });
       const resort = feats.find((x) => x.layer.id === "resort-pts");
       if (resort) { WX.ov.selectResort(resort.properties.id); return; }
       openPoint(e.lngLat.lat, e.lngLat.lng);
@@ -296,7 +300,11 @@
     if (location.hash === ownHash) return;
     const h = readHash();
     if (!h) return;
-    if (h.model && catalog && catalog.models.some((m) => m.key === h.model && m.runs.length)) { state.model = h.model; state.run = modelEntry().runs[0].run; }
+    // A hash can change while boot is still waiting on the catalog — paste a
+    // permalink into a cold tab and this ran with nothing to read. boot() reads
+    // the hash itself, so there is nothing to do here until it has landed.
+    if (!catalog) return;
+    if (h.model && catalog.models.some((m) => m.key === h.model && m.runs.length)) { state.model = h.model; state.run = modelEntry().runs[0].run; }
     if (h.layer && LAYERS.includes(h.layer) && runEntry().layers.includes(h.layer)) state.layer = h.layer;
     state.level = h.level || 0;
     if (h.step != null) state.stepIdx = Math.min(h.step, steps().length - 1);
@@ -709,6 +717,36 @@
       setPointSize(rect.width + (e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0), rect.height + (e.key === "ArrowDown" ? step : e.key === "ArrowUp" ? -step : 0), true);
       if (state.point) renderPoint();
     });
+    // The layer rail: one axis, because its width is set by the longest label
+    // and dragging it sideways would only ever cut a word in half.
+    const rail = $("#layers"), side = $("#side"), sideGrip = $("#side-resize");
+    if (rail && sideGrip) {
+      const railMax = () => Math.max(140, side.getBoundingClientRect().height ? innerHeight - side.getBoundingClientRect().top - 40 : 400);
+      let railH = Number(localStorage.getItem("wxgrid.railHeight")) || null;
+      const setRailHeight = (h) => { railH = clamp(Math.round(h), 140, railMax()); rail.style.maxHeight = `${railH}px`;
+        sideGrip.setAttribute("aria-valuenow", railH); };
+      const resetRail = () => { railH = null; localStorage.removeItem("wxgrid.railHeight"); rail.style.maxHeight = ""; };
+      if (railH) setRailHeight(railH);
+      let railDrag = null;
+      const trackRail = perFrame((y) => { if (railDrag) setRailHeight(railDrag.height + y - railDrag.y); });
+      sideGrip.addEventListener("pointerdown", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        railDrag = { id: e.pointerId, y: e.clientY, height: rail.getBoundingClientRect().height };
+        sideGrip.setPointerCapture(e.pointerId); side.classList.add("is-resizing"); document.body.classList.add("resizing-tape");
+      });
+      sideGrip.addEventListener("pointermove", (e) => { if (railDrag && e.pointerId === railDrag.id) trackRail(e.clientY); });
+      const finishRail = (e) => { if (!railDrag || (e && e.pointerId !== railDrag.id)) return;
+        railDrag = null; side.classList.remove("is-resizing"); document.body.classList.remove("resizing-tape");
+        if (railH) localStorage.setItem("wxgrid.railHeight", railH); };
+      sideGrip.addEventListener("pointerup", finishRail); sideGrip.addEventListener("pointercancel", finishRail);
+      sideGrip.addEventListener("dblclick", (e) => { e.preventDefault(); resetRail(); });
+      sideGrip.addEventListener("keydown", (e) => {
+        if (e.key === "Home") { e.preventDefault(); resetRail(); return; }
+        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+        e.preventDefault(); setRailHeight(rail.getBoundingClientRect().height + (e.key === "ArrowDown" ? 24 : -24));
+        localStorage.setItem("wxgrid.railHeight", railH);
+      });
+    }
     addEventListener("resize", () => { if (tapeHeight) setTapeHeight(tapeHeight); restorePointPanelSize(); });
   }
 
