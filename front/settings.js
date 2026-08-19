@@ -154,6 +154,10 @@
 
   function open() { build(); const el = $("#settings"), s = $("#settings-scrim"); el.hidden = false; s.hidden = false; paint(); requestAnimationFrame(() => { el.classList.add("on"); s.classList.add("on"); }); }
   function close() { const el = $("#settings"), s = $("#settings-scrim"); if (!el) return; el.classList.remove("on"); s.classList.remove("on"); setTimeout(() => { el.hidden = true; s.hidden = true; }, 220); }
+  // The desktop strip is rebuilt by app.js as controls change. Delegate its
+  // settings action here, where the drawer lifecycle lives, so render order
+  // cannot leave a visible gear disconnected from the hidden menu copy.
+  document.addEventListener("click", (e) => { if (e.target.closest("#strip-settings")) open(); });
   document.addEventListener("wx-units", paint);
   WX.settings = { open, close, toggle: () => ($("#settings") && !$("#settings").hidden ? close() : open()) };
 })();
