@@ -16,10 +16,13 @@ model data all of them run on is free — ECMWF, NOAA and Environment Canada
 publish it, keyless, several times a day. wxgrid pulls it, stores it once, and
 draws it.
 
-Five models on one grid, ten pressure levels, particles, radar, warnings from
-four agencies, wildfires with the incident data attached, cross-sections,
-soundings. Runs on one box. The whole thing is a Zarr store, a FastAPI app and
-a folder of static JavaScript — no build step, no bundler, no node_modules.
+Five models on one grid, ten pressure levels, particles, agency radar, warnings
+from four national services, wildfires with the incident records attached,
+aerosols, cross-sections, soundings against real balloon ascents, ensemble
+spread, and a forecast along a route at the time you would arrive. Runs on one
+box, installs to a phone, works offline on what it last loaded. The whole thing
+is a Zarr store, a FastAPI app and a folder of static JavaScript — no build
+step, no bundler, no node_modules.
 
 ```
 ECMWF open data (IFS, AIFS, waves) ─┐
@@ -33,6 +36,9 @@ ECCC dd.weather.gc.ca (GEM GDPS) ───┘        (GRIB2 → common 0.25° gr
      /api/wind       coarse u/v for the particle layer
      /api/point      every variable at every step, one gridpoint
      /api/xsection   vertical slice between two points
+     /api/route      weather along a path at the time you reach each point
+     /api/ens        ensemble plumes and spread
+     /api/sonde      the nearest radiosonde ascent
      front/          MapLibre + canvas particles + the weather tape
 ```
 
@@ -69,6 +75,27 @@ mixing-ratio lines, the parcel path, LCL, and CAPE both estimated from the
 profile and as the model reports it. It tells you which number to trust.
 
 ![skew-t](docs/img/06-skewt.jpg)
+
+**The balloon, not just the model.** The Skew-T also draws the nearest real
+radiosonde ascent — white for its temperature, dashed blue for its dew point.
+Our runs carry no humidity aloft, so that dashed line is a moisture profile the
+model physically cannot give you.
+
+![sounding with radiosonde](docs/img/12-sonde.jpg)
+
+**How much to believe it.** GEFS publishes the ensemble standard deviation, so
+the card can show a plume: median line, band, and the honest note that the band
+is mean ± z·σ rather than the members themselves. A wide band is the ensemble
+telling you it does not know.
+
+![ensemble spread](docs/img/13-spread.jpg)
+
+**Weather at the time you get there.** Draw a path, set a departure and a
+speed, and every sample is read at its own ETA — temperature, gusts,
+precipitation and type, the terrain underneath and the freezing level over it,
+with the hazardous stretches marked and any warning polygon you cross named.
+
+![route forecast](docs/img/14-route.jpg)
 
 **Radar from the agency that owns the radars.** ECCC's 1 km mosaic over Canada,
 NOAA MRMS over the US, RainViewer everywhere else — and it changes source by
@@ -188,7 +215,9 @@ or tunnel.
 All free, all keyless, proxied by `wxgrid/ext.py` (server-side cache, mirrored
 to `data/cache/ext.json`) unless marked *direct*:
 
-- **Radar** — RainViewer composite (past 2 h + nowcast), *direct* tiles
+- **Radar** — agency radar where it exists, picked by where you are looking: ECCC's 1 km mosaic (GeoMet WMS, 6 min) over Canada, NOAA MRMS (NCEP GeoServer, ~2 min) over CONUS, RainViewer's global composite everywhere else. All *direct* tiles; the server only caches the frame lists.
+- **Aurora** — NOAA SWPC OVATION nowcast rendered to a Mercator PNG, with the planetary Kp index
+- **Radiosondes** — the nearest launch site's latest ascent (IEM, University of Wyoming), drawn on the Skew-T with indices computed here and labelled as ours
 - **Satellite** — GOES-East/West GeoColor from NASA GIBS, latest frame, *direct* tiles
 - **Alerts** — NWS (US), MeteoAlarm (Europe, Atom/CAP + EMMA_ID regions; attribution required, redistribution per meteoalarm.org terms) and BoM (Australia, CAP-AU over anonymous FTP + AMOC district shapes; © Commonwealth of Australia) merged into one polygon layer and point lookup, plus Environment Canada's ALERTS WMS layer (*direct*)
 - **Storms** — NHC/CPHC active tropical cyclones: position, cone, forecast track (KMZ → GeoJSON)
@@ -244,6 +273,18 @@ their actual logos are trademarks, and an approximation of a trademark is
 worse than none. An operator's private overlay can supply the real marks for
 a private instance (see `front/private/`).
 
+## Offline
+
+`front/sw.js` precaches the app shell — reading the script list out of
+`index.html` at install time, so a new module is picked up without editing a
+list — and keeps three more caches: layer and wind requests cache-first (they
+are immutable per run, and entries are evicted when their run leaves the
+catalog), everything else under `/api` network-first with a cached fallback,
+and enough of the basemap style for MapLibre to fire `load` at all. Offline you
+get the last data you loaded and a banner saying so, not a broken page.
+`manifest.webmanifest` installs it to a home screen; on iOS that is Share →
+Add to Home Screen, since Safari has no install prompt.
+
 ## For Python consumers
 
 ```python
@@ -268,8 +309,8 @@ lifts) degrade quietly.
 ## Roadmap
 
 - WeatherNext 2 (DeepMind FGN ensemble) via BigQuery once the data-request
-  form clears — needs a GCP project. Ensembles generally: AIFS-ens, GEFS →
-  spread/plume layers.
+  form clears — needs a GCP project. AIFS-ENS member columns for true plumes
+  (GEFS spread ships today; the bands are Gaussian from σ, not from members).
 - HRRR 3 km, ICON; hourly GFS surface tier; GFS waves (WW3).
 - Model split-screen; webcams (needs a keyed API).
 - Self-hosted AI model via ECMWF `ai-models` (Aurora / GraphCast-small).
