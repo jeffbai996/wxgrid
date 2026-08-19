@@ -222,8 +222,47 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
     removed = prune(model.key, root=store_root)
     log.info("%s %s done: %d/%d steps, coverage %s, pruned %s",
              model.key, rid, len(got), len(model.steps), counts, removed)
+    try:
+        warm_layers(model.key, rid, store_root)
+    except Exception:
+        log.exception("%s %s warm render failed (layers render on first request instead)", model.key, rid)
     return {"model": model.key, "run": rid, "steps": len(got), "coverage": counts,
             "pruned": removed}
+
+
+# The layers a fresh visit paints, warmed right after ingest so the first
+# request of each step hits disk instead of paying the cold render (~0.5 s a
+# frame, felt hardest when someone presses play on a new run).
+WARM_LAYERS = ("wind", "temp", "tp6")
+
+
+def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
+    from wxgrid import render
+    from wxgrid.api import _SIX_HOURLY, _available, _level_step, field_for
+    from wxgrid.config import CACHE_DIR
+    from wxgrid.store import RunReader
+
+    r = RunReader(model_key, rid, root=store_root)
+    done = 0
+    for layer in WARM_LAYERS:
+        if not _available(r, layer, None):
+            continue
+        # the same step mapping the request path uses, so the names collide
+        # (that is the point) and a six-hourly layer is not rendered twice
+        # WebP only: every current browser asks for it, and PNG for the odd
+        # client that does not still renders on demand.
+        for step in sorted({_level_step(r, st, layer in _SIX_HOURLY) for st in r.steps}):
+            path = CACHE_DIR / model_key / rid / f"{step:03d}-{layer}.webp"
+            if path.exists():
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            disp = render.DISPLAY[layer](render.to_mercator(field_for(r, layer, None, step)))
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_bytes(render.colorize(disp, layer, fmt="webp"))
+            tmp.replace(path)
+            done += 1
+    log.info("%s %s warmed %d frames", model_key, rid, done)
+    return done
 
 
 def augment_waves(model: Model, rid: str, grib_root: Path = GRIB_DIR, store_root: Path = STORE_DIR) -> dict:

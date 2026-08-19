@@ -27,14 +27,16 @@ def test_static_build_writes_catalog_layers_and_point_tiles(tmp_path):
     assert tile["lat0"] == 50 and tile["lon0"] == -160 and len(tile["vars"]["t2m"]) == 2 * tile["ny"] * tile["nx"]
     assert summary["point_tiles"] == 648 and (out / "index.html").read_text().count("wxgrid-mode") == 1
     idx = (out / "index.html").read_text()
-    assert idx.index('src="static-api.js"') < idx.index('src="app.js"')
+    assert idx.index('src="static-api.js"') < idx.index('src="bundle.js"')
+    # the static host has no live /bundle.js route, so the file must exist
+    assert "// \u2500\u2500 app.js" in (out / "bundle.js").read_text()
     assert not (out / "private").exists()
 
 
 def test_rewrite_index_injects_the_shim_ahead_of_the_app():
     html = (Path(__file__).resolve().parents[1] / "front" / "index.html").read_text()
     out = static_demo._rewrite_index(html)
-    assert out.index('src="static-api.js"') < out.index('src="app.js"')
+    assert out.index('src="static-api.js"') < out.index('src="bundle.js"')
     assert out.count('src="static-api.js"') == 1
     assert "private/theme" not in out
     assert '<meta name="wxgrid-mode" content="static">' in out

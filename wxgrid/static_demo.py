@@ -70,10 +70,10 @@ def _rewrite_index(html: str) -> str:
         (r'[ \t]*<script[^>]*\bsrc="private/theme\.js"[^>]*></script>\n', "", 1),
         (r"<title>wxgrid</title>",
          '<title>wxgrid</title>\n<meta name="wxgrid-mode" content="static">', 1),
-        # the shim must run before app.js, so it goes immediately in front of it
-        # and carries the same defer/async attributes to keep execution order
-        (r'<script([^>]*)\bsrc="app\.js"([^>]*)></script>',
-         r'<script\1src="static-api.js"\2></script>\n<script\1src="app.js"\2></script>', 1),
+        # the shim must run before the app (now inside bundle.js), so it goes
+        # immediately in front of the bundle tag with the same attributes
+        (r'<script([^>]*)\bsrc="bundle\.js"([^>]*)></script>',
+         r'<script\1src="static-api.js"\2></script>\n<script\1src="bundle.js"\2></script>', 1),
     ]
     for pattern, repl, count in subs:
         html, n = re.subn(pattern, repl, html, count=count)
@@ -104,6 +104,10 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
             shutil.copy2(item, out / item.name)
     html = _rewrite_index((out / "index.html").read_text())
     (out / "index.html").write_text(html)
+    # the live server builds /bundle.js on request; a static host needs the file
+    from wxgrid import bundle as _bundle
+    body, _ = _bundle.build(FRONT_DIR)
+    (out / "bundle.js").write_bytes(body)
     (out / ".nojekyll").write_text("")
 
     api = out / "api"

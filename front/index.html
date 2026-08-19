@@ -154,17 +154,12 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
 <div id="toast" hidden></div>
 
 <script defer src="vendor/maplibre-gl.js"></script>
-<script defer src="particles.js"></script>
-<script defer src="app.js"></script>
-<script defer src="units.js"></script>
-<script defer src="settings.js"></script>
-<script defer src="menu.js"></script>
-<script defer src="tour.js"></script>
-<script defer src="overlays.js"></script>
-<script defer src="tape.js"></script>
-<script defer src="search.js"></script>
+<!-- the app scripts, one body: /bundle.js is the files below concatenated in
+     this order. wxgrid/bundle.py reads this list; it lives here so the page
+     stays the one owner of the load order. -->
+<script type="application/json" data-bundled>particles.js app.js units.js settings.js menu.js tour.js overlays.js tape.js search.js panes.js</script>
+<script defer src="bundle.js"></script>
 <script defer src="private/theme.js"></script>
-<script defer src="panes.js"></script>
 <!-- Feature modules are part of the offline shell, but they do not block the
      first forecast. features.js loads them after the initial tape and wind. -->
 <script type="application/json" data-lazy-src="fires.js"></script>

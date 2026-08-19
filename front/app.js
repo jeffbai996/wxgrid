@@ -728,7 +728,8 @@
     const viewH = () => Math.round((window.visualViewport && !pageIsPinchZoomed() && window.visualViewport.height) || innerHeight);
     const bounds = () => {
       const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
-      return { min: 168, max: Math.max(220, viewH() - top - 18) };
+      // min is the PEEK: name, temperature and the sentence, map above it
+      return { min: 128, max: Math.max(220, viewH() - top - 18) };
     };
     const stored = Number(localStorage.getItem("wxgrid.sheetHeight")) || 0;
     let y0 = 0, dy = 0, startH = 0, dragging = false, closing = false, height = stored;
@@ -737,11 +738,13 @@
       height = Math.max(b.min, Math.min(b.max, Math.round(h)));
       card.style.height = `${height}px`;
       card.classList.add("sheet-sized");
+      // below this the tabs and telemetry stop pretending: hero only
+      card.classList.toggle("sheet-peek", height < 190);
       if (persist) localStorage.setItem("wxgrid.sheetHeight", String(height));
       return height;
     };
     restoreSheetHeight = () => {
-      if (innerWidth > 820) { card.style.height = ""; card.classList.remove("sheet-sized"); return; }
+      if (innerWidth > 820) { card.style.height = ""; card.classList.remove("sheet-sized", "sheet-peek"); return; }
       if (height) setHeight(height, false);
     };
     const track = perFrame((clientY) => {
@@ -763,9 +766,9 @@
       if (!dragging) return;
       dragging = false; card.classList.remove("sheet-drag"); card.style.opacity = "";
       if (!cancel && closing) { closePoint(); return; }
-      if (!cancel && Math.abs(dy) < 6) {                    // a tap toggles tall / short
+      if (!cancel && Math.abs(dy) < 6) {                    // a tap cycles peek → half → full
         const b = bounds();
-        setHeight(height > (b.min + b.max) / 2 ? Math.round(b.max * 0.5) : b.max, true);
+        setHeight(height < 190 ? Math.round(b.max * 0.5) : height < b.max - 40 ? b.max : b.min, true);
         return;
       }
       localStorage.setItem("wxgrid.sheetHeight", String(height));
@@ -851,7 +854,10 @@
       if (persist) localStorage.setItem("wxgrid.pointSize", JSON.stringify(pointSize));
     };
     restorePointPanelSize = () => {
-      if (innerWidth <= 820) { card.style.width = ""; card.style.height = ""; card.classList.remove("user-sized"); return; }
+      // On a phone the sheet owns the height; clearing it here was wiping the
+      // user's sheet size every time the tape resized (the timebar observer
+      // calls this). Clear only the desktop sizing and hand back to the sheet.
+      if (innerWidth <= 820) { card.style.width = ""; card.classList.remove("user-sized"); restoreSheetHeight(); return; }
       if (!card.hidden && pointSize && pointSize.width && pointSize.height) setPointSize(pointSize.width, pointSize.height);
     };
     const resetPointSize = () => {
@@ -1093,9 +1099,7 @@
     placeMarker(lat, lon);
     if (WX.provider) WX.provider.refresh();
     pushHash();
-    try {
-      const d = await WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}&model=${state.model}&run=${state.run}`);
-      if (my !== pointReq) return;
+    const gotPoint = (d) => {
       state.point.data = d;
       renderPoint(); WX.tape.renderTape();
       const rd = new Date(d.run + ":00Z");
@@ -1114,13 +1118,53 @@
             .catch(() => {});
         }
       }
+    };
+    const gotLocal = (r) => { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if ((!state.point.name || hasNonLatinScript(state.point.name)) && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; } WX.tape.renderTape(); renderPoint(); };
+    const got = {
+      point: gotPoint, local: gotLocal,
+      obs: (r) => { state.point.obs = r; renderPoint(); },
+      alerts: (r) => { state.point.alerts = r.alerts || []; renderPoint(); },
+      air: (r) => { state.point.air = r; renderPoint(); },
+      tides: (r) => { state.point.tides = r || false; renderPoint(); },
+    };
+    // One streamed response instead of six requests: the six were queueing
+    // behind map tiles on the browser's per-origin connection cap, so the
+    // card sat on "…" while the server had answered in milliseconds. The
+    // static demo has no such endpoint and keeps the fan-out.
+    if (!window.WXStatic) {
+      try {
+        const res = await fetch(`${U(API + "/card")}?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}&model=${state.model}&run=${state.run}`, { priority: "high" });
+        if (!res.ok || !res.body) throw new Error(res.status);
+        const reader = res.body.getReader(), dec = new TextDecoder();
+        let buf = "", gotAny = false;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (my !== pointReq) { reader.cancel().catch(() => {}); return; }
+          buf += dec.decode(value || new Uint8Array(), { stream: !done });
+          let nl;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            const row = buf.slice(0, nl); buf = buf.slice(nl + 1);
+            if (!row.trim()) continue;
+            const msg = JSON.parse(row);
+            if (msg.kind === "point" && msg.error) $("#point-now").textContent = "point forecast unavailable";
+            if (!msg.error && got[msg.kind]) { gotAny = true; got[msg.kind](msg.data); }
+          }
+          if (done) break;
+        }
+        if (gotAny) return;
+      } catch (e) { if (my !== pointReq) return; /* fall through to the fan-out */ }
+    }
+    try {
+      const d = await WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}&model=${state.model}&run=${state.run}`);
+      if (my !== pointReq) return;
+      gotPoint(d);
     } catch (e) { $("#point-now").textContent = "point forecast unavailable"; }
     // local context arrives lazily and re-renders as it lands
-    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if ((!state.point.name || hasNonLatinScript(state.point.name)) && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; } WX.tape.renderTape(); renderPoint(); } }).catch(() => {});
-    WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.obs = r; renderPoint(); } }).catch(() => {});
-    WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.alerts = r.alerts || []; renderPoint(); } }).catch(() => {});
-    WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.air = r; renderPoint(); } }).catch(() => {});
-    WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.tides = r; renderPoint(); } }).catch(() => { if (my === pointReq) state.point.tides = false; });
+    WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) gotLocal(r); }).catch(() => {});
+    WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.obs(r); }).catch(() => {});
+    WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.alerts(r); }).catch(() => {});
+    WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.air(r); }).catch(() => {});
+    WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.tides(r); }).catch(() => { if (my === pointReq) got.tides(false); });
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
   function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; document.body.classList.remove("has-point");

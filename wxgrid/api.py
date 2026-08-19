@@ -694,6 +694,22 @@ if PUBLIC:
 from starlette.responses import Response as _Response  # noqa: E402
 
 
+from wxgrid.bundle import Bundler as _Bundler  # noqa: E402
+
+_bundler = _Bundler(FRONT_DIR)
+
+
+@app.get("/bundle.js", include_in_schema=False)
+def bundle_js(request: Request):
+    """The eager front-end scripts as one body. ETag'd on content: one
+    request per load, normally a 304."""
+    body, etag = _bundler.get()
+    if request.headers.get("if-none-match") == etag:
+        return _Response(status_code=304, headers={"ETag": etag})
+    return _Response(body, media_type="application/javascript",
+                     headers={"ETag": etag, "Cache-Control": "no-cache"})
+
+
 @app.get("/private/theme.js", include_in_schema=False)
 def private_theme_js():
     """The optional private overlay script. Empty (not 404) when there is no
