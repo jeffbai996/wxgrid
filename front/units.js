@@ -28,11 +28,24 @@
     ? { v: null, unit, txt: "—" }
     : { v: round(v, n), unit, txt: `${round(v, n)} ${unit}` };
 
+  function write(key, value) {
+    if (key === "wind") {
+      WX.state.units = value;
+      localStorage.setItem("wxgrid.units", value);
+    } else {
+      P[key] = value;
+      localStorage.setItem("wxgrid.u." + key, value);
+    }
+  }
+
   const U = {
     get pref() { return { ...P, wind: (WX.state && WX.state.units) || "kmh" }; },
     set(key, value) {
-      if (key === "wind") { WX.state.units = value; localStorage.setItem("wxgrid.units", value); }
-      else { P[key] = value; localStorage.setItem("wxgrid.u." + key, value); }
+      write(key, value);
+      document.dispatchEvent(new CustomEvent("wx-units"));
+    },
+    setMany(values) {
+      Object.entries(values).forEach(([key, value]) => write(key, value));
       document.dispatchEvent(new CustomEvent("wx-units"));
     },
     // temperature: store is kelvin
