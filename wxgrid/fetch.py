@@ -9,6 +9,7 @@ published) are skipped, not fatal — ingest marks coverage per variable.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -24,6 +25,11 @@ from wxgrid.models import LEVEL_EVERY, Model
 log = logging.getLogger(__name__)
 
 NOMADS = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl"
+# NOAA's AI-GFS (the operational GraphCast lineage) has no filter CGI: it is
+# plain GRIB2 on S3 with a wgrib2 `.idx` beside each file. The index gives every
+# message's byte offset, so we subset with HTTP Range requests instead — same
+# result as the CGI, done client-side.
+AIGFS = "https://noaa-nws-graphcastgfs-pds.s3.amazonaws.com"
 GEM_WORKERS = 4          # datamart is happy with a handful of parallel GETs
 # GFS variable/level flags for the filter CGI. The CGI ANDs the var set with
 # the level set, so surface TMP / HGT at pressure levels etc. come along; the
@@ -389,6 +395,150 @@ def fetch_gem(model: Model, run: datetime, root: Path = GRIB_DIR,
             got.append((step, paths))
             if on_step:
                 on_step(step, paths)
+    return got
+
+
+
+# ── NOAA AI-GFS (GraphCast lineage) over S3 byte ranges ──────────────────
+
+def aigfs_candidate_runs(now: datetime | None = None, back: int = 4) -> list[datetime]:
+    """Same synoptic cycles as GFS. AI-GFS publishes about an hour behind it."""
+    return gfs_candidate_runs(now, back)
+
+
+def aigfs_url(run: datetime, step: int, kind: str) -> str:
+    """`kind` is "sfc" (surface fields) or "pres" (pressure levels)."""
+    return (f"{AIGFS}/aigfs.{run:%Y%m%d}/{run:%H}/model/atmos/grib2/"
+            f"aigfs.t{run:%H}z.{kind}.f{step:03d}.grib2")
+
+
+def aigfs_probe_url(run: datetime, step: int) -> str:
+    return aigfs_url(run, step, "sfc") + ".idx"
+
+
+# The surface fields we keep, by (variable, level) exactly as the index names
+# them. Precipitation is handled separately: the file carries BOTH the 6-hour
+# bucket and the since-start total under the same name, and we want the bucket.
+AIGFS_SFC = {("TMP", "2 m above ground"), ("DPT", "2 m above ground"),
+             ("UGRD", "10 m above ground"), ("VGRD", "10 m above ground"),
+             ("PRMSL", "mean sea level")}
+AIGFS_PL_VARS = ("TMP", "UGRD", "VGRD", "HGT")
+# Two ranges this close together are cheaper as one request than as two, even
+# counting the bytes in between.
+IDX_MERGE_SLACK = 512 * 1024
+
+
+def parse_idx(text: str) -> list[dict]:
+    """A wgrib2 index: `n:offset:date:VAR:LEVEL:WINDOW:`. Returns each message
+    with the byte range it occupies; the last message runs to end-of-file."""
+    rows = []
+    for line in text.splitlines():
+        parts = line.split(":")
+        if len(parts) < 6 or not parts[1].isdigit():
+            continue
+        rows.append({"n": int(parts[0]), "start": int(parts[1]),
+                     "var": parts[3], "level": parts[4], "window": parts[5]})
+    for i, row in enumerate(rows):
+        row["end"] = rows[i + 1]["start"] - 1 if i + 1 < len(rows) else None
+    return rows
+
+
+def aigfs_wanted(rows: list[dict], step: int, levels: tuple[int, ...], kind: str) -> list[dict]:
+    """Which messages this step needs. For precipitation that means the bucket
+    ending at this step — the file also holds the since-start total under the
+    same name, and taking the wrong one turns a 6-hour rainfall into a
+    cumulative one."""
+    if kind == "pres":
+        want_levels = {f"{lv} mb" for lv in levels}
+        return [r for r in rows if r["var"] in AIGFS_PL_VARS and r["level"] in want_levels]
+    bucket = f"{max(0, step - 6)}-{step} hour acc fcst"
+    picked, seen = [], set()
+    for r in rows:
+        key = (r["var"], r["level"])
+        if key in seen:
+            continue                      # at f006 the bucket IS the total: two identical messages
+        if key in AIGFS_SFC or (r["var"] == "APCP" and r["level"] == "surface" and r["window"] == bucket):
+            picked.append(r)
+            seen.add(key)
+    return picked
+
+
+def merge_ranges(rows: list[dict], slack: int = IDX_MERGE_SLACK) -> list[tuple[int, int | None]]:
+    """Collapse the wanted messages into as few HTTP ranges as possible."""
+    out: list[list] = []
+    for r in sorted(rows, key=lambda x: x["start"]):
+        if out and out[-1][1] is not None and r["start"] - out[-1][1] <= slack:
+            out[-1][1] = r["end"] if r["end"] is not None else None
+        else:
+            out.append([r["start"], r["end"]])
+    return [(a, b) for a, b in out]
+
+
+def _download_ranges(s: requests.Session, url: str, ranges: list[tuple[int, int | None]],
+                     target: Path, tries: int = 3) -> bool:
+    """Fetch byte ranges and concatenate them. GRIB2 messages are self-contained,
+    so the result is a valid multi-message file that eccodes reads normally."""
+    tmp = target.with_suffix(f".part-{os.getpid()}")
+    try:
+        with tmp.open("wb") as fh:
+            for start, end in ranges:
+                span = f"bytes={start}-{end if end is not None else ''}"
+                for attempt in range(tries):
+                    try:
+                        r = s.get(url, headers={"Range": span}, timeout=(10.0, 120.0), stream=True)
+                        if r.status_code == 404:
+                            log.info("not published: %s", url.rsplit("/", 1)[-1])
+                            return False
+                        r.raise_for_status()
+                        for chunk in r.iter_content(1 << 16):
+                            fh.write(chunk)
+                        break
+                    except requests.RequestException as exc:
+                        if attempt == tries - 1:
+                            log.warning("range %s of %s failed: %s", span, url.rsplit("/", 1)[-1], exc)
+                            return False
+                        time.sleep(1.5 * (attempt + 1))
+        tmp.replace(target)
+        return True
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def fetch_aigfs(model: Model, run: datetime, root: Path = GRIB_DIR,
+                session: requests.Session | None = None,
+                on_step: Callable[[int, list[Path]], None] | None = None) -> list[tuple[int, list[Path]]]:
+    s = session or new_session()
+    out_dir = _run_dir(model, run, root)
+    got: list[tuple[int, list[Path]]] = []
+    for step in model.steps:
+        paths: list[Path] = []
+        for kind in ("sfc", "pres"):
+            if kind == "pres" and step % LEVEL_EVERY != 0:
+                continue
+            target = out_dir / f"step{step:03d}.{kind}.grib2"
+            if _have(target):
+                paths.append(target)
+                continue
+            url = aigfs_url(run, step, kind)
+            try:
+                idx = s.get(url + ".idx", timeout=(10.0, 60.0))
+                if idx.status_code == 404:
+                    log.info("not published: %s.idx", url.rsplit("/", 1)[-1])
+                    continue
+                idx.raise_for_status()
+            except requests.RequestException as exc:
+                log.warning("index unavailable for %s: %s", url.rsplit("/", 1)[-1], exc)
+                continue
+            wanted = aigfs_wanted(parse_idx(idx.text), step, model.levels, kind)
+            if not wanted:
+                continue
+            if _download_ranges(s, url, merge_ranges(wanted), target):
+                paths.append(target)
+        if not paths:
+            continue
+        got.append((step, paths))
+        if on_step:
+            on_step(step, paths)
     return got
 
 

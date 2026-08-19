@@ -42,6 +42,7 @@ def _resolve_run(model: Model, run: str | None) -> datetime:
     probes = {
         "nomads": (fetch.gfs_candidate_runs, lambda c: fetch.gfs_step_url(c, model.steps[-1], model.levels)),
         "nomads-gefs": (fetch.gfs_candidate_runs, lambda c: fetch.gefs_probe_url(c, model.steps[-1])),
+        "aws-aigfs": (fetch.aigfs_candidate_runs, lambda c: fetch.aigfs_probe_url(c, model.steps[-1])),
         "datamart": (fetch.gem_candidate_runs,
                      lambda c: fetch.gem_file_url(c, model.steps[-1], model.file_params["2t"])),
     }
@@ -207,7 +208,7 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         write_spread(writer, model, step, spread_paths, got)
         log.info("%s %s step %03d written", model.key, rid, step)
 
-    fetcher = {"ecmwf": fetch.fetch_ecmwf, "nomads": fetch.fetch_gfs,
+    fetcher = {"ecmwf": fetch.fetch_ecmwf, "nomads": fetch.fetch_gfs, "aws-aigfs": fetch.fetch_aigfs,
                "nomads-gefs": fetch.fetch_gefs, "datamart": fetch.fetch_gem}[model.source]
     got = fetcher(model, run, grib_root, on_step=on_step)
 

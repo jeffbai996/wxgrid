@@ -79,3 +79,70 @@ def test_gefs_pressure_url_uses_the_half_degree_a_file():
 def test_gefs_probe_points_at_the_idx_sidecar():
     assert fetch.gefs_probe_url(RUN, 240).endswith(
         "gefs.20260818/12/atmos/pgrb2sp25/geavg.t12z.pgrb2s.0p25.f240.idx")
+
+
+# ── NOAA AI-GFS: byte-range subsetting off the .idx ─────────────────────
+
+_IDX = """1:0:d=2026081900:UGRD:10 m above ground:6-12 hour fcst:
+2:1000:d=2026081900:VGRD:10 m above ground:6-12 hour fcst:
+3:2000:d=2026081900:DPT:2 m above ground:12 hour fcst:
+4:3000:d=2026081900:TMP:2 m above ground:12 hour fcst:
+5:4000:d=2026081900:TMP:surface:12 hour fcst:
+6:5000:d=2026081900:PRMSL:mean sea level:12 hour fcst:
+7:6000:d=2026081900:ACPCP:surface:6-12 hour acc fcst:
+8:7000:d=2026081900:APCP:surface:6-12 hour acc fcst:
+9:9000:d=2026081900:APCP:surface:0-12 hour acc fcst:
+"""
+
+
+def test_aigfs_urls_point_at_the_open_data_bucket():
+    run = datetime(2026, 8, 19, 0, tzinfo=timezone.utc)
+    assert fetch.aigfs_url(run, 12, "sfc").endswith(
+        "aigfs.20260819/00/model/atmos/grib2/aigfs.t00z.sfc.f012.grib2")
+    assert fetch.aigfs_url(run, 6, "pres").endswith("aigfs.t00z.pres.f006.grib2")
+    assert fetch.aigfs_probe_url(run, 384).endswith("sfc.f384.grib2.idx")
+
+
+def test_idx_gives_every_message_a_byte_range():
+    rows = fetch.parse_idx(_IDX)
+    assert len(rows) == 9
+    assert rows[0]["start"] == 0 and rows[0]["end"] == 999
+    assert rows[-1]["end"] is None                    # the last one runs to EOF
+
+
+def test_precip_selection_takes_the_bucket_not_the_running_total():
+    """The file carries both `6-12 hour acc` and `0-12 hour acc` under the name
+    APCP. Taking the second would turn a six-hour rainfall into a cumulative
+    one, silently, for every step after the first."""
+    rows = fetch.parse_idx(_IDX)
+    picked = fetch.aigfs_wanted(rows, 12, (850, 500), "sfc")
+    windows = [r["window"] for r in picked if r["var"] == "APCP"]
+    assert windows == ["6-12 hour acc fcst"]
+    # surface temperature at 2 m, not the skin temperature beside it
+    assert ("TMP", "2 m above ground") in {(r["var"], r["level"]) for r in picked}
+    assert ("TMP", "surface") not in {(r["var"], r["level"]) for r in picked}
+    assert not any(r["var"] == "ACPCP" for r in picked)
+    # at the first step the bucket and the running total are the same message
+    # written twice; taking both would decode one field over the other
+    first = fetch.aigfs_wanted(fetch.parse_idx(
+        "1:0:d=x:APCP:surface:0-6 hour acc fcst:\n2:10:d=x:APCP:surface:0-6 hour acc fcst:\n"), 6, (), "sfc")
+    assert len(first) == 1
+
+
+def test_pressure_selection_keeps_only_the_levels_we_store():
+    rows = fetch.parse_idx(
+        "1:0:d=x:TMP:850 mb:12 hour fcst:\n2:10:d=x:TMP:975 mb:12 hour fcst:\n"
+        "3:20:d=x:HGT:850 mb:12 hour fcst:\n4:30:d=x:RH:850 mb:12 hour fcst:\n")
+    picked = fetch.aigfs_wanted(rows, 12, (850,), "pres")
+    assert {(r["var"], r["level"]) for r in picked} == {("TMP", "850 mb"), ("HGT", "850 mb")}
+
+
+def test_neighbouring_messages_become_one_request():
+    rows = fetch.parse_idx(_IDX)
+    picked = fetch.aigfs_wanted(rows, 12, (), "sfc")
+    merged = fetch.merge_ranges(picked)
+    assert len(merged) < len(picked)                  # 6 messages, fewer requests
+    assert merged[0][0] == 0
+    # a gap wider than the slack is not bridged
+    far = [{"start": 0, "end": 99}, {"start": 10_000_000, "end": 10_000_099}]
+    assert len(fetch.merge_ranges(far)) == 2

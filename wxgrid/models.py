@@ -37,7 +37,14 @@ from dataclasses import dataclass, field
 
 STEPS_6H = list(range(0, 241, 6))
 STEPS_IFS = list(range(0, 145, 3)) + list(range(150, 241, 6))   # IFS open data: 3-hourly to 144 h, then 6-hourly
-STEPS_3H = list(range(0, 241, 3))                                # GFS: 3-hourly all the way
+STEPS_3H = list(range(0, 241, 3))                                # GEM, GEFS: ten days
+# GFS alone publishes past day ten: 3-hourly to 240, then 6-hourly to 384.
+# GEM GDPS and the GEFS products we read both stop at 240, so they keep the
+# short list rather than 404 their way through a day of steps that do not exist.
+STEPS_GFS = STEPS_3H + list(range(246, 385, 6))
+# AI-GFS publishes 6-hourly out to 384 h. The extra six days are the cheapest
+# long range we have anywhere, so it keeps them.
+STEPS_AI = list(range(0, 385, 6))
 LEVEL_EVERY = 6                                                  # pressure levels are fetched on 6 h steps only
 LEVELS = (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200)
 # ≈ surface, 2.5k ft, 5k ft, 10k ft, 14k ft, FL180, FL240, FL300, FL340, FL390.
@@ -152,13 +159,23 @@ MODELS: dict[str, Model] = {
         attribution="ECMWF open data (AIFS), CC BY 4.0",
     ),
     "gfs": Model(
-        key="gfs", label="NOAA GFS", short="GFS", grid="13km", source="nomads", steps=STEPS_3H,
+        key="gfs", label="NOAA GFS", short="GFS", grid="13km", source="nomads", steps=STEPS_GFS,
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "prmsl": "msl", "tp": "tp",
                     "gust": "gust", "tcc": "tcc", "cape": "cape", "2d": "d2m", "sde": "sd", "csnow": "csnow"},
         pl_params=_ECMWF_PL,
         precip_mode="bucket6",
         snow_depth_factor=100.0,
         attribution="NOAA NCEP GFS via NOMADS, public domain",
+    ),
+    "aigfs": Model(
+        key="aigfs", label="NOAA AI-GFS", short="AI-GFS", grid="25km", source="aws-aigfs", steps=STEPS_AI,
+        # eccodes gives these the same shortNames as GFS — same GRIB2 tables.
+        # No cloud, CAPE, gust or snow in this model's output: the catalog
+        # advertises layers per run, so the UI drops them on its own.
+        sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "2d": "d2m", "prmsl": "msl", "tp": "tp"},
+        pl_params=_ECMWF_PL,
+        precip_mode="bucket6",
+        attribution="NOAA NCEP AI-GFS (GraphCast lineage) via AWS Open Data, public domain",
     ),
     "gem": Model(
         key="gem", label="ECCC GEM GDPS", short="GEM", grid="15km", source="datamart", steps=STEPS_3H,
