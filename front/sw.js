@@ -59,7 +59,7 @@ const SHELL_EXTRA = [
 // Used only if index.html cannot be read at install time.
 const SHELL_FALLBACK = ["styles.css", "app.js", "units.js", "particles.js", "overlays.js", "panes.js",
   "tape.js", "search.js", "menu.js", "settings.js", "probe.js", "provider.js", "sounding.js",
-  "xsection.js", "fires.js", "sigmet.js", "cams.js", "route.js", "vendor/maplibre-gl.js",
+  "xsection.js", "fires.js", "sigmet.js", "cams.js", "sky.js", "route.js", "ens.js", "features.js", "vendor/maplibre-gl.js",
   "vendor/maplibre-gl.css"];
 
 async function shellUrls() {

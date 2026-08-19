@@ -143,19 +143,22 @@
 <script defer src="menu.js"></script>
 <script defer src="tour.js"></script>
 <script defer src="overlays.js"></script>
-<script defer src="fires.js"></script>
-<script defer src="sigmet.js"></script>
-<script defer src="cams.js"></script>
-<script defer src="sky.js"></script>
-<script defer src="route.js"></script>
-<script defer src="xsection.js"></script>
 <script defer src="tape.js"></script>
 <script defer src="search.js"></script>
 <script defer src="private/theme.js"></script>
-<script defer src="sounding.js"></script>
-<script defer src="ens.js"></script>
-<script defer src="provider.js"></script>
-<script defer src="probe.js"></script>
 <script defer src="panes.js"></script>
+<!-- Feature modules are part of the offline shell, but they do not block the
+     first forecast. features.js loads them after the initial tape and wind. -->
+<script type="application/json" data-lazy-src="fires.js"></script>
+<script type="application/json" data-lazy-src="sigmet.js"></script>
+<script type="application/json" data-lazy-src="cams.js"></script>
+<script type="application/json" data-lazy-src="sky.js"></script>
+<script type="application/json" data-lazy-src="route.js"></script>
+<script type="application/json" data-lazy-src="xsection.js"></script>
+<script type="application/json" data-lazy-src="sounding.js"></script>
+<script type="application/json" data-lazy-src="ens.js"></script>
+<script type="application/json" data-lazy-src="provider.js"></script>
+<script type="application/json" data-lazy-src="probe.js"></script>
+<script defer src="features.js"></script>
 </body>
 </html>

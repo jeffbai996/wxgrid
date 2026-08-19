@@ -118,4 +118,6 @@
     show(countryAt(((ll.lng + 180) % 360 + 360) % 360 - 180, ll.lat));
   }
   WX.provider = { hover, refresh, PROVIDERS };
+  // This module loads after first paint; catch up on the initial map position.
+  setTimeout(refresh, 0);
 })();

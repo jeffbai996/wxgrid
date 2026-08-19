@@ -152,6 +152,9 @@
     const tapeReady = hash && hash.pt ? Promise.resolve() : WX.tape.refreshTapePoint();
     if (hash && hash.pt) openPoint(hash.pt[0], hash.pt[1]);
     const windReady = loadWind(false);
+    const initialDataReady = Promise.allSettled([windReady, tapeReady]);
+    WX.initialDataReady = initialDataReady;
+    initialDataReady.then(() => document.dispatchEvent(new Event("wx-initial-data")));
     if (WX.tour) setTimeout(() => WX.tour.start(), 1200);
 
     map.on("click", (e) => {
@@ -181,7 +184,7 @@
         map.off("sourcedata", prefetchNext);
         // The next frame is useful, but only after the current image, wind
         // field and tape have finished. It must not compete with first paint.
-        Promise.allSettled([windReady, tapeReady]).then(() => {
+        initialDataReady.then(() => {
           const img = new Image();
           img.src = layerUrl(steps()[(state.stepIdx + 1) % steps().length]);
         });
@@ -377,7 +380,7 @@
     $("#lightning-toggle").onclick = () => WX.sky && WX.sky.lightning.load();
     $("#sigmet-toggle").onclick = () => { if (!WX.sigmet) return; state.sigmet = !state.sigmet; $("#sigmet-toggle").classList.toggle("on", state.sigmet); if (state.sigmet) WX.sigmet.load(); else WX.sigmet.clear(); };
     $("#aq-toggle").onclick = () => { if (!WX.cams) return; state.aq = !state.aq; $("#aq-toggle").classList.toggle("on", state.aq); if (state.aq) WX.cams.load(state.aqVar); else WX.cams.clear(); };
-    $("#fires-toggle").onclick = () => { state.fires = !state.fires; $("#fires-toggle").classList.toggle("on", state.fires); if (state.fires) WX.fires.load(); else WX.fires.clear(); };
+    $("#fires-toggle").onclick = () => { if (!WX.fires) { toast("Fire overlay is still loading", 2500); return; } state.fires = !state.fires; $("#fires-toggle").classList.toggle("on", state.fires); if (state.fires) WX.fires.load(); else WX.fires.clear(); };
     $("#share-btn").onclick = async () => { pushHash(); await new Promise((r) => setTimeout(r, 300)); try { await navigator.clipboard.writeText(location.href); toast("Link copied"); } catch (e) { toast(location.href, 6000); } };
     $("#settings-btn").onclick = () => { $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(); };
     $("#keys-btn").onclick = () => { $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(); };
@@ -397,7 +400,7 @@
       const on = !state.route; state.route = on; $("#route-toggle").classList.toggle("on", on);
       if (on) WX.route.start(); else WX.route.stop();
     };
-    $("#xsection-toggle").onclick = () => { const on = !state.xsection; $("#xsection-toggle").classList.toggle("on", on); if (on) WX.xs.start(); else WX.xs.stop(); };
+    $("#xsection-toggle").onclick = () => { if (!WX.xs) { toast("Cross section is still loading", 2500); return; } const on = !state.xsection; $("#xsection-toggle").classList.toggle("on", on); if (on) WX.xs.start(); else WX.xs.stop(); };
     $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); $("#measure-toggle").querySelector(".val").textContent = state.measure ? "on" : "off"; if (!state.measure) WX.ov.clearMeasure(); else toast("Measure: tap two points"); };
     $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) WX.ov.loadIso(); else WX.ov.clearIso(); };
     $("#avy-toggle").onclick = () => { state.avy = !state.avy; $("#avy-toggle").classList.toggle("on", state.avy); if (state.avy) WX.ov.loadAvy(); else WX.ov.clearAvy(); };
