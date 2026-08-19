@@ -19,7 +19,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v1";
+const VERSION = "wxgrid-v2";
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
@@ -143,10 +143,34 @@ async function pruneRuns(catalog) {
 
 // ── strategies ────────────────────────────────────────────────────────────
 
-// Shell: cache-first for speed and for offline, with a background refetch so
-// a deployed change lands on the NEXT load instead of waiting for someone to
-// remember to bump VERSION. Pure cache-first on a repo under active
-// development is how you ship a permanently stale app.js.
+// Shell: network-first with a short timeout, cache as the fallback. The
+// previous strategy (cache-first, refresh in the background) meant a deployed
+// fix only appeared on the load AFTER the one you were looking at — which on
+// a project being edited live reads as "you didn't fix it" (Jeff, 2026-08-18,
+// twice). Offline still works: the timeout or the error drops straight to the
+// cached copy.
+const SHELL_TIMEOUT_MS = 2500;
+async function shellFirst(req, cacheName, event) {
+  const cached = caches.match(req, { cacheName });
+  try {
+    const res = await Promise.race([
+      fetch(req),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("slow")), SHELL_TIMEOUT_MS)),
+    ]);
+    if (res && res.ok) {
+      const cache = await caches.open(cacheName);
+      cache.put(req, res.clone());
+      return res;
+    }
+    return res;
+  } catch (err) {
+    const hit = await cached;
+    if (hit) { tell("wx-offline", { url: req.url, stale: true }); return hit; }
+    tell("wx-offline", { url: req.url });
+    throw err;
+  }
+}
+
 async function staleWhileRevalidate(req, cacheName, event) {
   const hit = await caches.match(req, { cacheName });
   const network = fetch(req).then(async (res) => {
@@ -274,5 +298,5 @@ self.addEventListener("fetch", (event) => {
     })());
     return;
   }
-  event.respondWith(staleWhileRevalidate(req, SHELL, event));
+  event.respondWith(shellFirst(req, SHELL, event));
 });

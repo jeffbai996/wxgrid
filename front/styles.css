@@ -54,6 +54,9 @@
   --tape-night: rgba(0,0,0,.05);
 }
 * { box-sizing: border-box; }
+/* a display rule on a component beats the UA's [hidden]; several of ours did,
+   leaving empty stubs on screen */
+[hidden] { display: none !important; }
 /* Chrome behaves like an app, not a document: no text selection, no double-tap
    zoom, no tap flash. The map canvas keeps its own gestures, and anything
    worth copying (raw METAR, alert text) opts back in with .selectable. */
@@ -81,15 +84,23 @@ button { font: inherit; color: inherit; }
 .brand { font: 800 16px/1 var(--font-display); letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; margin-right: 2px; color: var(--fg); text-decoration: none; }
 .brand img { display: block; border-radius: 7px; }
 .search { display: flex; position: relative; align-items: center; }
-.search .search-ico { position: absolute; left: 9px; z-index: 2; width: 15px; height: 15px; color: var(--fg-2); pointer-events: none; }
+/* the magnifier is the input's own background, not a sibling element: as a
+   sibling it sat under the input's background and vanished (twice) */
 .search input {
-  width: 210px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
-  padding: 6px 10px 6px 30px; font: 500 12.5px var(--font-body); backdrop-filter: blur(8px); outline: none;
+  width: 210px; color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px 10px 6px 31px; font: 500 12.5px var(--font-body); backdrop-filter: blur(8px); outline: none;
+  background-color: var(--panel);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b4bbc6' stroke-width='2.1' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.6-3.6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 9px center; background-size: 14px 14px;
+}
+:root[data-theme="light"] .search input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233a4250' stroke-width='2.1' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.6-3.6'/%3E%3C/svg%3E");
 }
 .search input::-webkit-search-cancel-button { filter: invert(.6); }
 .search input:focus { border-color: var(--accent); }
 .search input::placeholder { color: var(--dim); }
 .spacer { flex: 1; }
+.rowbreak { display: none; }
 
 .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; backdrop-filter: blur(8px); }
 .seg button { border: 0; background: transparent; color: var(--fg-2); padding: 5px 11px; border-radius: 7px; font: 700 12.5px var(--font-display); cursor: pointer; letter-spacing: .01em; }
@@ -311,11 +322,16 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
   .search input { width: 100%; }
   #overlays-menu { order: 3; flex: 0 0 auto; }
   #tools-menu { order: 4; flex: 0 0 auto; }
-  #models { order: 5; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  #models { order: 5; flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   #models::-webkit-scrollbar { display: none; }
   select.run { order: 6; flex: 0 0 auto; padding: 5px 22px 5px 8px; font-size: 11.5px; }
   .seg.variant { order: 7; }
-  #levels { order: 8; flex-basis: 100%; max-width: 100%; }
+  /* a zero-height break puts the altitude row on its own line while the pill
+     itself still hugs its buttons — a full-width flex item would paint a strip
+     of empty panel across the screen */
+  .rowbreak { display: block; order: 7; flex: 0 0 100%; height: 0; margin: 0; }
+  #levels { order: 8; flex: 0 1 auto; max-width: 100%; align-self: flex-start; }
+  #topbar > .seg, #topbar > .menu, #topbar > select.run { flex-shrink: 0; }
   .seg button { padding: 5px 10px; }
   .seg.small button { padding: 4px 7px; }
   .spacer { display: none; }
