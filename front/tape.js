@@ -22,6 +22,22 @@
   // The tape: a table whose columns are forecast steps grouped under
   // day headers and whose rows are variables (icon, temp, feels like, rain,
   // wind, gusts, direction). Click a column to jump.
+  // How many hours between tape columns. The run's own spacing is the floor;
+  // a coarser choice thins the columns rather than interpolating anything.
+  let tapeRes = Number(localStorage.getItem("wxgrid.tapeRes") || 0);      // 0 = the model's own steps
+  function renderRes(d) {
+    const box = $("#tape-res"); if (!box) return;
+    const native = d && d.steps && d.steps.length > 1 ? d.steps[1] - d.steps[0] : 3;
+    const opts = [[0, `${native} h`], [6, "6 h"], [12, "12 h"], [24, "24 h"]].filter(([v]) => v === 0 || v > native);
+    box.innerHTML = opts.map(([v, t]) => `<button data-v="${v}" class="${v === tapeRes ? "on" : ""}">${t}</button>`).join("");
+    box.querySelectorAll("button").forEach((b) => b.onclick = () => { tapeRes = Number(b.dataset.v); localStorage.setItem("wxgrid.tapeRes", tapeRes); renderTape(); renderTapeSelection(); });
+  }
+  const thin = (d) => {
+    if (!tapeRes || !d.steps) return null;
+    const keep = d.steps.map((h, i) => [h, i]).filter(([h]) => h % tapeRes === 0).map(([, i]) => i);
+    return keep.length > 2 ? keep : null;
+  };
+
   function renderTape() {
     const tape = $("#tape");
     tape.classList.toggle("radar", state.radar && state.radarFrames.length > 0);
@@ -38,8 +54,15 @@
       renderTapeSelection();
       return;
     }
-    const d = tapeData();
-    if (!d) { tape.innerHTML = ""; return; }
+    const d0 = tapeData();
+    if (!d0) { tape.innerHTML = ""; return; }
+    renderRes(d0);
+    // thinning maps every series through the kept indices, so the rest of the
+    // renderer never has to know the tape is showing a subset
+    const keep = thin(d0);
+    const d = keep ? { ...d0, steps: keep.map((i) => d0.steps[i]), valid: keep.map((i) => d0.valid[i]),
+                       series: Object.fromEntries(Object.entries(d0.series).map(([k, v]) => [k, Array.isArray(v) ? keep.map((i) => v[i]) : v])),
+                       _keep: keep } : d0;
     const s = d.series, n = d.steps.length;
     const dates = d.valid.map((iso) => new Date(iso));
     // day header cells: colspan per day
@@ -57,14 +80,12 @@
     const feels = (i) => { const t = s.t2m ? s.t2m[i] - 273.15 : null, w = s.wind ? s.wind[i] : null; if (t == null) return null; if (w != null && t <= 10 && w * 3.6 >= 4.8) { const v = Math.pow(w * 3.6, 0.16); return 13.12 + 0.6215 * t - 11.37 * v + 0.3965 * t * v; } if (s.d2m && s.d2m[i] != null && t >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / s.d2m[i])); return t + 0.5555 * (e - 10); } return t; };
     const feelsRow = dates.map((_, i) => { const v = feels(i); return cell(i, v == null ? "—" : `${WX.units.tempC(v).v}°`, "feels"); }).join("");
     const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `<span class="snow">${WX.units.snow(sn).v}</span>`, "rain"); return cell(i, r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : "", "rain"); }).join("");
-    // wind cell tint: calm reads blue, a gale reads red. Stronger separation
-    // than the first pass had — the numbers should be scannable at a glance.
+    // the map's own wind ramp, so a colour in the tape means the colour on the
+    // map — and light text on the dark end, dark text on the hot end
     const windCol = (v) => {
-      const kmh = v * 3.6, p = Math.min(1, kmh / 60);
-      const r = Math.round(40 + 215 * Math.pow(p, 0.85));
-      const g = Math.round(175 - 130 * p);
-      const b = Math.round(245 - 215 * Math.pow(p, 0.7));
-      return `background: rgba(${r}, ${g}, ${b}, ${0.22 + 0.62 * p}); color: ${p > 0.55 ? "#1a0d04" : "var(--fg)"}`;
+      const c = WX.rampColor("wind", v, 0.92);
+      const light = v * 3.6 > 45;
+      return `background: ${c}; color: ${light ? "#160b03" : "var(--fg)"}`;
     };
     const windRow = dates.map((_, i) => { const v = s.wind ? s.wind[i] : null; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("");
     const gustRow = s.gust ? dates.map((_, i) => { const v = s.gust[i]; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("") : "";
@@ -80,7 +101,7 @@
       ${gustRow ? `<tr class="r-wind">${label("Gusts", speedUnit())}${gustRow}</tr>` : ""}
       <tr class="r-dir">${label("Wind dir.")}${dirRow}</tr>
     </tbody></table>`;
-    tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => WX.fn.setStep(Number(c.dataset.i)));
+    tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => WX.fn.setStep(keep ? keep[Number(c.dataset.i)] : Number(c.dataset.i)));
     $("#tape-where").textContent = state.point ? (state.point.name || `${state.point.lat.toFixed(2)}, ${state.point.lon.toFixed(2)}`) : "map centre";
     renderTapeSelection();
   }
@@ -88,9 +109,15 @@
   function renderTapeSelection() {
     const tape = $("#tape");
     const radar = state.radar && state.radarFrames.length;
+    const d0 = tapeData();
+    const keep = d0 ? thin(d0) : null;
+    // the shown column for a step: exact when the tape is at full resolution,
+    // otherwise the nearest kept column
+    const shown = !keep ? state.stepIdx
+      : keep.reduce((best, idx, k) => Math.abs(idx - state.stepIdx) < Math.abs(keep[best] - state.stepIdx) ? k : best, 0);
     let on = null;
     tape.querySelectorAll(radar ? ".tape-col" : "td[data-i]").forEach((c) => {
-      const isOn = radar ? Number(c.dataset.radar) === state.radarIdx : Number(c.dataset.i) === state.stepIdx;
+      const isOn = radar ? Number(c.dataset.radar) === state.radarIdx : Number(c.dataset.i) === shown;
       c.classList.toggle("on", isOn); if (isOn && !on) on = c;
     });
     // Scroll the tape itself, never scrollIntoView: that walks every scrollable

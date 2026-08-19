@@ -7,7 +7,7 @@
 (function () {
   "use strict";
   const WX = window.WX;
-  // [full name, brand colour, short code for the generated chip]
+  // [full name, brand colour, short code for the generated chip, official site]
   const PROVIDERS = {
     US: ["NOAA · National Weather Service", "#1a5fb4", "NOAA"], CA: ["Environment and Climate Change Canada", "#c8102e", "ECCC"],
     MX: ["SMN · Servicio Meteorológico Nacional", "#006847", "SMN"], GB: ["Met Office", "#0d5f9c", "MET"], IE: ["Met Éireann", "#169b62", "MÉ"],
@@ -81,20 +81,41 @@
     const logo = window.WX_PRIVATE && window.WX_PRIVATE.logos && window.WX_PRIVATE.logos[iso];
     const swap = () => {
       const dot = box.querySelector(".dot");
-      if (logo) { dot.innerHTML = `<img src="${logo.file}" alt="" class="${logo.dark_bg_ok === false ? "chip" : ""}">`; dot.classList.add("logo"); dot.style.background = "transparent"; }
+      if (logo) {
+        // a mark that cannot be read on this theme's panel gets a chip behind
+        // it — light chip for dark marks, dark chip for pale ones
+        const light = document.documentElement.dataset.theme === "light";
+        const needsChip = light ? logo.light_bg_ok === false : logo.dark_bg_ok === false;
+        const cls = needsChip ? (light ? "chip chip-dark" : "chip") : "";
+        dot.innerHTML = `<img src="${logo.file}" alt="" class="${cls}">`;
+        dot.classList.add("logo"); dot.style.background = "transparent";
+      }
       else if (p[2]) { dot.innerHTML = monogram(p[2], p[1]); dot.classList.add("logo"); dot.style.background = "transparent"; }
       else { dot.innerHTML = ""; dot.classList.remove("logo"); dot.style.background = p[1]; dot.style.color = p[1]; }
-      box.querySelector(".txt").innerHTML = `${logo && logo.name ? logo.name : p[0]} <small>${iso}</small>`;
+      box.querySelector(".txt").textContent = logo && logo.name ? logo.name : p[0];
+      const href = p[3] || null;
+      box.setAttribute("role", href ? "link" : "status");
+      box.classList.toggle("linked", !!href);
+      box.onclick = href ? () => window.open(href, "_blank", "noopener,noreferrer") : null;
+      box.title = href ? `Open ${p[0]}` : "";
       box.classList.add("show"); last = iso; };
     if (box.classList.contains("show")) { box.classList.remove("show"); clearTimeout(hideTimer); hideTimer = setTimeout(swap, 180); } else swap();
   }
-  function hover(ll) {
+  // The badge answers "who forecasts for the place I am looking at" — the
+  // pinned point if there is one, otherwise the middle of the map. Following
+  // the cursor made it flicker through six countries on the way somewhere.
+  function refresh() {
+    const st = WX.state;
+    const at = st && st.point ? { lng: st.point.lon, lat: st.point.lat } : (WX.map ? WX.map.getCenter() : null);
+    hover(at, true);
+  }
+  function hover(ll, force) {
     const now = performance.now();
     if (!ll) { show(null); return; }
-    if (now - lastAt < 120) return;
+    if (!force && now - lastAt < 120) return;
     lastAt = now;
-    if (!countries) { if (!loading) loading = fetch("data/countries.json").then((r) => r.json()).then((j) => { countries = j; hover(ll); }).catch(() => {}); return; }
+    if (!countries) { if (!loading) loading = fetch("data/countries.json").then((r) => r.json()).then((j) => { countries = j; hover(ll, true); }).catch(() => {}); return; }
     show(countryAt(((ll.lng + 180) % 360 + 360) % 360 - 180, ll.lat));
   }
-  WX.provider = { hover, PROVIDERS };
+  WX.provider = { hover, refresh, PROVIDERS };
 })();

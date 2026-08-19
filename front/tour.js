@@ -46,11 +46,18 @@
     box.querySelector("p").textContent = s.text;
     box.querySelectorAll(".dots i").forEach((d, k) => d.classList.toggle("on", k === i));
     box.querySelector(".next").textContent = i === STEPS.length - 1 ? "Got it" : "Next";
-    const bw = box.offsetWidth, bh = box.offsetHeight;
-    let x = r.left + r.width / 2 - bw / 2, y = r.bottom + 14;
-    if (y + bh > innerHeight - 10) y = Math.max(10, r.top - bh - 14);
-    box.style.left = Math.max(10, Math.min(innerWidth - bw - 10, x)) + "px";
-    box.style.top = Math.max(10, y) + "px";
+    // place it wherever it actually fits: below, above, or beside the target,
+    // then clamp hard to the viewport so it can never land off-screen
+    const bw = box.offsetWidth, bh = box.offsetHeight, gap = 14;
+    let x = r.left + r.width / 2 - bw / 2, y = r.bottom + gap;
+    if (y + bh > innerHeight - 10) {
+      if (r.top - bh - gap >= 10) y = r.top - bh - gap;                    // above
+      else if (r.right + gap + bw <= innerWidth - 10) { x = r.right + gap; y = Math.min(innerHeight - bh - 10, Math.max(10, r.top)); }
+      else if (r.left - gap - bw >= 10) { x = r.left - gap - bw; y = Math.min(innerHeight - bh - 10, Math.max(10, r.top)); }
+      else y = Math.max(10, innerHeight - bh - 10);
+    }
+    box.style.left = Math.round(Math.max(10, Math.min(innerWidth - bw - 10, x))) + "px";
+    box.style.top = Math.round(Math.max(10, Math.min(innerHeight - bh - 10, y))) + "px";
   }
   function next() { i++; if (i >= STEPS.length) return done(); place(); }
   function done() { localStorage.setItem(KEY, "1"); if (ring) ring.remove(); if (box) box.remove(); ring = box = null; }

@@ -76,18 +76,32 @@
   // the user clicked); every API call gets the wrapped one, since the store
   // is one world wide.
   const wlon = (x) => ((x + 180) % 360 + 360) % 360 - 180;
+  // The map's ramps come from the server (`/api/models` → layers[].stops). Any
+  // chip that colours a value uses THIS, so a colour means the same thing in
+  // the tape, the card and the map instead of three private gradients.
+  function rampColor(layer, v, alpha) {
+    const lg = catalog && catalog.layers && catalog.layers.find((l) => l.layer === layer);
+    if (!lg || v == null) return "transparent";
+    const st = lg.stops;
+    let a = st[0], b = st[st.length - 1];
+    for (let k = 0; k < st.length - 1; k++) if (v >= st[k].v && v <= st[k + 1].v) { a = st[k]; b = st[k + 1]; break; }
+    if (v <= st[0].v) { a = b = st[0]; } else if (v >= st[st.length - 1].v) { a = b = st[st.length - 1]; }
+    const q = b.v === a.v ? 0 : Math.max(0, Math.min(1, (v - a.v) / (b.v - a.v)));
+    const c = a.rgb.map((x, i) => Math.round(x + (b.rgb[i] - x) * q));
+    return `rgba(${c[0]},${c[1]},${c[2]},${alpha == null ? 1 : alpha})`;
+  }
   // Static (GitHub Pages) builds load static-api.js first; it rewrites URLs
   // and answers the JSON endpoints from files. Live builds pass straight through.
   const U = (u) => (window.WXStatic ? window.WXStatic.url(u) : u);
   const apiJson = (u) => window.WXStatic ? window.WXStatic.api(u) : fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
-  window.WX = { state, speed, speedUnit, arrowRot, f, arrow, wlon, LEVEL_FT, LEVEL_M, AVY_COLORS, API, LAYER_ALPHA, $, $$,
+  window.WX = { state, speed, speedUnit, arrowRot, f, arrow, wlon, rampColor, LEVEL_FT, LEVEL_M, AVY_COLORS, API, LAYER_ALPHA, $, $$,
                 get map() { return map; }, get catalog() { return catalog; }, toast, modelEntry: () => modelEntry(), openPoint, closePoint,
                 get validDate() { return validDate(); }, get stepHours() { return stepHours(); }, api: apiJson, url: U };
   // Functions the split-out modules (overlays.js, tape.js, search.js) call back into.
   window.WX.fn = { applyStep: (...a) => applyStep(...a), openPoint: (...a) => openPoint(...a), setStep: (...a) => setStep(...a), toast, firstSymbolId: () => firstSymbolId(),
                    renderPoint: () => renderPoint(), refreshPoint: () => refreshPoint(), closePoint: () => closePoint(), placeMarker: (...a) => placeMarker(...a),
                    stepHours: () => stepHours(), steps: () => steps(), layerUrl: () => layerUrl(),
-                   applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d) };
+                   applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), fitStrip: () => fitStrip(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d) };
 
   // ── boot ──────────────────────────────────────────────────────────────
   async function boot() {
@@ -103,12 +117,13 @@
     map.on("moveend", () => {
       localStorage.setItem("wxgrid.view", JSON.stringify({ center: map.getCenter().toArray(), zoom: map.getZoom() }));
       if (!state.point) WX.tape.refreshTapePoint();
+      if (WX.provider) WX.provider.refresh();
       if (state.radar && WX.ov.refreshRadarSource) WX.ov.refreshRadarSource();
       pushHash();
     });
     wind = new WindLayer(map, $("#particles"));
     WX.windLayer = wind;
-    new ResizeObserver(() => document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px")).observe($("#timebar"));
+    new ResizeObserver(() => { document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px"); if (WX.fn.fitStrip) WX.fn.fitStrip(); }).observe($("#timebar"));
     new ResizeObserver(() => document.documentElement.style.setProperty("--top-h", $("#topbar").offsetHeight + "px")).observe($("#topbar"));
 
     catalog = await WX.api(`${API}/models?ts=${Date.now()}`);
@@ -135,9 +150,9 @@
         const avy = feats.find((x) => x.layer.id === "avy-fill");
         if (avy) { state.tab = "winter"; }
       });
-      map.on("mousemove", (e) => { if (WX.provider) WX.provider.hover(e.lngLat); if (WX.probe) WX.probe.hover(e.lngLat); });
-      map.on("mouseout", () => { if (WX.provider) WX.provider.hover(null); if (WX.probe) WX.probe.hover(null); });
-      map.on("moveend", () => { if (!matchMedia("(hover: hover)").matches && WX.provider) WX.provider.hover(map.getCenter()); });
+      map.on("mousemove", (e) => { if (WX.probe) WX.probe.hover(e.lngLat); });
+      map.on("mouseout", () => { if (WX.probe) WX.probe.hover(null); });
+      map.on("moveend", () => { if (WX.provider) WX.provider.refresh(); });
       map.on("mouseenter", "resort-pts", () => map.getCanvas().style.cursor = "pointer");
       map.on("mouseleave", "resort-pts", () => map.getCanvas().style.cursor = "");
       renderControls();
@@ -396,6 +411,17 @@
       <button data-tip="Units and settings" aria-label="Settings" id="strip-settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.2.5.66.86 1.2.98H21a2 2 0 1 1 0 4h-.09c-.54.02-1 .38-1.2.88z"/></svg></button>`);
     st.querySelectorAll("button[data-for]").forEach((b) => b.onclick = () => $("#" + b.dataset.for).click());
     $("#strip-settings").onclick = () => WX.settings.toggle();
+    // the crosshair is part of the strip on desktop, so the two can never
+    // collide the way a floating button did
+    st.insertAdjacentHTML("beforeend", `<button class="strip-locate" data-tip="My location" aria-label="My location">${$("#locate-btn").innerHTML}</button>`);
+    st.querySelector(".strip-locate").onclick = () => $("#locate-btn").click();
+    // overflow flyout: the strip stays fixed, the extras animate out beside it
+    st.insertAdjacentHTML("beforeend", `<button id="strip-more" data-tip="More layers and tools" aria-label="More" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>`);
+    document.body.insertAdjacentHTML("beforeend", '<div id="strip-more-pop" class="tstrip strip-pop"></div>');
+    $("#strip-more").onclick = (e) => { e.stopPropagation(); st.classList.toggle("more-open"); positionMorePop(); };
+    document.addEventListener("click", (e) => { if (!e.target.closest("#tstrip") && !e.target.closest("#strip-more-pop")) st.classList.remove("more-open"); });
+    fitStrip();
+    addEventListener("resize", fitStrip);
     new MutationObserver(() => st.querySelectorAll("button[data-for]").forEach((b) => b.classList.toggle("on", $("#" + b.dataset.for).classList.contains("on")))).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
   }
 
@@ -423,6 +449,54 @@
       else if (Math.abs(dy) < 6) setFull(!full);          // a tap on the grip toggles
     });
     grip.addEventListener("pointercancel", () => { dragging = false; card.classList.remove("sheet-drag"); card.style.transform = ""; });
+  }
+
+  // Size the strip's buttons so the whole set fits between the top bar and the
+  // time bar. It never scrolls: a toolbar that scrolls hides its own controls.
+  function fitStrip() {
+    const st = $("#tstrip"); if (!st || getComputedStyle(st).display === "none") return;
+    const items = Array.from(st.querySelectorAll("button, .sep"));
+    const more = $("#strip-more"), pop = $("#strip-more-pop");
+    if (!items.length || !more) return;
+    // put everything back in the strip, then move the tail into the flyout
+    Array.from(pop.children).forEach((el) => st.insertBefore(el, more));
+    const all = Array.from(st.querySelectorAll("button, .sep")).filter((el) => el !== more);
+    const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
+    const tb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tb-h")) || 150;
+    const btns = all.filter((el) => el.tagName === "BUTTON").length;
+    const seps = all.length - btns;
+    const avail = window.innerHeight - top - tb - 46;
+    st.style.setProperty("--strip-btn", Math.max(26, Math.min(34, Math.floor((avail - 14 - seps * 7 - (all.length - 1) * 3) / Math.max(1, btns)))) + "px");
+    // Then MEASURE and trim: arithmetic on gaps, borders and margins gets this
+    // wrong every time, and being wrong here means a toolbar under the tape.
+    const limit = st.getBoundingClientRect().top + avail;
+    more.hidden = false;
+    let guard = all.length;
+    while (guard-- > 0 && st.getBoundingClientRect().bottom > limit) {
+      const last = Array.from(st.querySelectorAll("button, .sep")).filter((el) => el !== more).pop();
+      if (!last) break;
+      pop.insertBefore(last, pop.firstChild);
+    }
+    // a separator that lands at the top or bottom of a column just hides
+    [st, pop].forEach((box) => {
+      const kids = Array.from(box.children).filter((el) => el !== more);
+      kids.forEach((el) => el.classList.remove("sep-hide"));
+      if (kids.length && kids[0].classList.contains("sep")) kids[0].classList.add("sep-hide");
+      if (kids.length && kids[kids.length - 1].classList.contains("sep")) kids[kids.length - 1].classList.add("sep-hide");
+    });
+    const overflowed = pop.children.length > 0;
+    more.hidden = !overflowed;
+    if (!overflowed) st.classList.remove("more-open");
+  }
+
+  function positionMorePop() {
+    const st = $("#tstrip"), pop = $("#strip-more-pop"), more = $("#strip-more");
+    if (!st || !pop || !more) return;
+    const r = more.getBoundingClientRect(), sr = st.getBoundingClientRect();
+    pop.style.left = (sr.right + 8) + "px";
+    const tb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tb-h")) || 150;
+    const floor = window.innerHeight - tb - 30;                     // never over the tape
+    pop.style.top = Math.max(sr.top, Math.min(floor - pop.offsetHeight, r.top - pop.offsetHeight + r.height)) + "px";
   }
 
   function switchModel(key) {
@@ -526,6 +600,7 @@
     $$(".point-tabs button[data-tab=resort]").forEach((b) => b.hidden = !state.resort);
     { const on = WX.search.isFav(lat, lon); $("#point-fav").classList.toggle("on", on); $("#point-fav").title = on ? "Saved place" : "Save place"; }
     placeMarker(lat, lon);
+    if (WX.provider) WX.provider.refresh();
     pushHash();
     try {
       const d = await WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}&model=${state.model}&run=${state.run}`);
@@ -543,7 +618,7 @@
     WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) { state.point.tides = r; renderPoint(); } }).catch(() => { if (my === pointReq) state.point.tides = false; });
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
-  function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
+  function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; if (WX.provider) WX.provider.refresh(); if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
   function placeMarker(lat, lon) {
     if (!marker) { const el = document.createElement("div"); el.className = "wx-marker"; marker = new maplibregl.Marker({ element: el, anchor: "center" }); }
     marker.setLngLat([lon, lat]).addTo(map);

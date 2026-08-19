@@ -36,10 +36,7 @@
     return `rgb(${a[1].map((x, k) => Math.round(x + (b[1][k] - x) * q)).join(",")})`;
   }
   const tempColor = (c) => lerpStops(TEMP_STOPS, c);
-  const windColor = (ms) => {
-    const p = Math.min(1, (ms * 3.6) / 60);
-    return `rgba(${Math.round(40 + 215 * Math.pow(p, 0.85))}, ${Math.round(175 - 130 * p)}, ${Math.round(245 - 215 * Math.pow(p, 0.7))}, ${0.32 + 0.55 * p})`;
-  };
+  const windColor = (ms) => W().rampColor("wind", ms, 0.9);
   const bigGlyph = (cloud, precip, tK, night) => {
     const c = cloud == null ? 0 : cloud, snow = tK != null && tK - K < 1 && precip > 0.2;
     const body = night ? `<circle cx="16" cy="16" r="9" fill="#cfd6e3"/>` : `<circle cx="16" cy="16" r="9" fill="#ffd166"/><g stroke="#ffd166" stroke-width="2" stroke-linecap="round">${[0,45,90,135,180,225,270,315].map((a)=>`<line x1="${16+12*Math.cos(a*Math.PI/180)}" y1="${16+12*Math.sin(a*Math.PI/180)}" x2="${16+14.5*Math.cos(a*Math.PI/180)}" y2="${16+14.5*Math.sin(a*Math.PI/180)}"/>`).join("")}</g>`;
@@ -72,7 +69,10 @@
     $("#point-now").innerHTML = `<div class="hero">
         ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
         <div class="big" style="color:${t != null ? tempColor(t - K) : "inherit"}">${t == null ? "—" : W().units.temp(t).v}<span class="deg">°</span></div>
-        <div class="hl">${hi != null ? `<span><i>H</i>${W().units.tempC(hi).v}°</span><span><i>L</i>${W().units.tempC(lo).v}°</span>` : ""}${sun ? `<span class="daylen">${W_ICONS.rise}${sun.rise}</span><span class="daylen">${W_ICONS.set}${sun.set}</span>` : ""}</div>
+        <div class="hl">
+          ${hi != null ? `<div class="hilo"><span class="hi"><i>high</i>${W().units.tempC(hi).v}°</span><span class="rule"></span><span class="lo"><i>low</i>${W().units.tempC(lo).v}°</span></div>` : ""}
+          ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span>${sun.len ? `<span class="len">${sun.len} of daylight</span>` : ""}</div>` : ""}
+        </div>
       </div>
       <div class="meta">${chips.join("")}</div>
       ${daysStrip(d, i)}
@@ -122,7 +122,13 @@
       const cloud = ks.map((k) => s.tcc ? s.tcc[k] : null).filter((x) => x != null); const cl = cloud.length ? cloud.reduce((a, b) => a + b, 0) / cloud.length : null;
       const g = W().tape && W().tape.glyph ? W().tape.glyph(cl, (rain + snow) / Math.max(1, ks.length) * (24 / 6), s.t2m[noon], false) : "";
       const on = dt.toDateString() === cur;
-      return `<button class="day${on ? " on" : ""}" data-k="${noon}"><span class="dn">${dt.toLocaleDateString(undefined, { weekday: "short" })}</span><span class="dg">${g}</span><span class="hl"><b style="color:${tempColor(hi)}">${W().units.tempC(hi).v}°</b><i>${W().units.tempC(lo).v}°</i></span><span class="pr">${snow >= 1 ? `<span class="sn">${W().units.snow(snow).txt}</span>` : rain >= 0.5 ? W().units.precip(rain).txt : "&nbsp;"}</span>${wmax != null ? `<span class="wd">${Math.round(W().speed(wmax))}</span>` : ""}</button>`;
+      const wet = snow >= 1 ? `<span class="sn">${W().units.snow(snow).txt}</span>` : rain >= 0.5 ? W().units.precip(rain).txt : "";
+      return `<button class="day${on ? " on" : ""}" data-k="${noon}" title="${dt.toDateString()}">
+        <span class="dn">${dt.toLocaleDateString(undefined, { weekday: "short" })}</span>
+        <span class="dg">${g}</span>
+        <span class="hl"><b style="color:${tempColor(hi)}">${W().units.tempC(hi).v}°</b><i>${W().units.tempC(lo).v}°</i></span>
+        <span class="pr">${wet || "&nbsp;"}</span>
+        ${wmax != null ? `<span class="wd" style="background:${W().rampColor("wind", wmax, 0.55)}">${Math.round(W().speed(wmax))}<em>${W().speedUnit()}</em></span>` : ""}</button>`;
     }).join("");
     setTimeout(() => document.querySelectorAll(".days .day").forEach((b) => b.onclick = () => W().setStep(Number(b.dataset.k))), 0);
     return `<div class="days">${cells}</div>`;

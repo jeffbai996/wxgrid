@@ -29,9 +29,12 @@
       this._resize = () => this.resize();
       this._wipe = () => this.wipe();
       window.addEventListener("resize", this._resize);
-      map.on("move", this._wipe);
+      // Wiping on every move made the map look dead while you dragged it. Keep
+      // the last frame on screen instead: it is stale for the length of a drag,
+      // and reseeded the moment the map settles.
+      map.on("movestart", () => { this.dragging = true; });
       map.on("resize", this._resize);
-      map.on("moveend", () => { this.reseed(); if (this.mode === "barbs") this.drawBarbs(); });
+      map.on("moveend", () => { this.dragging = false; this.reseed(); if (this.mode === "barbs") this.drawBarbs(); });
       this.resize();
     }
 
@@ -165,6 +168,9 @@
     }
 
     frame(t) {
+      // While the map moves, particles would be advected against a canvas that
+      // no longer matches the projection — so hold the last frame rather than
+      // clearing it, and pick up again on moveend.
       if (this.map.isMoving()) { this.lastFrame = t; return; }
       const dt = Math.min(50, t - (this.lastFrame || t)) / 1000;   // s, capped for tab wake-ups
       this.lastFrame = t;
@@ -220,7 +226,7 @@
     destroy() {
       this.stop();
       window.removeEventListener("resize", this._resize);
-      this.map.off("move", this._wipe);
+      this.map.off("movestart", this._wipe);
     }
   }
 
