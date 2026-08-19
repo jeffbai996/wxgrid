@@ -506,3 +506,10 @@ body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 116px + env(safe-area-
 table.wtape td.now { box-shadow: inset 2px 0 0 var(--accent-glow); }
 table.wtape tr.r-hour td.now { position: relative; }
 table.wtape tr.r-hour td.now::after { content: "now"; position: absolute; left: 3px; top: -1px; font: 700 8px var(--font-display); color: var(--accent); letter-spacing: .04em; text-transform: uppercase; }
+
+/* ensemble spread pane */
+.spread-vars { display: flex; margin: 8px 0 6px; }
+.spread-vars button { flex: 1; border: 0; background: transparent; color: var(--fg-2); padding: 5px 6px; border-radius: 7px;
+  font: 700 11.5px var(--font-display); cursor: pointer; }
+.spread-vars button.on { background: var(--accent); color: var(--accent-ink); }
+#plume { width: 100%; height: 220px; display: block; }

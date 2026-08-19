@@ -107,7 +107,7 @@
     <button id="point-close" class="icon" title="Close">×</button>
   </div>
   <div class="point-tabs seg small">
-    <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="air">Airgram</button><button data-tab="skewt">Skew-T</button><button data-tab="winter">Winter</button><button data-tab="out">Outdoors</button><button data-tab="cmp">Compare</button><button data-tab="resort" hidden>Resort</button>
+    <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="air">Airgram</button><button data-tab="skewt">Skew-T</button><button data-tab="winter">Winter</button><button data-tab="out">Outdoors</button><button data-tab="cmp">Compare</button><button data-tab="spread">Spread</button><button data-tab="resort" hidden>Resort</button>
   </div>
   <div id="point-body">
     <section data-pane="now">
@@ -120,6 +120,11 @@
     <section data-pane="winter" hidden><div id="winter"></div></section>
     <section data-pane="out" hidden><div id="outdoors"></div></section>
     <section data-pane="cmp" hidden><div id="compare"></div></section>
+    <section data-pane="spread" hidden>
+      <div class="seg small spread-vars" id="spread-vars"></div>
+      <canvas id="plume" width="640" height="240"></canvas>
+      <div id="plume-note" class="note"></div>
+    </section>
     <section data-pane="resort" hidden><div id="resort"></div></section>
   </div>
   <div id="point-foot" class="dim"></div>

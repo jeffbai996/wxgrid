@@ -23,6 +23,7 @@
     else if (tab === "winter") renderWinter(pt, d, i);
     else if (tab === "out") renderOutdoors(d, i);
     else if (tab === "cmp") renderCompare(pt, d, i);
+    else if (tab === "spread") renderSpread(pt, d, i);
     else if (tab === "resort") renderResort(pt, d, i);
   }
 
@@ -362,6 +363,33 @@
     }
     $("#outdoors").innerHTML = `<dl class="kv">${rows.map(([k, v, cls]) => `<dt>${k}</dt><dd class="${cls}">${v}</dd>`).join("")}</dl>${tidesHtml}${airHtml(pt || {})}
       <div class="note">Hiking / skiing / paddling read: snow level ≈ freezing level − 300 m; gusts are the model's 10 m gust where it ships one (IFS, GFS); tap the tape to move the day. Terrain is unresolved at 0.25° — a valley or a ridge will differ.</div>`;
+  }
+
+  // ── Spread: how much the ensemble disagrees with itself ───────────────
+  const SPREAD_VARS = [["t2m", "Temp"], ["wind", "Wind"], ["tp6", "Rain"], ["msl", "Pressure"]];
+  let spreadVar = localStorage.getItem("wxgrid.spreadVar") || "t2m";
+  function renderSpread(pt, d, i) {
+    const box = $("#spread-vars");
+    box.innerHTML = SPREAD_VARS.map(([v, t]) => `<button data-v="${v}" class="${v === spreadVar ? "on" : ""}">${t}</button>`).join("");
+    box.querySelectorAll("button").forEach((b) => b.onclick = () => { spreadVar = b.dataset.v; localStorage.setItem("wxgrid.spreadVar", spreadVar); pt.plume = undefined; renderSpread(pt, d, i); });
+    const c = $("#plume"), note = $("#plume-note");
+    const host = c.parentElement, w = Math.max(300, Math.round(host.clientWidth));
+    c.style.width = w + "px"; c.style.height = "220px";
+    if (pt.plume === undefined) {
+      pt.plume = null; note.textContent = "loading the ensemble…";
+      W().api(`${W().API}/ens/plume?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}&var=${spreadVar}`)
+        .then((r) => { pt.plume = r || false; if (W().state.point === pt && W().state.tab === "spread") W().renderPoint(); })
+        .catch(() => { pt.plume = false; if (W().state.point === pt && W().state.tab === "spread") W().renderPoint(); });
+      return;
+    }
+    if (!pt.plume) {
+      c.getContext("2d").clearRect(0, 0, c.width, c.height);
+      note.textContent = "No ensemble in the store yet. Ingest a GEFS run and the spread appears here.";
+      return;
+    }
+    window.WXEns && window.WXEns.drawPlume(c, pt.plume, {});
+    const basis = pt.plume.basis === "members" ? "51 members" : "mean ± spread, assumed Gaussian";
+    note.textContent = `${pt.plume.label || spreadVar} · ${basis} · ${pt.plume.source || "GEFS"}. The band is where the ensemble puts the forecast; a wide band means the models are arguing with each other.`;
   }
 
   // ── Compare: every model at the same valid times ──────────────────────
