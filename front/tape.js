@@ -261,12 +261,15 @@
   }
 
   function glyph(cloud, precip, tK, night) {
-    const c = cloud == null ? 0 : cloud;
-    const snow = tK != null && tK - 273.15 < 1 && precip > 0.2;
-    const body = night ? `<circle cx="7" cy="7" r="4" fill="#cfd6e3"/>` : `<circle cx="7" cy="7" r="4" fill="#ffd166"/>`;
-    const cl = c > 0.25 ? `<path d="M6 12h9a3 3 0 0 0 0-6 4 4 0 0 0-7.6-1A3.5 3.5 0 0 0 6 12z" fill="rgba(210,218,230,${0.35 + 0.65 * c})"/>` : "";
-    const rn = precip > 0.2 ? (snow ? `<text x="9" y="15" font-size="6" fill="#dfe8ff">✱</text>` : `<path d="M8 12.5v2M12 12.5v2M16 12.5v2" stroke="#6cb6ff" stroke-width="1.4" stroke-linecap="round"/>`) : "";
-    return `<svg class="tape-glyph" viewBox="0 0 20 16">${c < 0.9 ? body : ""}${cl}${rn}</svg>`;
+    const c = cloud == null ? 0 : cloud, wet = precip > 0.2;
+    const snow = tK != null && tK - 273.15 < 1 && wet, cloudy = c > 0.25 || wet;
+    const cx = cloudy ? 8 : 12, cy = cloudy ? 7 : 9;
+    const body = night
+      ? `<path d="M${cx+2} ${cy-4}a4.5 4.5 0 1 0 2 7.5 4 4 0 0 1-2-7.5z" fill="#d9e2f0"/>`
+      : `<circle cx="${cx}" cy="${cy}" r="3.5" fill="#ffd166"/><g stroke="#ffd166" stroke-width="1.2" stroke-linecap="round"><path d="M${cx} ${cy-5.5}v-1.5M${cx} ${cy+5.5}v1.5M${cx-5.5} ${cy}h-1.5M${cx+5.5} ${cy}h1.5M${cx-3.9} ${cy-3.9}l-1-1M${cx+3.9} ${cy-3.9}l1-1M${cx-3.9} ${cy+3.9}l-1 1M${cx+3.9} ${cy+3.9}l1 1"/></g>`;
+    const cl = cloudy ? `<path d="M6 13h12a3.5 3.5 0 0 0 .2-7 5 5 0 0 0-9.3-1.2A4.3 4.3 0 0 0 6 13z" fill="rgba(224,231,241,${0.62 + 0.35 * Math.max(c, 0.35)})" stroke="rgba(255,255,255,.28)" stroke-width=".7"/>` : "";
+    const rn = wet ? (snow ? `<g transform="translate(12 16)" stroke="#dfe8ff" stroke-width="1" stroke-linecap="round"><path d="M-2 0h4M0-2v4M-1.4-1.4l2.8 2.8M1.4-1.4l-2.8 2.8"/></g>` : `<path d="M8 14.5l-1 2M13 14.5l-1 2M18 14.5l-1 2" stroke="#69b9ff" stroke-width="1.5" stroke-linecap="round"/>`) : "";
+    return `<svg class="tape-glyph" viewBox="0 0 24 18" aria-hidden="true">${c < 0.9 ? body : ""}${cl}${rn}</svg>`;
   }
 
   WX.tape = { renderTape, renderTapeSelection, refreshTapePoint, tapeData, glyph,

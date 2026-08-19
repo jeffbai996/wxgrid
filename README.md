@@ -84,14 +84,15 @@ radiosonde ascent — white for its temperature, dashed blue for its dew point.
 Our runs carry no humidity aloft, so that dashed line is a moisture profile the
 model physically cannot give you.
 
-![sounding with radiosonde](docs/img/12-sonde.jpg)
-
 **How much to believe it.** GEFS publishes the ensemble standard deviation, so
 the card can show a plume: median line, band, and the honest note that the band
 is mean ± z·σ rather than the members themselves. A wide band is the ensemble
 telling you it does not know.
 
-![ensemble spread](docs/img/13-spread.jpg)
+<p align="center">
+  <img src="docs/img/12-sonde.jpg" width="360" alt="Skew-T with observed radiosonde ascent">
+  <img src="docs/img/13-spread.jpg" width="360" alt="GEFS ensemble spread plume">
+</p>
 
 **Weather at the time you get there.** Draw a path, set a departure and a
 speed, and every sample is read at its own ETA — temperature, gusts,

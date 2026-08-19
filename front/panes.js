@@ -40,11 +40,17 @@
   const compass = (deg) => deg == null ? "variable" :
     ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
   const bigGlyph = (cloud, precip, tK, night) => {
-    const c = cloud == null ? 0 : cloud, snow = tK != null && tK - K < 1 && precip > 0.2;
-    const body = night ? `<circle cx="16" cy="16" r="9" fill="#cfd6e3"/>` : `<circle cx="16" cy="16" r="9" fill="#ffd166"/><g stroke="#ffd166" stroke-width="2" stroke-linecap="round">${[0,45,90,135,180,225,270,315].map((a)=>`<line x1="${16+12*Math.cos(a*Math.PI/180)}" y1="${16+12*Math.sin(a*Math.PI/180)}" x2="${16+14.5*Math.cos(a*Math.PI/180)}" y2="${16+14.5*Math.sin(a*Math.PI/180)}"/>`).join("")}</g>`;
-    const cl = c > 0.25 ? `<path d="M13 30h19a7 7 0 0 0 0-14 9 9 0 0 0-17-2 8 8 0 0 0-2 16z" fill="rgba(210,218,230,${0.4 + 0.6 * c})"/>` : "";
-    const rn = precip > 0.2 ? (snow ? `<text x="17" y="42" font-size="12" fill="#dfe8ff">✱ ✱</text>` : `<path d="M16 33v5M22 33v5M28 33v5" stroke="#6cb6ff" stroke-width="2.5" stroke-linecap="round"/>`) : "";
-    return `<svg class="glyph" viewBox="0 0 46 46">${c < 0.9 ? body : ""}${cl}${rn}</svg>`;
+    const c = cloud == null ? 0 : cloud, wet = precip > 0.2;
+    const snow = tK != null && tK - K < 1 && wet, cloudy = c > 0.25 || wet;
+    const cx = cloudy ? 15 : 23, cy = cloudy ? 15 : 23;
+    const rays = [0,45,90,135,180,225,270,315].map((a) => `<line x1="${cx+11.5*Math.cos(a*Math.PI/180)}" y1="${cy+11.5*Math.sin(a*Math.PI/180)}" x2="${cx+14*Math.cos(a*Math.PI/180)}" y2="${cy+14*Math.sin(a*Math.PI/180)}"/>`).join("");
+    const body = night
+      ? `<path d="M${cx+5} ${cy-9}a10 10 0 1 0 4 17 9 9 0 0 1-4-17z" fill="#d9e2f0" stroke="#f2f6ff" stroke-width="1"/>`
+      : `<circle cx="${cx}" cy="${cy}" r="8" fill="#ffd166"/><g stroke="#ffd166" stroke-width="2" stroke-linecap="round">${rays}</g>`;
+    const cl = cloudy ? `<g><path d="M10 31h24.5a7 7 0 0 0 .4-14 10 10 0 0 0-18.7-2.5A8.5 8.5 0 0 0 10 31z" fill="rgba(224,231,241,${0.62 + 0.35 * Math.max(c, 0.35)})" stroke="rgba(255,255,255,.32)" stroke-width="1.2"/><path d="M13 29.5h20" stroke="rgba(167,181,200,.45)" stroke-width="1" stroke-linecap="round"/></g>` : "";
+    const flakes = [16,24,32].map((x) => `<g transform="translate(${x} 39)" stroke="#dfe8ff" stroke-width="1.4" stroke-linecap="round"><path d="M-2.5 0h5M0-2.5v5M-1.8-1.8l3.6 3.6M1.8-1.8l-3.6 3.6"/></g>`).join("");
+    const rn = wet ? (snow ? flakes : `<path d="M17 35l-2 4M25 35l-2 4M33 35l-2 4" stroke="#69b9ff" stroke-width="2.4" stroke-linecap="round"/>`) : "";
+    return `<svg class="glyph" viewBox="0 0 46 46" aria-hidden="true">${c < 0.9 ? body : ""}${cl}${rn}</svg>`;
   };
   W_ICONS = { rise: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v8M4.93 10.93l1.41 1.41M2 18h2M20 18h2M19.07 10.93l-1.41 1.41M22 22H2M16 6l-4-4-4 4M16 18a4 4 0 0 0-8 0"/></svg>',
               set: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 10V2M4.93 10.93l1.41 1.41M2 18h2M20 18h2M19.07 10.93l-1.41 1.41M22 22H2M16 6l-4 4-4-4M16 18a4 4 0 0 0-8 0"/></svg>' };
