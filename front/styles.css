@@ -258,6 +258,8 @@ body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 10
 .menu .menu-pop { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 9; min-width: 168px; padding: 6px;
   background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.45); flex-direction: column; gap: 4px; }
 .menu.open .menu-pop { display: flex; }
+/* an open menu paints over the card and the rail, which share the bar's layer */
+#topbar:has(.menu.open) { z-index: 12; }
 .menu .menu-pop .chip, .menu .menu-pop .icon { width: 100%; border-radius: 8px; text-align: left; justify-content: flex-start; height: auto; padding: 7px 10px; }
 .menu .menu-btn.has-on { border-color: var(--accent); color: var(--accent); }
 .menu-list { min-width: 200px; max-height: calc(100dvh - var(--top-h) - 20px); overflow-y: auto; scrollbar-width: none; }
@@ -386,8 +388,13 @@ body.resizing-point, body.resizing-point * { cursor: nwse-resize !important; }
 .sheet-grip { display: none; }
 .point-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .point-head #point-title { font: 700 22.5px/1.32 var(--font-display); letter-spacing: -.014em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#point .point-tabs { display: flex; align-items: center; margin: 9px 0 3px; max-width: none; padding: 3px; }
+/* the card is a flex column: without a hard basis the body's overflow squeezes
+   this row flat whenever a pane is tall (the resort board collapsed it to 17 px) */
+#point .point-tabs { display: flex; align-items: center; margin: 9px 0 3px; max-width: none; padding: 3px; flex: 0 0 auto; }
 #point .point-tabs button { flex: 1 1 auto; padding: 6px 5px; font-size: 11px; line-height: 1.15; white-space: nowrap; letter-spacing: -.01em; }
+/* ten tabs when a resort is selected: the same strip, a notch tighter, so the
+   pill neither overflows nor shrinks into the middle of the card */
+#point .point-tabs:has(button[data-tab="resort"]:not([hidden])) button { padding: 6px 4px; font-size: 10.5px; }
 .point-head .icon { width: 26px; height: 26px; font-size: 13px; }
 #point-now { display: flex; gap: 14px; margin: 8px 0 4px; font: 500 12px var(--font-num); flex-wrap: wrap; align-items: baseline; }
 #point-now b { font-size: 17px; color: var(--fg); font-family: var(--font-display); font-weight: 700; }
@@ -396,6 +403,7 @@ body.resizing-point, body.resizing-point * { cursor: nwse-resize !important; }
 table.aloft { width: 100%; border-collapse: collapse; font: 500 12px var(--font-mono); margin: 6px 0 2px; }
 table.aloft th { text-align: left; font: 700 10.5px var(--font-display); color: var(--dim); letter-spacing: .04em; text-transform: uppercase; padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line); }
 table.aloft td { padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.aloft td.lvl { font: 600 12px var(--font-display); color: var(--fg); }
 table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-left: 1.5px solid currentColor; border-top: 1.5px solid currentColor; margin-right: 5px; transform-origin: center; }
 /* readings as small tiles: label over value, two per row, so the eye can scan
    down the values instead of reading a list */
@@ -533,8 +541,12 @@ table.bandtape .nil { color: var(--line-strong); }
   .rail { flex: 1; min-width: 0; flex-direction: row; overflow-x: auto; scrollbar-width: none; border-radius: 999px; padding: 3px; }
   .rail::-webkit-scrollbar { display: none; }
   .side-resize-handle { display: none; }
-  /* one thin row of chips, not a second toolbar */
-  .rail button { padding: 4px 9px; border-radius: 999px; box-shadow: none; font-size: 12px; }
+  /* one thin row of chips, not a second toolbar: the sliders and the motion
+     picker are desktop furniture (the tools menu has them), and the chips
+     sit on their own height instead of stretching to the tallest neighbour */
+  .rail { align-items: center; }
+  .rail .rail-seg, .rail .rail-opacity, .rail .rail-flat { display: none; }
+  .rail button { padding: 4px 9px; border-radius: 999px; box-shadow: none; font-size: 12px; line-height: 1.2; }
   .rail button svg { display: none; }
   .rail .rail-sec { display: none; }
   .rail button .var { display: none; }

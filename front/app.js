@@ -74,6 +74,7 @@
   let map, wind, catalog, playTimer = null, marker = null;
   let restorePointPanelSize = () => {};
   let restoreSheetHeight = () => {};
+  let uiWired = false;
   let setTapeState = () => {};
   let tapeState = "full";
 
@@ -536,6 +537,14 @@
     slider.onchange = () => { applyStep(true); loadWind(); };
 
     renderLegend();
+    if (!uiWired) { uiWired = true; wireOnce(); }
+  }
+
+  // Everything here binds once. It used to live at the tail of
+  // renderControls, which runs on every model, level and layer change, so
+  // every document listener stacked one copy per change: arrow keys stepped
+  // twice, then three times, and the menu buttons toggled themselves shut.
+  function wireOnce() {
     $("#play").onclick = togglePlay;
     // Back to the present in one tap: scrubbing four days out and finding your
     // way home by dragging is the kind of thing a button fixes.
@@ -622,10 +631,20 @@
     wireSheet();
     $("#point-fav").onclick = () => { if (!state.point) return; const on = WX.search.toggleFav(state.point.lat, state.point.lon, state.point.name); $("#point-fav").classList.toggle("on", on); $("#point-fav").title = on ? "Saved place" : "Save place"; toast(on ? "Saved. Find it in the search box." : "Removed", 2500); };
     WX.search.wireSearch();
-    $$(".menu .menu-btn").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const m = b.parentElement; const open = m.classList.contains("open"); $$(".menu.open").forEach((x) => x.classList.remove("open")); if (!open) m.classList.add("open"); });
+    const toggleMenu = (b) => { const m = b.parentElement; const open = m.classList.contains("open"); $$(".menu.open").forEach((x) => x.classList.remove("open")); if (!open) m.classList.add("open"); };
+    // iOS Safari was swallowing taps on these two buttons (the only top-bar
+    // controls that are icon-only inside a pointer-events:none bar). Answer
+    // the touch itself and cancel the click it would have synthesised.
+    $$(".menu .menu-btn").forEach((b) => {
+      let touched = 0;
+      b.addEventListener("touchend", (e) => { touched = Date.now(); e.preventDefault(); toggleMenu(b); }, { passive: false });
+      b.onclick = (e) => { e.stopPropagation(); if (Date.now() - touched < 700) return; toggleMenu(b); };
+    });
     // menu buttons show a tick when any of their toggles is on
     new MutationObserver(() => $$(".menu").forEach((m) => m.querySelector(".menu-btn").classList.toggle("has-on", !!m.querySelector(".menu-pop .chip.on:not(#particles-toggle):not(#barbs-toggle)")))).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
-    document.addEventListener("click", (e) => { if (!e.target.closest(".menu")) $$(".menu.open").forEach((x) => x.classList.remove("open")); });
+    const closeMenusOutside = (e) => { if (!e.target.closest(".menu")) $$(".menu.open").forEach((x) => x.classList.remove("open")); };
+    document.addEventListener("click", closeMenusOutside);
+    document.addEventListener("touchend", closeMenusOutside, { passive: true });
     $$(".point-tabs button").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; renderPoint(); });
     document.addEventListener("keydown", (e) => {
       if (["SELECT", "INPUT", "TEXTAREA"].includes(e.target.tagName)) return;

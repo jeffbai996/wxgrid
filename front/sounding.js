@@ -438,7 +438,6 @@
     else notes.push("Dew point from the run's humidity aloft.");
     if (par) notes.push(`Surface parcel, dry to the LCL then pseudoadiabatic. CAPE and CIN across ${prof.env.length} levels, so an inversion between them is invisible.`);
     else notes.push("No surface dew point: no parcel, no LCL, no CAPE.");
-    if (modelCape != null) notes.push("Model CAPE is the run's own field. Trust that one.");
     if (obs && obs.levels && obs.levels.length > 4) {
       const when = obs.time ? new Date(obs.time).toUTCString().replace(/^\w+, /, "").replace(":00 GMT", "Z") : "";
       const st = obs.station || {};
