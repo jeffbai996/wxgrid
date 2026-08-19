@@ -116,6 +116,20 @@ def geocode(q: str, limit: int = 6) -> list[dict]:
     return cache.get(f"geo-en:{q.lower()}:{limit}", 24 * 3600, fetch)
 
 
+_NON_LATIN = re.compile(r"[^\u0000-\u024f\u1e00-\u1eff]")
+
+
+def _latin_first(*candidates: str | None) -> str:
+    """The first candidate that reads in a Latin script, else the first that
+    exists. A name in a script the reader cannot parse is worse than the
+    English exonym, and worse again than nothing."""
+    present = [c.strip() for c in candidates if c and c.strip()]
+    for c in present:
+        if not _NON_LATIN.search(c):
+            return c
+    return present[0] if present else ""
+
+
 def _reverse_place_name(address: dict, fallback: str = "") -> str:
     """Prefer a real settlement; B.C. electoral areas fall back to their
     regional district instead of presenting an administrative letter as a
@@ -205,16 +219,21 @@ def nearest_water(lat: float, lon: float, nodes: list[dict], sea_km: float = 150
 
 
 def reverse(lat: float, lon: float) -> dict:
-    key = f"rgeo-en-v3:{lat:.2f}:{lon:.2f}"
+    key = f"rgeo-en-v4:{lat:.2f}:{lon:.2f}"
     def fetch():
         try:
-            h = _nominatim("reverse", {"lat": lat, "lon": lon, "zoom": 10, "addressdetails": 1})
+            h = _nominatim("reverse", {"lat": lat, "lon": lon, "zoom": 10,
+                                       "addressdetails": 1, "namedetails": 1})
         except requests.RequestException:
             h = {}
         a = h.get("address") or {}
-        place = _reverse_place_name(a, h.get("name") or "")
-        region = a.get("state") or a.get("province") or ""
-        country = a.get("country_code", "").upper()
+        nd = h.get("namedetails") or {}
+        # accept-language=en only translates what OSM has translated. Where it
+        # has not, Nominatim hands back the local script — Cyrillic, Persian,
+        # Han — so take an explicit name:en when the place carries one.
+        place = _latin_first(nd.get("name:en"), _reverse_place_name(a, h.get("name") or ""))
+        region = _latin_first(a.get("state"), a.get("province"), "")
+        country = a.get("country") or a.get("country_code", "").upper()
         if not place and not country:
             # No address at all means open water.
             return {"name": nearest_water(lat, lon, water_nodes()), "region": "", "country": "",

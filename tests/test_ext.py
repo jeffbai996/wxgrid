@@ -338,3 +338,15 @@ def test_open_water_gets_a_name_from_the_seas_then_the_oceans():
     assert ext.nearest_water(-70.0, 100.0, []) == "Southern Ocean"
     # longitudes arrive wrapped past the antimeridian from the map
     assert ext.ocean_name(35.0, 210.0) == "North Pacific Ocean"
+
+
+def test_place_names_prefer_a_latin_script():
+    # an English exonym wins over the local script
+    assert ext._latin_first("Moscow", "Москва") == "Moscow"
+    assert ext._latin_first(None, "Tehran") == "Tehran"
+    # accented Latin is still Latin
+    assert ext._latin_first("Zürich") == "Zürich"
+    assert ext._latin_first("Genève", "Geneva") == "Genève"
+    # nothing readable: keep what exists rather than showing an empty card
+    assert ext._latin_first("北京") == "北京"
+    assert ext._latin_first(None, "") == ""
