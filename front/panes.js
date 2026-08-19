@@ -379,9 +379,7 @@
     let note = "";
     if (extended.length) {
       const first = extended[0].dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      const short = (W().catalog.models.find((m) => m.key === primaryModel) || {}).short || primaryModel.toUpperCase();
-      const physics = !["aifs", "aigfs"].includes(primaryModel);
-      note = `<div class="days-note"><b>AI-GFS</b> from ${first}${physics ? ` · AI after ${short}’s physics range` : ` · continues after ${short}`}</div>`;
+      note = `<div class="days-note"><b>AI-GFS</b> from ${first}</div>`;
     }
     return `<div class="days${usable.length > 8 ? " extended" : ""}">${cells}</div>${note}`;
   }

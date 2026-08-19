@@ -783,10 +783,10 @@ body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 116px + env(safe-area-
 /* The days divide the card between them instead of running off its edge: one
    column each, equal share, so a wider card gives every day more room rather
    than revealing the one that was hidden. */
-.days { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 5px; margin: 4px 0 8px; }
-.days.extended { grid-auto-columns: minmax(66px, 1fr); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
+.days { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; margin: 4px 0 8px; }
+.days.extended { grid-auto-columns: minmax(63px, 1fr); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent; padding-bottom: 4px; scroll-snap-type: x proximity; }
-.days .day { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 6px 6px; border: 0; border-radius: 11px; background: transparent; color: var(--fg-2); cursor: pointer; font: 500 10.5px var(--font-num); font-variant-numeric: tabular-nums; transition: background .15s; }
+.days .day { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 3px 6px; border: 0; border-radius: 11px; background: transparent; color: var(--fg-2); cursor: pointer; font: 500 10.5px var(--font-num); font-variant-numeric: tabular-nums; transition: background .15s; }
 .days.extended .day { scroll-snap-align: start; }
 .days .day > * { max-width: 100%; }
 .days .day:hover { background: rgba(255,255,255,.05); }
@@ -803,10 +803,10 @@ body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 116px + env(safe-area-
 .days .day .pr .sn { color: #cfe8ff; }
 /* the wind number wears the map's own colour, and says its unit once */
 .days .day .wd { display: inline-flex; align-items: baseline; gap: 2px; margin-top: 1px;
-  padding: 1px 5px; border-radius: 6px; font: 700 10.5px var(--font-num); color: var(--fg); }
-.days .day .wd em { font: 600 7.5px var(--font-display); font-style: normal; opacity: .75; }
-.days-note { margin: -4px 2px 9px; color: var(--dim); font: 550 9.5px var(--font-body); }
-.days-note b { color: #80b8ff; font: 750 9.5px var(--font-display); }
+  padding: 1px 4px; border-radius: 6px; font: 700 9.5px var(--font-num); color: var(--fg); }
+.days .day .wd em { font: 600 7px var(--font-display); font-style: normal; opacity: .75; }
+.days-note { margin: -5px 2px 8px; color: var(--dim); font: 550 8.5px var(--font-body); }
+.days-note b { color: #80b8ff; font: 750 8.5px var(--font-display); }
 
 /* current time on the tape: a thin accent line down the column, "now" tag on the hour row */
 /* "now" is a hairline down the column with one small tag, so it never fights
