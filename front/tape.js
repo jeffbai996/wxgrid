@@ -28,21 +28,118 @@
   // The tape: a table whose columns are forecast steps grouped under
   // day headers and whose rows are variables (icon, temp, feels like, rain,
   // wind, gusts, direction). Click a column to jump.
-  // How many hours between tape columns. The run's own spacing is the floor;
-  // a coarser choice thins the columns rather than interpolating anything.
+  // How many hours between tape columns. Below the run's own spacing the tape
+  // interpolates; above it, the tape stops sampling one instant and reports
+  // what the whole period did.
   let tapeRes = Number(localStorage.getItem("wxgrid.tapeRes") || 0);      // 0 = the model's own steps
+  const nativeStep = (d) => (d && d.steps && d.steps.length > 1 ? d.steps[1] - d.steps[0] : 3);
   function renderRes(d) {
     const box = $("#tape-res"); if (!box) return;
-    const native = d && d.steps && d.steps.length > 1 ? d.steps[1] - d.steps[0] : 3;
-    const opts = [[0, `${native} h`], [6, "6 h"], [12, "12 h"], [24, "24 h"]].filter(([v]) => v === 0 || v > native);
+    const native = nativeStep(d);
+    const opts = [[1, "1 h"], [2, "2 h"], [0, `${native} h`], [6, "6 h"], [12, "12 h"], [24, "24 h"]]
+      .filter(([v]) => v === 0 || (v < native ? v : v > native));
     box.innerHTML = opts.map(([v, t]) => `<button data-v="${v}" class="${v === tapeRes ? "on" : ""}">${t}</button>`).join("");
     box.querySelectorAll("button").forEach((b) => b.onclick = () => { tapeRes = Number(b.dataset.v); localStorage.setItem("wxgrid.tapeRes", tapeRes); renderTape(); renderTapeSelection(); });
   }
-  const thin = (d) => {
-    if (!tapeRes || !d.steps) return null;
-    const keep = d.steps.map((h, i) => [h, i]).filter(([h]) => h % tapeRes === 0).map(([, i]) => i);
-    return keep.length > 2 ? keep : null;
-  };
+
+  // ── column resolution ────────────────────────────────────────────────
+  // Series that accumulate over their own interval rather than sampling an
+  // instant: they add up when columns merge and split pro rata when a column
+  // is divided. Wind direction is an angle, so it wraps.
+  const ACCUM = /^(tp|sf)\d+$/;
+  const CIRCULAR = new Set(["wdir", "mwd"]);
+  const lerpAng = (a, b, f) => { const d = ((b - a + 540) % 360) - 180; return (a + d * f + 360) % 360; };
+
+  // Apparent temperature (wind chill below 10 °C, humidex above 20 °C) in °C.
+  // Hoisted out of the renderer so an aggregated column can report the hottest
+  // and coldest it actually FELT, not the feel of its own averages.
+  function feelsAt(s, i) {
+    const t = s.t2m && s.t2m[i] != null ? s.t2m[i] - 273.15 : null, w = s.wind ? s.wind[i] : null;
+    if (t == null) return null;
+    if (w != null && t <= 10 && w * 3.6 >= 4.8) { const v = Math.pow(w * 3.6, 0.16); return 13.12 + 0.6215 * t - 11.37 * v + 0.3965 * t * v; }
+    if (s.d2m && s.d2m[i] != null && t >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / s.d2m[i])); return t + 0.5555 * (e - 10); }
+    return t;
+  }
+
+  // Day and hour in whatever zone the user is reading times in, so "12 h" is
+  // this morning and this afternoon where the weather is, not where the
+  // browser happens to sit.
+  function zoner() {
+    const f = new Intl.DateTimeFormat("en-CA", WX.units.timeOpts({ year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hour12: false }));
+    return (dt) => { const p = {}; for (const x of f.formatToParts(dt)) p[x.type] = x.value;
+      return { day: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) % 24 }; };
+  }
+
+  const stat = (xs, fn) => { const v = xs.filter((x) => x != null); return v.length ? fn(v) : null; };
+  const mean = (xs) => stat(xs, (v) => v.reduce((a, b) => a + b, 0) / v.length);
+
+  // Finer than the model: linear between steps, angles the short way round,
+  // and an accumulation window shared out evenly across the columns it covers.
+  function interpolate(d0, res) {
+    const first = d0.steps[0], last = d0.steps[d0.steps.length - 1], native = nativeStep(d0);
+    const steps = []; for (let h = first; h <= last; h += res) steps.push(h);
+    if (steps.length < 3) return { d: d0, keep: null, agg: false };
+    const t0 = new Date(d0.valid[0]).getTime();
+    const seg = (h) => { let k = 0; while (k < d0.steps.length - 2 && d0.steps[k + 1] <= h) k++;
+      const span = d0.steps[k + 1] - d0.steps[k]; return [k, span ? (h - d0.steps[k]) / span : 0]; };
+    const win = (h) => { let j = 1; while (j < d0.steps.length - 1 && d0.steps[j] < h) j++; return j; };
+    const series = {};
+    for (const [name, arr] of Object.entries(d0.series)) {
+      if (!Array.isArray(arr)) { series[name] = arr; continue; }
+      if (ACCUM.test(name)) { const share = res / native; series[name] = steps.map((h) => { const v = arr[win(h)]; return v == null ? null : v * share; }); continue; }
+      series[name] = steps.map((h) => {
+        const [k, f] = seg(h), a = arr[k], b = arr[k + 1];
+        if (a == null || b == null) return a == null ? (b == null ? null : b) : a;
+        return CIRCULAR.has(name) ? lerpAng(a, b, f) : a + (b - a) * f;
+      });
+    }
+    // Clicking an interpolated column jumps to the model step nearest it —
+    // the map only has the frames the model actually produced.
+    const keep = steps.map((h) => d0.steps.reduce((best, sh, i) => (Math.abs(sh - h) < Math.abs(d0.steps[best] - h) ? i : best), 0));
+    return { d: { ...d0, steps, valid: steps.map((h) => new Date(t0 + (h - first) * 3600e3).toISOString()), series, _keep: keep }, keep, agg: false };
+  }
+
+  // Coarser than the model: buckets aligned to the local clock, each reporting
+  // the period it covers — warmest and coldest, everything that fell, the
+  // strongest wind — instead of whichever instant happened to land on it.
+  function aggregate(d0, res) {
+    const zk = zoner(), dates = d0.valid.map((v) => new Date(v));
+    const buckets = [];
+    dates.forEach((dt, i) => {
+      const { day, hour } = zk(dt);
+      const key = res >= 24 ? day : `${day}#${Math.floor(hour / res)}`;
+      const last = buckets[buckets.length - 1];
+      if (last && last.key === key) last.idx.push(i); else buckets.push({ key, idx: [i], hour });
+    });
+    if (buckets.length < 3) return { d: d0, keep: null, agg: false };
+    const s0 = d0.series, pick = (b) => b.idx[Math.floor((b.idx.length - 1) / 2)];
+    const series = {};
+    for (const [name, arr] of Object.entries(s0)) {
+      if (!Array.isArray(arr)) { series[name] = arr; continue; }
+      series[name] = buckets.map((b) => {
+        const v = b.idx.map((i) => arr[i]);
+        if (ACCUM.test(name)) return stat(v, (x) => x.reduce((a, c) => a + c, 0));
+        if (name === "t2m" || name === "wind" || name === "gust" || name === "cape") return stat(v, (x) => Math.max(...x));
+        if (name === "wdir") { const w = s0.wind ? b.idx.reduce((a, i) => (s0.wind[i] > s0.wind[a] ? i : a), b.idx[0]) : pick(b); return arr[w]; }
+        return mean(v);
+      });
+    }
+    // The rows that need a second number: the cold end of the period, and how
+    // it felt at both ends.
+    series.t2m_lo = buckets.map((b) => stat(b.idx.map((i) => s0.t2m && s0.t2m[i]), (x) => Math.min(...x)));
+    const fl = buckets.map((b) => b.idx.map((i) => feelsAt(s0, i)).filter((x) => x != null));
+    series.feels_hi = fl.map((v) => (v.length ? Math.max(...v) : null));
+    series.feels_lo = fl.map((v) => (v.length ? Math.min(...v) : null));
+    const keep = buckets.map(pick);
+    return { d: { ...d0, steps: keep.map((i) => d0.steps[i]), valid: keep.map((i) => d0.valid[i]), series, _keep: keep },
+             keep, agg: true, res, buckets };
+  }
+
+  function resample(d0) {
+    const native = nativeStep(d0);
+    if (!tapeRes || tapeRes === native || !d0.steps) return { d: d0, keep: null, agg: false };
+    return tapeRes < native ? interpolate(d0, tapeRes) : aggregate(d0, tapeRes);
+  }
 
   function renderTape() {
     const tape = $("#tape");
@@ -63,28 +160,38 @@
     const d0 = tapeData();
     if (!d0) { tape.innerHTML = ""; return; }
     renderRes(d0);
-    // thinning maps every series through the kept indices, so the rest of the
-    // renderer never has to know the tape is showing a subset
-    const keep = thin(d0);
-    const d = keep ? { ...d0, steps: keep.map((i) => d0.steps[i]), valid: keep.map((i) => d0.valid[i]),
-                       series: Object.fromEntries(Object.entries(d0.series).map(([k, v]) => [k, Array.isArray(v) ? keep.map((i) => v[i]) : v])),
-                       _keep: keep } : d0;
+    // resampling maps every series onto the chosen columns, so the rest of the
+    // renderer never has to know whether it is showing model steps, columns
+    // between them, or whole periods
+    const { d, keep, agg, res: aggRes } = resample(d0);
     const s = d.series, n = d.steps.length;
     const dates = d.valid.map((iso) => new Date(iso));
-    // day header cells: colspan per day
+    const zk = zoner();
+    // day header cells: colspan per day, grouped in the zone the times are
+    // shown in so the header cannot disagree with the columns under it
     const days = [];
-    dates.forEach((dt, i) => { const k = dt.toDateString(); if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, span: 0 }); days[days.length - 1].span++; });
+    dates.forEach((dt, i) => { const k = zk(dt).day; if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, span: 0 }); days[days.length - 1].span++; });
     const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}</th>`).join("");
     // the column whose interval holds the current wall-clock time gets a mark
     const nowMs = Date.now();
     const nowIdx = dates.findIndex((dt, i) => nowMs >= dt.getTime() && (i + 1 >= n || nowMs < dates[i + 1].getTime()));
     const cell = (i, inner, cls = "") => `<td class="${cls} ${dates[i].getHours() < 6 || dates[i].getHours() >= 21 ? "night" : ""}${i === nowIdx ? " now" : ""}" data-i="${i}">${inner}</td>`;
+    // A column that covers half a day is named for that half, not for whichever
+    // hour its sample landed on; a column that covers a whole day is named by
+    // the date above it and needs no clock at all.
     const hourTxt = (dt) => dt.toLocaleTimeString(undefined, WX.units.timeOpts({ hour: "numeric" }));
-    const hourRow = dates.map((dt, i) => cell(i, `<span class="hr">${hourTxt(dt).replace(":00", "").replace(/\s/, "<small>") + (/[ap]m/i.test(hourTxt(dt)) ? "</small>" : "")}</span>`, "hour")).join("");
+    const halfTxt = (dt) => (zk(dt).hour < 12 ? "AM" : "PM");
+    const showHours = !(agg && aggRes >= 24);
+    const colTxt = (dt) => (agg && aggRes === 12 ? halfTxt(dt)
+      : `${hourTxt(dt).replace(":00", "").replace(/\s/, "<small>")}${/[ap]m/i.test(hourTxt(dt)) ? "</small>" : ""}`);
+    const hourRow = dates.map((dt, i) => cell(i, `<span class="hr">${colTxt(dt)}</span>`, "hour")).join("");
     const iconRow = dates.map((_, i) => cell(i, glyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), s.t2m ? s.t2m[i] : null, dates[i].getHours() < 6 || dates[i].getHours() >= 21), "ico")).join("");
-    const tempRow = dates.map((_, i) => cell(i, s.t2m && s.t2m[i] != null ? `${WX.units.temp(s.t2m[i]).v}°` : "—", "temp")).join("");
-    const feels = (i) => { const t = s.t2m ? s.t2m[i] - 273.15 : null, w = s.wind ? s.wind[i] : null; if (t == null) return null; if (w != null && t <= 10 && w * 3.6 >= 4.8) { const v = Math.pow(w * 3.6, 0.16); return 13.12 + 0.6215 * t - 11.37 * v + 0.3965 * t * v; } if (s.d2m && s.d2m[i] != null && t >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / s.d2m[i])); return t + 0.5555 * (e - 10); } return t; };
-    const feelsRow = dates.map((_, i) => { const v = feels(i); return cell(i, v == null ? "—" : `${WX.units.tempC(v).v}°`, "feels"); }).join("");
+    const pair = (hi, lo, fmt) => (hi == null ? "—" : `${fmt(hi)}${lo == null ? "" : `<span class="lo">${fmt(lo)}</span>`}`);
+    const degC = (v) => `${WX.units.tempC(v).v}°`, degK = (v) => `${WX.units.temp(v).v}°`;
+    const tempRow = dates.map((_, i) => cell(i, agg ? pair(s.t2m && s.t2m[i], s.t2m_lo && s.t2m_lo[i], degK)
+      : s.t2m && s.t2m[i] != null ? degK(s.t2m[i]) : "—", "temp")).join("");
+    const feelsRow = dates.map((_, i) => { const v = agg ? null : feelsAt(s, i);
+      return cell(i, agg ? pair(s.feels_hi && s.feels_hi[i], s.feels_lo && s.feels_lo[i], degC) : v == null ? "—" : degC(v), "feels"); }).join("");
     const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `<span class="snow">${WX.units.snow(sn).v}</span>`, "rain"); return cell(i, r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : "", "rain"); }).join("");
     // the map's own wind ramp, so a colour in the tape means the colour on the
     // map — and light text on the dark end, dark text on the hot end
@@ -98,10 +205,10 @@
     const dirRow = dates.map((_, i) => cell(i, s.wdir && s.wdir[i] != null ? `<i class="dirarrow" style="${arrowRot(s.wdir[i])}"></i>` : "", "dir")).join("");
     const label = (t, u) => `<th class="lab">${t}${u ? `<small>${u}</small>` : ""}</th>`;
     tape.innerHTML = `<table class="wtape"><thead><tr><th class="lab corner"></th>${dayRow}</tr></thead><tbody>
-      <tr class="r-hour">${label("Hours")}${hourRow}</tr>
+      ${showHours ? `<tr class="r-hour">${label(agg && aggRes === 12 ? "Half" : "Hours")}${hourRow}</tr>` : ""}
       <tr class="r-icon">${label("")}${iconRow}</tr>
-      <tr class="r-temp">${label("Temp", WX.units.tempUnit)}${tempRow}</tr>
-      <tr class="r-feels">${label("Feels like", WX.units.tempUnit)}${feelsRow}</tr>
+      <tr class="r-temp">${label(agg ? "Temp high / low" : "Temp", WX.units.tempUnit)}${tempRow}</tr>
+      <tr class="r-feels">${label(agg ? "Feels high / low" : "Feels like", WX.units.tempUnit)}${feelsRow}</tr>
       <tr class="r-rain">${label("Rain / snow", `${WX.units.precipUnit} · ${WX.units.snowUnit}`)}${rainRow}</tr>
       <tr class="r-wind">${label("Wind", speedUnit())}${windRow}</tr>
       ${gustRow ? `<tr class="r-wind">${label("Gusts", speedUnit())}${gustRow}</tr>` : ""}
@@ -116,7 +223,7 @@
     const tape = $("#tape");
     const radar = state.radar && state.radarFrames.length;
     const d0 = tapeData();
-    const keep = d0 ? thin(d0) : null;
+    const keep = d0 ? resample(d0).keep : null;
     // the shown column for a step: exact when the tape is at full resolution,
     // otherwise the nearest kept column
     const shown = !keep ? state.stepIdx
