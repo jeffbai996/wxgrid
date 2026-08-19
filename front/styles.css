@@ -212,6 +212,15 @@ body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 10
 .rail button.on .var { color: var(--accent-ink); opacity: .75; }
 .rail .rail-sec { font: 700 10px var(--font-display); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; padding: 8px 10px 3px; border-top: 1px solid var(--line); margin-top: 3px; }
 .rail .rail-sec:first-child { border-top: 0; margin-top: 0; padding-top: 4px; }
+.rail-seg { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 11px 3px; }
+.rail-seg > span { font: 600 12px var(--font-display); color: var(--fg-2); }
+.rail-seg .seg.small button { padding: 4px 8px; font-size: 10.5px; }
+.rail-flat { position: relative; display: flex; align-items: center; gap: 11px; width: 100%; border: 0; background: transparent;
+  color: var(--fg-2); padding: 9px 13px 9px 11px; border-radius: 10px; font: 600 13.5px var(--font-display); cursor: pointer; text-align: left; }
+.rail-flat svg { width: 20px; height: 20px; flex: 0 0 20px; opacity: .8; }
+.rail-flat:hover { background: rgba(255,255,255,.06); color: var(--fg); }
+.rail-flat.on { background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 18px var(--accent-glow); }
+:root[data-theme="light"] .rail-flat:hover { background: rgba(0,0,0,.05); }
 .rail-opacity { display: flex; align-items: center; gap: 9px; padding: 6px 11px 8px; }
 .rail-opacity span { font: 600 12px var(--font-display); color: var(--fg-2); }
 .rail-opacity input { flex: 1; min-width: 0; accent-color: var(--accent); height: 14px; }
@@ -566,8 +575,15 @@ table.bandtape .nil { color: var(--line-strong); }
 .obs .stn .nm { font: 600 11.5px var(--font-display); color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .obs .obs-when { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; font: 500 10.5px var(--font-display); color: var(--dim); }
 .obs .obs-when b { font: 600 11.5px var(--font-num); color: var(--fg-2); }
-.obs .obs-vals { display: flex; gap: 12px; flex-wrap: wrap; font: 500 12px var(--font-mono); margin-top: 7px; }
-.obs .obs-vals b { font: 700 14px var(--font-display); }
+/* One rule for the whole row: figures in the numeral face, units and labels in
+   the display face at one size, dimmed. It used to mix mono, display and body
+   depending on which value you were looking at. */
+.obs .obs-vals { display: flex; gap: 4px 14px; flex-wrap: wrap; align-items: baseline; margin-top: 8px; }
+.obs .obs-vals > span { display: inline-flex; align-items: baseline; gap: 4px; }
+.obs .obs-vals b { font: 700 14px var(--font-num); font-variant-numeric: tabular-nums; color: var(--fg); }
+.obs .obs-vals u, .obs .obs-vals i { font: 600 10.5px var(--font-display); font-style: normal; text-decoration: none; color: var(--dim); }
+.obs .obs-vals .codes { font: 600 11.5px var(--font-mono); color: var(--fg-2); gap: 6px; }
+.obs .obs-vals abbr { text-decoration: none; border-bottom: 1px dotted var(--line-strong); cursor: help; }
 .obs .raw { font: 400 10.5px/1.5 var(--font-mono); color: var(--dim); margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--line); word-break: break-all; }
 .fc { padding: 1px 6px; border-radius: 4px; font: 700 10px var(--font-mono); }
 .fc.VFR { background: #2f9e44; color: #fff; } .fc.MVFR { background: #1c7ed6; color: #fff; } .fc.IFR { background: #e03131; color: #fff; } .fc.LIFR { background: #ae3ec9; color: #fff; }

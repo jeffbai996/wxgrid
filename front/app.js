@@ -31,6 +31,7 @@
   const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", uvi: "UV index" };
   const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, uvi: 0.8 };
   const LAYER_ICON = {
+    iso: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15c3-4 6-4 9 0s6 4 9 0"/><path d="M3 9c3-4 6-4 9 0s6 4 9 0"/></svg>',
     wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/></svg>',
     temp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>',
     gust: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v8"/><path d="M12.8 21.6A2 2 0 1 0 14 18H2"/><path d="M17.5 10a2.5 2.5 0 1 1 2 4H2"/><path d="m6 6 4 4 4-4"/></svg>',
@@ -370,11 +371,34 @@
       const ok = f.layers.some((l) => avail.includes(l));
       const on = f.key === fam.key;
       return `${f.section ? `<div class="rail-sec">${f.section}</div>` : ""}<button class="${on ? "on" : ""}" data-family="${f.key}" ${ok ? "" : "disabled"} title="${f.label}${ok ? "" : " (not in this model)"}">${LAYER_ICON[FAMILY_ICON[f.key]]}<span>${f.label}</span>${f.variants ? `<i class="var">${f.variants[on ? state.layer : f.layers.find((l) => avail.includes(l)) || f.layers[0]] || ""}</i>` : ""}</button>`;
-    }).join("") + `<div class="rail-sec">Field</div><label class="rail-opacity" title="Layer opacity">
-      <span>Opacity</span><input type="range" min="20" max="100" step="5" value="${state.opacity}"><i>${state.opacity}%</i></label>`;
+    }).join("") + `<div class="rail-sec">Field</div>
+      <div class="rail-seg" role="group" aria-label="Wind animation">
+        <span>Motion</span>
+        <div class="seg small">
+          <button data-motion="particles" class="${state.particles ? "on" : ""}">Streams</button>
+          <button data-motion="barbs" class="${state.barbs ? "on" : ""}">Barbs</button>
+          <button data-motion="off" class="${!state.particles && !state.barbs ? "on" : ""}">Off</button>
+        </div>
+      </div>
+      <button class="rail-flat ${state.iso ? "on" : ""}" data-rail="iso">${LAYER_ICON.iso || ""}<span>Isolines</span></button>
+      <label class="rail-opacity" title="Layer opacity">
+        <span>Opacity</span><input type="range" min="20" max="100" step="5" value="${state.opacity}"><i>${state.opacity}%</i></label>`;
     const railOp = rail.querySelector(".rail-opacity input");
     railOp.oninput = () => { setOpacity(Number(railOp.value)); };
-    rail.querySelectorAll("button").forEach((b) => b.onclick = () => {
+    // The rail proxies the buttons that already own this state, so there is
+    // still one place a toggle actually lives.
+    rail.querySelectorAll("[data-motion]").forEach((b) => b.onclick = () => {
+      const want = b.dataset.motion;
+      if (want === "particles" && !state.particles) $("#particles-toggle").click();
+      else if (want === "barbs" && !state.barbs) $("#barbs-toggle").click();
+      else if (want === "off") { if (state.particles) $("#particles-toggle").click(); if (state.barbs) $("#barbs-toggle").click(); }
+      renderControls();
+    });
+    const railIso = rail.querySelector('[data-rail="iso"]');
+    if (railIso) railIso.onclick = () => { $("#iso-toggle").click(); renderControls(); };
+    // Only the layer buttons: the rail also holds motion, isolines and opacity,
+    // and this handler used to claim their clicks as well.
+    rail.querySelectorAll("button[data-family]").forEach((b) => b.onclick = () => {
       const f = FAMILIES.find((x) => x.key === b.dataset.family);
       // remember the last variant used per family
       const pref = localStorage.getItem("wxgrid.variant." + f.key);

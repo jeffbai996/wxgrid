@@ -165,6 +165,45 @@
   const DOUGLAS_NAME = ["calm", "rippled", "smooth", "slight", "moderate", "rough", "very rough", "high", "phenomenal"];
   const douglas = (m) => { let d = 0; while (d < DOUGLAS.length && m >= DOUGLAS[d]) d++; return d; };
 
+  // METAR shorthand, spelled out. FU is smoke, BR is mist, VV is a vertical
+  // visibility because the sky is not visible at all — none of it guessable,
+  // so every token carries its meaning in a tooltip.
+  const METAR_WORDS = {
+    "-": "light", "+": "heavy", VC: "in the vicinity",
+    MI: "shallow", PR: "partial", BC: "patches of", DR: "low drifting", BL: "blowing",
+    SH: "showers of", TS: "thunderstorm", FZ: "freezing",
+    DZ: "drizzle", RA: "rain", SN: "snow", SG: "snow grains", IC: "ice crystals",
+    PL: "ice pellets", GR: "hail", GS: "small hail", UP: "unknown precipitation",
+    BR: "mist", FG: "fog", FU: "smoke", VA: "volcanic ash", DU: "widespread dust",
+    SA: "sand", HZ: "haze", PY: "spray",
+    PO: "dust whirls", SQ: "squalls", FC: "funnel cloud", SS: "sandstorm", DS: "duststorm",
+    SKC: "sky clear", CLR: "clear below 12 000 ft", NSC: "no significant cloud", NCD: "no cloud detected",
+    FEW: "few, 1–2 eighths", SCT: "scattered, 3–4 eighths", BKN: "broken, 5–7 eighths", OVC: "overcast, 8 eighths",
+    VV: "vertical visibility, sky obscured", CB: "cumulonimbus", TCU: "towering cumulus",
+  };
+  // A token is an optional intensity, then two-letter pairs: -SHRA is light
+  // showers of rain. Cloud groups are three letters and a height.
+  function metarGloss(token) {
+    const t = String(token || "").toUpperCase();
+    const cloud = t.match(/^(SKC|CLR|NSC|NCD|FEW|SCT|BKN|OVC|VV)(\d{2,3})?(CB|TCU)?/);
+    if (cloud) {
+      const parts = [METAR_WORDS[cloud[1]]];
+      if (cloud[2]) parts.push(`at ${Number(cloud[2]) * 100} ft`);
+      if (cloud[3]) parts.push(METAR_WORDS[cloud[3]]);
+      return parts.filter(Boolean).join(" ");
+    }
+    const words = [];
+    let rest = t;
+    if (rest[0] === "-" || rest[0] === "+") { words.push(METAR_WORDS[rest[0]]); rest = rest.slice(1); }
+    if (rest.startsWith("VC")) { words.push(METAR_WORDS.VC); rest = rest.slice(2); }
+    while (rest.length >= 2) { const w = METAR_WORDS[rest.slice(0, 2)]; if (!w) break; words.push(w); rest = rest.slice(2); }
+    return words.length ? words.join(" ") : "";
+  }
+  const metarAbbr = (str) => String(str || "").split(/\s+/).filter(Boolean).map((tok) => {
+    const gloss = metarGloss(tok);
+    return gloss ? `<abbr title="${esc(gloss)}">${esc(tok)}</abbr>` : esc(tok);
+  }).join(" ");
+
   // ── Now: hero, local context, station obs, meteogram ─────────────────
   function renderNow(pt, d, i) {
     const { speed, speedUnit, f, arrow } = W();
@@ -246,7 +285,15 @@
       obsHtml = `<div class="obs">
         <div class="obs-head"><span class="stn"><b>${esc(o.station)}</b>${o.name ? `<span class="nm">${esc(o.name)}</span>` : ""}</span>${o.flight_category ? `<span class="fc ${esc(o.flight_category)}">${esc(o.flight_category)}</span>` : ""}</div>
         <div class="obs-when">Observed <b>${tm ? W().units.time(tm) : "—"}</b>${obsDist ? `<span>${obsDist} away</span>` : ""}</div>
-        <div class="obs-vals">${o.temp_c != null ? `<span><b style="color:${tempColor(o.temp_c)}">${W().units.tempC(o.temp_c).v}°</b> ${W().units.tempUnit.replace("°", "")}</span>` : ""}${o.dewpoint_c != null ? `<span>dew <b>${W().units.tempC(o.dewpoint_c).v}°</b></span>` : ""}${o.wspd_kt != null ? `<span><b>${speed(o.wspd_kt / 1.943844).toFixed(0)}</b> ${speedUnit()} ${o.wdir != null && o.wdir !== 0 ? String(o.wdir).padStart(3, "0") + "°" : "calm"}${o.wgst_kt ? ` · gusts ${speed(o.wgst_kt / 1.943844).toFixed(0)}` : ""}</span>` : ""}${obsVis ? `<span>vis <b>${obsVis}</b></span>` : ""}${o.altim_hpa != null ? `<span>QNH <b>${W().units.press(o.altim_hpa * 100).txt}</b></span>` : ""}${cl ? `<span>${esc(cl)}</span>` : ""}${o.wx ? `<span>${esc(o.wx)}</span>` : ""}</div>
+        <div class="obs-vals">${[
+          o.temp_c != null ? `<b style="color:${tempColor(o.temp_c)}">${W().units.tempC(o.temp_c).v}°</b><u>${W().units.tempUnit.replace("°", "")}</u>` : "",
+          o.dewpoint_c != null ? `<i>dew</i><b>${W().units.tempC(o.dewpoint_c).v}°</b>` : "",
+          o.wspd_kt != null ? `<b>${speed(o.wspd_kt / 1.943844).toFixed(0)}</b><u>${speedUnit()}</u>${o.wdir != null && o.wdir !== 0 ? `<i>@</i><b>${String(o.wdir).padStart(3, "0")}°</b>` : `<i>calm</i>`}${o.wgst_kt ? `<i>gusts</i><b>${speed(o.wgst_kt / 1.943844).toFixed(0)}</b>` : ""}` : "",
+          obsVis ? `<i>vis</i><b>${obsVis}</b>` : "",
+          o.altim_hpa != null ? `<i>QNH</i><b>${W().units.press(o.altim_hpa * 100).v}</b><u>${W().units.pressUnit}</u>` : "",
+          cl ? `<span class="codes">${metarAbbr(cl)}</span>` : "",
+          o.wx ? `<span class="codes">${metarAbbr(o.wx)}</span>` : "",
+        ].filter(Boolean).map((h) => `<span>${h}</span>`).join("")}</div>
         <div class="raw">${esc(o.raw || "")}</div></div>`;
     }
     let holder = $("#obs-holder");
