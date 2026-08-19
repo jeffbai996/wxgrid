@@ -357,6 +357,22 @@
   }
 
   // ── Winter: new snow, snow depth, levels, wind loading, avalanche forecast
+  // The nearest ski area to this point, if one is close enough to be the same
+  // weather. Asked once per point; `null` means there isn't one.
+  function fetchNearestResort(pt) {
+    pt.near = null;
+    W().api(`${W().API}/resorts?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}&limit=8`)
+      .then((r) => {
+        // Nearest is not best: a tube park sits 600 m from the mountain it is
+        // parked on. Prefer a ski area the catalog knows the summit of.
+        const list = (r.resorts || []).filter((x) => x.distance_km != null && x.distance_km <= 60);
+        const near = list.find((x) => x.ele_summit_m) || list[0];
+        pt.near = near || null;
+        if (W().state.point === pt && W().state.tab === "winter") W().renderPoint();
+      })
+      .catch(() => {});
+  }
+
   function renderWinter(pt, d, i) {
     const { speed, speedUnit, f, AVY_COLORS } = W();
     const s = d.series;
@@ -383,12 +399,21 @@
       ["Rain on snow", rainOnSnow ? "yes, wet loading" : "no", rainOnSnow ? "bad" : "good"],
       ["Surface temp", t != null ? W().units.tempC(t).txt : "—", t != null && t > 0 && s.sd_cm && s.sd_cm[i] > 5 ? "meh" : ""],
     ];
+    // The band-by-band read this pane cannot give — a 0.25° gridpoint is one
+    // number for a valley and a ridge — already exists for ski areas. Put the
+    // door to it here, where somebody looking at snow will find it.
+    let resortHtml = "";
+    if (pt.near === undefined) fetchNearestResort(pt);
+    else if (pt.near) resortHtml = `<button class="resort-link" data-resort="${esc(pt.near.id)}">
+      <span class="k">Elevation bands</span><span class="v">${esc(pt.near.name)}<i>${W().units.dist(pt.near.distance_km).txt} away</i></span></button>`;
     let avyHtml = `<div class="avy"><div class="avy-head"><span>Avalanche forecast</span><span class="dim">loading…</span></div></div>`;
     if (pt.avy === false) avyHtml = `<div class="avy"><div class="avy-head"><span>Avalanche forecast</span></div><div class="avy-note">No public forecast region covers this point (Avalanche Canada / avalanche.org).</div></div>`;
     else if (pt.avy) avyHtml = avyBlock(pt.avy, AVY_COLORS);
     else fetchAvy(pt);
-    $("#winter").innerHTML = `<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${avyHtml}
+    $("#winter").innerHTML = `${resortHtml}<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${avyHtml}
       <div class="note">Snow is model water-equivalent; the bracket applies a temperature-based ratio. Depth is the model snowpack, not a station. 0.25° grid: a valley and a ridge share one value.</div>`;
+    const link = $("#winter .resort-link");
+    if (link) link.onclick = () => W().ov.selectResort(link.dataset.resort);
   }
   async function fetchAvy(pt) {
     const my = pt;
