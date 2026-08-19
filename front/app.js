@@ -294,7 +294,14 @@
     const lv = $("#levels");
     const levels = runEntry().levels || [];
     const showLevels = hasLevel() && levels.length;
-    lv.hidden = !showLevels;
+    // The row stays on screen for every layer: disappearing chrome makes the
+    // whole bar jump and reads like a bug (Jeff 2026-08-18).
+    lv.hidden = !levels.length;
+    lv.classList.toggle("disabled", !showLevels);
+    lv.title = showLevels ? "" : `${LAYER_LABEL[state.layer]} is a surface field`;
+    if (!showLevels && levels.length) {
+      lv.innerHTML = [0, ...levels].map((l) => `<button data-level="${l}" class="${l === 0 ? "on" : ""}" disabled>${l || "sfc"}</button>`).join("");
+    }
     if (showLevels) {
       const opts = [0, ...levels];
       if (!opts.includes(state.level)) state.level = 0;

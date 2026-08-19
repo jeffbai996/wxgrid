@@ -200,7 +200,7 @@
         <dt>Dew point spread</dt><dd>${s.d2m && s.t2m && s.t2m[i] != null && s.d2m[i] != null ? (s.t2m[i] - s.d2m[i]).toFixed(1) + " °C" : "—"}</dd>
       </dl>
       ${tafHtml()}
-      <div class="note">Model winds are 0.25° gridpoint values, not a TAF and not METAR. Directions are true, FROM. Heights are geopotential; freezing level is interpolated between stored levels.</div>`;
+      <div class="note">Gridpoint winds, true direction, FROM. Heights are geopotential.</div>`;
   }
   const capeClass = (v) => v == null ? "" : v < 300 ? "good" : v < 1000 ? "meh" : "bad";
   function tafHtml() {
@@ -247,7 +247,7 @@
     ctx.fillStyle = "#8b93a1"; ctx.textAlign = "left"; let lastDay = null;
     d.valid.slice(0, n).forEach((iso, k) => { const dt = new Date(iso), day = dt.toDateString(); if (day !== lastDay) { lastDay = day; ctx.fillRect(padL + k * cw, padT, 1, H - padT - padB); ctx.fillText(dt.toLocaleDateString(undefined, { weekday: "short" }), padL + k * cw + 3, H - 8); } });
     if (i < n) { ctx.strokeStyle = "#6cb6ff"; ctx.lineWidth = 2; ctx.strokeRect(padL + i * cw + 1, padT + 1, cw - 2, H - padT - padB - 2); }
-    $("#airgram-note").textContent = `Airgram — rows are pressure levels (925 hPa ≈ 750 m … 250 hPa ≈ FL340), colour = temperature, arrows = wind direction with speed in ${speedUnit()}. First ${Math.round(n / 4)} days.`;
+    $("#airgram-note").textContent = `Rows are pressure levels, colour is temperature, arrows are wind in ${speedUnit()}.`;
   }
 
   // ── Winter: new snow, snow depth, levels, wind loading, avalanche forecast
@@ -281,8 +281,8 @@
     if (pt.avy === false) avyHtml = `<div class="avy"><div class="avy-head"><span>Avalanche forecast</span></div><div class="avy-note">No public forecast region covers this point (Avalanche Canada / avalanche.org).</div></div>`;
     else if (pt.avy) avyHtml = avyBlock(pt.avy, AVY_COLORS);
     else fetchAvy(pt);
-    $("#winter").innerHTML = `<dl class="kv">${rows.map(([k, v, cls]) => `<dt>${k}</dt><dd class="${cls}">${v}</dd>`).join("")}</dl>${avyHtml}
-      <div class="note">Snow amounts are the model's snowfall water-equivalent at 1 cm per mm; the bracket applies a temperature-based snow-to-liquid ratio. Snow depth is the model's own snowpack, not a station. Wind loading: sustained 850/700 hPa flow above ~30 km/h moves snow onto lee slopes.</div>`;
+    $("#winter").innerHTML = `<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${avyHtml}
+      <div class="note">Snow is model water-equivalent; the bracket applies a temperature-based ratio. Depth is the model snowpack, not a station. 0.25° grid: a valley and a ridge share one value.</div>`;
   }
   async function fetchAvy(pt) {
     const my = pt;
@@ -318,7 +318,10 @@
     // squeezed by CSS
     const c = $("#skewt"), host = c.parentElement;
     const w = Math.max(300, Math.round(host.clientWidth));
-    const h = Math.round(Math.min(520, Math.max(300, w * 1.05)));
+    // on a phone the card is a sheet: keep the diagram inside it so the
+    // caption underneath stays reachable
+    const cap = window.innerWidth <= 820 ? Math.round(window.innerHeight * 0.46) : 520;
+    const h = Math.round(Math.min(cap, Math.max(280, w * 1.05)));
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; c.style.width = w + "px"; c.style.height = h + "px"; }
     const r = window.WXSounding.draw(c, d, i, { elevation_m: ((pt && pt.local) || {}).elevation_m,
                                                 observed: pt && pt.sonde ? pt.sonde : null });
@@ -367,8 +370,8 @@
       tidesHtml = `<div class="obs"><div class="obs-head"><span>Tides · ${esc(t.station)} · ${t.distance_km} km</span><span class="dim">${esc(t.source)} · ${esc(t.datum)}</span></div>
         <div class="tides">${t.events.slice(0, 6).map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${e.height_m.toFixed(1)} m</b><small>${new Date(e.time).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div></div>`;
     }
-    $("#outdoors").innerHTML = `<dl class="kv">${rows.map(([k, v, cls]) => `<dt>${k}</dt><dd class="${cls}">${v}</dd>`).join("")}</dl>${tidesHtml}${airHtml(pt || {})}
-      <div class="note">Hiking / skiing / paddling read: snow level ≈ freezing level − 300 m; gusts are the model's 10 m gust where it ships one (IFS, GFS); tap the tape to move the day. Terrain is unresolved at 0.25° — a valley or a ridge will differ.</div>`;
+    $("#outdoors").innerHTML = `<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${tidesHtml}${airHtml(pt || {})}
+      <div class="note">Snow level ≈ freezing level − 300 m. Gusts come from models that ship one. Terrain is unresolved at 0.25°.</div>`;
   }
 
   // ── Spread: how much the ensemble disagrees with itself ───────────────
@@ -423,7 +426,7 @@
     $("#compare").innerHTML = `<table class="cmp"><thead><tr><th>Temp °C</th>${head}</tr></thead><tbody>${rowFor("t", (s, k) => s.t2m && s.t2m[k] != null ? Math.round(s.t2m[k] - K) : "—")}</tbody>
       <thead><tr><th>Wind ${speedUnit()}</th>${head}</tr></thead><tbody>${rowFor("w", (s, k) => s.wind && s.wind[k] != null ? Math.round(speed(s.wind[k])) : "—")}</tbody>
       <thead><tr><th>Rain mm/12h</th>${head}</tr></thead><tbody>${rowFor("r", (s, k) => s.tp6 ? `<span class="r">${((s.tp6[k] || 0) + (s.tp6[k + 1] || 0)).toFixed(1)}</span>` : "—")}</tbody></table>
-      <div class="note">Same valid times, each model's latest run. Where the models disagree is where the forecast is uncertain — that spread is the honest error bar.</div>`;
+      <div class="note">Same valid times, each model's latest run. Disagreement is the error bar.</div>`;
   }
 
   // ── Resort: elevation-band forecast, whistlerpeak-style ───────────────
