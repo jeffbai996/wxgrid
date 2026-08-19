@@ -105,6 +105,36 @@
         M().addLayer({ id: "lifts-line", type: "line", source: "lifts", paint: { "line-color": "#ffb454", "line-width": 2, "line-opacity": 0.9 } });
         M().addLayer({ id: "lifts-lbl", type: "symbol", source: "lifts", minzoom: 11, layout: { "symbol-placement": "line", "text-field": ["get", "name"], "text-size": 10, "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1 } });
       }
+      // The runs, coloured the way a trail map colours them. Black diamonds are
+      // drawn near-white here: this basemap is dark, and a black line on it is
+      // an absent line. Every run gets a dark casing so it reads over snow,
+      // forest and the weather field alike.
+      const pistes = d.pistes || { type: "FeatureCollection", features: [] };
+      const gradeColour = ["match", ["get", "grade"],
+        "novice", "#5ad469", "easy", "#3d8bff", "intermediate", "#ff4d4d",
+        "advanced", "#f2f2f2", "expert", "#c56bff", "freeride", "#ffb454", "extreme", "#ff7a2f",
+        "#9aa5b4"];
+      if (M().getSource("pistes")) M().getSource("pistes").setData(pistes);
+      else {
+        M().addSource("pistes", { type: "geojson", data: pistes });
+        M().addLayer({ id: "pistes-case", type: "line", source: "pistes", minzoom: 9,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "rgba(0,0,0,.65)", "line-width": ["interpolate", ["linear"], ["zoom"], 9, 2.6, 13, 6.5], "line-opacity": 0.9 } });
+        // line-dasharray takes no data expression, so ungroomed runs get their
+        // own layer rather than a condition MapLibre would reject silently.
+        const pisteWidth = ["interpolate", ["linear"], ["zoom"], 9, 1.3, 13, 4];
+        M().addLayer({ id: "pistes-line", type: "line", source: "pistes", minzoom: 9,
+          filter: ["!=", ["get", "grade"], "freeride"],
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": gradeColour, "line-width": pisteWidth, "line-opacity": 0.95 } });
+        M().addLayer({ id: "pistes-free", type: "line", source: "pistes", minzoom: 9,
+          filter: ["==", ["get", "grade"], "freeride"],
+          layout: { "line-cap": "butt", "line-join": "round" },
+          paint: { "line-color": "#ffb454", "line-width": pisteWidth, "line-opacity": 0.95, "line-dasharray": [2, 1.4] } });
+        M().addLayer({ id: "pistes-lbl", type: "symbol", source: "pistes", minzoom: 12.5,
+          layout: { "symbol-placement": "line", "text-field": ["coalesce", ["get", "name"], ["get", "ref"]], "text-size": 10, "text-font": ["Noto Sans Regular"] },
+          paint: { "text-color": "#eef1f5", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.2 } });
+      }
       const bnd = d.boundary ? { type: "FeatureCollection", features: [d.boundary] } : { type: "FeatureCollection", features: [] };
       if (M().getSource("bnd")) M().getSource("bnd").setData(bnd);
       else { M().addSource("bnd", { type: "geojson", data: bnd }); M().addLayer({ id: "bnd-line", type: "line", source: "bnd", paint: { "line-color": "#ffb454", "line-width": 1.2, "line-dasharray": [2, 2], "line-opacity": 0.8 } }, WX.fn.firstSymbolId()); }

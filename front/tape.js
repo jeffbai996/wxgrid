@@ -205,7 +205,7 @@
     const dirRow = dates.map((_, i) => cell(i, s.wdir && s.wdir[i] != null ? `<i class="dirarrow" style="${arrowRot(s.wdir[i])}"></i>` : "", "dir")).join("");
     const label = (t, u) => `<th class="lab">${t}${u ? `<small>${u}</small>` : ""}</th>`;
     tape.innerHTML = `<table class="wtape"><thead><tr><th class="lab corner"></th>${dayRow}</tr></thead><tbody>
-      ${showHours ? `<tr class="r-hour">${label(agg && aggRes === 12 ? "Half" : "Hours")}${hourRow}</tr>` : ""}
+      ${showHours ? `<tr class="r-hour">${label("Time")}${hourRow}</tr>` : ""}
       <tr class="r-icon">${label("")}${iconRow}</tr>
       <tr class="r-temp">${label(agg ? "Temp high / low" : "Temp", WX.units.tempUnit)}${tempRow}</tr>
       <tr class="r-feels">${label(agg ? "Feels high / low" : "Feels like", WX.units.tempUnit)}${feelsRow}</tr>

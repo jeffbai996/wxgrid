@@ -149,6 +149,7 @@ def test_api_resort_detail_served_from_cache_no_network(monkeypatch):
     _write_detail_cache(resort_id, {
         "resort": resorts._find_resort(resort_id),
         "lifts": {"type": "FeatureCollection", "features": []},
+        "pistes": {"type": "FeatureCollection", "features": []},
         "boundary": None,
         "elevation": {"base_m": 675, "summit_m": 2284},
     })
@@ -174,3 +175,23 @@ def test_api_resorts_rebuild_reports_counts(monkeypatch):
     r = c.post("/api/resorts/rebuild")
     assert r.status_code == 200
     assert r.json() == {"count": 2, "with_elevation": 1}
+
+
+def test_detail_cache_written_before_pistes_existed_is_refetched(monkeypatch, tmp_path):
+    """A cache from an older build has no runs in it. Serving it would leave the
+    resort permanently without a trail map, so it has to be treated as a miss."""
+    resort_id = "whistler-blackcomb-5013-n12297"
+    _write_catalog([_resort(resort_id, "Whistler Blackcomb", 50.1163, -122.9574, 675, 2284, "way", 123456790)])
+    _write_detail_cache(resort_id, {
+        "resort": resorts._find_resort(resort_id),
+        "lifts": {"type": "FeatureCollection", "features": []},
+        "boundary": None,
+        "elevation": {"base_m": 675, "summit_m": 2284},
+    })
+    hits = []
+    monkeypatch.setattr(resorts, "_overpass_query", lambda *a, **k: hits.append(1) or [])
+    monkeypatch.setattr(resorts.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(resorts, "_boundary_feature", lambda *a, **k: None)
+    detail = resorts.resort_detail(resort_id)
+    assert hits, "the stale cache should have been refetched"
+    assert "pistes" in detail

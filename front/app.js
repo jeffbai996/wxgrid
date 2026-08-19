@@ -121,7 +121,10 @@
     map = new maplibregl.Map({
       container: "map", style: mapStyle(),
       center: hash ? [hash.lon, hash.lat] : saved ? saved.center : [-123, 47], zoom: hash ? hash.zoom : saved && currentMapScale ? saved.zoom : defaultZoom,
-      minZoom: 1.2, maxZoom: 11, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
+      // Past z11 the field is one world-sized image being stretched, and what
+      // you actually want is the ground: streets, lifts, runs. So the map keeps
+      // zooming to where the basemap still has detail, and the field steps back.
+      minZoom: 1.2, maxZoom: 15, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
     });
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
     // Subscribe before the catalog request. A cached style can emit
@@ -213,12 +216,19 @@
     };
     styleReady.then(loadInitialWeather).catch(() => ensureWxLayer());
   }
+  // How solid the weather field is. Past z9 it steps back: at street zoom the
+  // field is one world-sized image being stretched, and the ground underneath
+  // it — streets, lifts, runs — is what you zoomed in for.
+  function rasterOpacity() {
+    const a = ((state.radar || state.sat) ? Math.min(0.45, LAYER_ALPHA[state.layer]) : LAYER_ALPHA[state.layer]) * state.opacity / 100;
+    return ["interpolate", ["linear"], ["zoom"], 9, a, 13, Math.max(0.1, a * 0.22)];
+  }
   const firstSymbolId = () => { const l = map.getStyle().layers.find((x) => x.type === "symbol"); return l ? l.id : undefined; };
   const mapStyle = () => document.documentElement.dataset.theme === "light" ? "https://tiles.openfreemap.org/styles/positron" : "https://tiles.openfreemap.org/styles/dark";
   function ensureWxLayer() {
     if (map.getSource("wx")) return;
     map.addSource("wx", { type: "image", url: layerUrl(), coordinates: WORLD });
-    map.addLayer({ id: "wx", type: "raster", source: "wx", paint: { "raster-opacity": LAYER_ALPHA[state.layer], "raster-fade-duration": 0, "raster-resampling": "linear" } }, firstSymbolId());
+    map.addLayer({ id: "wx", type: "raster", source: "wx", paint: { "raster-opacity": rasterOpacity(), "raster-fade-duration": 0, "raster-resampling": "linear" } }, firstSymbolId());
     ensureCoastLayer();
   }
   // A weather field painted over the whole world hides the one thing you need
@@ -774,7 +784,7 @@
     pushHash();
     const src = map.getSource("wx");
     if (src) { try { src.updateImage({ url: layerUrl(), coordinates: WORLD }); } catch (e) { /* superseded */ } }
-    if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", ((state.radar || state.sat) ? Math.min(0.45, LAYER_ALPHA[state.layer]) : LAYER_ALPHA[state.layer]) * state.opacity / 100);
+    if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", rasterOpacity());
     if (state.thunder && WX.ov) WX.ov.loadThunder();
     if (state.xsection && WX.xs) WX.xs.refresh();
     if (state.aq && WX.cams) WX.cams.refresh();

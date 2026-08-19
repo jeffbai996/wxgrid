@@ -392,6 +392,28 @@ def _lift_feature(way: dict) -> dict | None:
     return {"type": "Feature", "geometry": {"type": "LineString", "coordinates": coords}, "properties": props}
 
 
+# Piste difficulty, in the words OSM uses. The map draws these; the legend
+# names them. Freeride/extreme are ungroomed, which is a different warning
+# from steep, so they keep their own colour rather than being lumped in black.
+PISTE_GRADES = ("novice", "easy", "intermediate", "advanced", "expert", "freeride", "extreme")
+
+
+def _piste_feature(way: dict) -> dict | None:
+    geom = way.get("geometry")
+    if not geom or len(geom) < 2:
+        return None
+    tags = way.get("tags") or {}
+    grade = (tags.get("piste:difficulty") or "").strip().lower()
+    return {"type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": [[pt["lon"], pt["lat"]] for pt in geom]},
+            "properties": {"name": tags.get("name") or tags.get("piste:name"),
+                           "ref": tags.get("ref") or tags.get("piste:ref"),
+                           "grade": grade if grade in PISTE_GRADES else "unknown",
+                           "gladed": (tags.get("gladed") or tags.get("piste:type:gladed")) == "yes",
+                           "grooming": tags.get("piste:grooming"),
+                           "osm_id": way.get("id")}}
+
+
 def _polygon_coords(el: dict) -> list | None:
     if el.get("type") == "way":
         geom = el.get("geometry")
@@ -464,6 +486,8 @@ def resort_detail(resort_id: str, session: requests.Session | None = None) -> di
     elevation for one resort. Raises ValueError for an unknown id — the
     router turns that into a 404."""
     cached = _load_detail_cache(resort_id)
+    if cached is not None and "pistes" not in cached:
+        cached = None                    # written before runs were mapped
     if cached is not None:
         return cached
 
@@ -476,6 +500,14 @@ def resort_detail(resort_id: str, session: requests.Session | None = None) -> di
     lift_elements = _overpass_query(s, lift_ql) or []
     time.sleep(1.0)
     lifts = [f for f in (_lift_feature(w) for w in lift_elements) if f is not None]
+
+    # The runs themselves. Same radius as the lifts; ways only, because the
+    # route relations that group them repeat the same geometry.
+    piste_ql = (f'[out:json][timeout:180];\n'
+                f'way["piste:type"="downhill"](around:6000,{resort["lat"]},{resort["lon"]});\nout geom tags;')
+    piste_elements = _overpass_query(s, piste_ql) or []
+    time.sleep(1.0)
+    pistes = [f for f in (_piste_feature(w) for w in piste_elements) if f is not None]
 
     boundary = _boundary_feature(s, resort)
     time.sleep(1.0)
@@ -503,6 +535,7 @@ def resort_detail(resort_id: str, session: requests.Session | None = None) -> di
     detail = {
         "resort": resort,
         "lifts": {"type": "FeatureCollection", "features": lifts},
+        "pistes": {"type": "FeatureCollection", "features": pistes},
         "boundary": boundary,
         "elevation": {"base_m": base_m, "summit_m": summit_m},
     }
