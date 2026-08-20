@@ -805,7 +805,7 @@ table.wtape tr.r-hour td.sun-rise::after, table.wtape tr.r-hour td.sun-set::afte
 table.wtape tr.r-hour td.sun-set::after { opacity: .5; }
 table.wtape tr.r-rain td .snow { color: #cfe8ff; }
 table.wtape tr.r-prob td { color: #71b8ff; font-weight: 600; font-size: 11px; }
-table.wtape tr.r-wind td span { display: inline-block; min-width: 26px; padding: 1px 4px; border-radius: 5px; color: var(--fg); font-weight: 700; font-size: 13px; line-height: 1.3; }
+table.wtape tr.r-wind td span { display: inline-block; min-width: 26px; padding: 1px 4px; border-radius: 5px; color: var(--fg); font-weight: 700; font-size: 12.5px; line-height: 1.3; text-align: center; }
 table.wtape tr.r-dir td { height: 20px; }
 /* a real arrow, not a corner of a box: readable at 11 px and unambiguous
    about which way the wind is going */
