@@ -29,7 +29,7 @@ def test_models_layers_levels_and_point():
     m = c.get("/api/models").json()
     aifs = next(x for x in m["models"] if x["key"] == "aifs")
     # frz derives from the two seeded levels; the rain windows derive from tp6
-    assert aifs["runs"][0]["layers"] == ["wind", "temp", "tp6", "tp24", "tp72", "frz", "ptype"]
+    assert aifs["runs"][0]["layers"] == ["wind", "temp", "dt24", "tp6", "tp24", "tp72", "frz", "ptype"]
     assert aifs["runs"][0]["levels"] == [850, 700]
     p = c.get("/api/point", params={"lat": 49.28, "lon": -123.12, "model": "aifs"}).json()
     assert p["series"]["wind"] == [1.0, 2.0] and p["series"]["wdir"] == [270, 270]

@@ -38,6 +38,7 @@
       const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(im, 0, 0);
       try { data = { px: ctx.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height }; } catch (e) { data = null; }
       if (last) show(last);
+      pinUpdate(); updateCityValues();
     };
     im.src = url;
   }
@@ -91,5 +92,73 @@
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => show(ll));
   }
-  WX.probe = { refresh, hover };
+
+  // ── the pinned picker ──────────────────────────────────────────────────
+  // Windy's little flag: a value pill anchored to a draggable point. It reads
+  // whatever layer is showing, follows the time scrub, and dragging it is the
+  // cheapest way to compare two shores of a strait. One pin; a second request
+  // moves it.
+  let pinMarker = null;
+  function pinUpdate() {
+    if (!pinMarker) return;
+    const ll = pinMarker.getLngLat();
+    const v = valueAt(ll.lng, ll.lat);
+    const el = pinMarker.getElement().querySelector(".val");
+    el.innerHTML = v ? `<b>${v.text}</b>${v.sub ? `<span>${v.sub}</span>` : ""}` : "…";
+  }
+  function pin(ll) {
+    if (!pinMarker) {
+      const el = document.createElement("div");
+      el.className = "wx-pin";
+      el.innerHTML = `<div class="flag"><span class="val">…</span><button class="x" title="Remove">×</button></div><i class="stem"></i><i class="dot"></i>`;
+      pinMarker = new maplibregl.Marker({ element: el, draggable: true, anchor: "bottom" });
+      pinMarker.setLngLat(ll).addTo(WX.map);
+      pinMarker.on("drag", pinUpdate);
+      el.querySelector(".x").addEventListener("click", (e) => { e.stopPropagation(); pinMarker.remove(); pinMarker = null; });
+    } else pinMarker.setLngLat(ll);
+    pinUpdate();
+  }
+
+  // ── layer values on the towns ──────────────────────────────────────────
+  // The basemap already decides which places deserve a label at this zoom;
+  // borrow those anchors and hang the field's value under each. No toggle:
+  // it is on when a sampleable layer is, and stays out of the way at world
+  // zooms where the labels would carpet the map.
+  let cityRaf = 0;
+  function cityLayerIds() {
+    return WX.map.getStyle().layers.filter((l) => l.type === "symbol" && /place|city|town/i.test(l.id)).map((l) => l.id);
+  }
+  function updateCityValues() {
+    cancelAnimationFrame(cityRaf);
+    cityRaf = requestAnimationFrame(() => {
+      const m = WX.map;
+      if (!m.getSource("cityvals")) {
+        m.addSource("cityvals", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+        m.addLayer({ id: "cityvals", type: "symbol", source: "cityvals",
+          layout: { "text-field": ["get", "txt"], "text-size": 11, "text-font": ["Noto Sans Medium"],
+                    "text-offset": [0, 1.1], "text-anchor": "top", "text-allow-overlap": false },
+          paint: { "text-color": "#ffffff", "text-halo-color": "rgba(8,10,14,.75)", "text-halo-width": 1.2 } });
+      }
+      const src = m.getSource("cityvals");
+      if (m.getZoom() < 4.2) { src.setData({ type: "FeatureCollection", features: [] }); return; }
+      const ids = cityLayerIds();
+      const seen = new Set(); const feats = [];
+      for (const f of (ids.length ? m.queryRenderedFeatures({ layers: ids }) : [])) {
+        const name = f.properties && (f.properties.name || f.properties["name:en"]);
+        if (!name || seen.has(name) || f.geometry.type !== "Point") continue;
+        seen.add(name);
+        const [lng, lat] = f.geometry.coordinates;
+        const v = valueAt(lng, lat);
+        if (!v || v.text === "—") continue;
+        feats.push({ type: "Feature", properties: { txt: v.text }, geometry: { type: "Point", coordinates: [lng, lat] } });
+        if (feats.length >= 40) break;
+      }
+      src.setData({ type: "FeatureCollection", features: feats });
+    });
+  }
+  function wireCityValues() {
+    WX.map.on("idle", updateCityValues);
+  }
+
+  WX.probe = { refresh, hover, pin, pinUpdate, updateCityValues, wireCityValues };
 })();

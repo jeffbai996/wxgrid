@@ -23,6 +23,7 @@
   document.head.appendChild(style);
 
   const I = {
+    pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 3h6l1 7 2 2H6l2-2 1-7z"/></svg>',
     point: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>',
     xs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M3 16c4-6 8 2 12-3 2-2.5 4-3 6-3"/></svg>',
     ruler: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0Z"/></svg>',
@@ -45,6 +46,7 @@
     const lon = WX.wlon(lngLat.lng);
     const rows = [
       ["Forecast for this point", I.point, () => WX.fn.openPoint(lngLat.lat, lngLat.lng)],
+      ["Pin this value", I.pin || I.point, () => WX.probe && WX.probe.pin(lngLat)],
       ["Cross-section from here", I.xs, () => { if (!WX.state.xsection) $("#xsection-toggle").click(); WX.xs.click(lngLat); }],
       ["Measure from here", I.ruler, () => { if (!WX.state.measure) $("#measure-toggle").click(); WX.ov.measureClick(lngLat); }],
       ["Save this place", I.star, () => { WX.search.toggleFav(lngLat.lat, lon, `${lngLat.lat.toFixed(2)}°, ${lon.toFixed(2)}°`); WX.fn.toast("Saved. Find it in the search box.", 3000); }],

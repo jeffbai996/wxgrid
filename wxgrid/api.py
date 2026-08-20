@@ -36,7 +36,7 @@ log = logging.getLogger("wxgrid.api")
 app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=2048)   # wind JSON shrinks ~5x
 
-LAYERS = ("wind", "temp", "feels", "gust", "msl", "ptend", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500")
+LAYERS = ("wind", "temp", "feels", "wbt", "dt24", "gust", "msl", "ptend", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500")
 LEVEL_LAYERS = ("wind", "temp")
 _ALIAS = {"t2m": "temp", "snow": "sf6", "snowdepth": "sd_cm", "dewpt": "d2m", "swh": "waves", "mwp": "wperiod"}
 # Layers computed from several store variables at request time.
@@ -45,7 +45,8 @@ _DERIVED = {"frz": tuple(f"{p}_{l}" for l in LEVELS for p in ("t", "gh")),
             "waves": ("swh",), "wperiod": ("mwp",), "uvi": ("tcc",),
             "feels": ("t2m", "u10", "v10", "d2m"),
             "ptype": ("tp6", "t2m"), "vort500": ("u_500", "v_500"),
-            "ptend": ("msl",), "cbase": ("t2m", "d2m")}
+            "ptend": ("msl",), "cbase": ("t2m", "d2m"),
+            "wbt": ("t2m", "d2m"), "dt24": ("t2m",)}
 # Accumulation windows (hours) for the derived precip/snow layers.
 _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72": ("sf6", 72)}
 # Layers that live only on LEVEL_EVERY steps (like the pressure levels).
@@ -174,6 +175,22 @@ def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndar
             return np.full((GRID_LAT_N, GRID_LON_N), np.nan, dtype=np.float32)
         prev = prevs[-1]
         return ((r.slab("msl", step) - r.slab("msl", prev)) * (3.0 / max(1, step - prev))).astype(np.float32)
+    if layer == "wbt":
+        # Stull's wet-bulb approximation from T and RH: within ~0.3 °C in the
+        # range weather happens. The heat-stress number — 35 °C wet-bulb is
+        # the physiological wall.
+        t = r.slab("t2m", step) - 273.15
+        d = r.slab("d2m", step) - 273.15
+        rh = np.clip(100.0 * np.exp(17.625 * d / (243.04 + d)) / np.exp(17.625 * t / (243.04 + t)), 1, 100)
+        wbt = (t * np.arctan(0.151977 * np.sqrt(rh + 8.313659)) + np.arctan(t + rh)
+               - np.arctan(rh - 1.676331) + 0.00391838 * rh ** 1.5 * np.arctan(0.023101 * rh) - 4.686035)
+        return (wbt + 273.15).astype(np.float32)
+    if layer == "dt24":
+        # warmer or colder than the same hour yesterday: the front-finder
+        prev = step - 24
+        if prev not in r.steps:
+            return np.full((GRID_LAT_N, GRID_LON_N), np.nan, dtype=np.float32)
+        return (r.slab("t2m", step) - r.slab("t2m", prev)).astype(np.float32)
     if layer == "cbase":
         # lifted-condensation cloud base, metres AGL: ~125 m per °C of dew-point
         # spread. An estimate, honest to ±20 %, and exactly what glider pilots use.

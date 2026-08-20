@@ -627,6 +627,17 @@ table.bandtape .nil { color: var(--line-strong); }
 .point-head .icon.fav.on svg { fill: var(--warm); }
 .results .sub { color: var(--dim); font-size: 11px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
 
+/* the pinned picker: a value flag on a stem, wxgrid's own dress */
+.wx-pin { display: flex; flex-direction: column; align-items: center; cursor: grab; }
+.wx-pin .flag { display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px 5px 11px; border-radius: 10px;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); box-shadow: 0 8px 24px rgba(0,0,0,.4); white-space: nowrap; }
+.wx-pin .val b { font: 700 15px var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; }
+.wx-pin .val span { font: 600 10.5px var(--font-display); color: var(--fg-2); margin-left: 5px; }
+.wx-pin .x { border: 0; background: transparent; color: var(--dim); font-size: 14px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.wx-pin .x:hover { color: var(--bad); }
+.wx-pin .stem { width: 1.5px; height: 16px; background: color-mix(in srgb, var(--fg-2) 65%, transparent); }
+.wx-pin .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg); box-shadow: 0 0 0 2px rgba(8,10,14,.6); margin-top: -1px; }
+
 /* tapped-point marker: white dot with a breathing halo */
 .wx-marker { width: 14px; height: 14px; position: relative; }
 .wx-marker::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(11,13,16,.6), 0 2px 10px rgba(0,0,0,.5); }
