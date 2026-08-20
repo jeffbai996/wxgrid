@@ -12,6 +12,7 @@
   const RAINVIEWER = "https://api.rainviewer.com/public/weather-maps.json";
   // ── isolines overlay ──────────────────────────────────────────────────
   let isoReq = 0;
+  let quakePopup = null;
   function isoVar() {
     if (state.layer === "temp") return state.level ? `temp?level=${state.level}` : "temp";
     if (state.layer === "frz") return "frz";
@@ -497,7 +498,26 @@
       else {
         M().addSource("quakes", { type: "geojson", data: gj });
         M().addLayer({ id: "quakes", type: "circle", source: "quakes", paint: { "circle-radius": ["interpolate", ["linear"], ["get", "mag"], 2.5, 4, 5, 9, 7, 18], "circle-color": ["interpolate", ["linear"], ["get", "mag"], 2.5, "#f5d33c", 5, "#e8590c", 7, "#b30000"], "circle-opacity": 0.75, "circle-stroke-color": "#000", "circle-stroke-width": 1 } });
-        M().on("click", "quakes", (e) => { const p = e.features[0].properties; toast(`M${p.mag} · ${p.place} · ${new Date(p.time).toLocaleString()}`, 7000); });
+        M().on("click", "quakes", (e) => {
+          const f = e.features[0], p = f.properties;
+          const mag = Number(p.mag);
+          const col = mag >= 7 ? "#ff6a5e" : mag >= 5 ? "#e8590c" : "#e3c53c";
+          const ago = (ms => ms < 3600e3 ? `${Math.round(ms / 60e3)} min ago` : ms < 86400e3 ? `${Math.round(ms / 3600e3)} h ago` : `${Math.round(ms / 86400e3)} d ago`)(Date.now() - p.time);
+          const depth = f.geometry.coordinates[2];
+          if (quakePopup) quakePopup.remove();
+          quakePopup = new maplibregl.Popup({ className: "quake-pop", closeButton: true, maxWidth: "270px", offset: 10 })
+            .setLngLat(f.geometry.coordinates.slice(0, 2))
+            .setHTML(`<div class="qp-head"><b style="color:${col}">M${mag.toFixed(1)}</b><span>${ago}</span></div>
+              <div class="qp-place">${String(p.place || "").replace(/</g, "&lt;")}</div>
+              <dl><dt>Time</dt><dd>${new Date(p.time).toLocaleString()}</dd>
+              ${depth != null ? `<dt>Depth</dt><dd>${Math.round(depth)} km</dd>` : ""}
+              ${Number(p.felt) > 0 ? `<dt>Felt reports</dt><dd>${p.felt}</dd>` : ""}
+              ${Number(p.tsunami) === 1 ? `<dt>Tsunami</dt><dd>advisory issued</dd>` : ""}</dl>
+              ${p.url ? `<a class="qp-link" href="${p.url}" target="_blank" rel="noopener">USGS event page ↗</a>` : ""}`)
+            .addTo(M());
+        });
+        M().on("mouseenter", "quakes", () => { M().getCanvas().style.cursor = "pointer"; });
+        M().on("mouseleave", "quakes", () => { M().getCanvas().style.cursor = ""; });
       }
       toast(`${gj.features.length} quakes M2.5 and up in the past day. USGS.`, 4000);
     } catch (e) { toast("USGS feed unavailable", 4000, "error"); }

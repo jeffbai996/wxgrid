@@ -154,6 +154,11 @@
       minZoom: 1.2, maxZoom: 15, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
     });
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+    // The globe. MapLibre's "globe" projection IS the nullschool behaviour:
+    // a sphere when zoomed out, easing itself flat around z6 so streets stay
+    // streets. Set on every style.load — a basemap or theme swap replaces the
+    // style wholesale and would silently flatten the planet again.
+    map.on("style.load", () => { if (map.setProjection) map.setProjection({ type: "globe" }); });
     // Subscribe before the catalog request. A cached style can emit
     // `style.load` while /api/models is still in flight.
     const styleReady = new Promise((resolve) => {
@@ -1219,12 +1224,20 @@
     $("#legend").hidden = false;
     const grad = lg.stops.map((s) => `rgb(${s.rgb.join(",")}) ${((s.v - lg.lo) / (lg.hi - lg.lo) * 100).toFixed(1)}%`).join(", ");
     $(".legend-bar").style.background = `linear-gradient(to right, ${grad})`;
-    const isSpeed = ["wind", "gust"].includes(state.layer);
-    const cv = { temp: (v) => WX.units.tempC(v), d2m: (v) => WX.units.tempC(v),
-                 msl: (v) => WX.units.press(v * 100), frz: (v) => WX.units.alt(v),
-                 tp6: (v) => WX.units.precip(v), tp24: (v) => WX.units.precip(v), tp72: (v) => WX.units.precip(v),
-                 sf6: (v) => WX.units.snow(v), sf24: (v) => WX.units.snow(v), sf72: (v) => WX.units.snow(v),
-                 sd_cm: (v) => WX.units.snow(v), waves: (v) => WX.units.alt(v, 1) }[state.layer];
+    const isSpeed = ["wind", "gust", "gfactor"].includes(state.layer);
+    const U_ = WX.units;
+    // Every layer whose server unit is not the user's unit converts here —
+    // cbase stayed in metres for aviation preset until 2026-08-20. dt24 is a
+    // DELTA: °F deltas scale by 1.8 and never add 32. vis follows the
+    // altitude preset: a pilot reads distance in miles, not km.
+    const cv = { temp: (v) => U_.tempC(v), d2m: (v) => U_.tempC(v), feels: (v) => U_.tempC(v),
+                 wbt: (v) => U_.tempC(v), sst: (v) => U_.tempC(v),
+                 dt24: (v) => (U_.tempUnit === "°F" ? { v: Math.round(v * 1.8), unit: "°F/24h" } : { v: Math.round(v), unit: "°C/24h" }),
+                 vis: (v) => (U_.altUnit === "ft" ? { v: Math.round(v * 0.621371), unit: "mi" } : { v: Math.round(v), unit: "km" }),
+                 msl: (v) => U_.press(v * 100), frz: (v) => U_.alt(v), cbase: (v) => U_.alt(v),
+                 tp6: (v) => U_.precip(v), tp24: (v) => U_.precip(v), tp72: (v) => U_.precip(v),
+                 sf6: (v) => U_.snow(v), sf24: (v) => U_.snow(v), sf72: (v) => U_.snow(v),
+                 sd_cm: (v) => U_.snow(v), waves: (v) => U_.alt(v, 1) }[state.layer];
     const conv = (v) => isSpeed ? Math.round(speed(v)) : cv ? cv(v).v : Math.round(v);
     const unit = isSpeed ? speedUnit() : cv ? cv(0).unit : lg.units;
     const ticks = [0, 0.25, 0.5, 0.75, 1].map((q) => lg.lo + (lg.hi - lg.lo) * q);

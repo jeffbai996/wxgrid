@@ -232,9 +232,9 @@
       : s.t2m && s.t2m[i] != null ? degK(s.t2m[i]) : "—", "temp")).join("");
     const feelsRow = dates.map((_, i) => { const v = agg ? null : feelsAt(s, i);
       return cell(i, agg ? pair(s.feels_hi && s.feels_hi[i], s.feels_lo && s.feels_lo[i], degC) : v == null ? "—" : degC(v), "feels"); }).join("");
-    const wetMax = Math.max(1, ...dates.map((_, i) => ((s.tp6 && s.tp6[i]) || 0) + ((s.sf6 && s.sf6[i]) || 0)));
-    const bar = (amt, snow) => amt > 0.05 ? `<i class="pbar${snow ? " sb" : ""}" style="height:${Math.min(100, Math.round(amt / wetMax * 100))}%"></i>` : "";
-    const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `${bar(sn, true)}<span class="snow">${WX.units.snow(sn).v}</span>`, "rain"); return cell(i, r >= 0.1 ? `${bar(r)}<span>${WX.units.precip(r).v}</span>` : "", "rain"); }).join("");
+    // No bars under the amounts: they read as a mystery meter in a row this
+    // short (Jeff 2026-08-20, "remove them cus thers not enough space").
+    const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `<span class="snow">${WX.units.snow(sn).v}</span>`, "rain"); return cell(i, r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : "", "rain"); }).join("");
     // Chance of rain, from the members, only where it says something —
     // a row of zeros is noise dressed as information
     const probRow = s.prob_rain && s.prob_rain.some((v) => v >= 10)

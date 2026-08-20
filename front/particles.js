@@ -118,6 +118,11 @@
         for (let x = gap / 2; x < w; x += gap) {
           const ll = this.map.unproject([x, y]);
           if (ll.lat > 85 || ll.lat < -85) continue;
+          // Globe: a pixel in space beside the sphere still "unprojects" to
+          // an edge coordinate. Only trust the cell if it projects back to
+          // where we asked.
+          const rt = this.map.project([ll.lng, ll.lat]);
+          if (Math.abs(rt.x - x) > 3 || Math.abs(rt.y - y) > 3) continue;
           const uv = this.sample(ll.lng, ll.lat);
           if (!uv) continue;
           const [u, v] = uv;
@@ -259,6 +264,31 @@
 
       const b = this.bounds();
       const zoom = this.map.getZoom();
+      // On the globe the far hemisphere still projects INTO the canvas —
+      // without this cull its particles draw mirrored on the visible disc.
+      // A particle more than ~85° of arc from the view centre cannot be on
+      // the near side; kill it by dot product, no trig per frame beyond four
+      // terms. Central-angle culling is also safe when the projection eases
+      // flat while zooming: anything 85° from centre is off-screen there too.
+      const D = Math.PI / 180;
+      let cull = null;
+      if (this.map.getProjection && (this.map.getProjection() || {}).type === "globe") {
+        const c = this.map.getCenter();
+        const cv = [Math.cos(c.lat * D) * Math.cos(c.lng * D), Math.cos(c.lat * D) * Math.sin(c.lng * D), Math.sin(c.lat * D)];
+        const lim = Math.cos(85 * D);
+        cull = (lon, lat) => {
+          const cl = Math.cos(lat * D);
+          return cv[0] * cl * Math.cos(lon * D) + cv[1] * cl * Math.sin(lon * D) + cv[2] * Math.sin(lat * D) < lim;
+        };
+      }
+      const respawn = () => {
+        // With the cull active, a blind spawn lands on the far side half the
+        // time and dies next frame — the visible disc thins out. Deal again,
+        // a few tries, until the card is on the near side.
+        let np = this.spawn(b, false);
+        if (cull) for (let k = 0; k < 4 && cull(np.lon, np.lat); k++) np = this.spawn(b, false);
+        return np;
+      };
       const light = document.documentElement.dataset.theme === "light";
       // Screen-relative speed: a 10 m/s wind moves ~90 px/s at any zoom, so
       // the animation reads the same whether you look at a hemisphere or a
@@ -270,7 +300,7 @@
         p.age += 1;
         const uv = this.sample(p.lon, p.lat);
         // out of the view by more than a world? it can never come back — respawn
-        if (!uv || p.age > p.maxAge || p.lat > 85 || p.lat < -85 || p.lon < b.w - 360 || p.lon > b.e + 360) { Object.assign(p, this.spawn(b, false)); continue; }
+        if (!uv || p.age > p.maxAge || p.lat > 85 || p.lat < -85 || p.lon < b.w - 360 || p.lon > b.e + 360 || (cull && cull(p.lon, p.lat))) { Object.assign(p, respawn()); continue; }
         const [u, v] = uv;
         const cosLat = Math.max(0.05, Math.cos(p.lat * Math.PI / 180));
         // A single frame must not teleport a particle across a continent: at
@@ -289,7 +319,7 @@
         // (Jeff 2026-08-18). sample() wraps on its own, so nothing else cares.
         p.lon = nlon;
         p.lat = nlat;
-        if (a.x < -20 || a.x > w + 20 || a.y < -20 || a.y > h + 20) { Object.assign(p, this.spawn(b, false)); continue; }
+        if (a.x < -20 || a.x > w + 20 || a.y < -20 || a.y > h + 20) { Object.assign(p, respawn()); continue; }
         if (Math.abs(q.x - a.x) > w / 2) continue;                        // wrapped across the antimeridian
         const spd = Math.hypot(u, v);
         const key = light ? (spd < 4 ? "rgba(20,30,50,0.35)" : spd < 10 ? "rgba(20,30,50,0.5)" : spd < 18 ? "rgba(120,60,10,0.6)" : "rgba(160,30,10,0.7)")

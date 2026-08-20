@@ -66,9 +66,15 @@
     let best = 0, bd = 1e9;
     for (let k = 0; k < 256; k++) { const c = r.cols[k].rgb; const d = (c[0] - R) ** 2 + (c[1] - G) ** 2 + (c[2] - B) ** 2; if (d < bd) { bd = d; best = k; } }
     let v = r.cols[best].v;
-    if (["wind", "gust"].includes(layer)) return { text: `${Math.round(WX.speed(v))} ${WX.speedUnit()}`, sub: "" };
+    if (["wind", "gust", "gfactor"].includes(layer)) return { text: `${Math.round(WX.speed(v))} ${WX.speedUnit()}`, sub: "" };
     const U = WX.units;
-    const conv = { temp: () => U.tempC(v), d2m: () => U.tempC(v), msl: () => U.press(v * 100), frz: () => U.alt(v),
+    // Same conversion table as the legend — a probe that says metres under a
+    // legend that says feet is worse than either alone (Jeff 2026-08-20).
+    const conv = { temp: () => U.tempC(v), d2m: () => U.tempC(v), feels: () => U.tempC(v),
+                   wbt: () => U.tempC(v), sst: () => U.tempC(v),
+                   dt24: () => ({ txt: U.tempUnit === "°F" ? `${Math.round(v * 1.8)} °F/24h` : `${Math.round(v)} °C/24h` }),
+                   vis: () => ({ txt: U.altUnit === "ft" ? `${Math.round(v * 0.621371)} mi` : `${Math.round(v)} km` }),
+                   msl: () => U.press(v * 100), frz: () => U.alt(v), cbase: () => U.alt(v),
                    tp6: () => U.precip(v), tp24: () => U.precip(v), tp72: () => U.precip(v),
                    sf6: () => U.snow(v), sf24: () => U.snow(v), sf72: () => U.snow(v), sd_cm: () => U.snow(v),
                    waves: () => U.alt(v, 1) }[layer];

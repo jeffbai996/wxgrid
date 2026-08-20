@@ -19,7 +19,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v3";   // v3: the app scripts ship as one bundle.js
+const VERSION = "wxgrid-v4";   // v4: MapLibre v5 — the globe
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
