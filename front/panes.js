@@ -491,7 +491,7 @@
     const rows = (d.levels || []).slice().sort((a, b) => b - a).map((lvl) => {
       const a = d.aloft[String(lvl)];
       const gh = a.gh && a.gh[i] != null ? a.gh[i] : null;
-      return `<tr><td class="lvl">${lvl} hPa</td><td>${gh != null ? W().units.alt(gh).txt : (W().units.altUnit === "ft" ? LEVEL_FT[lvl] : LEVEL_M[lvl])}</td>
+      return `<tr><td class="lvl">${lvl} <i class="u">hPa</i></td><td>${gh != null ? W().units.alt(gh).txt : (W().units.altUnit === "ft" ? LEVEL_FT[lvl] : LEVEL_M[lvl])}</td>
         <td class="dir">${a.wdir[i] != null ? `<i style="${arrowRot(a.wdir[i])}"></i>${String(a.wdir[i]).padStart(3, "0")}°` : "—"}</td>
         <td><span class="wchip" style="background:${windColor(a.wind[i] || 0)}">${f(a.wind[i], (v) => speed(v).toFixed(0))}</span> ${speedUnit()}</td>
         <td class="tempc" style="color:${a.temp[i] != null ? tempColor(a.temp[i] - K) : "inherit"}">${f(a.temp[i], (v) => W().units.temp(v).v)}°</td></tr>`;
@@ -696,13 +696,21 @@
     const sn = (h) => { const v = sumWindow(s.sf6, d.steps, i, h); return v == null ? "n/a" : `${W().units.snow(v).txt} <span class="dim">(${W().units.snow(v * slr / 10).v} @ ${slr}:1)</span>`; };
     const w850d = d.aloft && d.aloft["850"] ? d.aloft["850"].wdir[i] : null;
     const lee = w850d == null ? null : ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round((((w850d + 180) % 360) / 45)) % 8];
+    // freezing level a day out: is the snow line coming down or going up
+    const j24 = (() => { let k = i; while (k + 1 < d.steps.length && d.steps[k + 1] <= d.steps[i] + 24) k++; return k; })();
+    const fl24 = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[j24] : null;
+    const flTrend = fl != null && fl24 != null && Math.abs(fl24 - fl) > 150 ? (fl24 < fl ? " ↓" : " ↑") : "";
+    const chance = probMax(pt, d, i, "prob_rain", 24);
+    const sn24we = sumWindow(s.sf6, d.steps, i, 24);
+    const powder = sn24we != null && sn24we * slr / 10 >= 15 && (w850 == null || speed(w850) < (W().state.units === "kt" ? 22 : W().state.units === "ms" ? 11 : 40));
     const rows = [
       ["New snow next 24 h", sn(24), ""],
       ["New snow next 48 h", sn(48), ""],
       ["New snow next 72 h", sn(72), ""],
       ["Snow depth (model)", s.sd_cm ? W().units.snow(s.sd_cm[i]).txt : "n/a", ""],
-      ["Freezing level", fl != null ? W().units.alt(fl).txt : "—", ""],
+      ["Freezing level", fl != null ? `${W().units.alt(fl).txt}${flTrend}` : "—", flTrend === " ↓" ? "good" : ""],
       ["Snow level (≈)", snowLevel != null ? W().units.alt(Math.round(snowLevel / 50) * 50).txt : "—", ""],
+      ...(chance != null ? [["Precip chance 24 h", `${chance}% <span class="dim">of 30 members</span>`, ""]] : []),
       ["Ridge wind 850 / 700", `${f(w850, (v) => speed(v).toFixed(0))} / ${f(w700, (v) => speed(v).toFixed(0))} ${speedUnit()}`, w700 != null && speed(w700) > (W().state.units === "kt" ? 25 : W().state.units === "ms" ? 13 : 45) ? "bad" : w700 != null && speed(w700) > (W().state.units === "kt" ? 15 : W().state.units === "ms" ? 8 : 28) ? "meh" : "good"],
       ["Wind loading", w850 != null && speed(w850) > (W().state.units === "kt" ? 15 : W().state.units === "ms" ? 8 : W().state.units === "mph" ? 17 : 28) ? `${lee} aspects loading` : "light", w850 != null && speed(w850) > 15 ? "meh" : "good"],
       ["Rain on snow", rainOnSnow ? "yes, wet loading" : "no", rainOnSnow ? "bad" : "good"],
@@ -725,7 +733,8 @@
     if (pt.avy === false) avyHtml = `<div class="avy"><div class="avy-head"><span>Avalanche forecast</span></div><div class="avy-note">No public forecast region covers this point (Avalanche Canada / avalanche.org).</div></div>`;
     else if (pt.avy) avyHtml = avyBlock(pt.avy, AVY_COLORS);
     else fetchAvy(pt);
-    $("#winter").innerHTML = `${resortHtml}${boardHtml}<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${avyHtml}
+    const powderHtml = powder ? `<div class="verdict good"><b>Powder morning shaping up</b><span class="dim">${W().units.snow(sn24we * slr / 10).txt} at ${slr}:1, ridge wind workable</span></div>` : "";
+    $("#winter").innerHTML = `${powderHtml}${resortHtml}${boardHtml}<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${avyHtml}
       <div class="note">Board: the model column interpolated to each height, so snow and rain are what falls THERE. Depth ratios come from the band temperature. Without a ski area nearby the bands are this point's elevation and 450/900 m above it — the gridpoint does not know what the terrain does. Snow depth is the model snowpack, not a station.</div>`;
     const link = $("#winter .resort-link");
     if (link) link.onclick = () => W().ov.selectResort(link.dataset.resort);
@@ -786,6 +795,10 @@
     let humidex = null;
     if (t != null && s.d2m && s.d2m[i] != null && t >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / s.d2m[i])); humidex = t + 0.5555 * (e - 10); }
     const snowLevel = fl != null ? Math.max(0, fl - 300) : null;
+    const j24o = (() => { let k = i; while (k + 1 < d.steps.length && d.steps[k + 1] <= d.steps[i] + 24) k++; return k; })();
+    const fl24o = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[j24o] : null;
+    const flTrend = fl != null && fl24o != null && Math.abs(fl24o - fl) > 150 ? (fl24o < fl ? " ↓" : " ↑") : "";
+    const chance = probMax(W().state.point, d, i, "prob_rain", 24);
     const ptype = rain != null && rain > 0.2 ? (t != null && t < 1 ? "snow" : t != null && t < 3 ? "rain/snow" : "rain") : "dry";
     const j1 = (() => { let k = i; while (k + 1 < d.steps.length && d.steps[k + 1] <= d.steps[i] + 24) k++; return k; })();
     const rain24 = sumWindow(s.tp6, d.steps, i, 24);
@@ -798,8 +811,9 @@
     const rows = [
       ["Precip now", `${ptype}${rain != null && rain > 0 ? ` · ${W().units.precip(rain).txt}/6h` : ""}`, ptype === "dry" ? "good" : ptype === "snow" ? "meh" : ""],
       ["Next 24 h rain", rain24 != null ? W().units.precip(rain24).txt : "—", rain24 == null ? "" : rain24 < 1 ? "good" : rain24 < 10 ? "meh" : "bad"],
-      ["Freezing level", fl != null ? W().units.alt(fl).txt : "—", ""],
+      ["Freezing level", fl != null ? `${W().units.alt(fl).txt}${flTrend}` : "—", flTrend === " ↓" ? "good" : ""],
       ["Snow level (≈)", snowLevel != null ? W().units.alt(Math.round(snowLevel / 50) * 50).txt : "—", ""],
+      ...(chance != null ? [["Precip chance 24 h", `${chance}% <span class="dim">of 30 members</span>`, ""]] : []),
       ["Wind / gust", w != null ? `${speed(w).toFixed(0)}${g != null ? ` · gusts ${speed(g).toFixed(0)}` : ""} ${speedUnit()}` : "—", w == null ? "" : speed(w) < calm ? "good" : "meh"],
       ["Max gust 24 h", gustMax24 != null ? `${speed(gustMax24).toFixed(0)} ${speedUnit()}` : "—", gustMax24 == null ? "" : speed(gustMax24) < gusty ? "good" : "bad"],
       ["Feels like", chill != null ? `${W().units.tempC(chill).v}° (wind chill)` : humidex != null ? `${W().units.tempC(humidex).v}° (humidex)` : t != null ? `${W().units.tempC(t).v}°` : "—", (chill != null && chill < -10) || (humidex != null && humidex > 35) ? "bad" : ""],
@@ -808,7 +822,35 @@
       ["UV index (model est.)", s.uvi && s.uvi[i] != null ? `${s.uvi[i].toFixed(0)} ${uvWord(s.uvi[i])}` : "—", s.uvi && s.uvi[i] != null ? (s.uvi[i] < 3 ? "good" : s.uvi[i] < 8 ? "meh" : "bad") : ""],
       ...(s.swh && s.swh[i] != null ? [["Sea state", `${W().units.alt(s.swh[i], 1).txt}${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` from ${Math.round(s.mwd[i])}°` : ""}`, s.swh[i] < 1 ? "good" : s.swh[i] < 2.5 ? "meh" : "bad"]] : []),
       ["Dry, calm hours (3 d)", dryH ? `${dryH} h of ${totH}` : "none", dryH > 36 ? "good" : dryH ? "meh" : "bad"],
+      // cloud base from the dew-point spread: the number a pilot or a
+      // view-hunter actually wants, ~125 m per °C of spread
+      ["Cloud base (≈)", t != null && s.d2m && s.d2m[i] != null && cloud != null && cloud > 0.15
+        ? W().units.alt(Math.round(125 * Math.max(0, t - (s.d2m[i] - K)) / 50) * 50).txt : "clear or n/a", ""],
+      ...(s.vis && s.vis[i] != null ? [["Visibility", `${(s.vis[i] / 1000).toFixed(s.vis[i] < 5000 ? 1 : 0)} km`, s.vis[i] > 9000 ? "good" : s.vis[i] > 3000 ? "meh" : "bad"]] : []),
     ];
+    const sun2 = sunTimes(W().state.point.lat, W().state.point.lon, W().validDate);
+    if (sun2 && sun2.rise) rows.push(["Sun", `${sun2.rise} → ${sun2.set}`, ""]);
+    // The verdict: the worst of the calls the rows already made, said once
+    // at the top the way a partner would say it at the trailhead.
+    const calls = rows.map((r) => r[2]).filter(Boolean);
+    const verdict = calls.includes("bad") ? ["Rough out there", "bad"]
+      : calls.includes("meh") ? ["Workable, watch it", "meh"] : ["Looks good", "good"];
+    // The best window in the next 48 h: dry, calm and in daylight for 3 h+.
+    // People do not plan around a table; they plan around "when".
+    let winHtml = "";
+    {
+      const okAt = (k) => (s.tp6 ? (s.tp6[k] || 0) : 0) < 0.2 && (!s.wind || s.wind[k] == null || speed(s.wind[k]) < calm);
+      let best = null, run = null;
+      for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + 48; k++) {
+        const hr = new Date(d.valid[k]).getHours();
+        if (okAt(k) && hr >= 7 && hr <= 20) { if (!run) run = { a: k, b: k }; else run.b = k; if (!best || (d.steps[run.b] - d.steps[run.a]) > (d.steps[best.b] - d.steps[best.a])) best = { ...run }; }
+        else run = null;
+      }
+      if (best && d.steps[best.b] - d.steps[best.a] >= 3) {
+        const fmt = (k) => new Date(d.valid[k]).toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }));
+        winHtml = `<div class="verdict-win"><i>best window</i><b>${fmt(best.a)} → ${fmt(best.b)}</b><span class="dim">dry · calm · daylight</span></div>`;
+      }
+    }
     const pt = W().state.point;
     let tidesHtml = "";
     if (pt && pt.tides && pt.tides.events && pt.tides.events.length) {
@@ -816,7 +858,8 @@
       tidesHtml = `<div class="obs"><div class="obs-head"><span>Tides · ${esc(t.station)} · ${W().units.dist(t.distance_km).txt}</span><span class="dim">${esc(t.source)} · ${esc(t.datum)}</span></div>
         <div class="tides">${t.events.slice(0, 6).map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${W().units.alt(e.height_m, 1).txt}</b><small>${W().units.dateTime(e.time, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div></div>`;
     }
-    $("#outdoors").innerHTML = `<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${tidesHtml}${airHtml(pt || {})}
+    $("#outdoors").innerHTML = `<div class="verdict ${verdict[1]}"><b>${verdict[0]}</b>${winHtml}</div>
+      <div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${tidesHtml}${airHtml(pt || {})}
       <div class="note">Snow level ≈ freezing level − ${W().units.alt(300).txt}. Gusts come from models that ship one. Terrain is unresolved at 0.25°.</div>`;
   }
 

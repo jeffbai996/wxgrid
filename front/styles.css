@@ -411,10 +411,23 @@ table.aloft { width: 100%; border-collapse: collapse; font: 500 12px var(--font-
 table.aloft th { text-align: left; font: 700 10.5px var(--font-display); color: var(--dim); letter-spacing: .04em; text-transform: uppercase; padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line); }
 table.aloft td { padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 table.aloft td.lvl { font: 600 12px var(--font-display); color: var(--fg); }
+table.aloft td.lvl i.u { font: 600 9px var(--font-display); font-style: normal; color: var(--dim); margin-left: 1px; }
 table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-left: 1.5px solid currentColor; border-top: 1.5px solid currentColor; margin-right: 5px; transform-origin: center; }
 /* readings as small tiles: label over value, two per row, so the eye can scan
    down the values instead of reading a list */
 /* readings as small tiles: label over value, so the eye scans the values */
+/* the pane's one-line opinion, said before the table backs it up */
+.verdict { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 10px 0 4px;
+  padding: 9px 12px 10px; border-radius: 12px; border-left: 3px solid var(--line-strong);
+  background: rgba(127,127,127,.06); }
+.verdict b { font: 700 14.5px var(--font-display); color: var(--fg); letter-spacing: -.01em; }
+.verdict.good { border-left-color: var(--good); } .verdict.good b { color: var(--good); }
+.verdict.meh { border-left-color: var(--warm); } .verdict.meh b { color: var(--warm); }
+.verdict.bad { border-left-color: var(--bad); } .verdict.bad b { color: var(--bad); }
+.verdict .dim { font-size: 11px; }
+.verdict-win { display: inline-flex; align-items: baseline; gap: 7px; }
+.verdict-win i { font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.verdict-win b { font: 650 12.5px var(--font-num); color: var(--fg); }
 .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin: 9px 0 6px; }
 .kv .stat { display: flex; flex-direction: column; gap: 3px; padding: 7px 10px 8px; border-radius: 10px;
   background: rgba(127,127,127,.07); box-shadow: inset 0 0 0 1px rgba(127,127,127,.06); }
