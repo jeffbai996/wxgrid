@@ -152,6 +152,9 @@ RAMPS: dict[str, dict] = {
     "dt24": {"units": "°C/24h", "lo": -15, "hi": 15, "stops": [
         (-15, (40, 60, 190)), (-8, (60, 130, 220)), (-3, (150, 195, 230)), (0, (235, 235, 235)),
         (3, (240, 190, 140)), (8, (235, 110, 60)), (15, (180, 20, 50))]},
+    "gfactor": {"units": "m/s", "lo": 0, "hi": 15, "stops": [
+        (0, (40, 60, 90)), (3, (60, 150, 190)), (6, (120, 210, 130)), (9, (240, 210, 60)),
+        (12, (245, 130, 40)), (15, (210, 40, 60))]},
     "prob_gust": {"units": "%", "lo": 0, "hi": 100, "stops": [
         (0, (40, 35, 60)), (20, (120, 80, 170)), (40, (190, 80, 170)), (60, (240, 100, 110)),
         (80, (250, 150, 60)), (100, (250, 220, 60))]},
@@ -181,6 +184,7 @@ DISPLAY = {
     "feels": lambda k: k - 273.15,
     "prob_rain": lambda pct: pct,
     "prob_gust": lambda pct: pct,
+    "gfactor": lambda ms: ms,
     "vis": lambda m: m / 1000.0,
     "sst": lambda k: k - 273.15,
     "ptype": lambda c: c,
@@ -254,7 +258,7 @@ _LUTS = {k: _lut(v) for k, v in RAMPS.items()}
 
 IMAGE_FORMATS = {"png": "image/png", "webp": "image/webp"}
 # Layers whose alpha varies with the value, so they cannot be palette images.
-_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500", "ptend", "dt24")
+_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500", "ptend", "dt24", "gfactor")
 
 
 def pick_format(accept: str | None) -> str:
@@ -339,6 +343,8 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: st
             a = np.clip(x / 300.0, 0, 1)            # nothing to see under ~300 J/kg
         elif layer in ("prob_rain", "prob_gust"):
             a = np.clip(x / 30.0, 0, 1)             # a 5 % chance is the map, not a colour
+        elif layer == "gfactor":
+            a = np.clip((x - 1.5) / 3.0, 0, 1)      # steady flow is the map
         elif layer == "vis":
             a = np.clip((12.0 - x) / 8.0, 0, 1)     # good visibility is the map itself
         elif layer == "sst":

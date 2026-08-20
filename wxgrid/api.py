@@ -36,7 +36,7 @@ log = logging.getLogger("wxgrid.api")
 app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=2048)   # wind JSON shrinks ~5x
 
-LAYERS = ("wind", "temp", "feels", "wbt", "dt24", "gust", "msl", "ptend", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500")
+LAYERS = ("wind", "temp", "feels", "wbt", "dt24", "gust", "msl", "ptend", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "prob_rain", "prob_gust", "gfactor", "vis", "sst", "ptype", "vort500")
 LEVEL_LAYERS = ("wind", "temp")
 _ALIAS = {"t2m": "temp", "snow": "sf6", "snowdepth": "sd_cm", "dewpt": "d2m", "swh": "waves", "mwp": "wperiod"}
 # Layers computed from several store variables at request time.
@@ -45,7 +45,7 @@ _DERIVED = {"frz": tuple(f"{p}_{l}" for l in LEVELS for p in ("t", "gh")),
             "waves": ("swh",), "wperiod": ("mwp",), "uvi": ("tcc",),
             "feels": ("t2m", "u10", "v10", "d2m"),
             "ptype": ("tp6", "t2m"), "vort500": ("u_500", "v_500"),
-            "ptend": ("msl",), "cbase": ("t2m", "d2m"),
+            "ptend": ("msl",), "cbase": ("t2m", "d2m"), "gfactor": ("gust", "u10", "v10"),
             "wbt": ("t2m", "d2m"), "dt24": ("t2m",)}
 # Accumulation windows (hours) for the derived precip/snow layers.
 _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72": ("sf6", 72)}
@@ -167,6 +167,11 @@ def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndar
         return _ptype_grid(r, step)
     if layer == "vort500":
         return _vort500_grid(r, step)
+    if layer == "gfactor":
+        # gust minus mean wind: where the air is churning. Flat flow reads
+        # near zero even in a gale; convective mixing and rotor read high.
+        mean = render.wind_speed(r.slab("u10", step), r.slab("v10", step))
+        return np.clip(r.slab("gust", step) - mean, 0, None).astype(np.float32)
     if layer == "ptend":
         # pressure change over the PREVIOUS window, normalised to a 3 h rate —
         # the falling-glass signal a barometer gives, on the whole map

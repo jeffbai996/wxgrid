@@ -14,7 +14,7 @@
   const LAYERS = ["wind", "temp", "gust", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "msl", "d2m", "rh", "frz", "cape", "waves", "wperiod"];
   const FAMILIES = [
     { key: "wind", label: "Wind", layers: ["wind"] },
-    { key: "gust", label: "Gusts", layers: ["gust"] },
+    { key: "gust", label: "Gusts", layers: ["gust", "gfactor"], variants: { gust: "Peak", gfactor: "Factor" } },
     { key: "temp", label: "Temp", layers: ["temp", "feels", "wbt", "dt24"], variants: { temp: "Air", feels: "Feels", wbt: "Wet-bulb", dt24: "Δ" } },
     { key: "rain", label: "Rain", layers: ["tp6", "tp24", "tp72"], variants: { tp6: "6 h", tp24: "24 h", tp72: "72 h" }, section: "Precipitation" },
     { key: "ptype", label: "Precip type", layers: ["ptype"] },
@@ -35,8 +35,8 @@
     { key: "chance", label: "Chance", layers: ["prob_rain", "prob_gust"], variants: { prob_rain: "Rain", prob_gust: "Gale" }, section: "Ensemble" },
   ];
   const familyOf = (layer) => FAMILIES.find((f) => f.layers.includes(layer)) || FAMILIES[0];
-  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", feels: "Feels like", prob_rain: "Rain chance", prob_gust: "Gale chance", vis: "Visibility", sst: "Sea temp", ptype: "Precip type", vort500: "Vorticity 500", ptend: "Pressure change", cbase: "Cloud base", wbt: "Wet-bulb", dt24: "Temp change 24 h", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", uvi: "UV index" };
-  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, uvi: 0.8, feels: 0.78, prob_rain: 0.82, prob_gust: 0.82, vis: 0.85, sst: 0.8, ptype: 0.85, vort500: 0.75, ptend: 0.8, cbase: 0.75, wbt: 0.78, dt24: 0.8 };
+  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", feels: "Feels like", prob_rain: "Rain chance", prob_gust: "Gale chance", gfactor: "Gust factor", vis: "Visibility", sst: "Sea temp", ptype: "Precip type", vort500: "Vorticity 500", ptend: "Pressure change", cbase: "Cloud base", wbt: "Wet-bulb", dt24: "Temp change 24 h", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", uvi: "UV index" };
+  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, uvi: 0.8, feels: 0.78, prob_rain: 0.82, prob_gust: 0.82, vis: 0.85, sst: 0.8, ptype: 0.85, gfactor: 0.78, vort500: 0.75, ptend: 0.8, cbase: 0.75, wbt: 0.78, dt24: 0.8 };
   const LAYER_ICON = {
     iso: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15c3-4 6-4 9 0s6 4 9 0"/><path d="M3 9c3-4 6-4 9 0s6 4 9 0"/></svg>',
     wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/></svg>',
@@ -481,10 +481,10 @@
     // reads as a choice; a bare "06Z" read as decoration (Jeff 2026-08-19).
     rs.innerHTML = modelEntry().runs.map((r, k) => {
       const d = new Date(r.run + ":00Z");
-      const base = narrow ? r.run.slice(8).replace("T", " ") + "Z"
-        : `${d.toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" })} ${r.run.slice(11)}Z`;
-      const age = k === 0 ? "latest" : `${Math.round((new Date(modelEntry().runs[0].run + ":00Z") - d) / 3600e3)} h older`;
-      return `<option value="${r.run}">${base}${narrow ? "" : ` · ${age}`}</option>`;
+      const hrs = Math.round((new Date(modelEntry().runs[0].run + ":00Z") - d) / 3600e3);
+      if (narrow) return `<option value="${r.run}">${r.run.slice(11)}Z ${k === 0 ? "· latest" : `· −${hrs} h`}</option>`;
+      const base = `${d.toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" })} ${r.run.slice(11)}Z`;
+      return `<option value="${r.run}">${base} · ${k === 0 ? "latest" : `${hrs} h older`}</option>`;
     }).join("");
     rs.value = state.run;
     rs.title = "Which forecast run you are reading. The model recomputes every 6-12 h; pick an older run and scrub the same hours to see how the forecast moved.";
@@ -948,7 +948,12 @@
     });
     tapeGrip.addEventListener("pointerdown", (e) => {
       e.preventDefault(); e.stopPropagation();
-      tapeDrag = { id: e.pointerId, y: e.clientY, height: tb.getBoundingClientRect().height, want: 0, from: tapeState };
+      const h0 = tb.getBoundingClientRect().height;
+      // want starts AT the height: a pure tap moves nothing, and |want - h|
+      // must then be zero — it was initialised to 0, so a tap measured as a
+      // full-height "drag" and the grip could minimise but never maximise
+      // (Jeff 2026-08-20).
+      tapeDrag = { id: e.pointerId, y: e.clientY, height: h0, want: h0, from: tapeState };
       tapeGrip.setPointerCapture(e.pointerId); tb.classList.add("is-resizing"); document.body.classList.add("resizing-tape");
     });
     tapeGrip.addEventListener("pointermove", (e) => { if (tapeDrag && e.pointerId === tapeDrag.id) trackTape(e.clientY); });
