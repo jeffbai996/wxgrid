@@ -597,6 +597,24 @@ def _isoline_geojson(src: np.ndarray, interval: float, disp, unit: str) -> dict:
             label = f"{lv:g}°" if unit.startswith("°") else f"{lv:g}"
             feats.append({"type": "Feature", "properties": {"value": float(lv), "label": label},
                           "geometry": {"type": "LineString", "coordinates": coords}})
+    # Pressure charts mark their centres: an H or L where the smoothed field
+    # is the extremum of its ~15° neighbourhood AND far enough from 1013 to
+    # be a system, not a col (same thresholds as the discussion writer).
+    if unit == "hPa":
+        from scipy.ndimage import maximum_filter, minimum_filter
+        win = max(9, int(round(15.0 / (360.0 / nx))) | 1)
+        zc = np.where(finite, z, 1013.0)
+        for kind, mask in (
+            ("L", (zc == minimum_filter(zc, size=win, mode=("nearest", "wrap"))) & (zc <= 1011.0)),
+            ("H", (zc == maximum_filter(zc, size=win, mode=("nearest", "wrap"))) & (zc >= 1017.0)),
+        ):
+            ii, jj = np.nonzero(mask & finite)
+            for i, j in zip(ii.tolist(), jj.tolist()):
+                if abs(lats[i]) > 80.0:
+                    continue                      # polar plateaus are not systems
+                feats.append({"type": "Feature",
+                              "properties": {"kind": kind, "label": kind, "value": round(float(z[i, j]))},
+                              "geometry": {"type": "Point", "coordinates": [round(float(lons[j]), 3), round(float(lats[i]), 3)]}})
     return {"type": "FeatureCollection", "unit": unit, "interval": interval,
             "grid_degrees": round(360.0 / nx, 3), "features": feats}
 
@@ -614,7 +632,7 @@ def api_isolines(model: str, run: str, step: int, var: str, level: int | None = 
         raise HTTPException(404, "step not in run")
     step = _level_step(r, step, level is not None or var in ("frz", "gh_500"))
     tag = f"{var}{'' if level is None else '-' + str(level)}"
-    path = CACHE_DIR / model / r.rid / f"{step:03d}-iso-v2-{tag}.json"
+    path = CACHE_DIR / model / r.rid / f"{step:03d}-iso-v3-{tag}.json"
     if not path.exists():
         interval, disp, unit = ISOLINE_SPECS[var]
         if var == "temp":

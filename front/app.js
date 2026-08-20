@@ -424,14 +424,23 @@
     const place = () => {
       const active = el.querySelector("button.on");
       if (!active) { cursor.style.opacity = "0"; return; }
-      cursor.style.opacity = "1";
       // Rects, not offsetWidth/offsetLeft: those are rounded to integers,
       // and on a page-zoomed layout the real boxes are fractional — the
       // rounding drift put the plate half a button off (Jeff 2026-08-20).
       const br = active.getBoundingClientRect(), sr = el.getBoundingClientRect();
+      // Measured while hidden (the tucked topbar folds #models away): every
+      // rect is zero and placing now bakes a ghost. The observer below
+      // replays the moment the seg has a size again.
+      if (!sr.width) return;
+      cursor.style.opacity = "1";
       cursor.style.width = `${br.width}px`;
       cursor.style.transform = `translateX(${br.left - sr.left + el.scrollLeft}px)`;
     };
+    el._segPlace = place;
+    if (!el._segRo && window.ResizeObserver) {
+      el._segRo = new ResizeObserver(() => el._segPlace && el._segPlace());
+      el._segRo.observe(el);
+    }
     if (prior && prior.width) {
       const box = el.getBoundingClientRect();
       cursor.style.width = `${prior.width}px`;
@@ -920,14 +929,19 @@
     const topHeight = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
     const tapeBounds = () => ({ min: 118, max: Math.max(118, Math.min(480, Math.round(innerHeight * 0.58), innerHeight - topHeight() - 180)) });
     let tapeHeight = Number(localStorage.getItem("wxgrid.tapeHeight")) || null;
+    // The tallest height worth having: past the content there is only void —
+    // the stranded day-row screenshots were an over-dragged tape with its
+    // table stretched into the gap (Jeff 2026-08-20). Phones cap at content;
+    // desktop keeps the stretchy over-drag it always had.
+    const tapeContentMax = () => {
+      const t = tb.querySelector(".tape");
+      if (!t || !t.scrollHeight) return Infinity;
+      return Math.ceil(tb.getBoundingClientRect().height - t.clientHeight + t.scrollHeight) + 1;
+    };
     const setTapeHeight = (height, persist = false) => {
-      // Phones never get a pixel height: a free-form "half open" tape is
-      // taller than its content, and the table bottom-anchors into the void
-      // with the day row stranded mid-panel (Jeff 2026-08-20, two shots).
-      // The grip on a phone only walks the states — see trackTape.
-      if (innerWidth <= 820) { tb.style.height = ""; tb.classList.remove("user-sized"); return; }
       const bounds = tapeBounds();
-      tapeHeight = clamp(Math.round(height), bounds.min, bounds.max);
+      const maxH = innerWidth <= 820 ? Math.min(bounds.max, tapeContentMax()) : bounds.max;
+      tapeHeight = clamp(Math.round(height), bounds.min, Math.max(bounds.min, maxH));
       tb.style.height = `${tapeHeight}px`; tb.classList.add("user-sized");
       tapeGrip.setAttribute("aria-valuemin", bounds.min); tapeGrip.setAttribute("aria-valuemax", bounds.max); tapeGrip.setAttribute("aria-valuenow", tapeHeight);
       if (persist) localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
@@ -947,14 +961,6 @@
       if (!tapeDrag) return;
       tapeDrag.want = tapeDrag.height + tapeDrag.y - clientY;
       const min = tapeBounds().min;
-      if (innerWidth <= 820) {
-        // Snap-only on a phone: up means full, down walks mini then away.
-        // No intermediate heights exist to strand the layout in.
-        if (tapeDrag.want >= min) { if (tapeState !== "full") setTapeState("full", false); }
-        else if (tapeState === "full" && tapeDrag.want < min - 40) setTapeState("mini", false);
-        else if (tapeState === "mini" && tapeDrag.want < min - 110) setTapeState("away", false);
-        return;
-      }
       if (tapeDrag.want >= min) { if (tapeState !== "full") setTapeState("full", false); setTapeHeight(tapeDrag.want); }
       else if (tapeState === "full" && tapeDrag.want < min - 40) setTapeState("mini", false);
       else if (tapeState === "mini" && tapeDrag.want < min - 110) setTapeState("away", false);
@@ -977,7 +983,7 @@
       restoreSheetHeight();                    // the card re-budgets around the new tape
       if (tap) setTapeState(tapeState === "full" ? "mini" : "full");     // a tap on the grip cycles
       else localStorage.setItem("wxgrid.tapeState", tapeState);
-      if (tapeHeight && tapeState === "full" && innerWidth > 820) localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
+      if (tapeHeight && tapeState === "full") localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
       restorePointPanelSize();
     };
     tapeGrip.addEventListener("pointerup", finishTape); tapeGrip.addEventListener("pointercancel", finishTape);
@@ -1264,7 +1270,7 @@
       state.point.data = d;
       renderPoint(); WX.tape.renderTape();
       const rd = new Date(d.run + ":00Z");
-      $("#point-foot").textContent = `${modelEntry().short} run ${rd.toLocaleString(undefined, { day: "numeric", month: "short", timeZone: "UTC" })} ${String(rd.getUTCHours()).padStart(2, "0")}Z · 0.25° gridpoint · ${modelEntry().attribution.replace("ECMWF open data", "ECMWF").replace(" (AIFS)", "").replace("NOAA NCEP GFS via NOMADS", "NOAA")}`;
+      $("#point-foot").textContent = `${modelEntry().short} run ${rd.toLocaleString(undefined, { day: "numeric", month: "short", timeZone: "UTC" })} ${String(rd.getUTCHours()).padStart(2, "0")}Z · 0.25° gridpoint · ${modelEntry().attribution.replace("ECMWF open data", "ECMWF").replace(" (AIFS)", "").replace("NOAA NCEP GFS via NOMADS", "National Weather Service").replace("NOAA NCEP AI-GFS (GraphCast lineage) via AWS Open Data", "National Weather Service").replace("NOAA NCEP GEFS ensemble mean via NOMADS", "National Weather Service")}`;
       // A shorter model can hand the daily outlook to AI-GFS after its own
       // final valid time. Keep the primary series untouched: only the day
       // strip uses this continuation, and labels the change of model plainly.
