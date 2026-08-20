@@ -566,9 +566,11 @@ table.bandtape .nil { color: var(--line-strong); }
     bottom: calc(var(--tb-h) + 10px + env(safe-area-inset-bottom));
     max-height: min(56dvh, calc(100dvh - var(--top-h) - var(--tb-h) - 40px));
     transition: bottom .22s cubic-bezier(.4,0,.2,1), max-height .22s cubic-bezier(.4,0,.2,1); }
-  #point.sheet-full { bottom: calc(6px + env(safe-area-inset-bottom)); max-height: calc(100dvh - var(--top-h) - 20px); }
+  /* max(--top-h, 48px): a stale or mid-transition topbar measurement must
+     never let the card climb past the screen top and take its × with it */
+  #point.sheet-full { bottom: calc(6px + env(safe-area-inset-bottom)); max-height: calc(100dvh - max(var(--top-h), 48px) - 20px - env(safe-area-inset-top)); }
   #point.sheet-drag { transition: none; }
-  #point.sheet-sized { max-height: calc(100dvh - var(--top-h) - 18px); }
+  #point.sheet-sized { max-height: calc(100dvh - max(var(--top-h), 48px) - 18px - env(safe-area-inset-top)); }
   .sheet-grip { display: block; padding: 2px 0 6px; margin: -4px 0 0; touch-action: none; cursor: grab; }
   /* peek: the map stays usable, the card keeps only its name and hero. The
      tabs and everything under the hero go, so nothing half-renders. */

@@ -780,6 +780,16 @@
   // magnification, not a new layout viewport; re-clamping the panels against
   // it makes the card and tape jump under the user's fingers.
   const pageIsPinchZoomed = () => window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.02;
+  // A guard that only SKIPS during a pinch leaves everything stale when the
+  // pinch never quite returns to 1.0 (iOS parks at 1.03 happily) — that is
+  // how the card grew past the screen top and lost its close button. Defer
+  // instead: run now if unpinched, or the moment the pinch settles.
+  let unpinchWait = 0;
+  const whenUnpinched = (fn) => {
+    if (!pageIsPinchZoomed()) { fn(); return; }
+    clearInterval(unpinchWait);
+    unpinchWait = setInterval(() => { if (!pageIsPinchZoomed()) { clearInterval(unpinchWait); fn(); } }, 400);
+  };
 
   function wireSheet() {
     const grip = $(".sheet-grip"), card = $("#point");
@@ -790,7 +800,14 @@
     // visualViewport is what the reader can actually see; innerHeight on iOS
     // still counts the strip behind Safari's toolbars, and a card sized to that
     // hides its own header — and its close button — off the top.
-    const viewH = () => Math.round((window.visualViewport && !pageIsPinchZoomed() && window.visualViewport.height) || innerHeight);
+    const viewH = () => {
+      // While pinch-zoomed, visualViewport.height is the MAGNIFIED slice, not
+      // the layout viewport — clamping to it sized cards to a fiction. Use
+      // height×scale (≈ layout height) so the clamp stays honest mid-pinch.
+      const vv = window.visualViewport;
+      if (!vv) return innerHeight;
+      return Math.round(Math.min(vv.height * (vv.scale || 1), innerHeight || 1e9));
+    };
     const bounds = () => {
       const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
       // min is the PEEK: name, temperature and the sentence, map above it
@@ -840,8 +857,8 @@
     };
     grip.addEventListener("pointerup", () => end(false));
     grip.addEventListener("pointercancel", () => end(true));
-    addEventListener("resize", () => { if (!pageIsPinchZoomed()) restoreSheetHeight(); });
-    if (window.visualViewport) window.visualViewport.addEventListener("resize", () => { if (!pageIsPinchZoomed()) restoreSheetHeight(); });
+    addEventListener("resize", () => whenUnpinched(restoreSheetHeight));
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", () => whenUnpinched(restoreSheetHeight));
   }
 
   // Persisted panel sizing. Pointer capture keeps each drag stable even when
@@ -988,7 +1005,7 @@
         localStorage.setItem("wxgrid.railHeight", railH);
       });
     }
-    addEventListener("resize", () => { if (pageIsPinchZoomed()) return; if (tapeHeight) setTapeHeight(tapeHeight); restorePointPanelSize(); });
+    addEventListener("resize", () => whenUnpinched(() => { if (tapeHeight) setTapeHeight(tapeHeight); restorePointPanelSize(); }));
   }
 
   // Size the strip's buttons so the whole set fits between the top bar and the
