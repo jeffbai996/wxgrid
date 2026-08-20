@@ -635,7 +635,10 @@
     const days = [];
     buckets.forEach((b) => { const last = days[days.length - 1];
       if (last && last.day === b.day) last.span++; else days.push({ day: b.day, date: b.date, span: 1 }); });
-    const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day">${dy.date.toLocaleDateString(undefined, U.timeOpts({ weekday: "short", day: "numeric" }))}</th>`).join("");
+    // A day that holds a single slot (the board's ragged edge) gets only its
+    // weekday: "Wed 26" over one narrow column forces that column wide and
+    // its cells lay out unlike every other column on the board.
+    const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day">${dy.date.toLocaleDateString(undefined, U.timeOpts(dy.span === 1 ? { weekday: "short" } : { weekday: "short", day: "numeric" }))}</th>`).join("");
     const slotRow = buckets.map((b) => `<th class="slot ${b.slot === "night" ? "nite" : ""}">${b.slot}</th>`).join("");
     const total = (arr, ix) => ix.reduce((a, k) => a + ((arr && arr[k]) || 0), 0);
     const pick = (arr, ix, fn) => { const v = ix.map((k) => arr && arr[k]).filter((x) => x != null); return v.length ? fn(v) : null; };
