@@ -112,8 +112,14 @@
     if (t0 != null) {
       const sky = cc == null ? "" : cc > 0.85 ? "Overcast" : cc > 0.6 ? "Mostly cloudy" : cc > 0.3 ? "Partly cloudy" : "Clear";
       const feels = feelsAt(i), gap = Math.round(feels) - Math.round(t0 - 273.15);
-      const felt = Math.abs(gap) >= 2 ? `, feeling like ${U.tempC(feels).txt}` : "";
-      lead.push(sky ? `${sky} and ${U.temp(t0).txt}${felt}.` : `${U.temp(t0).txt} right now${felt}.`);
+      const felt = Math.abs(gap) >= 2 ? `, feels like ${U.tempC(feels).txt}` : "";
+      // the character word a person would use before any number: muggy is the
+      // dew point talking, crisp is a cold clear morning
+      const tc = t0 - 273.15, dpc = dp != null ? dp - 273.15 : null;
+      const character = dpc != null && dpc >= 18 && tc >= 22 ? "muggy"
+        : tc <= 0 ? "cold" : tc <= 6 && (cc == null || cc < 0.4) ? "crisp"
+        : tc >= 30 ? "hot" : "";
+      lead.push(sky ? `${sky}${character ? ` and ${character}` : ""} at ${U.temp(t0).txt}${felt}.` : `${U.temp(t0).txt} right now${felt}.`);
     }
 
     // Precipitation, and — when the wind belongs to the same weather — the
@@ -131,12 +137,12 @@
         const snow = snowAt(i) > rainAt(i), what = snow ? "Snow" : "Rain";
         const withWind = windy && peak[1] <= k ? `, ${gustPhrase()}` : "";
         if (withWind) windSaid = true;
-        rest.push(k > end ? `${what} all the way through${much}${withWind}.` : `${what} eases ${when(k)}${much}${withWind}.`);
+        rest.push(k > end ? `${what} right through${much}${withWind}.` : `${what} easing ${when(k)}${much}${withWind}.`);
       } else if (wetSteps.length) {
         const first = wetSteps[0], snow = snowAt(first) > rainAt(first);
         const scattered = wetSteps.length <= Math.max(2, Math.ceil(idx.length * 0.35));
-        rest.push(scattered ? `Dry for now, ${snow ? "a little snow" : "showers"} ${when(first)}.`
-                            : `Dry until ${when(first)}, then ${snow ? "snow" : "rain"}${much}.`);
+        rest.push(scattered ? `Mostly dry, ${snow ? "a little snow" : "a few showers"} ${when(first)}.`
+                            : `Dry until ${when(first)}, then ${snow ? "snow moves in" : "rain moves in"}${much}.`);
       } else if (damp.length) {
         rest.push(`Dry, give or take ${snowAt(damp[0]) > rainAt(damp[0]) ? "a flurry" : "a stray shower"}.`);
       } else {
@@ -155,15 +161,17 @@
         const hi = vals.reduce((a, b) => (b[0] > a[0] ? b : a)), lo = vals.reduce((a, b) => (b[0] < a[0] ? b : a));
         const freezes = lo[0] - 273.15 <= 0 && t0 - 273.15 > 0;
         if (freezes) rest.push(`Below freezing ${when(lo[1])}.`);
-        else if (hi[0] - t0 > 3) rest.push(`Warming to ${U.temp(hi[0]).txt} ${when(hi[1])}.`);
-        else if (t0 - lo[0] > 3) rest.push(`Cooling to ${U.temp(lo[0]).txt} ${when(lo[1])}.`);
+        else if (hi[0] - t0 > 3) {
+          const hic = hi[0] - 273.15;
+          rest.push(`${hic >= 30 ? "Hot" : hic >= 24 ? "Warming up" : "Milder"} ${when(hi[1])}, up to ${U.temp(hi[0]).txt}.`);
+        } else if (t0 - lo[0] > 3) rest.push(`Cooling to ${U.temp(lo[0]).txt} ${when(lo[1])}.`);
       }
     }
 
     // Two warnings nothing else carries.
-    if (dp != null && t0 != null && t0 - dp < 1 && (w0 == null || w0 * 3.6 < 12)) rest.push("Air is at its dew point. Expect fog.");
+    if (dp != null && t0 != null && t0 - dp < 1 && (w0 == null || w0 * 3.6 < 12)) rest.push("Air is sitting at its dew point, so expect fog.");
     const uvMax = Math.max(...idx.map((k) => val("uvi", k) ?? -1));
-    if (uvMax >= 8) rest.push(`UV reaches ${Math.round(uvMax)} today — burn weather.`);
+    if (uvMax >= 8) rest.push(`Strong sun, UV ${Math.round(uvMax)} by midday.`);
 
     return [...lead, ...rest.slice(0, 3)].join(" ");
   }
