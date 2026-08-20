@@ -921,6 +921,11 @@
     const tapeBounds = () => ({ min: 118, max: Math.max(118, Math.min(480, Math.round(innerHeight * 0.58), innerHeight - topHeight() - 180)) });
     let tapeHeight = Number(localStorage.getItem("wxgrid.tapeHeight")) || null;
     const setTapeHeight = (height, persist = false) => {
+      // Phones never get a pixel height: a free-form "half open" tape is
+      // taller than its content, and the table bottom-anchors into the void
+      // with the day row stranded mid-panel (Jeff 2026-08-20, two shots).
+      // The grip on a phone only walks the states — see trackTape.
+      if (innerWidth <= 820) { tb.style.height = ""; tb.classList.remove("user-sized"); return; }
       const bounds = tapeBounds();
       tapeHeight = clamp(Math.round(height), bounds.min, bounds.max);
       tb.style.height = `${tapeHeight}px`; tb.classList.add("user-sized");
@@ -942,6 +947,14 @@
       if (!tapeDrag) return;
       tapeDrag.want = tapeDrag.height + tapeDrag.y - clientY;
       const min = tapeBounds().min;
+      if (innerWidth <= 820) {
+        // Snap-only on a phone: up means full, down walks mini then away.
+        // No intermediate heights exist to strand the layout in.
+        if (tapeDrag.want >= min) { if (tapeState !== "full") setTapeState("full", false); }
+        else if (tapeState === "full" && tapeDrag.want < min - 40) setTapeState("mini", false);
+        else if (tapeState === "mini" && tapeDrag.want < min - 110) setTapeState("away", false);
+        return;
+      }
       if (tapeDrag.want >= min) { if (tapeState !== "full") setTapeState("full", false); setTapeHeight(tapeDrag.want); }
       else if (tapeState === "full" && tapeDrag.want < min - 40) setTapeState("mini", false);
       else if (tapeState === "mini" && tapeDrag.want < min - 110) setTapeState("away", false);
@@ -964,7 +977,7 @@
       restoreSheetHeight();                    // the card re-budgets around the new tape
       if (tap) setTapeState(tapeState === "full" ? "mini" : "full");     // a tap on the grip cycles
       else localStorage.setItem("wxgrid.tapeState", tapeState);
-      if (tapeHeight && tapeState === "full") localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
+      if (tapeHeight && tapeState === "full" && innerWidth > 820) localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
       restorePointPanelSize();
     };
     tapeGrip.addEventListener("pointerup", finishTape); tapeGrip.addEventListener("pointercancel", finishTape);
