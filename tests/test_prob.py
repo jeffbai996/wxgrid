@@ -45,3 +45,16 @@ def test_ingest_probability_counts_members_into_percent(monkeypatch):
     assert "prob_gust" in g.attrs["variables"]
     # resume: nothing left to do
     assert prob.ingest_probability("2026-01-03T00", STORE_DIR, workers=2, members=4)["steps"] == 0
+
+
+def test_calibration_archive_keeps_a_coarse_durable_copy(tmp_path):
+    import zarr
+    from wxgrid.store import run_path
+    g = zarr.open_group(run_path("gefs", "2026-01-03T00", STORE_DIR), mode="r")
+    out = prob.archive_for_calibration("2026-01-03T00", g, list(g.attrs["steps"]), out_dir=tmp_path)
+    data = np.load(out)
+    assert list(data["steps"]) == [6, 12]
+    assert data["prob_rain"].shape == (2, (721 + 3) // 4, 1440 // 4)
+    assert data["prob_rain"][0].max() == 75.0
+    # idempotent: the same run does not re-archive
+    assert prob.archive_for_calibration("2026-01-03T00", g, list(g.attrs["steps"]), out_dir=tmp_path) == out

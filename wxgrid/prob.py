@@ -154,4 +154,40 @@ def ingest_probability(rid: str, store_root: Path = STORE_DIR, workers: int = 8,
             log.info("gefs prob f%03d: %d members counted", step, n)
     have = list(g.attrs.get("variables", []))
     g.attrs["variables"] = have + [v for v, _, _ in FIELDS if v not in have]
+    try:
+        archive_for_calibration(rid, g, steps)
+    except Exception:
+        log.exception("gefs prob %s: calibration archive failed (counts still stored)", rid)
     return {"run": rid, "steps": done_steps}
+
+
+def archive_for_calibration(rid: str, g, steps: list[int],
+                            out_dir: Path | None = None) -> Path:
+    """Keep what verification will need after the store prunes this run.
+
+    The store holds two runs; calibration ("when we said 70 %, how often did
+    it rain?") needs months. So each counted run leaves behind a coarse copy —
+    every 4th gridpoint, ~1° — of the probabilities and the precipitation
+    buckets, a few hundred KB per run. The joining and the scoring can be
+    designed later; what cannot be recovered later is data never kept.
+    """
+    from wxgrid.config import DATA_DIR
+    out_dir = out_dir or (DATA_DIR / "calib" / "gefs")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{rid}.npz"
+    if path.exists():
+        return path
+    kept = [k for k, h in enumerate(steps) if h and h % PROB_STEP == 0]
+    arrays: dict[str, np.ndarray] = {"steps": np.array([steps[k] for k in kept], dtype=np.int16)}
+    for var, _, _ in FIELDS:
+        arrays[var] = np.stack([np.asarray(g[var][k][::4, ::4], dtype=np.float32) for k in kept])
+    if "tp6" in g:
+        arrays["tp6"] = np.stack([np.asarray(g["tp6"][k][::4, ::4], dtype=np.float32) for k in kept])
+    # np.savez appends ".npz" to any name that lacks it, so the temp name
+    # must already end that way or the rename source will not exist
+    tmp = out_dir / f".{rid}.tmp.npz"
+    np.savez_compressed(tmp, **arrays)
+    tmp.rename(path)
+    log.info("gefs %s calibration archive: %d steps → %s (%.1f MB)",
+             rid, len(kept), path.name, path.stat().st_size / 1e6)
+    return path
