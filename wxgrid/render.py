@@ -124,6 +124,20 @@ RAMPS: dict[str, dict] = {
     "prob_rain": {"units": "%", "lo": 0, "hi": 100, "stops": [
         (0, (30, 40, 70)), (20, (45, 90, 160)), (40, (35, 130, 210)), (60, (30, 175, 190)),
         (80, (90, 210, 120)), (100, (240, 220, 70))]},
+    "vis": {"units": "km", "lo": 0, "hi": 20, "stops": [
+        (0, (150, 30, 120)), (0.4, (200, 40, 60)), (1, (240, 120, 40)), (3, (240, 210, 60)),
+        (6, (140, 200, 90)), (10, (70, 160, 190)), (20, (40, 70, 120))]},
+    "sst": {"units": "°C", "lo": -2, "hi": 32, "stops": [
+        (-2, (180, 200, 240)), (2, (70, 90, 200)), (8, (40, 140, 220)), (14, (30, 190, 180)),
+        (20, (90, 210, 100)), (24, (240, 220, 70)), (28, (240, 130, 40)), (32, (200, 30, 60))]},
+    # categorical: 0 none · 1 rain · 2 mixed · 3 snow
+    "ptype": {"units": "", "lo": 0, "hi": 3, "stops": [
+        (0, (0, 0, 0)), (0.99, (60, 130, 220)), (1.01, (60, 130, 220)),
+        (1.99, (190, 110, 220)), (2.01, (190, 110, 220)), (2.99, (235, 240, 255)), (3, (235, 240, 255))]},
+    # relative vorticity at 500 hPa, 10⁻⁵ s⁻¹: red cyclonic, blue anticyclonic
+    "vort500": {"units": "10⁻⁵/s", "lo": -20, "hi": 20, "stops": [
+        (-20, (30, 60, 180)), (-8, (70, 130, 220)), (-2, (150, 180, 220)), (0, (235, 235, 235)),
+        (2, (230, 180, 150)), (8, (230, 110, 70)), (20, (180, 20, 40))]},
     "prob_gust": {"units": "%", "lo": 0, "hi": 100, "stops": [
         (0, (40, 35, 60)), (20, (120, 80, 170)), (40, (190, 80, 170)), (60, (240, 100, 110)),
         (80, (250, 150, 60)), (100, (250, 220, 60))]},
@@ -153,6 +167,10 @@ DISPLAY = {
     "feels": lambda k: k - 273.15,
     "prob_rain": lambda pct: pct,
     "prob_gust": lambda pct: pct,
+    "vis": lambda m: m / 1000.0,
+    "sst": lambda k: k - 273.15,
+    "ptype": lambda c: c,
+    "vort500": lambda z: z * 1e5,
 }
 
 
@@ -218,7 +236,7 @@ _LUTS = {k: _lut(v) for k, v in RAMPS.items()}
 
 IMAGE_FORMATS = {"png": "image/png", "webp": "image/webp"}
 # Layers whose alpha varies with the value, so they cannot be palette images.
-_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi", "prob_rain", "prob_gust")
+_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500")
 
 
 def pick_format(accept: str | None) -> str:
@@ -303,6 +321,14 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: st
             a = np.clip(x / 300.0, 0, 1)            # nothing to see under ~300 J/kg
         elif layer in ("prob_rain", "prob_gust"):
             a = np.clip(x / 30.0, 0, 1)             # a 5 % chance is the map, not a colour
+        elif layer == "vis":
+            a = np.clip((12.0 - x) / 8.0, 0, 1)     # good visibility is the map itself
+        elif layer == "sst":
+            a = np.where(np.isnan(field_display), 0.0, 1.0)      # land is NaN: show the map
+        elif layer == "ptype":
+            a = np.where(x >= 0.99, 1.0, 0.0)
+        elif layer == "vort500":
+            a = np.clip(np.abs(x) / 4.0, 0, 1)      # quiescent air is transparent
         else:
             a = np.clip(x / 100.0, 0, 1) ** 0.7     # clear sky shows the map through
         rgba[..., 3] = (a * alpha * 255).astype(np.uint8)

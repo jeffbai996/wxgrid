@@ -54,9 +54,19 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
             "prob": lambda: _prob(lat, lon),
         }
         futures = {_card_pool.submit(line, k, fn): k for k, fn in jobs.items()}
-        from concurrent.futures import as_completed
-        for fut in as_completed(futures, timeout=25):
-            yield fut.result()
+        from concurrent.futures import TimeoutError as FutTimeout, as_completed
+        # A straggler must not hold this connection: the browser gives an
+        # HTTP/1.1 origin six slots, and a stream pinned open on a slow
+        # geocoder queues every other request behind it (seen 2026-08-19,
+        # "takes ages to load anything"). Ship what landed within the budget,
+        # name the rest "pending", close; the client fetches those alone.
+        try:
+            for fut in as_completed(futures, timeout=6):
+                yield fut.result()
+        except FutTimeout:
+            for fut, kind in futures.items():
+                if not fut.done():
+                    yield json.dumps({"kind": kind, "pending": True}) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson",
                              headers={"Cache-Control": "no-store"})

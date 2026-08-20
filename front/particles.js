@@ -49,7 +49,19 @@
     }
 
     resize() {
-      if (window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.02) return;
+      // Never SKIP a resize: a return here left the canvas at its old size
+      // and the particles painting one corner of the map (2026-08-19). While
+      // the page is pinch-zoomed, defer — and catch up the moment it ends.
+      if (window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.02) {
+        if (!this._pinchWait) {
+          this._pinchWait = setInterval(() => {
+            if (Math.abs(window.visualViewport.scale - 1) <= 0.02) {
+              clearInterval(this._pinchWait); this._pinchWait = null; this.resize();
+            }
+          }, 300);
+        }
+        return;
+      }
       const w = this.map.getContainer().clientWidth, h = this.map.getContainer().clientHeight;
       this.canvas.width = Math.round(w * this.dpr);
       this.canvas.height = Math.round(h * this.dpr);

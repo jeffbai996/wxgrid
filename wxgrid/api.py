@@ -36,18 +36,19 @@ log = logging.getLogger("wxgrid.api")
 app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=2048)   # wind JSON shrinks ~5x
 
-LAYERS = ("wind", "temp", "feels", "gust", "msl", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "uvi", "frz", "waves", "wperiod", "prob_rain", "prob_gust")
+LAYERS = ("wind", "temp", "feels", "gust", "msl", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "uvi", "frz", "waves", "wperiod", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500")
 LEVEL_LAYERS = ("wind", "temp")
 _ALIAS = {"t2m": "temp", "snow": "sf6", "snowdepth": "sd_cm", "dewpt": "d2m", "swh": "waves", "mwp": "wperiod"}
 # Layers computed from several store variables at request time.
 _DERIVED = {"frz": tuple(f"{p}_{l}" for l in LEVELS for p in ("t", "gh")),
             "rh": ("t2m", "d2m"), "tp24": ("tp6",), "tp72": ("tp6",), "sf24": ("sf6",), "sf72": ("sf6",),
             "waves": ("swh",), "wperiod": ("mwp",), "uvi": ("tcc",),
-            "feels": ("t2m", "u10", "v10", "d2m")}
+            "feels": ("t2m", "u10", "v10", "d2m"),
+            "ptype": ("tp6", "t2m"), "vort500": ("u_500", "v_500")}
 # Accumulation windows (hours) for the derived precip/snow layers.
 _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72": ("sf6", 72)}
 # Layers that live only on LEVEL_EVERY steps (like the pressure levels).
-_SIX_HOURLY = ("frz", "waves", "wperiod", "prob_rain", "prob_gust")
+_SIX_HOURLY = ("frz", "waves", "wperiod", "prob_rain", "prob_gust", "vort500")
 _readers: dict[tuple[str, str], RunReader] = {}
 _pool = ThreadPoolExecutor(max_workers=8)
 _cache_locks: dict[str, threading.Lock] = {}
@@ -160,7 +161,43 @@ def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndar
         return render.uv_index(r.slab("tcc", step), parse_run_id(r.rid) + timedelta(hours=step))
     if layer == "feels":
         return _feels_grid(r, step)
+    if layer == "ptype":
+        return _ptype_grid(r, step)
+    if layer == "vort500":
+        return _vort500_grid(r, step)
     return r.slab(vars_[0], step)
+
+
+def _ptype_grid(r: RunReader, step: int) -> np.ndarray:
+    """What falls, where anything falls: 1 rain · 2 mixed · 3 snow, 0 dry.
+    By 2 m temperature around the freezing point — the same rule the elevation
+    board uses per point, so the map and the board never disagree."""
+    tp = r.slab("tp6", step)
+    t = r.slab("t2m", step) - 273.15
+    out = np.zeros(tp.shape, dtype=np.float32)
+    wet = np.nan_to_num(tp) > 0.1
+    out[wet & (t > 1.5)] = 1.0
+    out[wet & (t <= 1.5) & (t > -0.5)] = 2.0
+    out[wet & (t <= -0.5)] = 3.0
+    return out
+
+
+def _vort500_grid(r: RunReader, step: int) -> np.ndarray:
+    """Relative vorticity at 500 hPa on the sphere: ∂v/∂x − ∂u/∂y, with the
+    ∂x spacing shrinking by cos(lat). The poles divide by ~zero and mean
+    nothing on a lat-lon grid; they go NaN rather than screaming red."""
+    u = r.slab("u_500", step)
+    v = r.slab("v_500", step)
+    lat = np.linspace(90, -90, u.shape[0])[:, None] * np.pi / 180.0
+    a = 6.371e6
+    dlon = 2 * np.pi / u.shape[1]
+    dlat = np.pi / (u.shape[0] - 1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        dvdx = (np.roll(v, -1, axis=1) - np.roll(v, 1, axis=1)) / (2 * dlon * a * np.cos(lat))
+        dudy = np.gradient(u, axis=0) / (-dlat * a)          # lat axis runs 90 → -90
+    z = (dvdx - dudy).astype(np.float32)
+    z[np.abs(np.cos(lat))[:, 0] < 0.05] = np.nan
+    return z
 
 
 def _feels_grid(r: RunReader, step: int) -> np.ndarray:

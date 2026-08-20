@@ -122,11 +122,13 @@ class Model:
     def store_variables(self) -> list[str]:
         out = []
         for canon in self.sfc_params.values():
-            if canon == "csnow":
-                continue                        # only used to derive sf6
+            if canon in ("csnow", "tsk", "lsm"):
+                continue                        # inputs only: csnow → sf6, tsk+lsm → sst
             out.append({"tp": "tp6", "sf": "sf6", "sd": "sd_cm"}.get(canon, canon))
         if "csnow" in self.sfc_params.values() and "tp" in self.sfc_params.values():
             out.append("sf6")
+        if "tsk" in self.sfc_params.values() and "lsm" in self.sfc_params.values():
+            out.append("sst")
         for prefix in self.pl_params.values():
             out.extend(f"{prefix}_{lvl}" for lvl in self.levels)
         out.extend(self.wave_params.values())
@@ -161,7 +163,9 @@ MODELS: dict[str, Model] = {
     "gfs": Model(
         key="gfs", label="NOAA GFS", short="GFS", grid="13km", source="nomads", steps=STEPS_GFS,
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "prmsl": "msl", "tp": "tp",
-                    "gust": "gust", "tcc": "tcc", "cape": "cape", "2d": "d2m", "sde": "sd", "csnow": "csnow"},
+                    "gust": "gust", "tcc": "tcc", "cape": "cape", "2d": "d2m", "sde": "sd", "csnow": "csnow",
+                    # skin temperature masked to water at ingest → sst; lsm is the mask
+                    "vis": "vis", "t": "tsk", "lsm": "lsm"},
         pl_params=_ECMWF_PL,
         precip_mode="bucket6",
         snow_depth_factor=100.0,

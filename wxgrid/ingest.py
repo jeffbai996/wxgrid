@@ -201,8 +201,12 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
             writer.write("sf6", step, np.where(got["csnow"] >= 0.5, buckets["tp6"], 0.0))
         if "sd" in got:
             writer.write("sd_cm", step, np.nan_to_num(got["sd"]) * model.snow_depth_factor)
+        # Skin temperature is ground temperature over land — misleading as a
+        # "sea temp". Masked to water here, it is exactly the SST product.
+        if "tsk" in got and "lsm" in got:
+            writer.write("sst", step, np.where(got["lsm"] < 0.5, got["tsk"], np.nan).astype(np.float32))
         for canon, vals in got.items():
-            if canon in ("tp", "sf", "sd", "csnow"):
+            if canon in ("tp", "sf", "sd", "csnow", "tsk", "lsm"):
                 continue
             writer.write(canon, step, vals)
         write_spread(writer, model, step, spread_paths, got)

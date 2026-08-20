@@ -17,6 +17,7 @@
     { key: "gust", label: "Gusts", layers: ["gust"] },
     { key: "temp", label: "Temp", layers: ["temp", "feels"], variants: { temp: "Air", feels: "Feels" } },
     { key: "rain", label: "Rain", layers: ["tp6", "tp24", "tp72"], variants: { tp6: "6 h", tp24: "24 h", tp72: "72 h" }, section: "Precipitation" },
+    { key: "ptype", label: "Precip type", layers: ["ptype"] },
     { key: "snow", label: "New snow", layers: ["sf6", "sf24", "sf72"], variants: { sf6: "6 h", sf24: "24 h", sf72: "72 h" } },
     { key: "sd", label: "Snow depth", layers: ["sd_cm"] },
     { key: "frz", label: "Freezing lvl", layers: ["frz"] },
@@ -24,14 +25,17 @@
     { key: "msl", label: "Pressure", layers: ["msl"] },
     { key: "hum", label: "Humidity", layers: ["rh", "d2m"], variants: { rh: "RH %", d2m: "Dew pt" } },
     { key: "cape", label: "CAPE", layers: ["cape"] },
+    { key: "vis", label: "Visibility", layers: ["vis"] },
+    { key: "vort", label: "Vorticity", layers: ["vort500"] },
     { key: "uvi", label: "UV index", layers: ["uvi"] },
     { key: "waves", label: "Waves", layers: ["waves", "wperiod"], variants: { waves: "Height", wperiod: "Period" }, section: "Sea" },
+    { key: "sst", label: "Sea temp", layers: ["sst"] },
     // member counts, drawn from the GEFS run only — the one model that has them
     { key: "chance", label: "Chance", layers: ["prob_rain", "prob_gust"], variants: { prob_rain: "Rain", prob_gust: "Gale" }, section: "Ensemble" },
   ];
   const familyOf = (layer) => FAMILIES.find((f) => f.layers.includes(layer)) || FAMILIES[0];
-  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", feels: "Feels like", prob_rain: "Rain chance", prob_gust: "Gale chance", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", uvi: "UV index" };
-  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, uvi: 0.8, feels: 0.78, prob_rain: 0.82, prob_gust: 0.82 };
+  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", feels: "Feels like", prob_rain: "Rain chance", prob_gust: "Gale chance", vis: "Visibility", sst: "Sea temp", ptype: "Precip type", vort500: "Vorticity 500", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", uvi: "UV index" };
+  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, uvi: 0.8, feels: 0.78, prob_rain: 0.82, prob_gust: 0.82, vis: 0.85, sst: 0.8, ptype: 0.85, vort500: 0.75 };
   const LAYER_ICON = {
     iso: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15c3-4 6-4 9 0s6 4 9 0"/><path d="M3 9c3-4 6-4 9 0s6 4 9 0"/></svg>',
     wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/></svg>',
@@ -49,7 +53,7 @@
     uvi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
     waves: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
   };
-  const FAMILY_ICON = { wind: "wind", gust: "gust", temp: "temp", rain: "tp6", snow: "sf6", sd: "sd_cm", frz: "frz", tcc: "tcc", msl: "msl", hum: "rh", cape: "cape", waves: "waves", uvi: "uvi", chance: "tp6" };
+  const FAMILY_ICON = { wind: "wind", gust: "gust", temp: "temp", rain: "tp6", snow: "sf6", sd: "sd_cm", frz: "frz", tcc: "tcc", msl: "msl", hum: "rh", cape: "cape", waves: "waves", uvi: "uvi", chance: "tp6", ptype: "sf6", vis: "tcc", vort: "msl", sst: "waves" };
   const LEVEL_FT = { 1000: "≈350 ft", 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 600: "14k ft", 500: "FL180", 400: "FL240", 300: "FL300", 250: "FL340", 200: "FL390" };
   const LEVEL_FEET = { 1000: "≈350 ft", 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 600: "14k ft", 500: "18k ft", 400: "24k ft", 300: "30k ft", 250: "34k ft", 200: "39k ft" };
   const LEVEL_M = { 1000: "≈100 m", 925: "≈750 m", 850: "≈1.5 km", 700: "≈3 km", 600: "≈4.2 km", 500: "≈5.5 km", 400: "≈7.2 km", 300: "≈9 km", 250: "≈10.5 km", 200: "≈12 km" };
@@ -1106,6 +1110,12 @@
     const name = LAYER_LABEL[state.layer] + (state.level && hasLevel() ? ` ${state.level}` : "");
     $("#legend .legend-head b").textContent = name;
     $("#legend .legend-head i").textContent = unit;
+    if (state.layer === "ptype") {                 // categorical: names, not numbers
+      $(".legend-bar").style.background = "linear-gradient(to right, rgb(60,130,220) 33%, rgb(190,110,220) 33% 66%, rgb(235,240,255) 66%)";
+      $(".legend-ticks").innerHTML = "<span>rain</span><span>mixed</span><span>snow</span>";
+      $("#legend .legend-head i").textContent = "";
+      return;
+    }
     $(".legend-ticks").innerHTML = ticks.map((t) => `<span>${conv(t)}</span>`).join("");
   }
 
@@ -1170,6 +1180,7 @@
         if (!res.ok || !res.body) throw new Error(res.status);
         const reader = res.body.getReader(), dec = new TextDecoder();
         let buf = "", gotAny = false;
+        const seen = new Set();
         for (;;) {
           const { done, value } = await reader.read();
           if (my !== pointReq) { reader.cancel().catch(() => {}); return; }
@@ -1180,11 +1191,27 @@
             if (!row.trim()) continue;
             const msg = JSON.parse(row);
             if (msg.kind === "point" && msg.error) $("#point-now").textContent = "point forecast unavailable";
-            if (!msg.error && got[msg.kind]) { gotAny = true; got[msg.kind](msg.data); }
+            if (msg.error || msg.pending) continue;         // fetched alone below
+            if (got[msg.kind]) { seen.add(msg.kind); gotAny = true; got[msg.kind](msg.data); }
           }
           if (done) break;
         }
-        if (gotAny) return;
+        if (gotAny) {
+          // Anything the stream gave up on (a slow geocoder, a dead upstream)
+          // arrives on its own request whenever it is ready — the card's
+          // connection is already free.
+          const single = {
+            local: `${API}/geo/reverse`, obs: `${API}/obs`, alerts: `${API}/alerts/point`,
+            air: `${API}/air`, tides: `${API}/tides`, prob: `${API}/prob`,
+          };
+          for (const [kind, base] of Object.entries(single)) {
+            if (seen.has(kind)) continue;
+            WX.api(`${base}?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`)
+              .then((r) => { if (my === pointReq) got[kind](r); })
+              .catch(() => { if (my === pointReq && kind === "tides") got.tides(false); });
+          }
+          return;
+        }
       } catch (e) { if (my !== pointReq) return; /* fall through to the fan-out */ }
     }
     try {

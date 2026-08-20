@@ -40,6 +40,7 @@ def gfs_flags(levels: tuple[int, ...]) -> dict[str, str]:
         "var_UGRD": "on", "var_VGRD": "on", "var_TMP": "on", "var_HGT": "on",
         "var_PRMSL": "on", "var_APCP": "on", "var_GUST": "on", "var_TCDC": "on", "var_CAPE": "on",
         "var_DPT": "on", "var_SNOD": "on", "var_CSNOW": "on",
+        "var_VIS": "on", "var_LAND": "on",
         "lev_10_m_above_ground": "on", "lev_2_m_above_ground": "on", "lev_mean_sea_level": "on",
         "lev_surface": "on", "lev_entire_atmosphere": "on",
     }
