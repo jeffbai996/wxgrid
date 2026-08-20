@@ -129,6 +129,10 @@ button { font: inherit; color: inherit; }
 .seg.disabled button.on { background: var(--line-strong); color: var(--fg-2); }
 .seg.disabled.sliding button.on { background: transparent; }
 .seg.disabled.sliding .seg-cursor { background: var(--line-strong); }
+/* The altitude pill is the top bar's longest item. On a zoomed-in page it
+   shrinks and scrolls inside itself instead of running off the screen edge. */
+#levels { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+#levels::-webkit-scrollbar { display: none; }
 
 select.run {
   appearance: none; background: var(--panel); color: var(--fg-2); border: 1px solid var(--line);
