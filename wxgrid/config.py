@@ -23,7 +23,11 @@ PORT = int(os.environ.get("WXGRID_PORT", "8097"))
 PUBLIC = os.environ.get("WXGRID_PUBLIC", "") == "1"
 
 # Runs kept per model. Two lets the front compare "this run vs the previous".
-KEEP_RUNS = int(os.environ.get("WXGRID_KEEP_RUNS", "2"))
+# Four runs = a day of history for the run picker (each model updates 2-4x
+# daily). ~5 GB per extra run across six models against a 2/3-free disk;
+# the picker with only "latest and one before" read as decoration
+# (Jeff 2026-08-20). Override per deployment with WXGRID_KEEP_RUNS.
+KEEP_RUNS = int(os.environ.get("WXGRID_KEEP_RUNS", "4"))
 
 # The common grid every model is normalised onto: 0.25°, lat 90 → -90 (721
 # rows), lon -180 → 179.75 (1440 cols). ECMWF ships exactly this; GFS ships

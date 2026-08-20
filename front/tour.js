@@ -11,9 +11,9 @@
   const STEPS = [
     { sel: "#search", title: "Anywhere on Earth", text: "Search a place, or just tap the map — the card that opens has nine panes, from the hourly tape to soundings and a resort board." },
     { sel: "#layers", title: "Layers", text: "Wind, temperature, rain, snow, waves, air quality. Some have variants — rain over 6, 24 or 72 hours — and the picker for those sits next to the legend." },
-    { sel: "#tstrip", title: "Overlays and tools", text: "Radar, satellite, warnings, wildfires, avalanche, cross-sections. Hover any icon for its name." },
+    { sel: "#tstrip, #overlays-menu .menu-btn", title: "Overlays and tools", text: "Radar, satellite, warnings, wildfires, avalanche, cross-sections. Hover any icon for its name." },
     { sel: "#timebar", title: "The forecast tape", text: "Scrub with ← and →, space to animate, click any column to jump. The chevron folds it away." },
-    { sel: "#strip-settings", title: "Make it yours", text: "Units, clock, theme and motion. Set °F and inches once and every number on screen follows." },
+    { sel: "#strip-settings, #tools-menu .menu-btn", title: "Make it yours", text: "Units, clock, theme and motion. Set °F and inches once and every number on screen follows." },
   ];
   let i = 0, box = null, ring = null;
 
@@ -37,7 +37,13 @@
   document.head.appendChild(style);
 
   function place() {
-    const s = STEPS[i], t = document.querySelector(s.sel);
+    const s = STEPS[i];
+    // A selector can name several homes for the same control (the settings
+    // gear lives on the strip on desktop and in the tools menu on a phone).
+    // Ring the first one that is actually on screen; a hidden target has a
+    // zero rect and put the tip in the wrong corner (Jeff 2026-08-20).
+    const t = [...document.querySelectorAll(s.sel)]
+      .find((el) => el.offsetParent !== null && el.getBoundingClientRect().width > 0);
     if (!t) return next();
     const r = t.getBoundingClientRect();
     const pad = 6;

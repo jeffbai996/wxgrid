@@ -192,7 +192,8 @@
     const days = [];
     dates.forEach((dt, i) => { const k = zk(dt).day; if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, first: i, span: 0 }); days[days.length - 1].span++; });
     // a day header is a jump: sixteen days of tape is a long way to scrub
-    const dayRow = days.map((dy) => `<th colspan="${dy.span}" class="day" data-first="${dy.first}" title="Jump to this day">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}</th>`).join("");
+    const dayRow = days.map((dy) => { const wd = dy.start.getDay();
+      return `<th colspan="${dy.span}" class="day${wd === 0 || wd === 6 ? " wknd" : ""}" data-first="${dy.first}" title="Jump to this day">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}</th>`; }).join("");
     // the column whose interval holds the current wall-clock time gets a mark
     const nowMs = Date.now();
     const nowIdx = dates.findIndex((dt, i) => nowMs >= dt.getTime() && (i + 1 >= n || nowMs < dates[i + 1].getTime()));

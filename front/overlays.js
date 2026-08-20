@@ -40,18 +40,46 @@
   // ── satellite imagery base ────────────────────────────────────────────
   // Not a weather overlay: a ground truth to put UNDER the field. Vector
   // labels stay on top; the weather layer keeps painting above it.
-  function loadImagery() {
+  const BASES = {
+    sat: { attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
+           tiles: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" },
+    topo: { attribution: "Topo © Esri and contributors",
+            tiles: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}" },
+  };
+  function setBase(kind) {
     // restored from localStorage at boot, which can run before the style —
     // an addLayer then is a fatal, not a layer (2026-08-19, landscape probe)
-    if (!M().isStyleLoaded() && !M().getSource("openmaptiles")) { M().once("load", loadImagery); return; }
-    if (M().getSource("sat-base")) return;
+    if (!M().getSource("openmaptiles")) { M().once("load", () => setBase(kind)); return; }
+    if (M().getLayer("sat-base")) M().removeLayer("sat-base");
+    if (M().getSource("sat-base")) M().removeSource("sat-base");
+    const spec = BASES[kind];
+    if (!spec) return;                               // "": the vector map itself
     M().addSource("sat-base", { type: "raster", tileSize: 256, maxzoom: 18,
-      attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
-      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"] });
+      attribution: spec.attribution, tiles: [spec.tiles] });
     const before = M().getLayer("wx") ? "wx" : WX.fn.firstSymbolId();
     M().addLayer({ id: "sat-base", type: "raster", source: "sat-base", paint: { "raster-opacity": 1 } }, before);
   }
-  function clearImagery() { if (M().getLayer("sat-base")) M().removeLayer("sat-base"); if (M().getSource("sat-base")) M().removeSource("sat-base"); }
+  const loadImagery = () => setBase(WX.state.base || "sat");   // legacy callers
+  const clearImagery = () => setBase("");
+
+  // ── terrain hillshade ─────────────────────────────────────────────────
+  // Relief under the weather: AWS's public terrarium DEM tiles through
+  // MapLibre's own hillshade renderer. No key, no quota drama, and it sits
+  // under the field so ridgelines explain the precip shadows.
+  function loadTerrain() {
+    if (!M().getSource("openmaptiles")) { M().once("load", loadTerrain); return; }
+    if (M().getSource("dem")) return;
+    M().addSource("dem", { type: "raster-dem", encoding: "terrarium", tileSize: 256, maxzoom: 13,
+      attribution: "Terrain: Mapzen/AWS Terrain Tiles",
+      tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"] });
+    const before = M().getLayer("wx") ? "wx" : WX.fn.firstSymbolId();
+    M().addLayer({ id: "hillshade", type: "hillshade", source: "dem",
+      paint: { "hillshade-exaggeration": 0.45,
+               "hillshade-shadow-color": "rgba(0,0,0,.55)",
+               "hillshade-highlight-color": "rgba(255,255,255,.22)",
+               "hillshade-accent-color": "rgba(0,0,0,.25)" } }, before);
+  }
+  function clearTerrain() { if (M().getLayer("hillshade")) M().removeLayer("hillshade"); if (M().getSource("dem")) M().removeSource("dem"); }
 
   // ── day/night terminator ──────────────────────────────────────────────
   // Follows the SELECTED time, not the wall clock: scrub the tape and watch
@@ -509,6 +537,6 @@
 
   function clearQuakes() { if (M().getLayer("quakes")) M().removeLayer("quakes"); if (M().getSource("quakes")) M().removeSource("quakes"); }
 
-  WX.ov = { loadImagery, clearImagery, updateNight, clearNight, loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
+  WX.ov = { loadImagery, clearImagery, setBase, loadTerrain, clearTerrain, updateNight, clearNight, loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
              loadRadar, clearRadar, refreshRadarSource, badge };
 })();

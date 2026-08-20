@@ -132,6 +132,9 @@ button { font: inherit; color: inherit; }
 /* The altitude pill is the top bar's longest item. On a zoomed-in page it
    shrinks and scrolls inside itself instead of running off the screen edge. */
 #levels { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+/* the buttons themselves never shrink or wrap — the pill scrolls instead,
+   so "850 5k ft" cannot fold onto two lines on a zoomed page */
+#levels button { white-space: nowrap; flex: 0 0 auto; }
 #levels::-webkit-scrollbar { display: none; }
 
 select.run {
@@ -287,6 +290,11 @@ body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 10
 .menu .menu-pop .row.on { color: var(--accent); }
 .menu .menu-pop .row.on .val { color: var(--accent); }
 .menu .menu-pop .row.chip { background: transparent; border: 0; }
+/* the basemap picker: three flat choices on one menu row */
+.menu .menu-pop .base-row { display: flex; gap: 4px; padding: 4px 6px 6px; }
+.menu .menu-pop .base-row button { flex: 1; border: 1px solid var(--line); background: transparent; color: var(--fg-2);
+  padding: 5px 6px; border-radius: 8px; font: 600 11.5px var(--font-display); cursor: pointer; }
+.menu .menu-pop .base-row button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .menu .menu-pop .row.chip.on { background: transparent; color: var(--fg); border: 0; }
 :root[data-theme="light"] .menu .menu-pop .row:hover, :root[data-theme="light"] .rail button:hover { background: rgba(0,0,0,.05); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
@@ -547,7 +555,18 @@ table.bandtape .nil { color: var(--line-strong); }
   .rowbreak:last-of-type { order: 8; }
   #levels { order: 9; flex: 0 1 auto; max-width: 100%; align-self: flex-start; }
   #levels button { white-space: nowrap; }
-  #levels button .level-alt { display: none; }
+  /* The altitude peek: picking a pressure level shows its height for a
+     couple of seconds, then folds away so the pill stays thin. The badge is
+     re-rendered on every selection, so the animation replays each time. */
+  #levels button .level-alt { display: inline-block; overflow: hidden; vertical-align: baseline;
+    max-width: 0; opacity: 0; animation: level-peek 3s ease forwards; }
+  @keyframes level-peek {
+    0%   { max-width: 0;    opacity: 0; }
+    12%  { max-width: 64px; opacity: 1; }
+    78%  { max-width: 64px; opacity: 1; }
+    100% { max-width: 0;    opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { #levels button .level-alt { animation: none; } }
   body.no-levels #levels, body.no-levels .rowbreak:last-of-type { display: none; }
   /* tucked: the model, run, level and layer rows fold into one chip that
      says what the map is showing, and a tap brings them back */
@@ -671,6 +690,15 @@ table.bandtape .nil { color: var(--line-strong); }
 .wx-pin .stem { width: 1.5px; height: 16px; background: color-mix(in srgb, var(--fg-2) 65%, transparent); }
 .wx-pin .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg); box-shadow: 0 0 0 2px rgba(8,10,14,.6); margin-top: -1px; }
 
+/* the marker's value flag: what the map reads at the tapped point */
+.wx-marker .mflag { position: absolute; left: 50%; bottom: calc(100% + 9px); transform: translateX(-50%);
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 8px 4px; border-radius: 8px; white-space: nowrap;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.wx-marker .mflag b { font: 700 12.5px var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; }
+.wx-marker .mflag span { font: 600 9.5px var(--font-display); color: var(--fg-2); }
+.wx-marker .mflag::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 4px solid transparent; border-top-color: var(--line-strong); }
+
 /* tapped-point marker: white dot with a breathing halo */
 .wx-marker { width: 14px; height: 14px; position: relative; }
 .wx-marker::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(11,13,16,.6), 0 2px 10px rgba(0,0,0,.5); }
@@ -746,6 +774,7 @@ table.wtape th.lab small { color: var(--dim); opacity: .7; margin-left: 4px; fon
 table.wtape th.corner { background: transparent; }
 table.wtape th.day { text-align: left; font: 700 12px var(--font-display); color: var(--fg); padding: 2px 8px 3px; border-left: 1px solid var(--line-strong); letter-spacing: .01em; cursor: pointer; }
 table.wtape th.day[data-first]:hover { color: var(--accent); }
+table.wtape th.day.wknd { color: color-mix(in srgb, var(--warm) 60%, var(--fg)); }
 table.wtape th.day:first-of-type { border-left: 0; }
 table.wtape td { width: 44px; min-width: 44px; height: 20px; border-left: 1px solid transparent; cursor: pointer; }
 table.wtape td.night { background: var(--tape-night); }
@@ -792,6 +821,8 @@ table.wtape tr.r-dir td { height: 20px; }
 .hero .hilo .rule { width: 1px; background: var(--line); }
 .hero .sun { display: flex; align-items: center; gap: 10px; font: 500 11px var(--font-num); color: var(--dim); flex-wrap: wrap; }
 .hero .sun span { display: inline-flex; align-items: center; gap: 4px; }
+/* daylight + moon breathe on their own line under the sun times */
+.hero .sun .brk { flex-basis: 100%; height: 0; }
 .hero .sun svg { width: 12px; height: 12px; }
 .hero .sun .len { color: var(--fg-2); }
 .meta { display: flex; flex-wrap: wrap; gap: 6px 8px; font: 500 12px var(--font-mono); color: var(--fg-2); margin: 0 0 6px; }

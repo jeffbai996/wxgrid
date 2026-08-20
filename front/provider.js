@@ -9,7 +9,7 @@
   const WX = window.WX;
   // [full name, brand colour, short code for the generated chip, official site]
   const PROVIDERS = {
-    US: ["National Oceanic and Atmospheric Administration", "#1a5fb4", "NOAA", "https://www.weather.gov"], CA: ["Environment and Climate Change Canada", "#c8102e", "ECCC", "https://weather.gc.ca"],
+    US: ["National Weather Service", "#1a5fb4", "NOAA", "https://www.weather.gov"], CA: ["Environment and Climate Change Canada", "#c8102e", "ECCC", "https://weather.gc.ca"],
     MX: ["SMN · Servicio Meteorológico Nacional", "#006847", "SMN", "https://smn.conagua.gob.mx"], GB: ["Met Office", "#0d5f9c", "MET", "https://www.metoffice.gov.uk"], IE: ["Met Éireann", "#169b62", "MÉ", "https://www.met.ie"],
     DE: ["DWD · Deutscher Wetterdienst", "#0a4a8f", "DWD", "https://www.dwd.de"], FR: ["Météo-France", "#1f4fa3", "MF", "https://meteofrance.com"], ES: ["AEMET", "#c60b1e", "AEMET", "https://www.aemet.es"], PT: ["IPMA", "#046a38", "IPMA", "https://www.ipma.pt"],
     IT: ["Aeronautica Militare / ItaliaMeteo", "#008c45", "AM", "https://www.meteoam.it"], NL: ["KNMI", "#ff6f00", "KNMI", "https://www.knmi.nl"], BE: ["RMI / KMI", "#ffd90f", "RMI", "https://www.meteo.be"], CH: ["MeteoSwiss", "#d52b1e", "MCH", "https://www.meteoswiss.admin.ch"],

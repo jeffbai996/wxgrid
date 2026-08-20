@@ -39,6 +39,7 @@
       try { data = { px: ctx.getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height }; } catch (e) { data = null; }
       if (last) show(last);
       pinUpdate(); updateCityValues();
+      if (WX.fn && WX.fn.updateMarkerFlag) WX.fn.updateMarkerFlag();
     };
     im.src = url;
   }
@@ -171,5 +172,5 @@
     WX.map.on("idle", updateCityValues);
   }
 
-  WX.probe = { refresh, hover, pin, pinUpdate, updateCityValues, wireCityValues };
+  WX.probe = { refresh, hover, pin, pinUpdate, updateCityValues, wireCityValues, valueAt };
 })();

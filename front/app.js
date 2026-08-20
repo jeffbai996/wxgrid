@@ -15,7 +15,7 @@
   const FAMILIES = [
     { key: "wind", label: "Wind", layers: ["wind"] },
     { key: "gust", label: "Gusts", layers: ["gust"] },
-    { key: "temp", label: "Temp", layers: ["temp", "feels", "wbt", "dt24"], variants: { temp: "Air", feels: "Feels", wbt: "Wet-bulb", dt24: "Δ24h" } },
+    { key: "temp", label: "Temp", layers: ["temp", "feels", "wbt", "dt24"], variants: { temp: "Air", feels: "Feels", wbt: "Wet-bulb", dt24: "Δ" } },
     { key: "rain", label: "Rain", layers: ["tp6", "tp24", "tp72"], variants: { tp6: "6 h", tp24: "24 h", tp72: "72 h" }, section: "Precipitation" },
     { key: "ptype", label: "Precip type", layers: ["ptype"] },
     { key: "snow", label: "New snow", layers: ["sf6", "sf24", "sf72"], variants: { sf6: "6 h", sf24: "24 h", sf72: "72 h" } },
@@ -74,7 +74,8 @@
     iso: false, avy: false, resorts: false, resort: null, measure: false,
     alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false,
     sigmet: false, aurora: false, lightning: false, aq: false, route: false,
-    imagery: localStorage.getItem("wxgrid.imagery") === "1", night: false, aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
+    base: localStorage.getItem("wxgrid.base") || "", night: false,
+    terrain: localStorage.getItem("wxgrid.terrain") === "1", aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
     opacity: Number(localStorage.getItem("wxgrid.opacity") || 100),
     particleDensity: Number(localStorage.getItem("wxgrid.particleDensity") || 60), xsection: false,
     playMs: Number(localStorage.getItem("wxgrid.playMs") || 900),
@@ -130,7 +131,7 @@
   window.WX.fn = { applyStep: (...a) => applyStep(...a), openPoint: (...a) => openPoint(...a), setStep: (...a) => setStep(...a), toast, firstSymbolId: () => firstSymbolId(),
                    renderPoint: () => renderPoint(), refreshPoint: () => refreshPoint(), closePoint: () => closePoint(), placeMarker: (...a) => placeMarker(...a),
                    stepHours: () => stepHours(), steps: () => steps(), layerUrl: () => layerUrl(),
-                   applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), fitStrip: () => fitStrip(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d), clearOtherCover: (k) => clearOtherCover(k),
+                   applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), fitStrip: () => fitStrip(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d), clearOtherCover: (k) => clearOtherCover(k), updateMarkerFlag: () => updateMarkerFlag(),
                    setTapeState: (s, persist) => setTapeState(s, persist), getTapeState: () => tapeState,
                    jumpModelTime: (key, iso) => switchModel(key, new Date(iso).getTime()) };
 
@@ -289,7 +290,8 @@
     if (state.alerts) WX.ov.loadAlerts();
     if (state.storms) WX.ov.loadStorms();
     if (state.sat) WX.ov.loadSat();
-    if (state.imagery) WX.ov.loadImagery();
+    if (state.base) WX.ov.setBase(state.base);
+    if (state.terrain) WX.ov.loadTerrain();
     if (state.night) WX.ov.updateNight();
     if (state.smoke) WX.ov.loadSmoke();
     if (state.fires) WX.fires.load();
@@ -423,8 +425,12 @@
       const active = el.querySelector("button.on");
       if (!active) { cursor.style.opacity = "0"; return; }
       cursor.style.opacity = "1";
-      cursor.style.width = `${active.offsetWidth}px`;
-      cursor.style.transform = `translateX(${active.offsetLeft}px)`;
+      // Rects, not offsetWidth/offsetLeft: those are rounded to integers,
+      // and on a page-zoomed layout the real boxes are fractional — the
+      // rounding drift put the plate half a button off (Jeff 2026-08-20).
+      const br = active.getBoundingClientRect(), sr = el.getBoundingClientRect();
+      cursor.style.width = `${br.width}px`;
+      cursor.style.transform = `translateX(${br.left - sr.left + el.scrollLeft}px)`;
     };
     if (prior && prior.width) {
       const box = el.getBoundingClientRect();
@@ -474,12 +480,14 @@
     // Say what the picker IS: the model's runs, newest first. "12Z · latest"
     // reads as a choice; a bare "06Z" read as decoration (Jeff 2026-08-19).
     rs.innerHTML = modelEntry().runs.map((r, k) => {
-      const base = (narrow ? r.run.slice(8) : r.run.slice(5)).replace("T", " ") + "Z";
-      const age = k === 0 ? "latest" : `${Math.round((new Date(modelEntry().runs[0].run + ":00Z") - new Date(r.run + ":00Z")) / 3600e3)} h older`;
+      const d = new Date(r.run + ":00Z");
+      const base = narrow ? r.run.slice(8).replace("T", " ") + "Z"
+        : `${d.toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" })} ${r.run.slice(11)}Z`;
+      const age = k === 0 ? "latest" : `${Math.round((new Date(modelEntry().runs[0].run + ":00Z") - d) / 3600e3)} h older`;
       return `<option value="${r.run}">${base}${narrow ? "" : ` · ${age}`}</option>`;
     }).join("");
     rs.value = state.run;
-    rs.title = "Model run (UTC). Pick the previous run to see how the forecast moved.";
+    rs.title = "Which forecast run you are reading. The model recomputes every 6-12 h; pick an older run and scrub the same hours to see how the forecast moved.";
     rs.onchange = () => {
       state.run = rs.value; clampStep(); renderControls(); applyStep(); loadWind(); refreshPoint();
       const k = modelEntry().runs.findIndex((r) => r.run === state.run);
@@ -583,19 +591,19 @@
     // Back to the present in one tap: scrubbing four days out and finding your
     // way home by dragging is the kind of thing a button fixes.
     $("#tape-now").onclick = () => { setStep(currentStepIdx()); WX.tape.renderTapeSelection(); };
-    // the tape scrubs under the wheel: vertical scroll steps time, natural
-    // horizontal scroll keeps scrolling the tape
+    // The tape answers LEFT-RIGHT only. Mapping vertical wheel to time
+    // steps lasted one day: an iPad trackpad's two-finger scroll fired it
+    // continuously and the tape went haywire (Jeff 2026-08-20). Vertical
+    // motion over the tape is now simply locked out, so the tape holds
+    // still and horizontal swipes keep scrolling it natively.
     $("#timebar").addEventListener("wheel", (e) => {
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || e.target.closest("input")) return;
-      e.preventDefault();
-      nudge(e.deltaY > 0 ? 1 : -1);
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && !e.target.closest("input")) e.preventDefault();
     }, { passive: false });
     $("#tuck").onclick = () => setTucked(true);
     $("#tucked").onclick = () => setTucked(false);
     // A phone's search box is a third of the row; the long placeholder was
     // always cut mid-word.
     const fitPhone = () => {
-      $("#q").placeholder = phoneMQ.matches ? "Search" : "Search a location…";
       setTucked(localStorage.getItem("wxgrid.tucked") === "1", false);
     };
     fitPhone(); phoneMQ.addEventListener("change", fitPhone);
@@ -689,8 +697,15 @@
     document.addEventListener("wx-units", () => { renderControls(); renderLegend(); renderPoint(); WX.tape.renderTape(); if (WX.probe) WX.probe.hover(null); if (state.xsection && WX.xs) WX.xs.refresh(); $("#units-toggle").querySelector(".val").textContent = speedUnit(); });
     $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme === "light" ? "light" : "dark";
     $("#radar-toggle").onclick = () => WX.ov.toggleRadar();
-    $("#imagery-toggle").onclick = () => { state.imagery = !state.imagery; localStorage.setItem("wxgrid.imagery", state.imagery ? "1" : "0"); $("#imagery-toggle").classList.toggle("on", state.imagery); if (state.imagery) WX.ov.loadImagery(); else WX.ov.clearImagery(); };
-    $("#imagery-toggle").classList.toggle("on", state.imagery); if (state.imagery) WX.ov.loadImagery();
+    $$(".base-row button").forEach((b) => b.onclick = () => {
+      state.base = b.dataset.base; localStorage.setItem("wxgrid.base", state.base);
+      $$(".base-row button").forEach((x) => x.classList.toggle("on", x === b));
+      WX.ov.setBase(state.base);
+    });
+    $$(".base-row button").forEach((x) => x.classList.toggle("on", x.dataset.base === state.base));
+    if (state.base) WX.ov.setBase(state.base);
+    $("#terrain-toggle").onclick = () => { state.terrain = !state.terrain; localStorage.setItem("wxgrid.terrain", state.terrain ? "1" : "0"); $("#terrain-toggle").classList.toggle("on", state.terrain); if (state.terrain) WX.ov.loadTerrain(); else WX.ov.clearTerrain(); };
+    $("#terrain-toggle").classList.toggle("on", state.terrain); if (state.terrain) WX.ov.loadTerrain();
     $("#night-toggle").onclick = () => { state.night = !state.night; $("#night-toggle").classList.toggle("on", state.night); if (state.night) WX.ov.updateNight(); else WX.ov.clearNight(); };
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
     $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) WX.ov.loadStorms(); else WX.ov.clearStorms(); };
@@ -1139,6 +1154,7 @@
     $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
     if (state.night && WX.ov) WX.ov.updateNight();
     if (WX.probe) { WX.probe.pinUpdate(); }
+    updateMarkerFlag();
     if (prefetch) { const img = new Image(); img.src = layerUrl(steps()[(state.stepIdx + 1) % steps().length]); if (state.resorts && WX.ov) WX.ov.loadResorts(); }
     WX.tape.renderTapeSelection();
     if (state.point) renderPoint();
@@ -1319,8 +1335,25 @@
   function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; document.body.classList.remove("has-point");
     if (softTucked) { softTucked = false; setTucked(false, false); } if (WX.provider) WX.provider.refresh(); if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
   function placeMarker(lat, lon) {
-    if (!marker) { const el = document.createElement("div"); el.className = "wx-marker"; marker = new maplibregl.Marker({ element: el, anchor: "center" }); }
+    if (!marker) {
+      const el = document.createElement("div"); el.className = "wx-marker";
+      el.innerHTML = `<span class="mflag" hidden></span>`;
+      marker = new maplibregl.Marker({ element: el, anchor: "center" });
+    }
     marker.setLngLat([lon, lat]).addTo(map);
+    updateMarkerFlag();
+  }
+  // The tapped point reads the map it sits on: a small flag with the current
+  // layer's value there, following the layer and the scrub (the Windy pin,
+  // in this house's dress).
+  function updateMarkerFlag() {
+    if (!marker) return;
+    const el = marker.getElement().querySelector(".mflag");
+    const ll = marker.getLngLat();
+    const v = WX.probe && WX.probe.valueAt ? WX.probe.valueAt(ll.lng, ll.lat) : null;
+    if (!v || v.text === "—") { el.hidden = true; return; }
+    el.hidden = false;
+    el.innerHTML = `<b>${v.text}</b>${v.sub ? `<span>${v.sub}</span>` : ""}`;
   }
   function renderPoint() {
     const d = state.point && state.point.data; if (!d || !window.WXPanes) return;
