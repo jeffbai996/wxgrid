@@ -7,9 +7,9 @@
   const $ = (s) => document.querySelector(s);
 
   const PRESETS = {
-    metric: { label: "Metric", note: "°C · km/h · mm", values: { temp: "c", wind: "kmh", precip: "mm", snow: "cm", dist: "km", alt: "m", baro: "metric", press: "hpa" } },
-    us: { label: "US", note: "°F · mph · in", values: { temp: "f", wind: "mph", precip: "in", snow: "in", dist: "mi", alt: "ft", baro: "feet", press: "inhg" } },
-    aviation: { label: "Aviation", note: "°C · kt · NM · FL", values: { temp: "c", wind: "kt", precip: "mm", snow: "cm", dist: "nm", alt: "ft", baro: "flight", press: "hpa" } },
+    metric: { label: "Metric", note: "°C·km/h·mm", values: { temp: "c", wind: "kmh", precip: "mm", snow: "cm", dist: "km", alt: "m", baro: "metric", press: "hpa" } },
+    us: { label: "US", note: "°F·mph·in", values: { temp: "f", wind: "mph", precip: "in", snow: "in", dist: "mi", alt: "ft", baro: "feet", press: "inhg" } },
+    aviation: { label: "Aviation", note: "°C·kt·NM·FL", values: { temp: "c", wind: "kt", precip: "mm", snow: "cm", dist: "nm", alt: "ft", baro: "flight", press: "hpa" } },
   };
 
   const GROUPS = [
@@ -52,7 +52,8 @@
     border:1px solid var(--line);border-radius:12px;background:rgba(127,127,127,.045);color:var(--fg);cursor:pointer;text-align:left}
   #settings .preset:hover{background:rgba(127,127,127,.09);border-color:var(--line-strong)}
   #settings .preset b{font:700 12.5px var(--font-display)}
-  #settings .preset small{font:500 9.5px/1.25 var(--font-mono);color:var(--dim);white-space:nowrap;letter-spacing:-.02em}
+  #settings .preset{overflow:hidden}
+  #settings .preset small{font:600 9.5px/1.25 var(--font-display);color:var(--dim);white-space:nowrap;letter-spacing:0}
   #settings .preset.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent-glow)}
   #settings .preset.on::after{content:"✓";position:absolute;right:8px;top:7px;color:var(--accent);font:800 11px var(--font-display)}
   #settings details.advanced{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:rgba(127,127,127,.025);overflow:hidden}
