@@ -809,9 +809,14 @@
       return Math.round(Math.min(vv.height * (vv.scale || 1), innerHeight || 1e9));
     };
     const bounds = () => {
-      const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
+      const cs = getComputedStyle(document.documentElement);
+      const top = parseFloat(cs.getPropertyValue("--top-h")) || 52;
+      // The card lives ABOVE the tape (bottom: --tb-h + 10), so the tape's
+      // height is part of the budget. Ignoring it let a maximised tape shove
+      // the card's head — and its × — off the top of the screen.
+      const tbH = parseFloat(cs.getPropertyValue("--tb-h")) || 120;
       // min is the PEEK: name, temperature and the sentence, map above it
-      return { min: 128, max: Math.max(220, viewH() - top - 18) };
+      return { min: 128, max: Math.max(200, viewH() - top - tbH - 24) };
     };
     const stored = Number(localStorage.getItem("wxgrid.sheetHeight")) || 0;
     let y0 = 0, dy = 0, startH = 0, dragging = false, closing = false, height = stored;
@@ -907,6 +912,7 @@
       if (!tapeDrag || (e && e.pointerId !== tapeDrag.id)) return;
       const tap = Math.abs(tapeDrag.want - tapeDrag.height) < 5;
       tapeDrag = null; tb.classList.remove("is-resizing"); document.body.classList.remove("resizing-tape");
+      restoreSheetHeight();                    // the card re-budgets around the new tape
       if (tap) setTapeState(tapeState === "full" ? "mini" : "full");     // a tap on the grip cycles
       else localStorage.setItem("wxgrid.tapeState", tapeState);
       if (tapeHeight && tapeState === "full") localStorage.setItem("wxgrid.tapeHeight", tapeHeight);

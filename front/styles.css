@@ -570,7 +570,10 @@ table.bandtape .nil { color: var(--line-strong); }
      never let the card climb past the screen top and take its × with it */
   #point.sheet-full { bottom: calc(6px + env(safe-area-inset-bottom)); max-height: calc(100dvh - max(var(--top-h), 48px) - 20px - env(safe-area-inset-top)); }
   #point.sheet-drag { transition: none; }
-  #point.sheet-sized { max-height: calc(100dvh - max(var(--top-h), 48px) - 18px - env(safe-area-inset-top)); }
+  #point.sheet-sized { max-height: calc(100dvh - max(var(--top-h), 48px) - max(var(--tb-h), 96px) - 22px - env(safe-area-inset-top)); }
+  /* while the tape grip is being dragged, the card must not chase it through
+     a .22s ease — that lag is the jitter */
+  body.resizing-tape #point { transition: none; }
   .sheet-grip { display: block; padding: 2px 0 6px; margin: -4px 0 0; touch-action: none; cursor: grab; }
   /* peek: the map stays usable, the card keeps only its name and hero. The
      tabs and everything under the hero go, so nothing half-renders. */
