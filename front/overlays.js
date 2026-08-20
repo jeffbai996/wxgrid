@@ -259,10 +259,13 @@
         tiles: [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${name}/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png?t=${Math.floor(Date.now() / 6e5)}`] });
       M().addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, "wx");
     }
-    if (M().getLayer("wx")) M().setPaintProperty("wx", "raster-opacity", Math.min(0.5, LAYER_ALPHA[state.layer]));
-    WX.fn.toast("GOES GeoColor over the Americas and Pacific, about an hour behind.", 5000);
+    // The imagery is the point here: the field steps well back, and a badge
+    // says what the pixels are and where they end, so a hard disc edge over
+    // Asia reads as coverage, not a bug.
+    if (M().getLayer("wx")) M().setPaintProperty("wx", "raster-opacity", Math.min(0.3, LAYER_ALPHA[state.layer]));
+    badge("sat", `Satellite <b>GOES GeoColor</b> <small>~1 h old · Americas + Pacific only</small>`, "#9fb0c8");
   }
-  function clearSat() { ["sat-east", "sat-west"].forEach((l) => { if (M().getLayer(l)) M().removeLayer(l); if (M().getSource(l)) M().removeSource(l); }); WX.fn.applyStep(); }
+  function clearSat() { ["sat-east", "sat-west"].forEach((l) => { if (M().getLayer(l)) M().removeLayer(l); if (M().getSource(l)) M().removeSource(l); }); badge("sat", null); WX.fn.applyStep(); }
 
   // ── corner badges ─────────────────────────────────────────────────────
   // A keyed stack of small chips bottom-left, above the met-service badge:

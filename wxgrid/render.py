@@ -138,6 +138,13 @@ RAMPS: dict[str, dict] = {
     "vort500": {"units": "10⁻⁵/s", "lo": -20, "hi": 20, "stops": [
         (-20, (30, 60, 180)), (-8, (70, 130, 220)), (-2, (150, 180, 220)), (0, (235, 235, 235)),
         (2, (230, 180, 150)), (8, (230, 110, 70)), (20, (180, 20, 40))]},
+    # ±hPa/3h, diverging: falling glass red (storm side), rising blue-green
+    "ptend": {"units": "hPa/3h", "lo": -6, "hi": 6, "stops": [
+        (-6, (170, 20, 60)), (-3, (230, 90, 60)), (-1, (240, 180, 120)), (0, (235, 235, 235)),
+        (1, (150, 210, 190)), (3, (70, 160, 200)), (6, (40, 80, 190))]},
+    "cbase": {"units": "m", "lo": 0, "hi": 3000, "stops": [
+        (0, (120, 120, 140)), (300, (150, 150, 170)), (700, (110, 170, 210)), (1200, (80, 190, 160)),
+        (2000, (170, 210, 90)), (3000, (240, 210, 70))]},
     "prob_gust": {"units": "%", "lo": 0, "hi": 100, "stops": [
         (0, (40, 35, 60)), (20, (120, 80, 170)), (40, (190, 80, 170)), (60, (240, 100, 110)),
         (80, (250, 150, 60)), (100, (250, 220, 60))]},
@@ -171,6 +178,8 @@ DISPLAY = {
     "sst": lambda k: k - 273.15,
     "ptype": lambda c: c,
     "vort500": lambda z: z * 1e5,
+    "ptend": lambda pa: pa / 100.0,
+    "cbase": lambda m: m,
 }
 
 
@@ -236,7 +245,7 @@ _LUTS = {k: _lut(v) for k, v in RAMPS.items()}
 
 IMAGE_FORMATS = {"png": "image/png", "webp": "image/webp"}
 # Layers whose alpha varies with the value, so they cannot be palette images.
-_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500")
+_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500", "ptend")
 
 
 def pick_format(accept: str | None) -> str:
@@ -329,6 +338,8 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: st
             a = np.where(x >= 0.99, 1.0, 0.0)
         elif layer == "vort500":
             a = np.clip(np.abs(x) / 4.0, 0, 1)      # quiescent air is transparent
+        elif layer == "ptend":
+            a = np.clip(np.abs(x) / 1.2, 0, 1)      # a steady glass is the map
         else:
             a = np.clip(x / 100.0, 0, 1) ** 0.7     # clear sky shows the map through
         rgba[..., 3] = (a * alpha * 255).astype(np.uint8)
