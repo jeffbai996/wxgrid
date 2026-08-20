@@ -72,9 +72,10 @@
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null, measure: false,
     alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false,
-    sigmet: false, aurora: false, lightning: false, aq: false, route: false, aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
+    sigmet: false, aurora: false, lightning: false, aq: false, route: false,
+    imagery: localStorage.getItem("wxgrid.imagery") === "1", night: false, aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
     opacity: Number(localStorage.getItem("wxgrid.opacity") || 100),
-    particleDensity: Number(localStorage.getItem("wxgrid.particleDensity") || 50), xsection: false,
+    particleDensity: Number(localStorage.getItem("wxgrid.particleDensity") || 60), xsection: false,
     playMs: Number(localStorage.getItem("wxgrid.playMs") || 900),
   };
   let map, wind, catalog, playTimer = null, marker = null;
@@ -279,6 +280,8 @@
     if (state.alerts) WX.ov.loadAlerts();
     if (state.storms) WX.ov.loadStorms();
     if (state.sat) WX.ov.loadSat();
+    if (state.imagery) WX.ov.loadImagery();
+    if (state.night) WX.ov.updateNight();
     if (state.smoke) WX.ov.loadSmoke();
     if (state.fires) WX.fires.load();
     if (state.quakes) WX.ov.loadQuakes();
@@ -566,6 +569,13 @@
     // Back to the present in one tap: scrubbing four days out and finding your
     // way home by dragging is the kind of thing a button fixes.
     $("#tape-now").onclick = () => { setStep(currentStepIdx()); WX.tape.renderTapeSelection(); };
+    // the tape scrubs under the wheel: vertical scroll steps time, natural
+    // horizontal scroll keeps scrolling the tape
+    $("#timebar").addEventListener("wheel", (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || e.target.closest("input")) return;
+      e.preventDefault();
+      nudge(e.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
     $("#tuck").onclick = () => setTucked(true);
     $("#tucked").onclick = () => setTucked(false);
     // A phone's search box is a third of the row; the long placeholder was
@@ -636,6 +646,9 @@
     document.addEventListener("wx-units", () => { renderControls(); renderLegend(); renderPoint(); WX.tape.renderTape(); if (WX.probe) WX.probe.hover(null); if (state.xsection && WX.xs) WX.xs.refresh(); $("#units-toggle").querySelector(".val").textContent = speedUnit(); });
     $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme === "light" ? "light" : "dark";
     $("#radar-toggle").onclick = () => WX.ov.toggleRadar();
+    $("#imagery-toggle").onclick = () => { state.imagery = !state.imagery; localStorage.setItem("wxgrid.imagery", state.imagery ? "1" : "0"); $("#imagery-toggle").classList.toggle("on", state.imagery); if (state.imagery) WX.ov.loadImagery(); else WX.ov.clearImagery(); };
+    $("#imagery-toggle").classList.toggle("on", state.imagery); if (state.imagery) WX.ov.loadImagery();
+    $("#night-toggle").onclick = () => { state.night = !state.night; $("#night-toggle").classList.toggle("on", state.night); if (state.night) WX.ov.updateNight(); else WX.ov.clearNight(); };
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
     $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) WX.ov.loadStorms(); else WX.ov.clearStorms(); };
     $("#sat-toggle").onclick = () => { state.sat = !state.sat; $("#sat-toggle").classList.toggle("on", state.sat); if (state.sat) { clearOtherCover("sat"); WX.ov.loadSat(); } else WX.ov.clearSat(); };
@@ -682,6 +695,8 @@
       else if (e.key === "Escape") { closePoint(); WX.search.hideResults(); $$(".menu.open").forEach((x) => x.classList.remove("open")); }
       else if (e.key === "/") { e.preventDefault(); $("#q").focus(); }
       else if (e.key === "l" || e.key === "L") { $("#overlays-menu").classList.toggle("open"); }
+      else if (e.key === "n" || e.key === "N") { setStep(currentStepIdx()); WX.tape.renderTapeSelection(); }
+      else if (e.key === "?") { WX.settings.open(); }
       else if (e.key >= "1" && e.key <= "9") {                 // 1-9 pick a layer
         const btns = $$(".rail button[data-family]:not(:disabled)");
         const b = btns[Number(e.key) - 1]; if (b) b.click();
@@ -1056,6 +1071,7 @@
     $("#lead").textContent = atNow ? "current" : `+${stepHours()}h`;
     $("#tape-now").classList.toggle("on", atNow);
     $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
+    if (state.night && WX.ov) WX.ov.updateNight();
     if (prefetch) { const img = new Image(); img.src = layerUrl(steps()[(state.stepIdx + 1) % steps().length]); if (state.resorts && WX.ov) WX.ov.loadResorts(); }
     WX.tape.renderTapeSelection();
     if (state.point) renderPoint();
@@ -1133,7 +1149,9 @@
     // while it is open and come back when it closes. A fold the user chose
     // themselves stays.
     if (phoneMQ.matches && !document.body.classList.contains("tucked")) { softTucked = true; setTucked(true, false); }
-    $("#point-title").textContent = name || `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
+    $("#point-title").textContent = name || "Locating…";
+    // if the geocoder never answers, the coordinates are the name
+    if (!name) setTimeout(() => { if (my === pointReq && !state.point.name) $("#point-title").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`; }, 8000);
     $("#point-local").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
     $("#point-now").textContent = "…";
     $$(".point-tabs button[data-tab=resort]").forEach((b) => b.hidden = !state.resort);
@@ -1161,7 +1179,7 @@
         }
       }
     };
-    const gotLocal = (r) => { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if ((!state.point.name || hasNonLatinScript(state.point.name)) && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; } WX.tape.renderTape(); renderPoint(); };
+    const gotLocal = (r) => { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if ((!state.point.name || hasNonLatinScript(state.point.name)) && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; } else if (!state.point.name) { $("#point-title").textContent = `${state.point.lat.toFixed(2)}°, ${state.point.lon.toFixed(2)}°`; } WX.tape.renderTape(); renderPoint(); };
     // The stream lands six answers inside ~100 ms; six full card renders in a
     // row is most of the "slow pin" feel on a tablet. One render per frame.
     const renderSoon = perFrame(() => { if (my === pointReq) renderPoint(); });

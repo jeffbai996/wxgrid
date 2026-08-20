@@ -37,6 +37,63 @@
       }
     } catch (e) { WX.fn.toast("No isolines for this layer.", 4000, "error"); }
   }
+  // ── satellite imagery base ────────────────────────────────────────────
+  // Not a weather overlay: a ground truth to put UNDER the field. Vector
+  // labels stay on top; the weather layer keeps painting above it.
+  function loadImagery() {
+    // restored from localStorage at boot, which can run before the style —
+    // an addLayer then is a fatal, not a layer (2026-08-19, landscape probe)
+    if (!M().isStyleLoaded() && !M().getSource("openmaptiles")) { M().once("load", loadImagery); return; }
+    if (M().getSource("sat-base")) return;
+    M().addSource("sat-base", { type: "raster", tileSize: 256, maxzoom: 18,
+      attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
+      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"] });
+    const before = M().getLayer("wx") ? "wx" : WX.fn.firstSymbolId();
+    M().addLayer({ id: "sat-base", type: "raster", source: "sat-base", paint: { "raster-opacity": 1 } }, before);
+  }
+  function clearImagery() { if (M().getLayer("sat-base")) M().removeLayer("sat-base"); if (M().getSource("sat-base")) M().removeSource("sat-base"); }
+
+  // ── day/night terminator ──────────────────────────────────────────────
+  // Follows the SELECTED time, not the wall clock: scrub the tape and watch
+  // the night slide. Subsolar point from a low-precision solar ephemeris —
+  // a degree of error is invisible at this scale.
+  function nightPolygon(date) {
+    const rad = Math.PI / 180, d = (date - new Date(Date.UTC(2000, 0, 1, 12))) / 86400e3;
+    const L = (280.460 + 0.9856474 * d) % 360, g = ((357.528 + 0.9856003 * d) % 360) * rad;
+    const ec = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * rad;
+    const decl = Math.asin(Math.sin(23.439 * rad) * Math.sin(ec));
+    const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
+    const ra = Math.atan2(Math.cos(23.439 * rad) * Math.sin(ec), Math.cos(ec));
+    const subLon = ((ra / rad) - gmst * 15 + 540) % 360 - 180;
+    const subLat = decl / rad;
+    // the terminator: every point 90° of arc from the subsolar point.
+    // sin(lat2) = cos(lat1)·cos(az); lon2 = lon1 + atan2(sin(az)·cos(lat1), −sin(lat1)·sin(lat2))
+    const ring = [];
+    const lat1 = subLat * rad, lon1 = subLon * rad;
+    for (let a = 0; a < 360; a += 3) {
+      const az = a * rad;
+      const lat2 = Math.asin(Math.cos(lat1) * Math.cos(az));
+      const lon2 = lon1 + Math.atan2(Math.sin(az) * Math.cos(lat1), -Math.sin(lat1) * Math.sin(lat2));
+      ring.push([((lon2 / rad + 540) % 360) - 180, lat2 / rad]);
+    }
+    // close over the dark pole: the pole opposite the sun's hemisphere
+    const poleLat = subLat > 0 ? -90 : 90;
+    ring.sort((p, q) => p[0] - q[0]);
+    const coords = [[-180, poleLat], ...ring.map(([x, y]) => [x, y]), [180, poleLat], [-180, poleLat]];
+    return { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [coords] } };
+  }
+  function updateNight() {
+    if (!state.night || !M().getSource) return;
+    const gj = nightPolygon(WX.fn.validDate());
+    if (M().getSource("night")) M().getSource("night").setData(gj);
+    else {
+      M().addSource("night", { type: "geojson", data: gj });
+      M().addLayer({ id: "night", type: "fill", source: "night",
+        paint: { "fill-color": "#03060f", "fill-opacity": 0.32 } }, WX.fn.firstSymbolId());
+    }
+  }
+  function clearNight() { if (M().getLayer("night")) M().removeLayer("night"); if (M().getSource("night")) M().removeSource("night"); }
+
   function clearIso() { ["iso-label", "iso-line"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("iso")) M().removeSource("iso"); }
 
   // ── avalanche regions overlay ─────────────────────────────────────────
@@ -449,6 +506,6 @@
 
   function clearQuakes() { if (M().getLayer("quakes")) M().removeLayer("quakes"); if (M().getSource("quakes")) M().removeSource("quakes"); }
 
-  WX.ov = { loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
+  WX.ov = { loadImagery, clearImagery, updateNight, clearNight, loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
              loadRadar, clearRadar, refreshRadarSource, badge };
 })();

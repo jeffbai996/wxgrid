@@ -284,12 +284,13 @@
     if (!sea && freezing != null) normal.push(`<span class="chipv" style="color:#7fd8e8">freezing <b>${W().units.alt(freezing).v}</b> ${W().units.altUnit}</span>`);
     chips.push(...(sea ? [...marine, ...normal] : [...normal, ...marine]));
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
+    const moon = moonPhase(W().validDate);
     $("#point-now").innerHTML = `<div class="hero">
         ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
         <div class="big" style="color:${t != null ? tempColor(t - K) : "inherit"}">${t == null ? "—" : W().units.temp(t).v}<span class="deg">°</span></div>
         <div class="hl">
           ${hi != null ? `<div class="hilo"><span class="hi"><i>high</i>${W().units.tempC(hi).v}°</span><span class="rule"></span><span class="lo"><i>low</i>${W().units.tempC(lo).v}°</span></div>` : ""}
-          ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span>${sun.len ? `<span class="len">${sun.len} of daylight</span>` : ""}</div>` : ""}
+          ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span>${sun.len ? `<span class="len">${sun.len} of daylight</span>` : ""}<span class="moon" title="${moon.name}, ${moon.pct}% lit">${moon.glyph} ${moon.pct}%</span></div>` : ""}
         </div>
       </div>
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}</p>` : ""; })()}
@@ -359,6 +360,19 @@
       if (t > t0 && t <= t1 && v != null && (best === null || v > best)) best = v;
     });
     return best === null ? null : Math.round(best);
+  }
+
+  // Moon phase from the synodic month: age in days since a known new moon.
+  // A tenth of a day of error is a sliver of shading nobody can see.
+  function moonPhase(date) {
+    const synodic = 29.530588853;
+    const age = (((date - new Date(Date.UTC(2000, 0, 6, 18, 14))) / 86400e3) % synodic + synodic) % synodic;
+    const pct = Math.round((1 - Math.cos(2 * Math.PI * age / synodic)) / 2 * 100);
+    const k = Math.round(age / synodic * 8) % 8;
+    return { pct,
+      glyph: ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"][k],
+      name: ["new moon", "waxing crescent", "first quarter", "waxing gibbous",
+             "full moon", "waning gibbous", "last quarter", "waning crescent"][k] };
   }
 
   function daysStrip(pt, d, i) {

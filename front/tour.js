@@ -9,6 +9,7 @@
   // after boot, so checking later would suppress the tour for everyone
   const ARRIVED_WITH_VIEW = location.hash.length > 3;
   const STEPS = [
+    { sel: "#search", title: "Anywhere on Earth", text: "Search a place, or just tap the map — the card that opens has nine panes, from the hourly tape to soundings and a resort board." },
     { sel: "#layers", title: "Layers", text: "Wind, temperature, rain, snow, waves, air quality. Some have variants — rain over 6, 24 or 72 hours — and the picker for those sits next to the legend." },
     { sel: "#tstrip", title: "Overlays and tools", text: "Radar, satellite, warnings, wildfires, avalanche, cross-sections. Hover any icon for its name." },
     { sel: "#timebar", title: "The forecast tape", text: "Scrub with ← and →, space to animate, click any column to jump. The chevron folds it away." },
