@@ -32,7 +32,7 @@
     const el = $("#tape-where");
     el.replaceChildren();
     if (!state.point) { el.textContent = "map centre"; return; }
-    const name = state.point.name || `${state.point.lat.toFixed(2)}, ${state.point.lon.toFixed(2)}`;
+    const name = state.point.name || WX.fmtCoords(state.point.lat, state.point.lon);
     el.append(document.createTextNode(name));
     const region = state.point.local && state.point.local.place && state.point.local.place.region;
     if (region && region.toLocaleLowerCase() !== name.toLocaleLowerCase()) {

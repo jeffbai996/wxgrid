@@ -97,6 +97,13 @@
   // the user clicked); every API call gets the wrapped one, since the store
   // is one world wide.
   const wlon = (x) => ((x + 180) % 360 + 360) % 360 - 180;
+  // "50.77° N, 120.99° W" reads as a place; a signed pair reads as debug
+  // output. Longitude is wrapped first so a map copy east of the antimeridian
+  // still names the hemisphere people expect.
+  const fmtCoords = (lat, lon, nd = 2) => {
+    const wl = wlon(lon);
+    return `${Math.abs(lat).toFixed(nd)}° ${lat >= 0 ? "N" : "S"}, ${Math.abs(wl).toFixed(nd)}° ${wl >= 0 ? "E" : "W"}`;
+  };
   const hasNonLatinScript = (s) => /[\u0370-\u052f\u0590-\u08ff\u0900-\u1cff\u2c00-\ud7ff\uf900-\ufaff]/u.test(s || "");
   // The map's ramps come from the server (`/api/models` → layers[].stops). Any
   // chip that colours a value uses THIS, so a colour means the same thing in
@@ -116,7 +123,7 @@
   // and answers the JSON endpoints from files. Live builds pass straight through.
   const U = (u) => (window.WXStatic ? window.WXStatic.url(u) : u);
   const apiJson = (u) => window.WXStatic ? window.WXStatic.api(u) : fetch(u).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
-  window.WX = { state, speed, speedUnit, arrowRot, f, arrow, wlon, rampColor, LEVEL_FT, LEVEL_M, AVY_COLORS, API, LAYER_ALPHA, $, $$,
+  window.WX = { state, speed, speedUnit, arrowRot, f, arrow, wlon, fmtCoords, rampColor, LEVEL_FT, LEVEL_M, AVY_COLORS, API, LAYER_ALPHA, $, $$,
                 get map() { return map; }, get catalog() { return catalog; }, toast, modelEntry: () => modelEntry(), openPoint, closePoint,
                 get validDate() { return validDate(); }, get stepHours() { return stepHours(); }, api: apiJson, url: U };
   // Functions the split-out modules (overlays.js, tape.js, search.js) call back into.
@@ -1159,8 +1166,8 @@
     if (phoneMQ.matches && !document.body.classList.contains("tucked")) { softTucked = true; setTucked(true, false); }
     $("#point-title").textContent = name || "Locating…";
     // if the geocoder never answers, the coordinates are the name
-    if (!name) setTimeout(() => { if (my === pointReq && !state.point.name) $("#point-title").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`; }, 8000);
-    $("#point-local").textContent = `${lat.toFixed(2)}°, ${lon.toFixed(2)}° · ${modelEntry().short}`;
+    if (!name) setTimeout(() => { if (my === pointReq && !state.point.name) $("#point-title").textContent = fmtCoords(lat, lon); }, 8000);
+    $("#point-local").textContent = `${fmtCoords(lat, lon)} · ${modelEntry().short}`;
     $("#point-now").textContent = "…";
     $$(".point-tabs button[data-tab=resort]").forEach((b) => b.hidden = !state.resort);
     { const on = WX.search.isFav(lat, lon); $("#point-fav").classList.toggle("on", on); $("#point-fav").title = on ? "Saved place" : "Save place"; }
@@ -1187,7 +1194,7 @@
         }
       }
     };
-    const gotLocal = (r) => { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if ((!state.point.name || hasNonLatinScript(state.point.name)) && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; } else if (!state.point.name) { $("#point-title").textContent = `${state.point.lat.toFixed(2)}°, ${state.point.lon.toFixed(2)}°`; } WX.tape.renderTape(); renderPoint(); };
+    const gotLocal = (r) => { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if ((!state.point.name || hasNonLatinScript(state.point.name)) && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; } else if (!state.point.name) { $("#point-title").textContent = fmtCoords(state.point.lat, state.point.lon); } WX.tape.renderTape(); renderPoint(); };
     // The stream lands six answers inside ~100 ms; six full card renders in a
     // row is most of the "slow pin" feel on a tablet. One render per frame.
     const renderSoon = perFrame(() => { if (my === pointReq) renderPoint(); });

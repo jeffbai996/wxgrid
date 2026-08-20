@@ -13,7 +13,7 @@
   function toggleFav(lat, lon, name) {
     let list = favs();
     if (isFav(lat, lon)) list = list.filter((f) => !(Math.abs(f.lat - lat) < 1e-3 && Math.abs(f.lon - lon) < 1e-3));
-    else list.unshift({ name: name || `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`, lat, lon });
+    else list.unshift({ name: name || WX.fmtCoords(lat, lon), lat, lon });
     localStorage.setItem("wxgrid.favs", JSON.stringify(list.slice(0, 30)));
     return isFav(lat, lon);
   }
@@ -27,8 +27,8 @@
   function showFavs() {
     const list = favs(), rec = recents().filter((r) => !isFav(r.lat, r.lon)).slice(0, 5);
     if (!list.length && !rec.length) { hideResults(); return; }
-    searchHits = [...list.map((f) => ({ kind: "fav", name: f.name, sub: `${f.lat.toFixed(2)}°, ${f.lon.toFixed(2)}°`, lat: f.lat, lon: f.lon })),
-                  ...rec.map((r) => ({ kind: "recent", name: r.name, sub: r.kind === "resort" ? "resort" : `${r.lat.toFixed(2)}°, ${r.lon.toFixed(2)}°`, lat: r.lat, lon: r.lon, id: r.id, srcKind: r.kind }))];
+    searchHits = [...list.map((f) => ({ kind: "fav", name: f.name, sub: WX.fmtCoords(f.lat, f.lon), lat: f.lat, lon: f.lon })),
+                  ...rec.map((r) => ({ kind: "recent", name: r.name, sub: r.kind === "resort" ? "resort" : WX.fmtCoords(r.lat, r.lon), lat: r.lat, lon: r.lon, id: r.id, srcKind: r.kind }))];
     searchSel = 0; paintResults();
   }
   function wireSearch() {
@@ -63,7 +63,7 @@
     const c = parseCoords(text);
     if (c) {
       // no name: let the reverse geocode put a place to it
-      searchHits = [{ kind: "point", name: `${c.lat.toFixed(3)}°, ${c.lon.toFixed(3)}°`, sub: "coordinates", lat: c.lat, lon: c.lon, unnamed: true }];
+      searchHits = [{ kind: "point", name: WX.fmtCoords(c.lat, c.lon, 3), sub: "coordinates", lat: c.lat, lon: c.lon, unnamed: true }];
       searchSel = 0;
       if (go) { pickResult(searchHits[0]); return; }
       paintResults(); return;
