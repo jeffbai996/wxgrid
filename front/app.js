@@ -1162,13 +1162,16 @@
       }
     };
     const gotLocal = (r) => { state.point.local = r; if (r.timezone && r.timezone.tz) { WX.units.pointZone = r.timezone.tz; if (WX.units.followsPoint) { WX.tape.renderTape(); applyStep(false); } } if ((!state.point.name || hasNonLatinScript(state.point.name)) && r.place && r.place.name) { state.point.name = r.place.name; $("#point-title").textContent = r.place.name; } WX.tape.renderTape(); renderPoint(); };
+    // The stream lands six answers inside ~100 ms; six full card renders in a
+    // row is most of the "slow pin" feel on a tablet. One render per frame.
+    const renderSoon = perFrame(() => { if (my === pointReq) renderPoint(); });
     const got = {
       point: gotPoint, local: gotLocal,
-      obs: (r) => { state.point.obs = r; renderPoint(); },
-      alerts: (r) => { state.point.alerts = r.alerts || []; renderPoint(); },
-      air: (r) => { state.point.air = r; renderPoint(); },
-      tides: (r) => { state.point.tides = r || false; renderPoint(); },
-      prob: (r) => { if (r) { state.point.prob = r; renderPoint(); } },
+      obs: (r) => { state.point.obs = r; renderSoon(); },
+      alerts: (r) => { state.point.alerts = r.alerts || []; renderSoon(); },
+      air: (r) => { state.point.air = r; renderSoon(); },
+      tides: (r) => { state.point.tides = r || false; renderSoon(); },
+      prob: (r) => { if (r) { state.point.prob = r; renderSoon(); } },
     };
     // One streamed response instead of six requests: the six were queueing
     // behind map tiles on the browser's per-origin connection cap, so the

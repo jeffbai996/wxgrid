@@ -30,7 +30,14 @@
       this.dpr = Math.min(window.devicePixelRatio || 1, 2);
       this.lastFrame = 0;
       this._resize = () => this.resize();
-      this._moveEnd = () => { if (this.mode === "barbs") this.drawBarbs(); };
+      this._moveEnd = () => {
+        if (this.mode === "barbs") { this.drawBarbs(); return; }
+        // A rapid zoom-out leaves every particle inside the OLD viewport — a
+        // dense clump in the middle of the new one, dying off over a minute.
+        // If the view changed scale meaningfully, deal fresh cards.
+        const z = this.map.getZoom();
+        if (this._seedZoom == null || Math.abs(z - this._seedZoom) > 0.4) this.reseed();
+      };
       // Barbs are drawn in screen space from the field underneath. Drawing them
       // only at the end of a movement left them pinned to the glass while the
       // map slid beneath — the same complaint the particle trails had.
@@ -170,6 +177,7 @@
     }
 
     reseed() {
+      this._seedZoom = this.map ? this.map.getZoom() : null;
       const b = this.bounds();
       const area = this.canvas.clientWidth * this.canvas.clientHeight;
       // 50% is the quieter default and equals about 70% of the old particle
