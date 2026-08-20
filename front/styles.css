@@ -482,6 +482,8 @@ table.bandtape .nil { color: var(--line-strong); }
 @keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) { #toast { animation: none; } }
 #toast.error { border-left-color: var(--bad); color: var(--fg); }
+#toast.tappable { cursor: pointer; border-left-color: var(--accent); }
+#toast.tappable:hover { border-color: var(--accent); }
 :root[data-theme="light"] #toast { box-shadow: 0 14px 40px rgba(20,30,50,.18); }
 #fatal { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0,0,0,.55); backdrop-filter: blur(6px); padding: 20px; }
 .fatal-card { width: min(440px, 100%); background: var(--panel-solid); border: 1px solid rgba(239,120,111,.5); border-radius: var(--radius); padding: 18px 20px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }

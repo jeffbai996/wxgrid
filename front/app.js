@@ -1218,8 +1218,9 @@
 
   // ── misc ──────────────────────────────────────────────────────────────
   let toastTimer = null;
-  function toast(msg, ms = 3000, kind = "") {
-    const t = $("#toast"); t.textContent = msg; t.hidden = false; t.className = kind;
+  function toast(msg, ms = 3000, kind = "", onTap = null) {
+    const t = $("#toast"); t.textContent = msg; t.hidden = false; t.className = kind + (onTap ? " tappable" : "");
+    t.onclick = onTap ? () => { t.hidden = true; onTap(); } : null;
     clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), ms);
   }
   // Boot failure: a proper panel, not a toast. Says what is wrong in words

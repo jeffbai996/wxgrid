@@ -655,7 +655,10 @@
           if (!sw) return;
           sw.addEventListener("statechange", () => {
             if (sw.state === "installed" && navigator.serviceWorker.controller && window.WX && WX.fn) {
-              WX.fn.toast("wxgrid updated. Reload for the new version.", 6000);
+              // A stale tab running yesterday's scripts against today's API is
+              // the one bug class users cannot see; the toast is the reload,
+              // not advice to perform one.
+              WX.fn.toast("wxgrid updated — tap to reload", 30000, "", () => location.reload());
             }
           });
         });
