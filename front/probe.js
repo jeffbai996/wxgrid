@@ -154,7 +154,8 @@
         const [lng, lat] = f.geometry.coordinates;
         const v = valueAt(lng, lat);
         if (!v || v.text === "—") continue;
-        feats.push({ type: "Feature", properties: { txt: v.text }, geometry: { type: "Point", coordinates: [lng, lat] } });
+        // forty towns saying "°C" forty times is noise: degrees compact to 19°
+        feats.push({ type: "Feature", properties: { txt: v.text.replace(/\s*°[CF]$/, "°") }, geometry: { type: "Point", coordinates: [lng, lat] } });
         if (feats.length >= 40) break;
       }
       src.setData({ type: "FeatureCollection", features: feats });
