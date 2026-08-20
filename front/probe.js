@@ -144,7 +144,13 @@
           paint: { "text-color": "#ffffff", "text-halo-color": "rgba(8,10,14,.75)", "text-halo-width": 1.2 } });
       }
       const src = m.getSource("cityvals");
-      if (m.getZoom() < 4.2) { src.setData({ type: "FeatureCollection", features: [] }); return; }
+      // Degree-style fields only. Wind values at towns looked like stray
+      // markers ("1 kt" floating over Korea, Jeff 2026-08-19): the basemap
+      // often collision-hides the town name while its point still answers a
+      // query, leaving the value orphaned — and a wind NUMBER without its
+      // direction is half a fact anyway. The particles already show the wind.
+      const CITY_LAYERS = ["temp", "feels", "wbt", "d2m", "sst", "dt24", "msl", "frz", "cbase", "vis", "prob_rain", "prob_gust"];
+      if (m.getZoom() < 4.2 || !CITY_LAYERS.includes(WX.state.layer)) { src.setData({ type: "FeatureCollection", features: [] }); return; }
       const ids = cityLayerIds();
       const seen = new Set(); const feats = [];
       for (const f of (ids.length ? m.queryRenderedFeatures({ layers: ids }) : [])) {
