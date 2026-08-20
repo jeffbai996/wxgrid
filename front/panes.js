@@ -483,14 +483,21 @@
   // document used to send the reader to raw CAP JSON.
   function alertsHtml(pt) {
     const al = pt.alerts; if (!al || !al.length) return "";
-    const head = (a) => `<i class="sw" style="background:${esc(a.color)}"></i><b>${esc(a.event)}</b>${a.ends ? `<span class="dim"> until ${new Date(a.ends).toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }))}</span>` : ""}<span class="hl">${esc((a.headline || a.area || "").slice(0, 140))}</span>`;
+    // The CAP headline restates the event name, both timestamps and the
+    // office in one breathless sentence — everything it says is already on
+    // the card in structured form, so it stays out of the summary.
+    const fmtT = (d) => d.toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }));
+    const when = (a) => { const o = a.onset ? new Date(a.onset) : null, e = a.ends ? new Date(a.ends) : null;
+      return o && e ? `${fmtT(o)} → ${fmtT(e)}` : e ? `until ${fmtT(e)}` : ""; };
+    const head = (a) => `<span class="al-row"><i class="dot"></i><b>${esc(a.event)}</b>${a.severity ? `<em class="sev">${esc(a.severity)}</em>` : ""}</span>
+      <span class="al-meta">${[when(a), a.sender || (a.area || "").slice(0, 60)].filter(Boolean).map(esc).join(" · ")}</span>`;
     const body = (a) => {
       const text = [a.description, a.instruction].filter(Boolean).join("\n\n");
       return text ? `<div class="alert-text selectable">${esc(text)}</div>` : "";
     };
     return `<div class="alerts">${al.slice(0, 3).map((a) => (a.url
-      ? `<a class="alert" href="${esc(a.url)}" target="_blank" rel="noopener" style="border-color:${esc(a.color)}">${head(a)}</a>`
-      : `<details class="alert" style="border-color:${esc(a.color)}"><summary>${head(a)}</summary>${body(a)}</details>`)).join("")}${al.length > 3 ? `<div class="note">+${al.length - 3} more</div>` : ""}</div>`;
+      ? `<a class="alert" href="${esc(a.url)}" target="_blank" rel="noopener" style="--al:${esc(a.color)}">${head(a)}</a>`
+      : `<details class="alert" style="--al:${esc(a.color)}"><summary>${head(a)}</summary>${body(a)}</details>`)).join("")}${al.length > 3 ? `<div class="note">+${al.length - 3} more</div>` : ""}</div>`;
   }
 
   // NOAA sunrise/sunset (good to a minute or two), shown in the viewer's clock.
