@@ -270,7 +270,16 @@
       const later = s.msl[Math.min(i + Math.max(1, Math.round(6 / stepHrs(d, i))), s.msl.length - 1)];
       const dP = later != null && s.msl[i] != null ? (later - s.msl[i]) / 100 : 0;
       const trend = Math.abs(dP) < 1 ? "" : dP > 0 ? " ↗" : " ↘";
-      normal.push(`<span class="chipv" style="color:#b7a6f0"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}${trend}</span>`);
+      // the glass as a curve, not just an arrow: 24 h of pressure in a
+      // 44px sparkline drawn inline, scaled to its own min-max
+      const win = []; for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) if (s.msl[k] != null) win.push(s.msl[k]);
+      let spark = "";
+      if (win.length >= 4) {
+        const mn = Math.min(...win), mx = Math.max(...win), span = Math.max(mx - mn, 60);
+        const pts = win.map((v, k) => `${(k / (win.length - 1) * 44).toFixed(1)},${(11 - (v - mn) / span * 10).toFixed(1)}`).join(" ");
+        spark = `<svg class="pspark" viewBox="0 0 44 12" aria-hidden="true"><polyline points="${pts}"/></svg>`;
+      }
+      normal.push(`<span class="chipv" style="color:#b7a6f0"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}${trend}${spark}</span>`);
     }
     // What it feels like, when that is not what the thermometer says.
     if (t != null) {
@@ -301,7 +310,7 @@
           ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span><i class="brk" aria-hidden="true"></i>${sun.len ? `<span class="len">${sun.len} of daylight</span>` : ""}<span class="moon" title="${moon.name}, ${moon.pct}% lit">${moon.glyph} ${moon.pct}%</span></div>` : ""}
         </div>
       </div>
-      ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Why ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
+      ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
       <div class="meta">${chips.join("")}</div>
       ${daysStrip(pt, d, i)}
       ${alertsHtml(pt)}${airHtml(pt)}`;
@@ -389,13 +398,13 @@
     const btn = $("#why-btn"), box = $("#why");
     if (!btn || !box) return;
     btn.onclick = async () => {
-      if (!box.hidden) { box.hidden = true; btn.textContent = "Why ›"; return; }
+      if (!box.hidden) { box.hidden = true; btn.textContent = "Discussion ›"; return; }
       btn.textContent = "…";
       try {
         if (!pt.why) pt.why = await W().api(`${W().API}/discussion?lat=${pt.lat.toFixed(2)}&lon=${W().wlon(pt.lon).toFixed(2)}&model=${W().state.model}`);
         box.innerHTML = pt.why.paras.map((p) => `<p>${esc(p)}</p>`).join("") || "<p>Nothing notable driving the weather here right now.</p>";
-        box.hidden = false; btn.textContent = "Why ˅";
-      } catch (e) { btn.textContent = "Why ›"; W().fn.toast("Discussion unavailable", 3000, "error"); }
+        box.hidden = false; btn.textContent = "Discussion ˅";
+      } catch (e) { btn.textContent = "Discussion ›"; W().fn.toast("Discussion unavailable", 3000, "error"); }
     };
   }
 
@@ -447,9 +456,9 @@
     let note = "";
     if (extended.length) {
       const first = extended[0].dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      note = `<div class="days-note"><b>AI-GFS</b> from ${first}</div>`;
+      note = `<div class="days-note"><b>AI-GFS</b> generated forecast from ${first}</div>`;
     }
-    return `<div class="days${usable.length > 8 ? " extended" : ""}">${cells}</div>${note}`;
+    return `<i class="kicker">week ahead</i><div class="days${usable.length > 8 ? " extended" : ""}">${cells}</div>${note}`;
   }
 
   const AQI_BANDS = [[50, "Good", "#2f9e44"], [100, "Moderate", "#e6b800"], [150, "Unhealthy for sensitive", "#f08c00"], [200, "Unhealthy", "#e03131"], [300, "Very unhealthy", "#9c36b5"], [9999, "Hazardous", "#7f1d1d"]];
@@ -507,7 +516,8 @@
     const base = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
     const fmt = (h) => new Date(base + h * 3600e3).toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric", minute: "2-digit" }));
     const len = ((s - r + 24) % 24);
-    return { rise: fmt(r), set: fmt(s), len: `${Math.floor(len)}h${String(Math.round((len % 1) * 60)).padStart(2, "0")}` };
+    return { rise: fmt(r), set: fmt(s), riseUtc: r, setUtc: s,
+             len: `${Math.floor(len)}h${String(Math.round((len % 1) * 60)).padStart(2, "0")}` };
   }
 
   // ── Aloft ─────────────────────────────────────────────────────────────
@@ -883,8 +893,18 @@
       tidesHtml = `<div class="obs"><div class="obs-head"><span>Tides · ${esc(t.station)} · ${W().units.dist(t.distance_km).txt}</span><span class="dim">${esc(t.source)} · ${esc(t.datum)}</span></div>
         <div class="tides">${t.events.slice(0, 6).map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${W().units.alt(e.height_m, 1).txt}</b><small>${W().units.dateTime(e.time, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div></div>`;
     }
+    // the sun's day at a glance: 24 hourly UV cells in the map's own ramp
+    let uvStrip = "";
+    if (s.uvi) {
+      const cells = [];
+      for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) {
+        const v = s.uvi[k];
+        cells.push(`<i title="UV ${v == null ? "?" : v.toFixed(0)} at ${new Date(d.valid[k]).toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric" }))}" style="background:${v == null || v < 0.5 ? "rgba(127,127,127,.12)" : W().rampColor("uvi", v, 0.85)}"></i>`);
+      }
+      if (cells.length > 3) uvStrip = `<i class="kicker">uv through the day</i><div class="uvstrip">${cells.join("")}</div>`;
+    }
     $("#outdoors").innerHTML = `<div class="verdict ${verdict[1]}"><b>${verdict[0]}</b>${winHtml}</div>
-      <div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${tidesHtml}${airHtml(pt || {})}
+      <div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${uvStrip}${tidesHtml}${airHtml(pt || {})}
       <div class="note">Snow level ≈ freezing level − ${W().units.alt(300).txt}. Gusts come from models that ship one. Terrain is unresolved at 0.25°.</div>`;
   }
 
@@ -1043,5 +1063,5 @@
     c.onclick = (ev) => { const rect = c.getBoundingClientRect(); const x = (ev.clientX - rect.left) / rect.width * W_; let best = 0; xs.forEach((xx, k) => { if (Math.abs(xx - x) < Math.abs(xs[best] - x)) best = k; }); W().setStep(best); };
   }
 
-  window.WXPanes = { render };
+  window.WXPanes = { render, sunTimes };
 })();

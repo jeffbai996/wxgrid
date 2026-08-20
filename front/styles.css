@@ -786,10 +786,21 @@ table.wtape tr.r-icon td { height: 24px; }
 table.wtape tr.r-icon svg { width: 22px; height: 16px; vertical-align: middle; }
 table.wtape tr.r-temp td { font: 700 13px var(--font-num); font-variant-numeric: tabular-nums; color: var(--fg); height: 22px; }
 table.wtape tr.r-feels td { color: var(--fg-2); }
-table.wtape tr.r-rain td { color: var(--rain); font-weight: 600; }
+table.wtape tr.r-rain td { color: var(--rain); font-weight: 600; position: relative; }
+/* the amount as a bar behind its own number, scaled to the window's wettest */
+table.wtape tr.r-rain td .pbar { position: absolute; left: 15%; right: 15%; bottom: 0; border-radius: 2px 2px 0 0;
+  background: color-mix(in srgb, var(--rain) 26%, transparent); pointer-events: none; }
+table.wtape tr.r-rain td .pbar.sb { background: rgba(207,232,255,.22); }
+table.wtape tr.r-rain td span { position: relative; }
+/* sunrise and sunset: thin amber notches at the top of their columns */
+table.wtape td.sun-rise, table.wtape td.sun-set { position: relative; }
+table.wtape tr.r-hour td.sun-rise::after, table.wtape tr.r-hour td.sun-set::after {
+  content: ""; position: absolute; left: 20%; right: 20%; top: -1px; height: 2.5px; border-radius: 2px;
+  background: var(--warm); opacity: .8; }
+table.wtape tr.r-hour td.sun-set::after { opacity: .5; }
 table.wtape tr.r-rain td .snow { color: #cfe8ff; }
 table.wtape tr.r-prob td { color: #71b8ff; font-weight: 600; font-size: 11px; }
-table.wtape tr.r-wind td span { display: inline-block; min-width: 28px; padding: 1px 3px; border-radius: 3px; color: var(--fg); font-size: 13.5px; line-height: 1.25; }
+table.wtape tr.r-wind td span { display: inline-block; min-width: 26px; padding: 1px 4px; border-radius: 5px; color: var(--fg); font-weight: 700; font-size: 13px; line-height: 1.3; }
 table.wtape tr.r-dir td { height: 20px; }
 /* a real arrow, not a corner of a box: readable at 11 px and unambiguous
    about which way the wind is going */
@@ -965,6 +976,13 @@ table.wtape .lo { color: var(--fg-2); font-weight: 600; font-size: .82em; margin
 
 /* The report is the human answer; telemetry below is supporting detail. */
 .summary i { display: block; font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; }
+.uvstrip { display: flex; gap: 2px; margin: 2px 0 8px; }
+.uvstrip i { flex: 1; height: 9px; border-radius: 2.5px; }
+/* the kicker: a slim uppercase label that names a section without a box */
+.kicker { display: block; font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--dim); margin: 10px 0 2px; }
+.chipv .pspark { width: 44px; height: 12px; margin-left: 2px; align-self: center; }
+.chipv .pspark polyline { fill: none; stroke: currentColor; stroke-width: 1.4; opacity: .75; }
 .summary .why-btn { display: inline-block; margin-left: 7px; border: 0; background: transparent; cursor: pointer;
   color: var(--accent); font: 700 11px var(--font-display); letter-spacing: .02em; padding: 1px 2px; }
 .summary .why-btn:hover { text-decoration: underline; }

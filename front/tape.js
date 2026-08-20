@@ -194,10 +194,28 @@
     // a day header is a jump: sixteen days of tape is a long way to scrub
     const dayRow = days.map((dy) => { const wd = dy.start.getDay();
       return `<th colspan="${dy.span}" class="day${wd === 0 || wd === 6 ? " wknd" : ""}" data-first="${dy.first}" title="Jump to this day">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}</th>`; }).join("");
+    // sunrise/sunset as thin amber notches on the hour row: compute each
+    // day's events once, then find the column whose span holds them
+    const sunCols = new Map();   // shown index -> "rise"|"set"
+    if (WXPanes && WXPanes.sunTimes && state.point) {
+      const seen = new Set();
+      dates.forEach((dt, k) => {
+        const dk = dt.toISOString().slice(0, 10);
+        if (seen.has(dk)) return; seen.add(dk);
+        const st = WXPanes.sunTimes(state.point.lat, state.point.lon, dt);
+        if (!st) return;
+        for (const [which, hUtc] of [["rise", st.riseUtc], ["set", st.setUtc]]) {
+          const ev = Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()) + hUtc * 3600e3;
+          let best = -1, bd = Infinity;
+          dates.forEach((d2, k2) => { const diff = Math.abs(d2.getTime() - ev); if (diff < bd) { bd = diff; best = k2; } });
+          if (best >= 0 && bd < 3600e3 * 2) sunCols.set(best, which);
+        }
+      });
+    }
     // the column whose interval holds the current wall-clock time gets a mark
     const nowMs = Date.now();
     const nowIdx = dates.findIndex((dt, i) => nowMs >= dt.getTime() && (i + 1 >= n || nowMs < dates[i + 1].getTime()));
-    const cell = (i, inner, cls = "") => `<td class="${cls} ${dates[i].getHours() < 6 || dates[i].getHours() >= 21 ? "night" : ""}${i === nowIdx ? " now" : ""}" data-i="${i}">${inner}</td>`;
+    const cell = (i, inner, cls = "") => `<td class="${cls} ${dates[i].getHours() < 6 || dates[i].getHours() >= 21 ? "night" : ""}${i === nowIdx ? " now" : ""}${sunCols.has(i) ? ` sun-${sunCols.get(i)}` : ""}" data-i="${i}">${inner}</td>`;
     // A column that covers half a day is named for that half, not for whichever
     // hour its sample landed on; a column that covers a whole day is named by
     // the date above it and needs no clock at all.
@@ -214,7 +232,9 @@
       : s.t2m && s.t2m[i] != null ? degK(s.t2m[i]) : "—", "temp")).join("");
     const feelsRow = dates.map((_, i) => { const v = agg ? null : feelsAt(s, i);
       return cell(i, agg ? pair(s.feels_hi && s.feels_hi[i], s.feels_lo && s.feels_lo[i], degC) : v == null ? "—" : degC(v), "feels"); }).join("");
-    const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `<span class="snow">${WX.units.snow(sn).v}</span>`, "rain"); return cell(i, r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : "", "rain"); }).join("");
+    const wetMax = Math.max(1, ...dates.map((_, i) => ((s.tp6 && s.tp6[i]) || 0) + ((s.sf6 && s.sf6[i]) || 0)));
+    const bar = (amt, snow) => amt > 0.05 ? `<i class="pbar${snow ? " sb" : ""}" style="height:${Math.min(100, Math.round(amt / wetMax * 100))}%"></i>` : "";
+    const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `${bar(sn, true)}<span class="snow">${WX.units.snow(sn).v}</span>`, "rain"); return cell(i, r >= 0.1 ? `${bar(r)}<span>${WX.units.precip(r).v}</span>` : "", "rain"); }).join("");
     // Chance of rain, from the members, only where it says something —
     // a row of zeros is noise dressed as information
     const probRow = s.prob_rain && s.prob_rain.some((v) => v >= 10)
