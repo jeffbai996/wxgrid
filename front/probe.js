@@ -139,7 +139,7 @@
       if (!m.getSource("cityvals")) {
         m.addSource("cityvals", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
         m.addLayer({ id: "cityvals", type: "symbol", source: "cityvals",
-          layout: { "text-field": ["get", "txt"], "text-size": 11, "text-font": ["Noto Sans Medium"],
+          layout: { "text-field": ["get", "txt"], "text-size": 11, "text-font": ["Noto Sans Regular"],
                     "text-offset": [0, 1.1], "text-anchor": "top", "text-allow-overlap": false },
           paint: { "text-color": "#ffffff", "text-halo-color": "rgba(8,10,14,.75)", "text-halo-width": 1.2 } });
       }
