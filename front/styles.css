@@ -322,6 +322,9 @@ button:focus:not(:focus-visible) { outline: none; }
 #timebar.user-sized .tape { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 #timebar.user-sized table.wtape { min-height: 100%; }
 #timebar.mini { height: auto !important; }
+/* the fold glide: an explicit height + clip while sliding between states */
+#timebar.tape-anim { transition: height .22s cubic-bezier(.4,0,.2,1); overflow: hidden; }
+#timebar.tape-anim #step { display: none; }
 /* out of the way entirely: only the grip is left to pull it back */
 #timebar.tape-away { height: 14px !important; min-height: 0; padding: 0; overflow: hidden; }
 #timebar.tape-away > *:not(.tape-resize-handle) { display: none; }

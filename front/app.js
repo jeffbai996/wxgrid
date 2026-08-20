@@ -613,10 +613,39 @@
     const tb = $("#timebar"), tmin = $("#tape-min");
     // Three states, because "collapsed" and "gone" are different wants: full
     // table, header only, or out of the way entirely with just its grip left.
+    let tapeAnim = 0;
     setTapeState = (s, persist = true) => {
+      const prev = tapeState;
       tapeState = s;
-      tb.classList.toggle("mini", s === "mini");
-      tb.classList.toggle("tape-away", s === "away");
+      const apply = () => {
+        tb.classList.toggle("mini", s === "mini");
+        tb.classList.toggle("tape-away", s === "away");
+      };
+      // The fold used to CUT between heights. Glide instead: measure both
+      // ends, clip the box, and slide — the row swap happens at the short
+      // end of the glide where the eye is on motion, not content.
+      const animatable = prev !== s && !tb.classList.contains("user-sized") &&
+        !matchMedia("(prefers-reduced-motion: reduce)").matches && (prev === "mini" || prev === "full") && (s === "mini" || s === "full");
+      if (animatable) {
+        clearTimeout(tapeAnim);
+        const from = tb.offsetHeight;
+        apply();
+        const to = tb.offsetHeight;
+        // .mini pins height with !important, so the glide runs WITHOUT the
+        // class and swaps it in at the end; going to full the class state is
+        // already right and the box just opens onto the real rows.
+        if (s === "mini") tb.classList.remove("mini");
+        tb.classList.add("tape-anim");
+        tb.style.height = from + "px";
+        tb.getBoundingClientRect();
+        tb.style.height = to + "px";
+        tapeAnim = setTimeout(() => {
+          tb.classList.remove("tape-anim");
+          tb.style.height = "";
+          if (s === "mini") tb.classList.add("mini");
+          document.documentElement.style.setProperty("--tb-h", tb.offsetHeight + "px");
+        }, 240);
+      } else apply();
       if (persist) localStorage.setItem("wxgrid.tapeState", s);
       tmin.title = s === "full" ? "Collapse the forecast table" : "Show the forecast table";
       requestAnimationFrame(() => document.documentElement.style.setProperty("--tb-h", tb.offsetHeight + "px"));

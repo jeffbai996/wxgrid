@@ -8,6 +8,9 @@ WorkingDirectory=%h/local-projects/wxgrid
 ExecStart=%h/local-projects/wxgrid/venv/bin/uvicorn wxgrid.api:app --host 127.0.0.1 --port 8097
 Restart=on-failure
 RestartSec=5
+# the interactive service wins the box when the ingest is churning
+CPUWeight=300
+IOWeight=300
 MemoryHigh=1G
 MemoryMax=1500M
 
