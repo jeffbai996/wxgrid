@@ -99,12 +99,16 @@
   // cheapest way to compare two shores of a strait. One pin; a second request
   // moves it.
   let pinMarker = null;
+  let pinRetry = 0;
   function pinUpdate() {
     if (!pinMarker) return;
     const ll = pinMarker.getLngLat();
     const v = valueAt(ll.lng, ll.lat);
     const el = pinMarker.getElement().querySelector(".val");
     el.innerHTML = v ? `<b>${v.text}</b>${v.sub ? `<span>${v.sub}</span>` : ""}` : "…";
+    // the layer image may still be decoding on first placement
+    clearTimeout(pinRetry);
+    if (!v) pinRetry = setTimeout(() => { refresh(); pinUpdate(); }, 900);
   }
   function pin(ll) {
     if (!pinMarker) {
