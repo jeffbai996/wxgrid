@@ -455,6 +455,25 @@ def prob_point(lat: float, lon: float) -> dict | None:
     return None
 
 
+@app.get("/api/discussion")
+def api_discussion(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-540, le=540),
+                   model: str = "gfs", run: str = "latest"):
+    """The written forecast discussion for a point: which system is driving,
+    what it does here, the vertical story, and how sure the members are."""
+    lon = _wrap_lon(lon)
+    def build():
+        r = _reader(model, run)
+        point = api_point(lat=lat, lon=lon, model=model, run=run)
+        try:
+            prob = prob_point(lat, lon)
+        except FileNotFoundError:
+            prob = None
+        from wxgrid import discussion
+        return discussion.compose(r, lat, lon, point, prob)
+    from wxgrid.ext import cache as _ext_cache
+    return _ext_cache.get(f"disc-v2:{model}:{lat:.1f}:{lon:.1f}", 900, build)
+
+
 @app.get("/api/prob")
 def api_prob(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-540, le=540)):
     p = prob_point(lat, _wrap_lon(lon))

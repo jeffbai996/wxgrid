@@ -349,7 +349,10 @@ button:focus:not(:focus-visible) { outline: none; }
 /* Minimised is not empty: it keeps the day headers, the sky and the
    temperature. The rest of the rows and the scrubber go. */
 #timebar.mini #step { display: none; }
-#timebar.mini table.wtape tbody tr:not(.r-icon):not(.r-temp) { display: none; }
+/* mini keeps the CLOCK: sky and temperature without their hours read as
+   decoration, not a forecast (Jeff 2026-08-20, phone screenshot) */
+#timebar.mini table.wtape tbody tr:not(.r-icon):not(.r-temp):not(.r-hour) { display: none; }
+#timebar.mini table.wtape tr.r-hour td, #timebar.mini table.wtape tr.r-hour th { font-size: 9px; padding-top: 1px; }
 #timebar.mini table.wtape tr.r-icon td { height: 18px; }
 #timebar.mini table.wtape tr.r-icon .tape-glyph { width: 18px; height: 13px; }
 #timebar.mini table.wtape th.day { padding-top: 2px; font-size: 10.5px; }
@@ -607,6 +610,11 @@ table.bandtape .nil { color: var(--line-strong); }
   #play { order: 1; } .time-meta { order: 2; min-width: 0; flex: 1 1 90px; overflow: hidden; }
   #lead { order: 3; min-width: 0; } #tape-now { order: 4; } .tape-min { order: 5; margin-left: 0; }
   #tape-res { order: 6; } #variant { order: 7; }
+  /* mini on a phone is one glance: the resolution picker and the row labels
+     are full-view furniture, and the label gutter was costing two columns */
+  #timebar.mini #tape-res { display: none; }
+  #timebar.mini table.wtape .lab { display: none; }
+  #timebar.mini .tape-head { gap: 4px; }
   #valid-local, #valid-utc { overflow: hidden; text-overflow: ellipsis; }
   #tape-where { display: none; }
   /* The legend is about the map, not the tape, so on a phone it sits on the
@@ -926,6 +934,13 @@ table.wtape .lo { color: var(--fg-2); font-weight: 600; font-size: .82em; margin
 
 /* The report is the human answer; telemetry below is supporting detail. */
 .summary i { display: block; font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; }
+.summary .why-btn { display: inline-block; margin-left: 7px; border: 0; background: transparent; cursor: pointer;
+  color: var(--accent); font: 700 11px var(--font-display); letter-spacing: .02em; padding: 1px 2px; }
+.summary .why-btn:hover { text-decoration: underline; }
+.why { margin: 2px 0 10px; padding: 8px 11px 9px; border-radius: 11px; background: rgba(127,127,127,.06);
+  border-left: 3px solid var(--line-strong); }
+.why p { margin: 0 0 7px; font: 480 12.5px/1.5 var(--font-body); color: var(--fg-2); }
+.why p:last-child { margin-bottom: 0; }
 .summary { margin: 4px 0 10px; padding: 1px 0 1px 11px; border-left: 3px solid var(--accent);
   font: 540 13px/1.48 var(--font-body); color: var(--fg); letter-spacing: -.006em; }
 @media (max-width: 380px) {

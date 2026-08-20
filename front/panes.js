@@ -301,7 +301,7 @@
           ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span>${sun.len ? `<span class="len">${sun.len} of daylight</span>` : ""}<span class="moon" title="${moon.name}, ${moon.pct}% lit">${moon.glyph} ${moon.pct}%</span></div>` : ""}
         </div>
       </div>
-      ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}</p>` : ""; })()}
+      ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Why ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
       <div class="meta">${chips.join("")}</div>
       ${daysStrip(pt, d, i)}
       ${alertsHtml(pt)}${airHtml(pt)}`;
@@ -383,6 +383,22 @@
              "full moon", "waning gibbous", "last quarter", "waning crescent"][k] };
   }
 
+  // The discussion: which system is driving and why — fetched on the first
+  // ask, cached on the point, plain sentences from the server's field brain.
+  function wireWhy(pt) {
+    const btn = $("#why-btn"), box = $("#why");
+    if (!btn || !box) return;
+    btn.onclick = async () => {
+      if (!box.hidden) { box.hidden = true; btn.textContent = "Why ›"; return; }
+      btn.textContent = "…";
+      try {
+        if (!pt.why) pt.why = await W().api(`${W().API}/discussion?lat=${pt.lat.toFixed(2)}&lon=${W().wlon(pt.lon).toFixed(2)}&model=${W().state.model}`);
+        box.innerHTML = pt.why.paras.map((p) => `<p>${esc(p)}</p>`).join("") || "<p>Nothing notable driving the weather here right now.</p>";
+        box.hidden = false; btn.textContent = "Why ˅";
+      } catch (e) { btn.textContent = "Why ›"; W().fn.toast("Discussion unavailable", 3000, "error"); }
+    };
+  }
+
   function daysStrip(pt, d, i) {
     const s = d.series; if (!s.t2m) return "";
     const primaryModel = d.model || W().state.model;
@@ -420,6 +436,7 @@
         <span class="pr">${wet || "&nbsp;"}</span>
         ${wmax != null ? `<span class="wd" style="background:${W().rampColor("wind", wmax, 0.55)}">${Math.round(W().speed(wmax))}<em>${W().speedUnit()}</em></span>` : ""}</button>`;
     }).join("");
+    setTimeout(() => { wireWhy(pt); }, 0);
     setTimeout(() => document.querySelectorAll(".days .day").forEach((b) => b.onclick = () => {
       if (b.dataset.model !== W().state.model) W().fn.jumpModelTime(b.dataset.model, b.dataset.valid);
       else W().setStep(Number(b.dataset.k));
