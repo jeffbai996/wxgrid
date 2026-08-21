@@ -113,7 +113,12 @@ button { font: inherit; color: inherit; }
 .rowbreak { display: none; }
 
 .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; backdrop-filter: blur(8px); }
-.seg button { position: relative; z-index: 1; border: 0; background: transparent; color: var(--fg-2); padding: 5px 11px; border-radius: 7px; font: 700 12.5px var(--font-display); cursor: pointer; letter-spacing: .01em; transition: color .18s ease; }
+.seg button { position: relative; z-index: 1; border: 0; background: transparent; color: var(--fg-2); padding: 5px 11px; border-radius: 7px; font: 700 12.5px var(--font-display); cursor: pointer; letter-spacing: .01em; transition: color .18s ease, background .15s ease; }
+/* hover answers before the click does: unchosen options light up under a
+   pointer. Guarded to real pointers so touch never leaves a stuck highlight. */
+@media (hover: hover) {
+  .seg button:not(.on):not(:disabled):hover { color: var(--fg); background: rgba(127, 127, 127, .14); }
+}
 .seg.sliding { position: relative; isolation: isolate; }
 .seg.sliding .seg-cursor { position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 0; width: 0; border-radius: 7px;
   background: var(--accent); pointer-events: none; will-change: transform,width; }
