@@ -950,23 +950,15 @@
     const { speed, speedUnit, catalog, API, api } = W();
     if (!pt.cmp) {
       const models = catalog.models.filter((m) => m.runs.length);
-      pt.cmp = { rows: {}, order: [...models.map((m) => m.key), "hrrr"], pending: models.length + 1 };
-      // Rows land one at a time: the store answers in milliseconds, HRRR comes
-      // over the public internet. Waiting for the slowest before showing any
-      // of them made the tab look broken for seconds at a time.
+      pt.cmp = { rows: {}, order: models.map((m) => m.key), pending: models.length };
+      // Rows land one at a time. Regional models answer from the same store as
+      // the globals and simply omit a point outside their advertised domain.
       const land = (m, r) => {
-        if (r) pt.cmp.rows[m.key] = { model: m, data: r };
+        if (r && r.available !== false) pt.cmp.rows[m.key] = { model: m, data: r };
         pt.cmp.pending -= 1;
         if (W().state.point === pt && W().state.tab === "cmp") W().renderPoint();
       };
       models.forEach((m) => api(`${API}/point?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}&model=${m.key}`).then((r) => land(m, r)).catch(() => land(m, null)));
-      // HRRR is not in the store — it is 3 km over CONUS and the store is one
-      // global 0.25° grid — so it comes from the point API instead. It only
-      // answers inside its own domain, and it stops two days out; both show up
-      // in the table as missing columns rather than as a footnote.
-      api(`${API}/hires/hrrr?lat=${pt.lat.toFixed(3)}&lon=${W().wlon(pt.lon).toFixed(3)}`)
-        .then((r) => land({ key: "hrrr", short: r && r.short, grid: r && r.grid, label: r && r.label }, r && r.available ? r : null))
-        .catch(() => land({ key: "hrrr" }, null));
     }
     if (!Object.keys(pt.cmp.rows).length) { $("#compare").innerHTML = `<div class="note">${pt.cmp.pending ? "loading other models…" : "no other model has this point"}</div>`; return; }
     const t0 = new Date(d.valid[i]).getTime();
@@ -981,7 +973,7 @@
     $("#compare").innerHTML = `<table class="cmp"><thead><tr><th>Temp ${W().units.tempUnit}</th>${head}</tr></thead><tbody>${rowFor("t", (s, k) => s.t2m && s.t2m[k] != null ? W().units.temp(s.t2m[k]).v : "—")}</tbody>
       <thead><tr><th>Wind ${speedUnit()}</th>${head}</tr></thead><tbody>${rowFor("w", (s, k) => s.wind && s.wind[k] != null ? Math.round(speed(s.wind[k])) : "—")}</tbody>
       <thead><tr><th>Rain ${W().units.precipUnit}/12h</th>${head}</tr></thead><tbody>${rowFor("r", (s, k) => s.tp6 ? `<span class="r">${W().units.precip((s.tp6[k] || 0) + (s.tp6[k + 1] || 0)).v}</span>` : "—")}</tbody></table>
-      <div class="note">${pt.cmp.pending ? "still loading… " : ""}Same valid times, each model's latest run. Disagreement is the error bar. HRRR is 3 km over the United States and runs two days out; blanks are outside its reach.</div>`;
+      <div class="note">${pt.cmp.pending ? "still loading… " : ""}Same valid times, each model's latest run. Disagreement is the error bar. Regional rows appear only where that model covers the point.</div>`;
   }
 
   // ── Resort: elevation-band forecast, whistlerpeak-style ───────────────

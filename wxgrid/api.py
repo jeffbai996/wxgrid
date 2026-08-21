@@ -942,7 +942,6 @@ from wxgrid.radar_api import router as _radar_router  # noqa: E402
 from wxgrid.ens_api import router as _ens_router  # noqa: E402
 from wxgrid.route_api import router as _route_router  # noqa: E402
 from wxgrid.sonde_api import router as _sonde_router  # noqa: E402
-from wxgrid.hires_api import router as _hires_router  # noqa: E402
 app.include_router(_resorts_router)
 app.include_router(_ext_router)
 app.include_router(_fires_router)
@@ -952,7 +951,6 @@ app.include_router(_radar_router)
 app.include_router(_ens_router)
 app.include_router(_route_router)
 app.include_router(_sonde_router)
-app.include_router(_hires_router)
 
 if FRONT_DIR.is_dir():
     app.mount("/", StaticFiles(directory=str(FRONT_DIR), html=True), name="front")

@@ -16,7 +16,7 @@ model data all of them run on is free — ECMWF, NOAA and Environment Canada
 publish it, keyless, several times a day. wxgrid pulls it, stores it once, and
 draws it.
 
-Six global models on one grid, ten pressure levels, particles, agency radar, warnings
+Six global and two regional models, ten pressure levels, particles, agency radar, warnings
 from four national services, wildfires with the incident records attached,
 aerosols, cross-sections, soundings against real balloon ascents, ensemble
 spread, and a forecast along a route at the time you would arrive. Runs on one
@@ -27,8 +27,9 @@ step, no bundler, no node_modules.
 ```
 ECMWF open data (IFS, AIFS, waves) ──────────┐
 NOAA NOMADS (GFS, GEFS mean, GEFS-Aerosol) ─┤
-NOAA AWS Open Data (AI-GFS) ────────────────┼─ wxgrid.ingest ─▶ data/store/<model>/<run>.zarr
-ECCC dd.weather.gc.ca (GEM GDPS) ───────────┘        (GRIB2 → common 0.25° grid → Zarr, one step per chunk,
+NOAA AWS Open Data (AI-GFS, HRRR) ──────────┼─ wxgrid.ingest ─▶ data/store/<model>/<run>.zarr
+ECCC dd.weather.gc.ca (GEM GDPS, HRDPS) ────┘        (GRIB2 → each model's regular lat/lon grid → Zarr,
+                                              one step per chunk,
                                               plus a point cube for fast column reads)
                                              │
               ┌──────────────────────────────┴──────────────────────────┐
@@ -101,9 +102,11 @@ with the hazardous stretches marked and any warning polygon you cross named.
 
 ![route forecast](docs/img/14-route.jpg)
 
-**The valley-scale check.** Inside the United States, the Compare pane can add
-a point-only NOAA HRRR forecast at 3 km for the next 48 hours. It is fetched
-keylessly on demand and never passed off as a global layer.
+**The valley-scale check.** HRDPS over Canada and HRRR over CONUS are full
+regional models, not point-only cameos: hourly 2.5/3 km layers, particles,
+card, tape and Compare rows. Their pickers gray out when the map centre leaves
+the advertised domain, and a pinned point outside it says so instead of
+returning a tasteful arrangement of NaNs.
 
 **Radar from the agency that owns the radars.** ECCC's 1 km mosaic over Canada,
 NOAA MRMS over the US, RainViewer everywhere else — and it changes source by
@@ -157,10 +160,20 @@ against an older level set keep working.
 | aigfs | NOAA AI-GFS (AI) | AWS Open Data    | 0.25°       | 6 h to 384 h                  | u10 v10 t2m d2m msl tp                               | all 10 levels |
 | gem  | ECCC GEM GDPS    | MSC datamart      | 0.15° →     | 3 h to 240 h                  | u10 v10 t2m d2m msl tp sf sd gust tcc cape           | all 10 levels |
 | gefs | NOAA GEFS mean   | NOMADS filter CGI | 0.25° / 0.5° → | 3 h to 240 h               | u10 v10 t2m d2m msl tp sf(derived) sd gust tcc cape  | 1000 925 850 700 500 250 200 |
+| hrdps | ECCC HRDPS      | MSC datamart      | 2.5 km → 0.025° regional | hourly to 48 h       | u10 v10 t2m d2m msl tp sf sd gust tcc                | surface only |
+| hrrr | NOAA HRRR         | AWS Open Data     | 3 km → 0.025° regional | hourly to 48 h         | u10 v10 t2m d2m msl tp sf sd gust tcc                | surface only |
 
 `→` marks a source that is bilinearly regridded onto the common 0.25° grid
 (`wxgrid.grib.regrid_to_common`, missing-value aware so a masked field like
 GEM's CAPE does not lose a cell at every edge of its mask).
+
+**HRDPS and HRRR** keep their native regional story instead of being crushed
+onto the global grid. Each GRIB's rotated/Lambert projection is transformed at
+ingest with its header CRS, then bilinearly sampled onto a regular 0.025°
+lat/lon subgrid (nearest for categorical fields). Only 00/06/12/18 Z cycles
+are ingested, hourly through 48 h, with two runs retained. HRRR precipitation
+is de-accumulated from its since-run total into the same per-step buckets every
+other model exposes.
 
 **GEM GDPS** comes off the MSC datamart as one GRIB per variable, level and
 step, under `/{YYYYMMDD}/WXO-DD/model_gdps/15km/{HH}/{hhh}/` — the older
