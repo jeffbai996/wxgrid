@@ -160,14 +160,10 @@
     // style wholesale and would silently flatten the planet again.
     map.on("style.load", () => {
       if (map.setProjection) map.setProjection({ type: "globe" });
-      // The atmosphere: a thin blue limb around the sphere, space behind it,
-      // gone by the zoom where the projection reads flat. This is most of
-      // what makes the globe feel like a planet instead of a texture ball.
-      if (map.setSky) map.setSky({
-        "sky-color": "#0b1526", "horizon-color": "#5f92c2", "fog-color": "#04070c",
-        "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.7, "fog-ground-blend": 0.92,
-        "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0],
-      });
+      // No setSky here: the v5 atmosphere brings sun-position shading with
+      // it, and on the real hardware the lit/dark gradient read as jank, not
+      // physics (Jeff 2026-08-20). The bare globe on the page background is
+      // the cleaner look.
     });
     // Subscribe before the catalog request. A cached style can emit
     // `style.load` while /api/models is still in flight.
