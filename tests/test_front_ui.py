@@ -8,12 +8,16 @@ def _read(name: str) -> str:
     return (ROOT / "front" / name).read_text()
 
 
-def test_ai_models_unfold_only_from_their_parent_family():
+def test_model_row_is_flat_and_hides_nothing():
+    # The AI-child fold shipped 2026-08-21 and was vetoed the same day
+    # (Jeff: "go back to how it was"). The contract is now the opposite:
+    # every model renders as a plain always-visible pill, and a long row
+    # scrolls sideways instead of folding members away.
     app = _read("app.js")
     css = _read("styles.css")
-    assert 'const aiParent = { aifs: "ifs", aigfs: "gfs" }' in app
-    assert 'state.model === parent || state.model === m.key' in app
-    assert "#models .model-child.open" in css
+    assert "aiParent" not in app
+    assert "model-child" not in app
+    assert "#models { flex: 0 1 auto; min-width: 132px; overflow-x: auto;" in css
 
 
 def test_particles_settle_on_real_cold_boot_lifecycle_and_bound_polar_steps():

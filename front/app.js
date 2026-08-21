@@ -512,39 +512,28 @@
     const ms = $("#models");
     // The selected model also says what it resolves. Only the selected one:
     // six grid figures across the top bar is noise, one is information.
-    const aiParent = { aifs: "ifs", aigfs: "gfs" };
+    // Every model, always visible, flat — the AI-children fold was vetoed
+    // (Jeff 2026-08-21: "go back to how it was"). A long row swipes/scrolls
+    // sideways; it never hides members.
     renderSlidingSeg(ms, catalog.models.map((m) => {
       const on = m.key === state.model;
-      const parent = aiParent[m.key];
-      const familyOpen = !parent || state.model === parent || state.model === m.key;
       const inView = modelInView(m);
       const enabled = m.runs.length && inView;
       const why = !m.runs.length ? "no ingested run" : !inView ? "map centre outside forecast domain" : "";
-      return `<button data-model="${m.key}" class="${on ? "on " : ""}${parent ? `model-child ${familyOpen ? "open" : ""}` : ""}" ${enabled ? "" : "disabled"} title="${m.label}${m.grid ? ` · ${m.grid}` : ""}${why ? ` · ${why}` : ""}">${m.short}${on && m.grid ? `<i class="grid">${m.grid}</i>` : ""}</button>`;
+      return `<button data-model="${m.key}" class="${on ? "on" : ""}" ${enabled ? "" : "disabled"} title="${m.label}${m.grid ? ` · ${m.grid}` : ""}${why ? ` · ${why}` : ""}">${m.short}${on && m.grid ? `<i class="grid">${m.grid}</i>` : ""}</button>`;
     }).join(""));
     ms.querySelectorAll("button").forEach((b) => b.onclick = () => switchModel(b.dataset.model));
 
+    // The run dropdown is retired (Jeff 2026-08-21: switching it "doesn't
+    // seem to change anything" — the honest answer is that two runs six
+    // hours apart usually LOOK identical, so the control read as broken).
+    // The app always reads the newest run; the API still serves older ones.
     const rs = $("#run");
-    // On a phone the month is dead weight: two runs of the same model are hours
-    // apart, never months. Dropping it buys the run picker a place on the
-    // model row instead of a row of its own.
-    const narrow = innerWidth <= 820;
-    // Say what the picker IS: the model's runs, newest first. "12Z · latest"
-    // reads as a choice; a bare "06Z" read as decoration (Jeff 2026-08-19).
-    rs.innerHTML = modelEntry().runs.map((r, k) => {
-      const d = new Date(r.run + ":00Z");
-      const hrs = Math.round((new Date(modelEntry().runs[0].run + ":00Z") - d) / 3600e3);
-      if (narrow) return `<option value="${r.run}">${r.run.slice(11)}Z ${k === 0 ? "· latest" : `· −${hrs} h`}</option>`;
-      const base = `${d.toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" })} ${r.run.slice(11)}Z`;
-      return `<option value="${r.run}">${base} · ${k === 0 ? "latest" : `${hrs} h older`}</option>`;
-    }).join("");
-    rs.value = state.run;
-    rs.title = "Which forecast run you are reading. The model recomputes every 6-12 h; pick an older run and scrub the same hours to see how the forecast moved.";
-    rs.onchange = () => {
-      state.run = rs.value; clampStep(); renderControls(); applyStep(); loadWind(); refreshPoint();
-      const k = modelEntry().runs.findIndex((r) => r.run === state.run);
-      if (k > 0) toast(`Viewing the ${state.run.slice(11)}Z run. Newest is ${modelEntry().runs[0].run.slice(11)}Z.`, 4000);
-    };
+    rs.hidden = true;
+    // Always the newest CONCRETE run id — never the string "latest": layer
+    // URLs are cached immutable by the service worker, so a "latest" URL
+    // would freeze the field at whatever it first showed.
+    if (modelEntry().runs.length && !modelEntry().runs.some((r) => r.run === state.run)) { state.run = modelEntry().runs[0].run; clampStep(); }
 
     const rail = $("#layers");
     const avail = runEntry().layers;

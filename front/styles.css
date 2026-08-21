@@ -361,7 +361,7 @@ button:focus:not(:focus-visible) { outline: none; }
   transition: width .14s ease, background .14s ease, box-shadow .14s ease; }
 .tape-resize-handle:hover i, .tape-resize-handle:focus-visible i, #timebar.is-resizing .tape-resize-handle i {
   width: 52px; background: var(--accent); box-shadow: 0 0 0 4px var(--panel), 0 0 16px var(--accent-glow); }
-#timebar.user-sized .tape { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+#timebar.user-sized .tape { flex: 1 1 auto; min-height: 0; overflow-y: hidden; }
 #timebar.user-sized table.wtape { min-height: 100%; }
 /* phone: the table never stretches to fill an over-tall tape — that stretch
    is what strands the day row over a void (2026-08-20 screenshots) */
@@ -405,7 +405,9 @@ button:focus:not(:focus-visible) { outline: none; }
 #timebar.mini { padding-bottom: 4px; }
 #timebar.mini .tape-head { padding-bottom: 0; }
 .tape-empty { padding: 10px 4px 6px; color: var(--dim); font: 500 11.5px var(--font-body); }
-.tape { display: block; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-width: 0; max-width: 100%; border-top: 1px solid var(--line); padding-top: 2px; }
+/* left-right only: vertical touch drags belong to nobody here — the
+   table neither scrolls nor drags on the y axis (Jeff 2026-08-21) */
+.tape { display: block; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; overscroll-behavior: contain; scrollbar-width: none; min-width: 0; max-width: 100%; border-top: 1px solid var(--line); padding-top: 2px; }
 .tape.radar { display: flex; }
 .tape::-webkit-scrollbar { display: none; }
 .tape-day { display: flex; flex-direction: column; flex: 0 0 auto; border-right: 1px solid var(--line); }
