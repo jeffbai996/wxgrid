@@ -131,10 +131,12 @@ button { font: inherit; color: inherit; }
 /* Desktop keeps the altitude badge; a phone shows it for a beat and folds
    it away (Jeff 2026-08-21). The padding lives INSIDE the clipped box —
    an outside margin survives the collapse as a ghost gap. */
-#levels button .level-alt { font: 600 9px var(--font-display); font-style: normal; padding-left: 3px; opacity: .65; letter-spacing: 0;
-  display: inline-block; overflow: hidden; vertical-align: baseline; }
+/* No overflow:hidden here: on an inline-block it moves the baseline to the
+   box bottom, which floated the badge above the number (Jeff 2026-08-21).
+   The clip is a phone concern only, where the peek animation needs it. */
+#levels button .level-alt { font: 600 9px var(--font-display); font-style: normal; padding-left: 3px; opacity: .65; letter-spacing: 0; }
 @media (max-width: 820px) {
-  #levels button .level-alt { max-width: 0; opacity: 0; animation: level-peek 3s ease forwards; }
+  #levels button .level-alt { display: inline-block; overflow: hidden; vertical-align: text-bottom; max-width: 0; opacity: 0; animation: level-peek 3s ease forwards; }
   @keyframes level-peek {
     0%   { max-width: 0;    opacity: 0;   padding-left: 0; }
     12%  { max-width: 64px; opacity: .65; padding-left: 3px; }
@@ -1077,3 +1079,8 @@ body:has(#point[hidden]) #centre-mark { display: block; }
 .quake-pop dt { color: var(--dim); font: 600 10px var(--font-display); text-transform: uppercase; letter-spacing: .05em; align-self: baseline; }
 .quake-pop dd { margin: 0; font: 600 11.5px var(--font-num); }
 .quake-pop .qp-link { display: inline-block; margin-top: 7px; color: var(--accent); font: 700 11px var(--font-display); text-decoration: none; }
+
+/* the hero's cyclone chip: a chip that acts like a button */
+.chipv.storm-chip { border: 0; cursor: pointer; font: inherit; background: rgba(255, 122, 61, .10);
+  border-radius: 7px; padding: 2px 8px; }
+.chipv.storm-chip:hover { background: rgba(255, 122, 61, .18); }

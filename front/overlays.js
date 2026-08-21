@@ -293,20 +293,47 @@
       if (M().getSource("storms")) M().getSource("storms").setData(gj);
       else {
         M().addSource("storms", { type: "geojson", data: gj });
-        M().addLayer({ id: "storm-cone", type: "fill", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "fill-color": "#ffb454", "fill-opacity": 0.18 } }, WX.fn.firstSymbolId());
-        M().addLayer({ id: "storm-cone-line", type: "line", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "line-color": "#ffb454", "line-width": 1.2 } }, WX.fn.firstSymbolId());
-        M().addLayer({ id: "storm-track", type: "line", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "LineString"]], paint: { "line-color": "#fff", "line-width": 2 } });
-        M().addLayer({ id: "storm-pts", type: "circle", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "Point"]], paint: { "circle-radius": 4, "circle-color": "#fff", "circle-stroke-color": "#000", "circle-stroke-width": 1 } });
-        M().addLayer({ id: "storm-now", type: "circle", source: "storms", filter: ["==", ["get", "kind"], "current"], paint: { "circle-radius": 9, "circle-color": "#ef786f", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
-        M().addLayer({ id: "storm-lbl", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"], layout: { "text-field": ["concat", ["get", "class"], " ", ["get", "name"], "\n", ["get", "intensity_kt"], " kt"], "text-size": 12, "text-offset": [0, 1.4], "text-anchor": "top", "text-font": ["Noto Sans Bold"] }, paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.4 } });
-        M().on("click", "storm-now", (e) => { const p = e.features[0].properties; WX.fn.toast(`${p.class} ${p.name} · ${p.intensity_kt} kt · ${p.pressure_mb} mb · moving ${p.movement} · adv ${p.advisory}`, 8000); });
+        // The cone is a whisper, not a warning sign: soft fill, hairline
+        // dashed edge. The track reads as forecast (dashed) with waypoints.
+        M().addLayer({ id: "storm-cone", type: "fill", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "fill-color": "#ffb454", "fill-opacity": 0.10 } }, WX.fn.firstSymbolId());
+        M().addLayer({ id: "storm-cone-line", type: "line", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "line-color": "rgba(255,180,84,.55)", "line-width": 1, "line-dasharray": [3, 2.5] } }, WX.fn.firstSymbolId());
+        M().addLayer({ id: "storm-track", type: "line", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "LineString"]], paint: { "line-color": "rgba(255,255,255,.72)", "line-width": 1.6, "line-dasharray": [1.6, 1.8] } });
+        M().addLayer({ id: "storm-pts", type: "circle", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "Point"]], paint: { "circle-radius": 2.8, "circle-color": "rgba(255,255,255,.85)", "circle-stroke-color": "rgba(0,0,0,.6)", "circle-stroke-width": 1 } });
+        // The eye wears its category colour — red deepens with the scale.
+        M().addLayer({ id: "storm-now", type: "circle", source: "storms", filter: ["==", ["get", "kind"], "current"],
+          paint: { "circle-radius": 8, "circle-color": ["coalesce", ["get", "category_color"], "#ef786f"], "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+        M().addLayer({ id: "storm-lbl", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
+          layout: { "text-field": ["concat", ["get", "class"], " ", ["get", "name"], "\n", ["coalesce", ["get", "category"], ""], "  ·  ", ["get", "intensity_kt"], " kt"], "text-size": 11.5, "text-offset": [0, 1.3], "text-anchor": "top", "text-font": ["Noto Sans Bold"] },
+          paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.4 } });
+        M().on("click", "storm-now", (e) => openStormCard(e.features[0]));
+        M().on("mouseenter", "storm-now", () => { M().getCanvas().style.cursor = "pointer"; });
+        M().on("mouseleave", "storm-now", () => { M().getCanvas().style.cursor = ""; });
       }
       const names = (gj.storms || []).map((x) => `${x.class} ${x.name}`).join(", ");
       WX.fn.toast(names ? `Tropical systems: ${names}` : "No tropical systems in the NHC and CPHC feeds.", 5000);
       if (gj.storms && gj.storms.length && !state.point) { const st = gj.storms[0]; const f = gj.features.find((x) => x.properties.kind === "current" && x.properties.id === st.id); if (f) M().flyTo({ center: f.geometry.coordinates, zoom: Math.max(3.5, Math.min(M().getZoom(), 5)), duration: 1200 }); }
     } catch (e) { WX.fn.toast("Storm feed unavailable", 4000, "error"); state.storms = false; $("#storms-toggle").classList.remove("on"); }
   }
-  function clearStorms() { ["storm-lbl", "storm-now", "storm-pts", "storm-track", "storm-cone-line", "storm-cone"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("storms")) M().removeSource("storms"); }
+  let stormPopup = null;
+  function openStormCard(f) {
+    const p = f.properties;
+    const ago = p.updated ? (ms => ms < 3600e3 ? `${Math.round(ms / 60e3)} min ago` : `${Math.round(ms / 3600e3)} h ago`)(Date.now() - new Date(p.updated)) : "";
+    const kmh = p.intensity_kt ? Math.round(p.intensity_kt * 1.852) : null;
+    if (stormPopup) stormPopup.remove();
+    stormPopup = new maplibregl.Popup({ className: "quake-pop storm-pop", closeButton: true, maxWidth: "280px", offset: 12 })
+      .setLngLat(f.geometry.coordinates.slice(0, 2))
+      .setHTML(`<div class="qp-head"><b style="color:${p.category_color || "#ef786f"}">${String(p.class || "").replace(/</g, "&lt;")} ${String(p.name || "").replace(/</g, "&lt;")}</b><span>${ago}</span></div>
+        ${p.category_label ? `<div class="qp-place" style="color:${p.category_color}">${p.category} · ${p.category_label}</div>` : ""}
+        <dl>${p.intensity_kt ? `<dt>Winds</dt><dd>${p.intensity_kt} kt · ${kmh} km/h</dd>` : ""}
+        ${p.pressure_mb ? `<dt>Pressure</dt><dd>${p.pressure_mb} mb</dd>` : ""}
+        ${p.movement && !/null/.test(p.movement) ? `<dt>Moving</dt><dd>${p.movement}</dd>` : ""}
+        ${p.advisory ? `<dt>Advisory</dt><dd>#${p.advisory}</dd>` : ""}</dl>
+        ${p.url ? `<a class="qp-link" href="${p.url}" target="_blank" rel="noopener">Public advisory ↗</a>` : ""}`)
+      .addTo(M());
+  }
+  WX.openStormCard = openStormCard;
+  function clearStorms() {
+    if (stormPopup) { stormPopup.remove(); stormPopup = null; } ["storm-lbl", "storm-now", "storm-pts", "storm-track", "storm-cone-line", "storm-cone"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("storms")) M().removeSource("storms"); }
 
   // ── satellite: GOES GeoColor via NASA GIBS (timeless URL = latest) ────
   function loadSat() {

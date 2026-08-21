@@ -311,9 +311,10 @@
         </div>
       </div>
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
-      <div class="meta">${chips.join("")}</div>
+      <div class="meta">${chips.join("")}<span id="storm-near"></span></div>
       ${daysStrip(pt, d, i)}
       ${alertsHtml(pt)}${airHtml(pt)}`;
+    fetchNearStorm(pt);
     // local context
     const loc = pt.local || {};
     const bits = [];
@@ -688,6 +689,39 @@
     return `<div class="board"><table class="bandtape">
       <thead><tr><th class="lab corner"></th>${dayRow}</tr><tr><th class="lab corner"></th>${slotRow}</tr></thead>
       <tbody>${rows}${flRow}</tbody></table></div>`;
+  }
+
+  // A cyclone within reach of the pin earns a chip on the hero card: the
+  // storm's name, its basin-correct category, range and bearing. Tapping it
+  // turns the storms layer on and flies to the eye (Jeff 2026-08-21).
+  let stormFetch = 0;
+  function fetchNearStorm(pt) {
+    const my = ++stormFetch;
+    W().api(`${W().API}/storms`).then((gj) => {
+      if (my !== stormFetch) return;
+      const el = document.getElementById("storm-near");
+      if (!el) return;
+      const R = Math.PI / 180;
+      let best = null;
+      for (const f of gj.features || []) {
+        if (f.properties.kind !== "current") continue;
+        const [slon, slat] = f.geometry.coordinates;
+        const km = 6371 * Math.acos(Math.min(1, Math.sin(pt.lat * R) * Math.sin(slat * R)
+          + Math.cos(pt.lat * R) * Math.cos(slat * R) * Math.cos((pt.lon - slon) * R)));
+        if (km <= 1200 && (!best || km < best.km)) best = { f, km, slon, slat };
+      }
+      if (!best) { el.innerHTML = ""; return; }
+      const p = best.f.properties;
+      const brg = Math.round((Math.atan2(Math.sin((best.slon - pt.lon) * R) * Math.cos(best.slat * R),
+        Math.cos(pt.lat * R) * Math.sin(best.slat * R) - Math.sin(pt.lat * R) * Math.cos(best.slat * R) * Math.cos((best.slon - pt.lon) * R)) / R + 360) % 360);
+      const dir = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(brg / 45) % 8];
+      el.innerHTML = `<button class="chipv storm-chip" style="color:${p.category_color || "#ef786f"}" title="${esc(p.category_label || "")} — tap for the storm view">🌀 <b>${esc(p.class || "")} ${esc(p.name || "")}</b>${p.category ? ` · ${esc(p.category)}` : ""} · ${Math.round(best.km / 10) * 10} km ${dir}</button>`;
+      el.querySelector("button").onclick = () => {
+        if (!W().state.storms) document.getElementById("storms-toggle").click();
+        W().map.flyTo({ center: [best.slon, best.slat], zoom: Math.max(4.5, W().map.getZoom()), duration: 1400 });
+        setTimeout(() => { if (W().openStormCard) W().openStormCard(best.f); }, 1500);
+      };
+    }).catch(() => {});
   }
 
   // The nearest ski area to this point, if one is close enough to be the same
