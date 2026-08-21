@@ -26,15 +26,20 @@
   .fire-pop .maplibregl-popup-tip { border-top-color: var(--line-strong, rgba(255,255,255,.18)); border-bottom-color: var(--line-strong, rgba(255,255,255,.18)); }
   .fire-pop .maplibregl-popup-close-button { color: var(--dim, #7c8492); font-size: 17px; padding: 2px 7px 4px; background: none; }
   .fire-pop .maplibregl-popup-close-button:hover { color: var(--fg, #eef1f5); background: none; }
-  .fire-pop h4 {
-    margin: 0 16px 2px 0; font-family: var(--font-display, system-ui, sans-serif);
+  .fire-pop .fp-head { display: flex; align-items: center; gap: 7px; margin: 0 16px 1px 0; }
+  .fire-pop .fp-head svg { width: 17px; height: 17px; flex: 0 0 17px; }
+  .fire-pop .fp-head b {
+    font-family: var(--font-display, system-ui, sans-serif);
     font-size: 15px; font-weight: 700; letter-spacing: .1px; line-height: 1.2;
   }
-  .fire-pop .fp-agency { color: var(--dim, #7c8492); font-size: 11px; margin-bottom: 9px; }
-  .fire-pop .fp-status { display: inline-block; margin-bottom: 9px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; letter-spacing: .35px; text-transform: uppercase; }
-  .fire-pop dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; }
-  .fire-pop dt { color: var(--dim, #7c8492); font-size: 11px; }
-  .fire-pop dd { margin: 0; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px; text-align: right; }
+  .fire-pop .fp-head span { color: var(--dim, #7c8492); font-size: 10.5px; margin-left: auto; }
+  .fire-pop .fp-agency { color: var(--dim, #7c8492); font-size: 11px; margin: 0 0 8px 24px; }
+  .fire-pop .fp-status { display: inline-block; margin-bottom: 9px; padding: 2px 8px; border-radius: 6px; font-size: 9.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; font-family: var(--font-display, system-ui, sans-serif); }
+  /* both columns on one baseline, one size: 11 vs 11.5px across two font
+     families drifted visibly (Jeff 2026-08-21) */
+  .fire-pop dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; align-items: baseline; }
+  .fire-pop dt { color: var(--dim, #7c8492); font-size: 11px; line-height: 1.45; }
+  .fire-pop dd { margin: 0; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; line-height: 1.45; text-align: right; }
   .fire-pop a.fp-link {
     display: block; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line, rgba(255,255,255,.09));
     color: var(--accent, #ff8a3d); font-size: 11px; text-decoration: none; font-weight: 600;
@@ -94,7 +99,10 @@
     if (p.cause) rows.push(["Cause", esc(p.cause)]);
     if (p.state) rows.push(["State", esc(p.state)]);
     const colour = /out of control/i.test(p.status || "") ? "#ff3a1d" : /being held|active/i.test(p.status || "") ? "#ff8a3d" : "#ffc857";
-    return `<h4>${esc(p.name || "Unnamed fire")}</h4>
+    // the same clean single-path flame the rail uses, in the status colour
+    const FLAME = `<svg viewBox="0 0 24 24" fill="none" stroke="${colour}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`;
+    const ago = when(p.updated);
+    return `<div class="fp-head">${FLAME}<b>${esc(p.name || "Unnamed fire")}</b>${ago ? `<span>${ago.split(" · ").pop()}</span>` : ""}</div>
       <div class="fp-agency">${esc(p.agency || "")}${p.id ? ` · ${esc(p.id)}` : ""}</div>
       ${p.status ? `<span class="fp-status" style="background:${colour}22;color:${colour};border:1px solid ${colour}55">${esc(p.status)}</span>` : ""}
       <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>

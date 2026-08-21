@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776ab)](https://www.python.org/)
 [![API keys: none](https://img.shields.io/badge/API%20keys-none-brightgreen)](#overlays-and-external-feeds)
-[![Models: IFS · AIFS · GFS · AI-GFS · GEM · GEFS](https://img.shields.io/badge/models-IFS%20%C2%B7%20AIFS%20%C2%B7%20GFS%20%C2%B7%20AI--GFS%20%C2%B7%20GEM%20%C2%B7%20GEFS-ff8a3d)](#models)
+[![Models: IFS · AIFS · GFS · AI-GFS · GEM · GEFS · HRDPS · HRRR](https://img.shields.io/badge/models-IFS%20%C2%B7%20AIFS%20%C2%B7%20GFS%20%C2%B7%20AI--GFS%20%C2%B7%20GEM%20%C2%B7%20GEFS%20%C2%B7%20HRDPS%20%C2%B7%20HRRR-ff8a3d)](#models)
 [![Live demo](https://img.shields.io/badge/demo-jeffbai996.github.io%2Fwxgrid-ff8a3d)](https://jeffbai996.github.io/wxgrid/)
 
 ![wxgrid](docs/img/01-hero.jpg)
@@ -16,13 +16,15 @@ model data all of them run on is free — ECMWF, NOAA and Environment Canada
 publish it, keyless, several times a day. wxgrid pulls it, stores it once, and
 draws it.
 
-Six global and two regional models, ten pressure levels, particles, agency radar, warnings
-from four national services, wildfires with the incident records attached,
+Six global and two regional models, ten pressure levels, particles, agency
+radar, warnings from four national services, tropical cyclones graded on the
+right scale for their basin, wildfires with the incident records attached,
 aerosols, cross-sections, soundings against real balloon ascents, ensemble
-spread, and a forecast along a route at the time you would arrive. Runs on one
-box, installs to a phone, works offline on what it last loaded. The whole thing
-is a Zarr store, a FastAPI app and a folder of static JavaScript — no build
-step, no bundler, no node_modules.
+spread, and a forecast along a route at the time you would arrive. Zoom out
+far enough and the map is a globe. Runs on one box, installs to a phone, works
+offline on what it last loaded. The whole thing is a Zarr store, a FastAPI app
+and a folder of static JavaScript — no build step, no bundler, no
+node_modules.
 
 ```
 ECMWF open data (IFS, AIFS, waves) ──────────┐
@@ -44,14 +46,15 @@ ECCC dd.weather.gc.ca (GEM GDPS, HRDPS) ────┘        (GRIB2 → each m
      front/          MapLibre + canvas particles + the weather tape
 ```
 
-## What you get
+## What's inside
 
 **Tap anywhere.** Hero conditions, a scrollable forecast strip out to 16 days,
-the nearest station's actual
-METAR, air quality, warnings in force, and a meteogram — then tabs for aloft
-winds, an airgram, a Skew-T, winter, outdoors, and every model side by side on
-the same valid times. When a shorter physics-model run ends, the extra days are
-labelled AI-GFS and switch to that model when selected.
+the nearest station's actual METAR, air quality, warnings in force, and a
+meteogram — then tabs for aloft winds, an airgram, a Skew-T, winter, outdoors,
+and every model side by side on the same valid times. When a shorter
+physics-model run ends, the extra days are labelled AI-GFS and switch to that
+model when selected. Pin within reach of a tropical cyclone and the wind box
+names it, with its category and range; tapping it flies you to the eye.
 
 ![point card](docs/img/02-card.jpg)
 
@@ -67,6 +70,22 @@ own fire number, size in hectares, stage of control, containment and a link
 to their incident page.
 
 ![wildfires](docs/img/04-fires.jpg)
+
+**Cyclones on the scale their ocean uses.** NHC/CPHC positions, cones and
+forecast tracks — with the category worked out on whichever ladder applies
+where the storm actually is: Saffir-Simpson in the Atlantic and East Pacific,
+typhoon and super-typhoon west of the dateline, IMD's ladder in the North
+Indian, the Australian scale south of the equator. The number sits inside the
+eye on the map; the card carries type, winds, pressure, motion, position and
+the desk that's tracking it.
+
+![tropical cyclone](docs/img/16-storm.jpg)
+
+**Isobars with their centres.** Pressure charts mark every H and L worth the
+name — a centre has to be the extremum of its ~15° neighbourhood and far
+enough from 1013 hPa to be a system, not a col.
+
+![isobars on the globe](docs/img/15-isobars.jpg)
 
 **Aerosols, globally.** PM2.5, PM10, dust and optical depth from NOAA's
 GEFS-Aerosol at 0.25° — the Saharan dust belt and every smoke plume from every
@@ -243,6 +262,13 @@ that never serves `front/private/` — the place for an operator's own fonts or
 theme overlay that shouldn't leave the house. Put it behind any reverse proxy
 or tunnel.
 
+One warning about resources: ingest and the static build are memory-hungry (a
+run is several GB and the point cube is written per latitude band). The
+systemd units cap them and run at idle IO priority; a hand-run
+`python -m wxgrid.ingest` has no cap, so on a shared box either go through
+`systemctl --user start wxgrid-ingest` or wrap it in
+`systemd-run --user -p MemoryMax=3G --scope`.
+
 ## Overlays and external feeds
 
 All free, all keyless, proxied by `wxgrid/ext.py` (server-side cache, mirrored
@@ -350,13 +376,26 @@ lifts) degrade quietly.
 - Model split-screen; webcams (needs a keyed API).
 - Self-hosted AI model via ECMWF `ai-models` (Aurora / GraphCast-small).
 
-## Running it kindly
+## Changelog
 
-Ingest and the static build are memory-hungry (a run is several GB and the
-point cube is written per latitude band). The systemd units cap them at 2/3 GB
-and run at idle IO priority; a hand-run `python -m wxgrid.ingest` has no such
-cap, so on a shared box prefer `systemctl --user start wxgrid-ingest` or wrap
-it in `systemd-run --user -p MemoryMax=3G --scope`.
+Short version; the commit log is the long one.
+
+- **2026-08-21** — the globe (MapLibre v5, auto-flattens as you zoom in).
+  HRDPS 2.5 km + HRRR 3 km as real regional models. Tropical cyclones get
+  basin-correct categories, a proper card, and a chip on the point card when
+  you pin nearby. H/L centres on the isobars. Wildfire and earthquake cards
+  redesigned. Layers serve PNG (3× faster cold) and prefetch their
+  neighbours. Bicubic value-space smoothing at 2×.
+- **2026-08-20** — forecast discussion pane (the "why", written from the
+  fields). GEFS member probabilities as map layers and card rows. Basemaps
+  (topo/satellite/terrain), pinned value flag, town values on the layer,
+  sun/precip marks on the tape, storm-aware alert cards.
+- **2026-08-19** — one-bundle front end, streamed point card, service worker
+  rework (network-first shell), pressure-level ladder everywhere, light theme,
+  ensemble probe, health dot.
+- **earlier** — the store, the six global models, the card and its panes, the
+  tape, radar/satellite/alerts/fires/aerosols overlays, Skew-T + sondes,
+  routes, cross-sections, resorts, the static demo.
 
 ## Tests
 
