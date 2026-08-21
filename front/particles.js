@@ -266,11 +266,11 @@
       const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
       // On the sphere a drag is a ROTATION: every screen point moves along a
       // different vector, so translating the old frame smears trails off the
-      // limb into space, where the slow fade leaves them hanging (Jeff
-      // 2026-08-20, screenshot). There is no affine warp for a rotation —
-      // start the trails over and let them re-grow, which at these zooms
-      // takes under a second.
-      if (this.map.getProjection && (this.map.getProjection() || {}).type === "globe" && z < 6) { this.wipe(); return; }
+      // limb into space. Wiping instead (first fix) strobed — every frame of
+      // a drag restarted the trails. The right move is neither: keep the
+      // particles animating in place and let the STALE pixels die fast, so
+      // nothing lives long enough for the rotation to smear it.
+      if (this.map.getProjection && (this.map.getProjection() || {}).type === "globe" && z < 6) { this._fastFade = true; return; }
       const s = Math.pow(2, z - prev.z);
       const p = m.project([prev.lng, prev.lat]);
       const tx = p.x - s * w / 2, ty = p.y - s * h / 2;
@@ -295,7 +295,8 @@
       this.warpTrails();
       // Fade the previous frame: this is the trail.
       ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = "rgba(0,0,0,0.06)";
+      ctx.fillStyle = `rgba(0,0,0,${this._fastFade ? 0.3 : 0.06})`;
+      this._fastFade = false;
       ctx.fillRect(0, 0, w, h);
       ctx.globalCompositeOperation = "source-over";
       ctx.lineWidth = 1.05;
