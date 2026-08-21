@@ -13,6 +13,30 @@
   // ── isolines overlay ──────────────────────────────────────────────────
   let isoReq = 0;
   let quakePopup = null;
+
+  // ── polar caps ──────────────────────────────────────────────────────────
+  // The basemap's tiles end at 85.05° (mercator's edge), and on the globe
+  // the sphere above that renders the style's background — near-black, which
+  // read as a hole drilled through the pole (Jeff 2026-08-21). Tint the
+  // background to sit with the ocean instead. Re-applied on every
+  // style.load: a theme or basemap swap replaces the style wholesale.
+  function tintPoles() {
+    const m = M(); if (!m || !m.getStyle) return;
+    const light = document.documentElement.dataset.theme === "light";
+    const color = light ? "#d3dde6" : "#101922";
+    const layers = (m.getStyle().layers || []);
+    const bg = layers.find((l) => l.type === "background");
+    if (bg) m.setPaintProperty(bg.id, "background-color", color);
+    else if (layers.length) m.addLayer({ id: "polar-bg", type: "background", paint: { "background-color": color } }, layers[0].id);
+  }
+  (function wirePoles() {
+    const t = setInterval(() => {
+      if (!WX.map) return;
+      clearInterval(t);
+      WX.map.on("style.load", tintPoles);
+      if (WX.map.isStyleLoaded && WX.map.isStyleLoaded()) tintPoles(); else WX.map.once("load", tintPoles);
+    }, 250);
+  })();
   function isoVar() {
     if (state.layer === "temp") return state.level ? `temp?level=${state.level}` : "temp";
     if (state.layer === "frz") return "frz";
