@@ -125,13 +125,23 @@ button { font: inherit; color: inherit; }
 .seg.sliding .seg-cursor.ready { transition: transform .24s cubic-bezier(.22,.8,.25,1), width .24s cubic-bezier(.22,.8,.25,1), opacity .12s ease; }
 .seg.sliding button.on { background: transparent; }
 #models button { white-space: nowrap; }   /* "AI-GFS" was breaking across two lines */
-#models button .grid, #levels button .level-alt { font: 600 10px var(--font-display); font-style: normal; margin-left: 3px; opacity: .65; letter-spacing: 0; }
+#models button .grid { font: 600 10px var(--font-display); font-style: normal; margin-left: 3px; opacity: .65; letter-spacing: 0; }
+/* the badge pads INSIDE its own clipped box: an outside margin survived
+   the collapse and left the pill elongated by a ghost gap (2026-08-21) */
+#levels button .level-alt { font: 600 9px var(--font-display); font-style: normal; padding-left: 3px; opacity: .65; letter-spacing: 0;
+  display: inline-block; overflow: hidden; vertical-align: baseline; max-width: 0; animation: level-peek 3s ease forwards; }
+@keyframes level-peek {
+  0%   { max-width: 0;    opacity: 0; }
+  12%  { max-width: 64px; opacity: .65; }
+  78%  { max-width: 64px; opacity: .65; }
+  100% { max-width: 0;    opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { #levels button .level-alt { animation: none; } }
 #models .model-child { max-width: 0; min-width: 0; overflow: hidden; opacity: 0; padding-left: 0; padding-right: 0;
   margin-left: -2px; pointer-events: none; transform: translateX(-7px) scale(.92); }
 #models .model-child.open { max-width: 110px; opacity: 1; padding-left: 11px; padding-right: 11px; margin-left: 0;
   pointer-events: auto; transform: none; animation: model-child-in .24s cubic-bezier(.2,.8,.2,1); }
 @keyframes model-child-in { from { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; transform: translateX(-7px) scale(.92); } }
-#levels button .level-alt { font-size: 9px; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .35; cursor: default; }
 .seg.small button { padding: 4px 8px; font-size: 11.5px; }
@@ -141,7 +151,12 @@ button { font: inherit; color: inherit; }
 .seg.disabled.sliding .seg-cursor { background: var(--line-strong); }
 /* The altitude pill is the top bar's longest item. On a zoomed-in page it
    shrinks and scrolls inside itself instead of running off the screen edge. */
-#levels { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+/* the model list and the ladder each scroll inside their own box: with
+   eight models the row used to push the ladder off the page. Every model
+   and every notch stays reachable; only the viewport negotiates. */
+#models { flex: 0 1 auto; min-width: 132px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+#models::-webkit-scrollbar { display: none; }
+#levels { flex: 0 1 auto; min-width: 176px; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 /* the buttons themselves never shrink or wrap — the pill scrolls instead,
    so "850 5k ft" cannot fold onto two lines on a zoomed page */
 #levels button { white-space: nowrap; flex: 0 0 auto; }
@@ -576,15 +591,6 @@ table.bandtape .nil { color: var(--line-strong); }
   /* The altitude peek: picking a pressure level shows its height for a
      couple of seconds, then folds away so the pill stays thin. The badge is
      re-rendered on every selection, so the animation replays each time. */
-  #levels button .level-alt { display: inline-block; overflow: hidden; vertical-align: baseline;
-    max-width: 0; opacity: 0; animation: level-peek 3s ease forwards; }
-  @keyframes level-peek {
-    0%   { max-width: 0;    opacity: 0; }
-    12%  { max-width: 64px; opacity: 1; }
-    78%  { max-width: 64px; opacity: 1; }
-    100% { max-width: 0;    opacity: 0; }
-  }
-  @media (prefers-reduced-motion: reduce) { #levels button .level-alt { animation: none; } }
   body.no-levels #levels, body.no-levels .rowbreak:last-of-type { display: none; }
   /* tucked: the model, run, level and layer rows fold into one chip that
      says what the map is showing, and a tap brings them back */

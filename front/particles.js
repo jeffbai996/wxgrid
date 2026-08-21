@@ -15,7 +15,7 @@
 
   const TAU = Math.PI * 2;
   const MAX_STEP_DEG = 1.5;      // per frame, per axis
-  const MAX_STEP_PX = 4.0;       // pole-on globe views must not amplify one step
+  const MAX_STEP_PX = 2.5;       // pole-on globe views must not amplify one step (4.0 still read as a sprint at 80°N)
 
   class WindLayer {
     constructor(map, canvas) {
