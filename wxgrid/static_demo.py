@@ -39,7 +39,7 @@ log = logging.getLogger("wxgrid.static_demo")
 POINT_DEG = 2.0            # point-grid spacing in the demo
 TILE_DEG = 10.0
 # The full ladder, same as the live picker: a demo that only knows 850 and
-# 250 read as "missing most baro alts" (Jeff 2026-08-21). Wind JSONs are
+# 250 read as "missing most baro alts". Wind JSONs are
 # coarse and cheap; the temp PNGs ride the demo's limited step list.
 DEMO_LEVELS = LEVELS
 WIND_LEVELS = LEVELS

@@ -17,7 +17,7 @@
   // ── polar caps ──────────────────────────────────────────────────────────
   // The basemap's tiles end at 85.05° (mercator's edge), and on the globe
   // the sphere above that renders the style's background — near-black, which
-  // read as a hole drilled through the pole (Jeff 2026-08-21). Tint the
+  // read as a hole drilled through the pole. Tint the
   // background to sit with the ocean instead. Re-applied on every
   // style.load: a theme or basemap swap replaces the style wholesale.
   function tintPoles() {

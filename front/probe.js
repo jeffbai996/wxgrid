@@ -7,8 +7,26 @@
 (function () {
   "use strict";
   const WX = window.WX;
-  const N = 1440;                                    // Mercator PNG is N×N
   let img = null, data = null, forUrl = "", lut = null, lutLayer = "", chip = null, raf = 0, last = null;
+
+  const mercatorY = (lat) => Math.log(Math.tan(Math.PI / 4 + Math.max(-89.99, Math.min(89.99, lat)) * Math.PI / 360));
+  function imagePixel(lng, lat) {
+    const model = WX.fn.modelEntry();
+    let x, y;
+    if (model.regional) {
+      const [west, south, east, north] = model.domain;
+      if (lng < west || lng > east || lat < south || lat > north) return null;
+      x = (lng - west) / (east - west) * data.w;
+      const yn = mercatorY(north), ys = mercatorY(south);
+      y = (yn - mercatorY(lat)) / (yn - ys) * data.h;
+    } else {
+      x = (((lng + 180) / 360 % 1 + 1) % 1) * data.w;
+      const yn = mercatorY(89.99), ys = mercatorY(-89.99);
+      y = (yn - mercatorY(lat)) / (yn - ys) * data.h;
+    }
+    return { x: Math.max(0, Math.min(data.w - 1, Math.floor(x))),
+      y: Math.max(0, Math.min(data.h - 1, Math.floor(y))) };
+  }
 
   function ramp(layer) {
     const lg = WX.catalog && WX.catalog.layers.find((l) => l.layer === layer);
@@ -56,13 +74,11 @@
     }
     if (!data) return null;
     const r = ramp(layer); if (!r) return null;
-    const x = Math.floor(((lng + 180) / 360 % 1 + 1) % 1 * data.w);
-    const s = Math.sin(lat * Math.PI / 180);
-    const y = Math.floor((0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * data.h);
-    if (y < 0 || y >= data.h) return null;
+    const pixel = imagePixel(lng, lat); if (!pixel) return null;
+    const { x, y } = pixel;
     const i = (y * data.w + x) * 4;
     const R = data.px[i], G = data.px[i + 1], B = data.px[i + 2], A = data.px[i + 3];
-    if (A === 0) return { text: ["tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "cape", "uvi"].includes(layer) ? "0" : "—", sub: r.lg.units };
+    if (A === 0) return { text: ["tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "cape", "uvi", "fog", "solar"].includes(layer) ? "0" : "—", sub: r.lg.units };
     let best = 0, bd = 1e9;
     for (let k = 0; k < 256; k++) { const c = r.cols[k].rgb; const d = (c[0] - R) ** 2 + (c[1] - G) ** 2 + (c[2] - B) ** 2; if (d < bd) { bd = d; best = k; } }
     let v = r.cols[best].v;
@@ -79,7 +95,7 @@
                    sf6: () => U.snow(v), sf24: () => U.snow(v), sf72: () => U.snow(v), sd_cm: () => U.snow(v),
                    waves: () => U.alt(v, 1) }[layer];
     if (conv) { const c = conv(); return { text: c.txt, sub: WX.state.level && layer === "temp" ? `${WX.state.level} hPa` : "" }; }
-    const nd = ["tcc", "cape", "rh", "wperiod", "uvi"].includes(layer) ? 0 : 1;
+    const nd = ["tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "wavepower", "cape", "rh", "wperiod", "uvi"].includes(layer) ? 0 : 1;
     return { text: `${v.toFixed(nd)} ${r.lg.units}`, sub: WX.state.level && ["temp"].includes(layer) ? `${WX.state.level} hPa` : "" };
   }
 

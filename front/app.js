@@ -8,10 +8,11 @@
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
   const API = "api";
-  const WORLD = [[-180, 85.05112878], [180, 85.05112878], [180, -85.05112878], [-180, -85.05112878]];
+  const WORLD = [[-180, 89.99], [180, 89.99], [180, -89.99], [-180, -89.99]];
   // Every raster layer the API can draw. The rail shows FAMILIES; a family
   // with variants (rain 6h/24h/72h …) gets a variant picker in the time bar.
-  const LAYERS = ["wind", "temp", "gust", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "msl", "d2m", "rh", "frz", "cape", "waves", "wperiod"];
+  const LAYERS = ["wind", "temp", "gust", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc",
+    "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "msl", "d2m", "rh", "frz", "cape", "waves", "wperiod", "wavepower"];
   const FAMILIES = [
     { key: "wind", label: "Wind", layers: ["wind"] },
     { key: "gust", label: "Gusts", layers: ["gust", "gfactor"], variants: { gust: "Peak", gfactor: "Factor" } },
@@ -21,7 +22,9 @@
     { key: "snow", label: "New snow", layers: ["sf6", "sf24", "sf72"], variants: { sf6: "6 h", sf24: "24 h", sf72: "72 h" } },
     { key: "sd", label: "Snow depth", layers: ["sd_cm"] },
     { key: "frz", label: "Freezing lvl", layers: ["frz"] },
-    { key: "tcc", label: "Clouds", layers: ["tcc"], section: "Air" },
+    { key: "tcc", label: "Clouds", layers: ["tcc", "cloudlow", "cloudmid", "cloudhigh"],
+      variants: { tcc: "Total", cloudlow: "Low", cloudmid: "Mid", cloudhigh: "High" }, section: "Air" },
+    { key: "fog", label: "Fog potential", layers: ["fog"] },
     { key: "msl", label: "Pressure", layers: ["msl", "ptend"], variants: { msl: "MSL", ptend: "Change" } },
     { key: "hum", label: "Humidity", layers: ["rh", "d2m"], variants: { rh: "RH %", d2m: "Dew pt" } },
     { key: "cape", label: "CAPE", layers: ["cape"] },
@@ -29,14 +32,15 @@
     { key: "cbase", label: "Cloud base", layers: ["cbase"] },
     { key: "vort", label: "Vorticity", layers: ["vort500"] },
     { key: "uvi", label: "UV index", layers: ["uvi"] },
-    { key: "waves", label: "Waves", layers: ["waves", "wperiod"], variants: { waves: "Height", wperiod: "Period" }, section: "Sea" },
+    { key: "solar", label: "Solar power", layers: ["solar"] },
+    { key: "waves", label: "Waves", layers: ["waves", "wperiod", "wavepower"], variants: { waves: "Height", wperiod: "Period", wavepower: "Power" }, section: "Sea" },
     { key: "sst", label: "Sea temp", layers: ["sst"] },
     // member counts, drawn from the GEFS run only — the one model that has them
     { key: "chance", label: "Chance", layers: ["prob_rain", "prob_gust"], variants: { prob_rain: "Rain", prob_gust: "Gale" }, section: "Ensemble" },
   ];
   const familyOf = (layer) => FAMILIES.find((f) => f.layers.includes(layer)) || FAMILIES[0];
-  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", feels: "Feels like", prob_rain: "Rain chance", prob_gust: "Gale chance", gfactor: "Gust factor", vis: "Visibility", sst: "Sea temp", ptype: "Precip type", vort500: "Vorticity 500", ptend: "Pressure change", cbase: "Cloud base", wbt: "Wet-bulb", dt24: "Temp change 24 h", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Clouds", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", uvi: "UV index" };
-  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, uvi: 0.8, feels: 0.78, prob_rain: 0.82, prob_gust: 0.82, vis: 0.85, sst: 0.8, ptype: 0.85, gfactor: 0.78, vort500: 0.75, ptend: 0.8, cbase: 0.75, wbt: 0.78, dt24: 0.8 };
+  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", feels: "Feels like", prob_rain: "Rain chance", prob_gust: "Gale chance", gfactor: "Gust factor", vis: "Visibility", sst: "Sea temp", ptype: "Precip type", vort500: "Vorticity 500", ptend: "Pressure change", cbase: "Cloud base", wbt: "Wet-bulb", dt24: "Temp change 24 h", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Total cloud", cloudlow: "Low cloud", cloudmid: "Mid cloud", cloudhigh: "High cloud", fog: "Fog potential", solar: "Solar power", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", wavepower: "Wave power", uvi: "UV index" };
+  const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cloudlow: 0.85, cloudmid: 0.85, cloudhigh: 0.85, fog: 0.85, solar: 0.82, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, wavepower: 0.82, uvi: 0.8, feels: 0.78, prob_rain: 0.82, prob_gust: 0.82, vis: 0.85, sst: 0.8, ptype: 0.85, gfactor: 0.78, vort500: 0.75, ptend: 0.8, cbase: 0.75, wbt: 0.78, dt24: 0.8 };
   const LAYER_ICON = {
     iso: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15c3-4 6-4 9 0s6 4 9 0"/><path d="M3 9c3-4 6-4 9 0s6 4 9 0"/></svg>',
     wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/></svg>',
@@ -54,7 +58,7 @@
     uvi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
     waves: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
   };
-  const FAMILY_ICON = { wind: "wind", gust: "gust", temp: "temp", rain: "tp6", snow: "sf6", sd: "sd_cm", frz: "frz", tcc: "tcc", msl: "msl", hum: "rh", cape: "cape", waves: "waves", uvi: "uvi", chance: "tp6", ptype: "sf6", vis: "tcc", vort: "msl", sst: "waves", cbase: "tcc" };
+  const FAMILY_ICON = { wind: "wind", gust: "gust", temp: "temp", rain: "tp6", snow: "sf6", sd: "sd_cm", frz: "frz", tcc: "tcc", fog: "tcc", solar: "uvi", msl: "msl", hum: "rh", cape: "cape", waves: "waves", uvi: "uvi", chance: "tp6", ptype: "sf6", vis: "tcc", vort: "msl", sst: "waves", cbase: "tcc" };
   const LEVEL_FT = { 1000: "≈350 ft", 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 600: "14k ft", 500: "FL180", 400: "FL240", 300: "FL300", 250: "FL340", 200: "FL390" };
   const LEVEL_FEET = { 1000: "≈350 ft", 925: "2.5k ft", 850: "5k ft", 700: "10k ft", 600: "14k ft", 500: "18k ft", 400: "24k ft", 300: "30k ft", 250: "34k ft", 200: "39k ft" };
   const LEVEL_M = { 1000: "≈100 m", 925: "≈750 m", 850: "≈1.5 km", 700: "≈3 km", 600: "≈4.2 km", 500: "≈5.5 km", 400: "≈7.2 km", 300: "≈9 km", 250: "≈10.5 km", 200: "≈12 km" };
@@ -173,6 +177,7 @@
     });
     map.on("moveend", () => {
       localStorage.setItem("wxgrid.view", JSON.stringify({ center: map.getCenter().toArray(), zoom: map.getZoom() }));
+      if (catalog) renderControls();
       if (!state.point) WX.tape.refreshTapePoint();
       if (WX.provider) WX.provider.refresh();
       if (state.radar && WX.ov.refreshRadarSource) WX.ov.refreshRadarSource();
@@ -270,9 +275,10 @@
   const firstSymbolId = () => { const l = map.getStyle().layers.find((x) => x.type === "symbol"); return l ? l.id : undefined; };
   const mapStyle = () => document.documentElement.dataset.theme === "light" ? "https://tiles.openfreemap.org/styles/positron" : "https://tiles.openfreemap.org/styles/dark";
   function ensureWxLayer() {
-    if (map.getSource("wx")) return;
-    map.addSource("wx", { type: "image", url: layerUrl(), coordinates: WORLD });
-    map.addLayer({ id: "wx", type: "raster", source: "wx", paint: { "raster-opacity": rasterOpacity(), "raster-fade-duration": 0, "raster-resampling": "linear" } }, firstSymbolId());
+    if (!map.getSource("wx")) {
+      map.addSource("wx", { type: "image", url: layerUrl(), coordinates: modelCoords() });
+      map.addLayer({ id: "wx", type: "raster", source: "wx", paint: { "raster-opacity": rasterOpacity(), "raster-fade-duration": 0, "raster-resampling": "linear" } }, firstSymbolId());
+    }
     ensureCoastLayer();
   }
   // A weather field painted over the whole world hides the one thing you need
@@ -377,10 +383,20 @@
   const runDate = () => new Date(runEntry().valid_from);
   const validDate = () => new Date(runDate().getTime() + stepHours() * 3600e3);
   const hasLevel = () => ["wind", "temp"].includes(state.layer);
-  const isWaves = () => ["waves", "wperiod"].includes(state.layer);
+  const isWaves = () => ["waves", "wperiod", "wavepower"].includes(state.layer);
   const levelQ = () => (state.level && hasLevel()) ? `?level=${state.level}` : "";
   const layerUrl = (h = stepHours()) => U(`${API}/layer/${state.model}/${state.run}/${h}/${state.layer}.png${levelQ()}`);
   const windUrl = (h = stepHours()) => U(`${API}/wind/${state.model}/${state.run}/${h}.json${isWaves() ? "?field=waves" : state.level ? `?level=${state.level}` : ""}`);
+  const modelCoords = (m = modelEntry()) => {
+    if (!m || !m.regional) return WORLD;
+    const [w, s, e, n] = m.domain;
+    return [[w, n], [e, n], [e, s], [w, s]];
+  };
+  const modelInView = (m) => {
+    if (!m || !m.regional || !map) return true;
+    const c = map.getCenter(), lon = wlon(c.lng), [w, s, e, n] = m.domain;
+    return c.lat >= s && c.lat <= n && lon >= w && lon <= e;
+  };
 
   // ── controls ──────────────────────────────────────────────────────────
   // Opacity has two entry points — the settings drawer and the rail — so it
@@ -488,8 +504,16 @@
     const ms = $("#models");
     // The selected model also says what it resolves. Only the selected one:
     // six grid figures across the top bar is noise, one is information.
-    renderSlidingSeg(ms, catalog.models.map((m) => { const on = m.key === state.model;
-      return `<button data-model="${m.key}" class="${on ? "on" : ""}" ${m.runs.length ? "" : "disabled"} title="${m.label}${m.grid ? ` · ${m.grid}` : ""}">${m.short}${on && m.grid ? `<i class="grid">${m.grid}</i>` : ""}</button>`; }).join(""));
+    const aiParent = { aifs: "ifs", aigfs: "gfs" };
+    renderSlidingSeg(ms, catalog.models.map((m) => {
+      const on = m.key === state.model;
+      const parent = aiParent[m.key];
+      const familyOpen = !parent || state.model === parent || state.model === m.key;
+      const inView = modelInView(m);
+      const enabled = m.runs.length && inView;
+      const why = !m.runs.length ? "no ingested run" : !inView ? "map centre outside forecast domain" : "";
+      return `<button data-model="${m.key}" class="${on ? "on " : ""}${parent ? `model-child ${familyOpen ? "open" : ""}` : ""}" ${enabled ? "" : "disabled"} title="${m.label}${m.grid ? ` · ${m.grid}` : ""}${why ? ` · ${why}` : ""}">${m.short}${on && m.grid ? `<i class="grid">${m.grid}</i>` : ""}</button>`;
+    }).join(""));
     ms.querySelectorAll("button").forEach((b) => b.onclick = () => switchModel(b.dataset.model));
 
     const rs = $("#run");
@@ -1171,7 +1195,7 @@
   function applyStep(prefetch = true) {
     pushHash();
     const src = map.getSource("wx");
-    if (src) { try { src.updateImage({ url: layerUrl(), coordinates: WORLD }); } catch (e) { /* superseded */ } }
+    if (src) { try { src.updateImage({ url: layerUrl(), coordinates: modelCoords() }); } catch (e) { /* superseded */ } }
     if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", rasterOpacity());
     if (state.thunder && WX.ov) WX.ov.loadThunder();
     if (state.xsection && WX.xs) WX.xs.refresh();
@@ -1286,10 +1310,19 @@
     if (WX.provider) WX.provider.refresh();
     pushHash();
     const gotPoint = (d) => {
+      if (d && d.available === false) {
+        state.point.data = null;
+        state.point.outside = d;
+        $("#point-now").innerHTML = `<div class="note">${d.reason || "This point is outside the selected model's forecast domain."}</div>`;
+        $("#point-foot").textContent = `${modelEntry().short} · ${modelEntry().grid} regional domain`;
+        WX.tape.renderTape();
+        return;
+      }
       state.point.data = d;
+      state.point.outside = null;
       renderPoint(); WX.tape.renderTape();
       const rd = new Date(d.run + ":00Z");
-      $("#point-foot").textContent = `${modelEntry().short} run ${rd.toLocaleString(undefined, { day: "numeric", month: "short", timeZone: "UTC" })} ${String(rd.getUTCHours()).padStart(2, "0")}Z · 0.25° gridpoint · ${modelEntry().attribution.replace("ECMWF open data", "ECMWF").replace(" (AIFS)", "").replace("NOAA NCEP GFS via NOMADS", "National Weather Service").replace("NOAA NCEP AI-GFS (GraphCast lineage) via AWS Open Data", "National Weather Service").replace("NOAA NCEP GEFS ensemble mean via NOMADS", "National Weather Service")}`;
+      $("#point-foot").textContent = `${modelEntry().short} run ${rd.toLocaleString(undefined, { day: "numeric", month: "short", timeZone: "UTC" })} ${String(rd.getUTCHours()).padStart(2, "0")}Z · ${modelEntry().grid} gridpoint · ${modelEntry().attribution.replace("ECMWF open data", "ECMWF").replace(" (AIFS)", "").replace("NOAA NCEP GFS via NOMADS", "National Weather Service").replace("NOAA NCEP AI-GFS (GraphCast lineage) via AWS Open Data", "National Weather Service").replace("NOAA NCEP GEFS ensemble mean via NOMADS", "National Weather Service")}`;
       // A shorter model can hand the daily outlook to AI-GFS after its own
       // final valid time. Keep the primary series untouched: only the day
       // strip uses this continuation, and labels the change of model plainly.
@@ -1300,7 +1333,7 @@
         const primaryEnd = new Date(d.valid[d.valid.length - 1]).getTime();
         if (aiEnd > primaryEnd + 3600e3) {
           WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}&model=aigfs&run=${aiRun.run}`)
-            .then((r) => { if (my === pointReq) { state.point.ai = r; renderPoint(); } })
+            .then((r) => { if (my === pointReq && r.available !== false) { state.point.ai = r; renderPoint(); } })
             .catch(() => {});
         }
       }

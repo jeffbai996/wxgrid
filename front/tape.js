@@ -19,7 +19,7 @@
     try {
       const d = await WX.api(`${API}/point?lat=${c.lat.toFixed(2)}&lon=${WX.wlon(c.lng).toFixed(2)}&model=${state.model}&run=${state.run}`);
       if (my !== tapeReq) return;
-      state.tapePoint = d;
+      state.tapePoint = d.available === false ? null : d;
       renderTape();
     } catch (e) {
       if (my !== tapeReq) return;
@@ -27,7 +27,7 @@
       if (!state.tapePoint) { renderTape(); setTimeout(() => { if (my === tapeReq) refreshTapePoint(); }, 4000); }
     }
   }
-  function tapeData() { return (state.point && state.point.data) || state.tapePoint; }
+  function tapeData() { return state.point && state.point.outside ? null : (state.point && state.point.data) || state.tapePoint; }
   function renderTapePlace() {
     const el = $("#tape-where");
     el.replaceChildren();

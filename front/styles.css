@@ -126,6 +126,11 @@ button { font: inherit; color: inherit; }
 .seg.sliding button.on { background: transparent; }
 #models button { white-space: nowrap; }   /* "AI-GFS" was breaking across two lines */
 #models button .grid, #levels button .level-alt { font: 600 10px var(--font-display); font-style: normal; margin-left: 3px; opacity: .65; letter-spacing: 0; }
+#models .model-child { max-width: 0; min-width: 0; overflow: hidden; opacity: 0; padding-left: 0; padding-right: 0;
+  margin-left: -2px; pointer-events: none; transform: translateX(-7px) scale(.92); }
+#models .model-child.open { max-width: 110px; opacity: 1; padding-left: 11px; padding-right: 11px; margin-left: 0;
+  pointer-events: auto; transform: none; animation: model-child-in .24s cubic-bezier(.2,.8,.2,1); }
+@keyframes model-child-in { from { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; transform: translateX(-7px) scale(.92); } }
 #levels button .level-alt { font-size: 9px; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .35; cursor: default; }
@@ -317,12 +322,15 @@ button:focus:not(:focus-visible) { outline: none; }
 /* ── time bar + tape ─────────────────────────────────────────────────── */
 #timebar {
   position: absolute; left: 8px; right: 8px; z-index: 5;
-  bottom: calc(8px + env(safe-area-inset-bottom));
+  /* Keep the outer gutter a true 8 px on all three sides. The safe-area room
+     belongs inside the tape; putting it below the card exposed MapLibre's
+     compact attribution "i" in a fat, lopsided bottom moat. */
+  bottom: 8px;
   /* The tape is opaque. It used to be translucent, which forced the sticky
      label column to paint its own background — and that block of near-black
      over a see-through panel read as a box sitting on the table. One surface,
      no box, and a dense grid of numbers stays legible over any map. */
-  padding: 6px 10px 6px; background: var(--panel-solid); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom)); background: var(--panel-solid); border: 1px solid var(--line); border-radius: var(--radius);
   backdrop-filter: blur(10px); display: flex; flex-direction: column;
 }
 .tape-resize-handle { position: absolute; z-index: 2; left: 50%; top: -9px; width: 72px; height: 18px;
@@ -954,8 +962,8 @@ body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 116px + env(safe-area-
 .days .day .wd { display: inline-flex; align-items: baseline; gap: 2px; margin-top: 1px;
   padding: 1px 5px; border-radius: 6px; font: 700 11px var(--font-num); color: var(--fg); }
 .days .day .wd em { font: 600 8px var(--font-display); font-style: normal; opacity: .75; }
-.days-note { margin: -5px 2px 8px; color: var(--dim); font: 550 8.5px var(--font-body); }
-.days-note b { color: #80b8ff; font: 750 8.5px var(--font-display); }
+.days-note { margin: -5px 2px 8px; color: var(--dim); font: 550 10.5px var(--font-body); }
+.days-note b { color: #80b8ff; font: 750 10.5px var(--font-display); }
 
 /* current time on the tape: a thin accent line down the column, "now" tag on the hour row */
 /* "now" is a hairline down the column with one small tag, so it never fights
@@ -1004,7 +1012,7 @@ table.wtape .lo { color: var(--fg-2); font-weight: 600; font-size: .82em; margin
   border-left: 3px solid var(--line-strong); }
 .why p { margin: 0 0 7px; font: 480 12.5px/1.5 var(--font-body); color: var(--fg-2); }
 .why p:last-child { margin-bottom: 0; }
-.summary { margin: 4px 0 10px; padding: 1px 0 1px 11px; border-left: 3px solid var(--accent);
+.summary { margin: 1px 0 3px; padding: 0 0 0 11px; border-left: 3px solid var(--accent);
   font: 540 13px/1.48 var(--font-body); color: var(--fg); letter-spacing: -.006em; }
 @media (max-width: 380px) {
   .wind-readout { grid-template-columns: 30px minmax(88px,1fr) auto; gap: 8px; padding: 8px 9px; }

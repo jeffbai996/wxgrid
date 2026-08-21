@@ -8,7 +8,7 @@
   "use strict";
   const WX = window.WX;
   const M = () => WX.map;
-  const WORLD = [[-180, 85.05112878], [180, 85.05112878], [180, -85.05112878], [-180, -85.05112878]];
+  const WORLD = [[-180, 89.99], [180, 89.99], [180, -89.99], [-180, -89.99]];
   const SRC = "cams", LYR = "cams";
   const ALPHA = { pm2_5: 0.85, pm10: 0.85, dust: 0.9, aod550: 0.8 };
 

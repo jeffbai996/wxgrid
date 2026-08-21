@@ -15,6 +15,7 @@
 
   const TAU = Math.PI * 2;
   const MAX_STEP_DEG = 1.5;      // per frame, per axis
+  const MAX_STEP_PX = 4.0;       // pole-on globe views must not amplify one step
 
   class WindLayer {
     constructor(map, canvas) {
@@ -34,9 +35,10 @@
         if (this.mode === "barbs") { this.drawBarbs(); return; }
         // A rapid zoom-out leaves every particle inside the OLD viewport — a
         // dense clump in the middle of the new one, dying off over a minute.
-        // If the view changed scale meaningfully, deal fresh cards.
-        const z = this.map.getZoom();
-        if (this._seedZoom == null || Math.abs(z - this._seedZoom) > 0.4) this.reseed();
+        // Looking straight down a pole is another density regime: longitude
+        // collapses into a point. Re-deal when crossing into or out of it.
+        const z = this.map.getZoom(), lat = Math.abs(this.map.getCenter().lat);
+        if (this._seedZoom == null || Math.abs(z - this._seedZoom) > 0.4 || (lat > 65) !== (this._seedLat > 65)) this.reseed();
       };
       // Barbs are drawn in screen space from the field underneath. Drawing them
       // only at the end of a movement left them pinned to the glass while the
@@ -63,6 +65,19 @@
       };
       this._armDpr();
       map.on("moveend", this._moveEnd);
+      // A cold boot changes projection and canvas geometry after the wind JSON
+      // can already have arrived. Zooming used to be the first lifecycle event
+      // that dealt particles against the final globe. Listen to the actual
+      // style/projection/layout transitions instead.
+      this._settle = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+        this._apply();
+        if (this.field && this.mode !== "barbs") this.start();
+      }));
+      map.on("style.load", this._settle);
+      map.on("projectiontransition", this._settle);
+      map.on("load", this._settle);
+      this._layoutObserver = new ResizeObserver(this._settle);
+      this._layoutObserver.observe(map.getContainer());
       this.resize();
     }
 
@@ -96,6 +111,7 @@
 
     _apply() {
       const w = this.map.getContainer().clientWidth, h = this.map.getContainer().clientHeight;
+      if (!w || !h) return;
       this.dpr = Math.min(window.devicePixelRatio || 1, 2);   // page zoom moves it; never trust the boot value
       this.canvas.width = Math.round(w * this.dpr);
       this.canvas.height = Math.round(h * this.dpr);
@@ -186,7 +202,8 @@
       const f = this.field;
       if (!f) return null;
       let x = (lon - f.lon0) / f.dlon;
-      x = ((x % (f.nx - 1)) + (f.nx - 1)) % (f.nx - 1);
+      if (f.wrap !== false) x = ((x % (f.nx - 1)) + (f.nx - 1)) % (f.nx - 1);
+      else if (x < 0 || x > f.nx - 1) return null;
       const y = (lat - f.lat0) / f.dlat;                 // dlat negative → y grows southward
       if (y < 0 || y > f.ny - 1) return null;
       const x0 = Math.floor(x), y0 = Math.floor(y);
@@ -205,29 +222,61 @@
 
     bounds() {
       const b = this.map.getBounds();
-      return { w: b.getWest(), e: b.getEast(), s: Math.max(b.getSouth(), -85), n: Math.min(b.getNorth(), 85) };
+      const out = { w: b.getWest(), e: b.getEast(), s: Math.max(b.getSouth(), -89.5), n: Math.min(b.getNorth(), 89.5) };
+      const f = this.field;
+      if (f && f.wrap === false) {
+        out.w = Math.max(out.w, f.lon0);
+        out.e = Math.min(out.e, f.lon0 + (f.nx - 1) * f.dlon);
+        out.n = Math.min(out.n, f.lat0);
+        out.s = Math.max(out.s, f.lat0 + (f.ny - 1) * f.dlat);
+      }
+      return out;
     }
 
     reseed() {
       this._seedZoom = this.map ? this.map.getZoom() : null;
+      this._seedLat = this.map ? Math.abs(this.map.getCenter().lat) : 0;
       const b = this.bounds();
       const area = this.canvas.clientWidth * this.canvas.clientHeight;
       // 50% is the quieter default and equals about 70% of the old particle
       // count. The full control ranges from off to 1.4x the old density.
       const base = Math.max(600, Math.min(7000, Math.round(area / 220)));
-      const n = Math.max(0, Math.min(9800, Math.round(base * this.density * 0.014)));
+      // At a pole the meridians and their trajectories converge into the same
+      // few pixels. Fewer particles there preserves motion without turning
+      // the cap into a black starburst.
+      const polarQuiet = this._seedZoom < 3.5 && this._seedLat > 65 ? 0.4 : 1.0;
+      const n = Math.max(0, Math.min(9800, Math.round(base * this.density * 0.014 * polarQuiet)));
       this.particles = new Array(n);
       for (let i = 0; i < n; i++) this.particles[i] = this.spawn(b, true);
       this.wipe();
     }
 
     spawn(b, randomAge) {
-      const lon = b.w + Math.random() * (b.e - b.w);
+      let lon, lat;
+      const globe = this.map.getProjection && (this.map.getProjection() || {}).type === "globe" && this.map.getZoom() < 6;
+      if (globe && this.canvas.clientWidth && this.canvas.clientHeight) {
+        // Deal uniformly on the visible disc. Geographic bounds become
+        // degenerate when the camera looks straight down a pole and used to
+        // stack most cards into a bright, frantic ring.
+        for (let k = 0; k < 16; k++) {
+          const x = Math.random() * this.canvas.clientWidth, y = Math.random() * this.canvas.clientHeight;
+          let ll, rt;
+          try { ll = this.map.unproject([x, y]); rt = this.map.project(ll); }
+          catch (e) { continue; }                  // outside the visible globe disc
+          if (Math.abs(rt.x - x) > 2 || Math.abs(rt.y - y) > 2 || Math.abs(ll.lat) > 89.5) continue;
+          if (this.field && !this.sample(ll.lng, ll.lat)) continue;
+          lon = ll.lng; lat = ll.lat; break;
+        }
+      }
+      if (lon == null) {
+        if (!(b.e > b.w && b.n > b.s)) return { lon: 0, lat: 0, age: 1e9, maxAge: 0, px: null, py: null };
+        lon = b.w + Math.random() * (b.e - b.w);
       // Uniform in Mercator y, not latitude, so density looks even on screen.
-      const yN = Math.log(Math.tan(Math.PI / 4 + (b.n * Math.PI / 180) / 2));
-      const yS = Math.log(Math.tan(Math.PI / 4 + (b.s * Math.PI / 180) / 2));
-      const y = yS + Math.random() * (yN - yS);
-      const lat = (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180 / Math.PI;
+        const yN = Math.log(Math.tan(Math.PI / 4 + (b.n * Math.PI / 180) / 2));
+        const yS = Math.log(Math.tan(Math.PI / 4 + (b.s * Math.PI / 180) / 2));
+        const y = yS + Math.random() * (yN - yS);
+        lat = (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180 / Math.PI;
+      }
       // Zoomed out, a particle covers tens of degrees a second and the flow
       // packs them into its convergence zones within a few seconds — the dense
       // band. Short lives at low zoom keep the field evenly seeded.
@@ -306,11 +355,15 @@
       const dt = Math.min(50, t - (this.lastFrame || t)) / 1000;   // s, capped for tab wake-ups
       this.lastFrame = t;
       const ctx = this.ctx, w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      const zoom = this.map.getZoom();
+      const polarView = zoom < 3.5 && Math.abs(this.map.getCenter().lat) > 65;
       this._drawn = 0;
       this.warpTrails();
-      // Fade the previous frame: this is the trail.
+      // Fade the previous frame: this is the trail. Pole-on projection puts
+      // every meridian into one disc, so its trails need a shorter visual
+      // half-life even after reducing the particle count.
       ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = `rgba(0,0,0,${this._fastFade ? 0.3 : 0.06})`;
+      ctx.fillStyle = `rgba(0,0,0,${this._fastFade ? 0.3 : polarView ? 0.12 : 0.06})`;
       this._fastFade = false;
       ctx.fillRect(0, 0, w, h);
       ctx.globalCompositeOperation = "source-over";
@@ -318,7 +371,6 @@
       ctx.lineCap = "round";
 
       const b = this.bounds();
-      const zoom = this.map.getZoom();
       // On the globe the far hemisphere still projects INTO the canvas —
       // without this cull its particles draw mirrored on the visible disc.
       // A particle more than ~85° of arc from the view centre cannot be on
@@ -355,18 +407,25 @@
         p.age += 1;
         const uv = this.sample(p.lon, p.lat);
         // out of the view by more than a world? it can never come back — respawn
-        if (!uv || p.age > p.maxAge || p.lat > 85 || p.lat < -85 || p.lon < b.w - 360 || p.lon > b.e + 360 || (cull && cull(p.lon, p.lat))) { Object.assign(p, respawn()); continue; }
+        if (!uv || p.age > p.maxAge || p.lat > 89.5 || p.lat < -89.5 || p.lon < b.w - 360 || p.lon > b.e + 360 || (cull && cull(p.lon, p.lat))) { Object.assign(p, respawn()); continue; }
         const [u, v] = uv;
-        const cosLat = Math.max(0.05, Math.cos(p.lat * Math.PI / 180));
+        const cosLat = Math.max(0.08, Math.cos(p.lat * Math.PI / 180));
         // A single frame must not teleport a particle across a continent: at
         // world zoom the screen-relative speed works out to many degrees per
         // frame, which both smears the trail and empties the rest of the map.
         const dlon = Math.max(-MAX_STEP_DEG, Math.min(MAX_STEP_DEG, u * speed * dt / cosLat));
         const dlat = Math.max(-MAX_STEP_DEG, Math.min(MAX_STEP_DEG, v * speed * dt));
-        const nlon = p.lon + dlon;
-        const nlat = p.lat + dlat;
         const a = this.map.project([p.lon, p.lat]);
-        const q = this.map.project([nlon, nlat]);
+        let nlon = p.lon + dlon, nlat = p.lat + dlat;
+        if (nlat > 89.99 || nlat < -89.99) { Object.assign(p, respawn()); continue; }
+        let q = this.map.project([nlon, nlat]);
+        const screenStep = Math.hypot(q.x - a.x, q.y - a.y);
+        if (!isFinite(screenStep)) { Object.assign(p, respawn()); continue; }
+        if (screenStep > MAX_STEP_PX) {
+          const scale = MAX_STEP_PX / screenStep;
+          nlon = p.lon + dlon * scale; nlat = p.lat + dlat * scale;
+          q = this.map.project([nlon, nlat]);
+        }
         // Keep longitude in the CONTINUOUS space of the current view instead
         // of wrapping it to [-180, 180). map.project() maps a wrapped lon into
         // the primary world copy, so when the viewport showed the copy east of
@@ -395,6 +454,10 @@
       this.map.off("moveend", this._moveEnd);
       this.map.off("move", this._onMove);
       this.map.off("zoom", this._onMove);
+      this.map.off("style.load", this._settle);
+      this.map.off("projectiontransition", this._settle);
+      this.map.off("load", this._settle);
+      if (this._layoutObserver) this._layoutObserver.disconnect();
     }
   }
 
