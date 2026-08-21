@@ -31,16 +31,19 @@ from PIL import Image
 from wxgrid import render
 from wxgrid.api import ISOLINE_SPECS, LAYERS, _available, _freezing_level_grid, _isoline_geojson, _levels_for, _vars_for, field_for
 from wxgrid.config import BASE_DIR, DATA_DIR, FRONT_DIR
-from wxgrid.models import MODELS
+from wxgrid.models import LEVELS, MODELS
 from wxgrid.store import RunReader, list_runs, parse_run_id
 
 log = logging.getLogger("wxgrid.static_demo")
 
 POINT_DEG = 2.0            # point-grid spacing in the demo
 TILE_DEG = 10.0
-DEMO_LEVELS = (850, 700, 500)
-WIND_LEVELS = (850, 250)
-TEMP_LEVELS = (850,)
+# The full ladder, same as the live picker: a demo that only knows 850 and
+# 250 read as "missing most baro alts" (Jeff 2026-08-21). Wind JSONs are
+# coarse and cheap; the temp PNGs ride the demo's limited step list.
+DEMO_LEVELS = LEVELS
+WIND_LEVELS = LEVELS
+TEMP_LEVELS = LEVELS
 
 
 def _shrink_png(png: bytes, factor: int) -> bytes:
