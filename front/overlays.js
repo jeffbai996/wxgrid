@@ -301,11 +301,17 @@
         M().addLayer({ id: "storm-pts", type: "circle", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "Point"]], paint: { "circle-radius": 2.8, "circle-color": "rgba(255,255,255,.85)", "circle-stroke-color": "rgba(0,0,0,.6)", "circle-stroke-width": 1 } });
         // The eye wears its category colour — red deepens with the scale.
         M().addLayer({ id: "storm-now", type: "circle", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          paint: { "circle-radius": 8, "circle-color": ["coalesce", ["get", "category_color"], "#ef786f"], "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+          paint: { "circle-radius": 9.5, "circle-color": ["coalesce", ["get", "category_color"], "#ef786f"], "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+        // the category lives INSIDE the eye — "2" in the yellow disc, "TD"
+        // in the blue one — and the sub-label carries the motion instead
+        M().addLayer({ id: "storm-eye", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
+          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 9, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true },
+          paint: { "text-color": "#10131a" } });
         M().addLayer({ id: "storm-lbl", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "text-field": ["concat", ["get", "class"], " ", ["get", "name"], "\n", ["coalesce", ["get", "category"], ""], "  ·  ", ["get", "intensity_kt"], " kt"], "text-size": 11.5, "text-offset": [0, 1.3], "text-anchor": "top", "text-font": ["Noto Sans Bold"] },
+          layout: { "text-field": ["concat", ["get", "class"], " ", ["get", "name"], "\n", ["coalesce", ["get", "moving_short"], ""]], "text-size": 11.5, "text-offset": [0, 1.4], "text-anchor": "top", "text-font": ["Noto Sans Bold"] },
           paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.4 } });
         M().on("click", "storm-now", (e) => openStormCard(e.features[0]));
+        M().on("click", "storm-eye", (e) => openStormCard(e.features[0]));
         M().on("mouseenter", "storm-now", () => { M().getCanvas().style.cursor = "pointer"; });
         M().on("mouseleave", "storm-now", () => { M().getCanvas().style.cursor = ""; });
       }
@@ -343,7 +349,7 @@
   }
   WX.openStormCard = openStormCard;
   function clearStorms() {
-    if (stormPopup) { stormPopup.remove(); stormPopup = null; } ["storm-lbl", "storm-now", "storm-pts", "storm-track", "storm-cone-line", "storm-cone"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("storms")) M().removeSource("storms"); }
+    if (stormPopup) { stormPopup.remove(); stormPopup = null; } ["storm-lbl", "storm-eye", "storm-now", "storm-pts", "storm-track", "storm-cone-line", "storm-cone"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("storms")) M().removeSource("storms"); }
 
   // ── satellite: GOES GeoColor via NASA GIBS (timeless URL = latest) ────
   function loadSat() {
