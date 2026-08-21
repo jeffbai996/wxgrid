@@ -265,11 +265,13 @@ def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
         # WebP only: every current browser asks for it, and PNG for the odd
         # client that does not still renders on demand.
         for step in sorted({_level_step(r, st, layer in _SIX_HOURLY) for st in r.steps}):
-            path = CACHE_DIR / model_key / rid / f"{step:03d}-{layer}.webp"
+            name, _, _ = render.layer_cache_name(step, layer, "image/webp")
+            path = CACHE_DIR / model_key / rid / name
             if path.exists():
                 continue
             path.parent.mkdir(parents=True, exist_ok=True)
-            disp = render.DISPLAY[layer](render.to_mercator(field_for(r, layer, None, step)))
+            disp = render.upscale_values(
+                render.DISPLAY[layer](render.to_mercator(field_for(r, layer, None, step))), layer)
             tmp = path.with_suffix(path.suffix + ".tmp")
             tmp.write_bytes(render.colorize(disp, layer, fmt="webp"))
             tmp.replace(path)

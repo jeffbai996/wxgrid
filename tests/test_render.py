@@ -2,6 +2,7 @@ import io
 
 import numpy as np
 from PIL import Image
+from scipy.ndimage import zoom
 
 from wxgrid import render
 from wxgrid.config import GRID_LAT_N, GRID_LON_N
@@ -27,10 +28,49 @@ def test_colorize_emits_palette_png_of_mercator_size():
     assert np.asarray(img.convert("RGBA"))[0, 0, 3] == int(0.78 * 255)
 
 
+def test_layer_values_are_upscaled_before_colour_mapping_by_kind():
+    field = np.arange(16, dtype=np.float32).reshape(4, 4)
+    continuous = render.upscale_values(field, "temp")
+    probability = render.upscale_values(field, "prob_rain")
+    categorical = render.upscale_values((field % 4).astype(np.float32), "ptype")
+
+    assert continuous.shape == probability.shape == categorical.shape == (8, 8)
+    np.testing.assert_allclose(continuous, zoom(field, 2, order=3), atol=1e-5)
+    np.testing.assert_allclose(probability, zoom(field, 2, order=1), atol=1e-5)
+    assert set(np.unique(categorical)) <= {0.0, 1.0, 2.0, 3.0}
+
+
+def test_cubic_upscale_restores_nan_mask_without_a_halo():
+    field = np.arange(25, dtype=np.float32).reshape(5, 5)
+    field[:, 3:] = np.nan
+    out = render.upscale_values(field, "temp")
+
+    assert np.isfinite(out[:, :6]).all()
+    assert np.isnan(out[:, 6:]).all()
+    # Nearest-filling before the cubic pass keeps the last valid column from
+    # ringing wildly at the missing-data edge.
+    assert np.nanmax(np.abs(out[:, 5] - zoom(field[:, :3], 2, order=3)[:, -1])) < 2.0
+
+
+def test_layer_cache_name_carries_the_render_version():
+    name, fmt, media = render.layer_cache_name(6, "temp", "image/webp")
+    assert render.LAYER_CACHE_VERSION in name
+    assert name.endswith("-temp.webp") and fmt == "webp" and media == "image/webp"
+
+
 def test_all_missing_field_is_fully_transparent():
     field = np.full((render.MERC_H, GRID_LON_N), np.nan, dtype=np.float32)
     img = Image.open(io.BytesIO(render.colorize(field, "gust")))
     assert np.asarray(img)[..., 3].max() == 0
+
+
+def test_partial_missing_continuous_field_keeps_missing_pixels_transparent():
+    field = np.full((8, 8), 20.0, dtype=np.float32)
+    field[:, 5:] = np.nan
+    img = Image.open(io.BytesIO(render.colorize(field, "temp"))).convert("RGBA")
+    alpha = np.asarray(img)[..., 3]
+    assert alpha[:, :5].min() == int(0.78 * 255)
+    assert alpha[:, 5:].max() == 0
 
 
 def test_rain_is_transparent_where_dry():

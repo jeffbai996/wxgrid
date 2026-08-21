@@ -18,6 +18,7 @@ import math
 
 import numpy as np
 from PIL import Image
+from scipy.ndimage import distance_transform_edt, zoom
 
 from wxgrid.config import GRID_LAT_N, GRID_LON_N, GRID_RES
 
@@ -257,6 +258,10 @@ _LUTS = {k: _lut(v) for k, v in RAMPS.items()}
 
 
 IMAGE_FORMATS = {"png": "image/png", "webp": "image/webp"}
+# The rendered pixels changed from native-size linear sampling to 2x
+# value-space interpolation. Keep that fact in the immutable cache key so an
+# old frame can never masquerade as the new output after deploy.
+LAYER_CACHE_VERSION = "r2x-v1"
 # Layers whose alpha varies with the value, so they cannot be palette images.
 _RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500", "ptend", "dt24", "gfactor")
 
@@ -273,7 +278,34 @@ def layer_cache_name(step: int, tag: str, accept: str | None) -> tuple[str, str,
     format decision and the cache key in one place, so a WebP and a PNG of the
     same step never collide on disk."""
     fmt = pick_format(accept)
-    return f"{step:03d}-{tag}.{fmt}", fmt, IMAGE_FORMATS[fmt]
+    return f"{step:03d}-{LAYER_CACHE_VERSION}-{tag}.{fmt}", fmt, IMAGE_FORMATS[fmt]
+
+
+def upscale_values(field_display: np.ndarray, layer: str, factor: int = 2) -> np.ndarray:
+    """Upsample display-unit values before colour mapping.
+
+    Continuous weather fields use cubic interpolation, ensemble probabilities
+    stay linear, and precipitation type stays categorical. Missing regions are
+    nearest-filled only for the interpolation pass and then masked back out;
+    otherwise a cubic kernel sees NaN at a coastline and turns a several-pixel
+    fringe into NaN or a coloured halo.
+    """
+    field = np.asarray(field_display, dtype=np.float32)
+    if factor == 1:
+        return field.copy()
+    order = 0 if layer == "ptype" else 1 if layer.startswith("prob_") else 3
+    good = np.isfinite(field)
+    if not good.any():
+        return np.full(tuple(n * factor for n in field.shape), np.nan, dtype=np.float32)
+    if good.all():
+        return np.asarray(zoom(field, factor, order=order), dtype=np.float32)
+
+    nearest = distance_transform_edt(~good, return_distances=False, return_indices=True)
+    filled = field[tuple(nearest)]
+    out = np.asarray(zoom(filled, factor, order=order), dtype=np.float32)
+    valid = zoom(good.astype(np.uint8), factor, order=0).astype(bool)
+    out[~valid] = np.nan
+    return out
 
 
 # libwebp effort. 1 gets within ~1 pp of the best ratio on the big alpha
@@ -364,10 +396,15 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: st
             return _webp(rgba, buf)
         Image.fromarray(rgba, "RGBA").save(buf, format="PNG", optimize=False, compress_level=6)
         return buf.getvalue()
-    if fmt == "webp":
+    missing = np.isnan(field_display)
+    if fmt == "webp" or missing.any():
         rgba = lut[idx].copy()
         rgba[..., 3] = int(alpha * 255)
-        return _webp(rgba, buf)
+        rgba[missing, 3] = 0
+        if fmt == "webp":
+            return _webp(rgba, buf)
+        Image.fromarray(rgba, "RGBA").save(buf, format="PNG", optimize=False, compress_level=6)
+        return buf.getvalue()
     img = Image.fromarray(idx, "P")
     img.putpalette(lut[:, :3].astype(np.uint8).ravel().tolist())
     img.info["transparency"] = bytes([int(alpha * 255)] * 256)

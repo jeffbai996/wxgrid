@@ -338,7 +338,7 @@ def api_layer(request: Request, model: str, run: str, step: int, layer: str, lev
             if not path.exists():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 field = field_for(r, layer, level, step)
-                disp = render.DISPLAY[layer](render.to_mercator(field))
+                disp = render.upscale_values(render.DISPLAY[layer](render.to_mercator(field)), layer)
                 tmp = _tmp_for(path)
                 tmp.write_bytes(render.colorize(disp, layer, fmt=fmt))
                 tmp.replace(path)

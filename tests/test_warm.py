@@ -1,7 +1,7 @@
 """Warming pre-renders exactly the file names the request path will ask for."""
 import numpy as np
 
-from wxgrid import ingest
+from wxgrid import ingest, render
 from wxgrid.config import GRID_LAT_N, GRID_LON_N, STORE_DIR
 from wxgrid.store import RunWriter
 
@@ -22,6 +22,7 @@ def test_warm_layers_writes_the_request_paths(tmp_path, monkeypatch):
     n = ingest.warm_layers("gem", "2026-01-02T00", STORE_DIR)
     assert n == 6                                       # 3 layers × 2 steps
     for layer in ("wind", "temp", "tp6"):
-        assert (tmp_path / "gem" / "2026-01-02T00" / f"000-{layer}.webp").exists()
+        name, _, _ = render.layer_cache_name(0, layer, "image/webp")
+        assert (tmp_path / "gem" / "2026-01-02T00" / name).exists()
     # a second pass renders nothing: the names are the cache
     assert ingest.warm_layers("gem", "2026-01-02T00", STORE_DIR) == 0
