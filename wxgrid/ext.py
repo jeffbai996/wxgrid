@@ -57,7 +57,7 @@ class _Cache:
         with self._lock:
             self._d[key] = (now, val)
             self._dirty = True
-            if len(self._d) > 4000:            # crude bound; oldest first
+            if len(self._d) > 20000:           # crude bound; oldest first
                 for k in sorted(self._d, key=lambda k: self._d[k][0])[:1000]:
                     self._d.pop(k, None)
             if self._path and now - self._last_flush > 30:
@@ -69,7 +69,7 @@ class _Cache:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._path.with_suffix(f".part-{uuid.uuid4().hex[:8]}")
-            tmp.write_text(json.dumps({k: [t, v] for k, (t, v) in self._d.items() if now - t < 7 * 24 * 3600}))
+            tmp.write_text(json.dumps({k: [t, v] for k, (t, v) in self._d.items() if now - t < 45 * 24 * 3600}))
             tmp.replace(self._path)
             self._last_flush, self._dirty = now, False
         except Exception as exc:               # a cache that fails to persist is still a cache
@@ -303,7 +303,10 @@ class _GeocoderDown(Exception):
 
 
 def reverse(lat: float, lon: float) -> dict:
-    key = f"rgeo-en-v8:{lat:.3f}:{lon:.3f}"
+    # Keyed at ~2 km and kept a month: the 100 m/24 h key it replaces
+    # missed on almost every new pin, so every card waited on Nominatim
+    # (rate-limited to 1/s) for a name that never changes (2026-08-20).
+    key = f"rgeo-en-v9:{round(lat * 50) / 50:.2f}:{round(lon * 50) / 50:.2f}"
     def fetch():
         try:
             h = _nominatim("reverse", {"lat": lat, "lon": lon, "zoom": 10,
@@ -334,7 +337,7 @@ def reverse(lat: float, lon: float) -> dict:
         return {"name": place, "region": region, "country": country,
                 "display": h.get("display_name", "")}
     try:
-        return cache.get(key, 24 * 3600, fetch)
+        return cache.get(key, 30 * 24 * 3600, fetch)
     except _GeocoderDown:
         # Nothing cached: the next request asks again. A transient failure
         # once named Whistler "North Pacific Ocean" for a day.
