@@ -348,10 +348,13 @@ _RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "cloudlow", "cloudmid", "c
 
 
 def pick_format(accept: str | None) -> str:
-    """The image format to serve, from a request's Accept header. Every
-    browser that supports WebP advertises `image/webp`; everything else (curl,
-    old Safari, the static build's file: loads) falls through to PNG."""
-    return "webp" if accept and "image/webp" in accept else "png"
+    """PNG, for everyone. Measured 2026-08-21 at the 2x render scale
+    (2880x2880): lossless WebP encodes in 2.9-4.8 s per frame against PNG's
+    1.1 s, for only ~20 % fewer bytes -- and the encode happens on the request
+    that misses the cache, so the user wears it. Lossy WebP is off the table:
+    the probe reads values back out of the rendered colours. The static demo
+    already writes PNG on its own path."""
+    return "png"
 
 
 def layer_cache_name(step: int, tag: str, accept: str | None) -> tuple[str, str, str]:

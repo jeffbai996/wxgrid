@@ -57,7 +57,8 @@ def test_cubic_upscale_restores_nan_mask_without_a_halo():
 def test_layer_cache_name_carries_the_render_version():
     name, fmt, media = render.layer_cache_name(6, "temp", "image/webp")
     assert render.LAYER_CACHE_VERSION in name
-    assert name.endswith("-temp.webp") and fmt == "webp" and media == "image/webp"
+    # png regardless of Accept since 2026-08-21 — see pick_format's docstring
+    assert name.endswith("-temp.png") and fmt == "png" and media == "image/png"
 
 
 def test_pressure_neutral_is_cool_instead_of_beige():

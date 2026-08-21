@@ -291,12 +291,15 @@ def test_all_missing_field_is_transparent_in_webp_too():
     assert _rgba(render.colorize(field, "gust", fmt="webp"))[..., 3].max() == 0
 
 
-def test_pick_format_and_cache_name_follow_the_accept_header():
-    assert render.pick_format("image/avif,image/webp,*/*") == "webp"
+def test_pick_format_serves_png_to_every_client():
+    # PNG for everyone since 2026-08-21: at the 2x render scale a lossless
+    # WebP encode costs 3-5 s on the cache-missing request for ~20 % fewer
+    # bytes, and lossy would corrupt the probe's colour-to-value read.
+    assert render.pick_format("image/avif,image/webp,*/*") == "png"
     assert render.pick_format("image/png,*/*") == "png"
     assert render.pick_format(None) == "png"
     assert render.layer_cache_name(6, "wind-850", "image/webp") == (
-        f"006-{render.LAYER_CACHE_VERSION}-wind-850.webp", "webp", "image/webp")
+        f"006-{render.LAYER_CACHE_VERSION}-wind-850.png", "png", "image/png")
     assert render.layer_cache_name(6, "wind", None) == (
         f"006-{render.LAYER_CACHE_VERSION}-wind.png", "png", "image/png")
     with pytest.raises(ValueError):

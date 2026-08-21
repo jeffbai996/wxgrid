@@ -39,7 +39,7 @@
     { key: "chance", label: "Chance", layers: ["prob_rain", "prob_gust"], variants: { prob_rain: "Rain", prob_gust: "Gale" }, section: "Ensemble" },
   ];
   const familyOf = (layer) => FAMILIES.find((f) => f.layers.includes(layer)) || FAMILIES[0];
-  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", feels: "Feels like", prob_rain: "Rain chance", prob_gust: "Gale chance", gfactor: "Gust factor", vis: "Visibility", sst: "Sea temp", ptype: "Precip type", vort500: "Vorticity 500", ptend: "Pressure change", cbase: "Cloud base", wbt: "Wet-bulb", dt24: "Temp Δ 24 h", msl: "Pressure", tp6: "Rain 6 h", tp24: "Rain 24 h", tp72: "Rain 72 h", sf6: "New snow 6 h", sf24: "New snow 24 h", sf72: "New snow 72 h", sd_cm: "Snow depth", tcc: "Total cloud", cloudlow: "Low cloud", cloudmid: "Mid cloud", cloudhigh: "High cloud", fog: "Fog potential", solar: "Solar power", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", wavepower: "Wave power", uvi: "UV index" };
+  const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", feels: "Feels like", prob_rain: "Rain chance", prob_gust: "Gale chance", gfactor: "Gust factor", vis: "Visibility", sst: "Sea temp", ptype: "Precip type", vort500: "Vorticity 500", ptend: "Pressure change", cbase: "Cloud base", wbt: "Wet-bulb", dt24: "Temp Δ 24h", msl: "Pressure", tp6: "Rain 6h", tp24: "Rain 24h", tp72: "Rain 72h", sf6: "New snow 6h", sf24: "New snow 24h", sf72: "New snow 72h", sd_cm: "Snow depth", tcc: "Total cloud", cloudlow: "Low cloud", cloudmid: "Mid cloud", cloudhigh: "High cloud", fog: "Fog potential", solar: "Solar power", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", wavepower: "Wave power", uvi: "UV index" };
   const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cloudlow: 0.85, cloudmid: 0.85, cloudhigh: 0.85, fog: 0.85, solar: 0.82, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, wavepower: 0.82, uvi: 0.8, feels: 0.78, prob_rain: 0.82, prob_gust: 0.82, vis: 0.85, sst: 0.8, ptype: 0.85, gfactor: 0.78, vort500: 0.75, ptend: 0.8, cbase: 0.75, wbt: 0.78, dt24: 0.8 };
   const LAYER_ICON = {
     iso: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15c3-4 6-4 9 0s6 4 9 0"/><path d="M3 9c3-4 6-4 9 0s6 4 9 0"/></svg>',
@@ -763,7 +763,11 @@
     };
     $("#xsection-toggle").onclick = () => { if (!WX.xs) { toast("Cross section is still loading", 2500); return; } const on = !state.xsection; $("#xsection-toggle").classList.toggle("on", on); if (on) WX.xs.start(); else WX.xs.stop(); };
     $("#measure-toggle").onclick = () => { state.measure = !state.measure; $("#measure-toggle").classList.toggle("on", state.measure); $("#measure-toggle").querySelector(".val").textContent = state.measure ? "on" : "off"; if (!state.measure) WX.ov.clearMeasure(); else toast("Tap two points to measure."); };
-    $("#iso-toggle").onclick = () => { state.iso = !state.iso; $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) WX.ov.loadIso(); else WX.ov.clearIso(); };
+    $("#iso-toggle").onclick = () => { state.iso = !state.iso; localStorage.setItem("wxgrid.iso", state.iso ? "1" : "0"); $("#iso-toggle").classList.toggle("on", state.iso); if (state.iso) WX.ov.loadIso(); else WX.ov.clearIso(); };
+    // Isolines come back the way you left them (Jeff 2026-08-21). Deferred
+    // to map load: loadIso adds a source, and the style may still be inbound.
+    const restoreIso = () => { if (localStorage.getItem("wxgrid.iso") === "1" && !state.iso) $("#iso-toggle").click(); };
+    if (map && map.isStyleLoaded && map.isStyleLoaded()) restoreIso(); else if (map) map.once("load", restoreIso);
     $("#avy-toggle").onclick = () => { state.avy = !state.avy; $("#avy-toggle").classList.toggle("on", state.avy); if (state.avy) WX.ov.loadAvy(); else WX.ov.clearAvy(); };
     $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) WX.ov.loadResorts(); else WX.ov.clearResorts(); };
     $("#locate").onclick = goToMe;
@@ -1211,7 +1215,14 @@
     if (state.night && WX.ov) WX.ov.updateNight();
     if (WX.probe) { WX.probe.pinUpdate(); }
     updateMarkerFlag();
-    if (prefetch) { const img = new Image(); img.src = layerUrl(steps()[(state.stepIdx + 1) % steps().length]); if (state.resorts && WX.ov) WX.ov.loadResorts(); }
+    if (prefetch) {
+      // Warm the neighbours: a cold frame renders in ~1-2 s server-side, and
+      // scrubbing waits for each one. Fetching +1/+2/-1 in the background
+      // makes the scrub read from cache instead (Jeff 2026-08-21).
+      const st = steps();
+      for (const d of [1, 2, -1]) { const j = state.stepIdx + d; if (j >= 0 && j < st.length) { const im = new Image(); im.src = layerUrl(st[j]); } }
+      if (state.resorts && WX.ov) WX.ov.loadResorts();
+    }
     WX.tape.renderTapeSelection();
     if (state.point) renderPoint();
   }
@@ -1272,7 +1283,9 @@
     // where it collided with the value under it. Ticks are numbers only.
     const name = LAYER_LABEL[state.layer] + (state.level && hasLevel() ? ` ${state.level}` : "");
     $("#legend .legend-head b").textContent = name;
-    $("#legend .legend-head i").textContent = unit;
+    // "mm/6h": the window rides smaller and faded, set apart from the unit
+    const um = /^([^/]+)(\/.+)$/.exec(unit || "");
+    $("#legend .legend-head i").innerHTML = um ? `${um[1]}<span class="per">${um[2]}</span>` : (unit || "");
     if (state.layer === "ptype") {                 // categorical: names, not numbers
       $(".legend-bar").style.background = "linear-gradient(to right, rgb(60,130,220) 33%, rgb(190,110,220) 33% 66%, rgb(235,240,255) 66%)";
       $(".legend-ticks").innerHTML = "<span>rain</span><span>mixed</span><span>snow</span>";
