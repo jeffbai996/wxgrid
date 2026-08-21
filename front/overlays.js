@@ -319,15 +319,25 @@
     const p = f.properties;
     const ago = p.updated ? (ms => ms < 3600e3 ? `${Math.round(ms / 60e3)} min ago` : `${Math.round(ms / 3600e3)} h ago`)(Date.now() - new Date(p.updated)) : "";
     const kmh = p.intensity_kt ? Math.round(p.intensity_kt * 1.852) : null;
+    const [slon, slat] = f.geometry.coordinates;
+    // Which desk is tracking it. The NHC feed carries Atlantic (al), East
+    // Pacific (ep) and Central Pacific (cp) ids; other agencies join when
+    // their feeds do.
+    const agency = /^cp/i.test(p.id || "") ? "CPHC · Honolulu" : "NHC · Miami";
+    const esc_ = (x) => String(x == null ? "" : x).replace(/</g, "&lt;");
     if (stormPopup) stormPopup.remove();
-    stormPopup = new maplibregl.Popup({ className: "quake-pop storm-pop", closeButton: true, maxWidth: "280px", offset: 12 })
-      .setLngLat(f.geometry.coordinates.slice(0, 2))
-      .setHTML(`<div class="qp-head"><b style="color:${p.category_color || "#ef786f"}">${String(p.class || "").replace(/</g, "&lt;")} ${String(p.name || "").replace(/</g, "&lt;")}</b><span>${ago}</span></div>
-        ${p.category_label ? `<div class="qp-place" style="color:${p.category_color}">${p.category} · ${p.category_label}</div>` : ""}
-        <dl>${p.intensity_kt ? `<dt>Winds</dt><dd>${p.intensity_kt} kt · ${kmh} km/h</dd>` : ""}
-        ${p.pressure_mb ? `<dt>Pressure</dt><dd>${p.pressure_mb} mb</dd>` : ""}
-        ${p.movement && !/null/.test(p.movement) ? `<dt>Moving</dt><dd>${p.movement}</dd>` : ""}
-        ${p.advisory ? `<dt>Advisory</dt><dd>#${p.advisory}</dd>` : ""}</dl>
+    stormPopup = new maplibregl.Popup({ className: "quake-pop storm-pop", closeButton: true, maxWidth: "300px", offset: 12 })
+      .setLngLat([slon, slat])
+      .setHTML(`<div class="qp-head"><i class="sp-ico" style="color:${p.category_color || "#ef786f"}">${WX.CYCLONE_SVG || ""}</i><b>${esc_(p.class)} ${esc_(p.name)}</b><span>${ago}</span></div>
+        <dl>
+        ${p.category_label ? `<dt>Type</dt><dd><span class="sp-cat" style="--cat:${p.category_color}">${esc_(p.category)}</span> ${esc_(p.category_label)}</dd>` : ""}
+        ${p.intensity_kt ? `<dt>Winds</dt><dd>${esc_(p.intensity_kt)} kt · ${kmh} km/h</dd>` : ""}
+        ${p.gusts ? `<dt>Gusts</dt><dd>${esc_(p.gusts)} kt · ${Math.round(p.gusts * 1.852)} km/h</dd>` : ""}
+        ${p.pressure_mb ? `<dt>Pressure</dt><dd>${esc_(p.pressure_mb)} mb</dd>` : ""}
+        ${p.movement && !/null/.test(p.movement) ? `<dt>Moving</dt><dd>${esc_(p.movement)}</dd>` : ""}
+        <dt>Position</dt><dd>${WX.fmtCoords ? WX.fmtCoords(slat, slon, 1) : `${slat.toFixed(1)}, ${slon.toFixed(1)}`}</dd>
+        <dt>Agency</dt><dd>${agency}</dd>
+        ${p.advisory ? `<dt>Advisory</dt><dd>#${esc_(p.advisory)}</dd>` : ""}</dl>
         ${p.url ? `<a class="qp-link" href="${p.url}" target="_blank" rel="noopener">Public advisory ↗</a>` : ""}`)
       .addTo(M());
   }

@@ -1326,7 +1326,7 @@ def storms() -> dict:
         for s in j.get("activeStorms", []):
             cat = storm_category(s.get("intensity"), s.get("latitudeNumeric") or 0, s.get("longitudeNumeric") or 0)
             base = {"id": s.get("id"), "name": s.get("name"), "class": _storm_class(s.get("classification")), "intensity_kt": s.get("intensity"),
-                    "category": cat["badge"], "category_label": cat["label"], "category_color": cat["color"],
+                    "category": cat["badge"], "category_label": cat["label"], "category_color": cat["color"], "gusts": s.get("gusts"),
                     "pressure_mb": s.get("pressure"), "movement": f"{s.get('movementDir')}° at {s.get('movementSpeed')} kt",
                     "updated": s.get("lastUpdate"), "advisory": (s.get("publicAdvisory") or {}).get("advNum"),
                     "url": (s.get("publicAdvisory") or {}).get("url")}
@@ -1344,7 +1344,7 @@ def storms() -> dict:
                 except Exception as exc:
                     log.info("nhc %s %s: %s", s.get("id"), kind, exc)
         return {"type": "FeatureCollection", "features": feats, "storms": meta}
-    return cache.get("storms-v2", 900, fetch)
+    return cache.get("storms-v3", 900, fetch)
 
 
 # ── air quality / UV (Open-Meteo) ────────────────────────────────────────

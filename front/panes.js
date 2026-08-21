@@ -239,6 +239,7 @@
       <span class="wind-arrow">${f(s.wdir && s.wdir[i], arrow)}</span>
       <span class="wind-main"><small>Wind ${compass(s.wdir && s.wdir[i])}</small><b>${f(s.wind[i], (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b></span>
       ${s.gust && s.gust[i] != null ? `<span class="wind-gust"><small>Gusts</small><b>${speed(s.gust[i]).toFixed(0)} <i>${speedUnit()}</i></b></span>` : ""}
+      <span class="wind-storm" id="storm-slot"></span>
     </span>`);
     // Which readings are worth the space depends on where the pin landed. A
     // snow depth of zero in August tells you nothing; wave height does, if you
@@ -311,7 +312,7 @@
         </div>
       </div>
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
-      <div class="meta">${chips.join("")}<span id="storm-near"></span></div>
+      <div class="meta">${chips.join("")}</div>
       ${daysStrip(pt, d, i)}
       ${alertsHtml(pt)}${airHtml(pt)}`;
     fetchNearStorm(pt);
@@ -695,11 +696,15 @@
   // storm's name, its basin-correct category, range and bearing. Tapping it
   // turns the storms layer on and flies to the eye (Jeff 2026-08-21).
   let stormFetch = 0;
+  // The meteorological tropical-cyclone symbol, not an emoji: a core with
+  // two trailing arms, drawn in whatever colour the category earned.
+  const CYCLONE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.7"/><path d="M15.4 9.6c3.3-1.6 4.6-4.4 3.9-7.1"/><path d="M8.6 14.4c-3.3 1.6-4.6 4.4-3.9 7.1"/></svg>`;
+  W().CYCLONE_SVG = CYCLONE_SVG;
   function fetchNearStorm(pt) {
     const my = ++stormFetch;
     W().api(`${W().API}/storms`).then((gj) => {
       if (my !== stormFetch) return;
-      const el = document.getElementById("storm-near");
+      const el = document.getElementById("storm-slot");
       if (!el) return;
       const R = Math.PI / 180;
       let best = null;
@@ -710,13 +715,16 @@
           + Math.cos(pt.lat * R) * Math.cos(slat * R) * Math.cos((pt.lon - slon) * R)));
         if (km <= 1200 && (!best || km < best.km)) best = { f, km, slon, slat };
       }
-      if (!best) { el.innerHTML = ""; return; }
+      if (!best) { el.innerHTML = ""; el.classList.remove("on"); return; }
       const p = best.f.properties;
       const brg = Math.round((Math.atan2(Math.sin((best.slon - pt.lon) * R) * Math.cos(best.slat * R),
         Math.cos(pt.lat * R) * Math.sin(best.slat * R) - Math.sin(pt.lat * R) * Math.cos(best.slat * R) * Math.cos((best.slon - pt.lon) * R)) / R + 360) % 360);
       const dir = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(brg / 45) % 8];
-      el.innerHTML = `<button class="chipv storm-chip" style="color:${p.category_color || "#ef786f"}" title="${esc(p.category_label || "")} — tap for the storm view">🌀 <b>${esc(p.class || "")} ${esc(p.name || "")}</b>${p.category ? ` · ${esc(p.category)}` : ""} · ${Math.round(best.km / 10) * 10} km ${dir}</button>`;
-      el.querySelector("button").onclick = () => {
+      el.classList.add("on");
+      el.style.color = p.category_color || "#ef786f";
+      el.title = `${p.category_label || ""} — tap for the storm view`;
+      el.innerHTML = `${CYCLONE_SVG}<span class="ws-txt"><small>${esc((p.class || "").toUpperCase())}${p.category ? ` · ${esc(p.category)}` : ""}</small><b>${esc(p.name || "")}</b><em>${Math.round(best.km / 10) * 10} km ${dir}</em></span>`;
+      el.onclick = () => {
         if (!W().state.storms) document.getElementById("storms-toggle").click();
         W().map.flyTo({ center: [best.slon, best.slat], zoom: Math.max(4.5, W().map.getZoom()), duration: 1400 });
         setTimeout(() => { if (W().openStormCard) W().openStormCard(best.f); }, 1500);
