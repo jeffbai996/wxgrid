@@ -274,7 +274,7 @@ def gefs_sfc_url(run: datetime, step: int) -> str:
 
 
 def gefs_pl_url(run: datetime, step: int, levels: tuple[int, ...]) -> str:
-    flags = {"var_UGRD": "on", "var_VGRD": "on", "var_TMP": "on", "var_HGT": "on"}
+    flags = {"var_UGRD": "on", "var_VGRD": "on", "var_TMP": "on", "var_HGT": "on", "var_TCDC": "on"}
     flags.update({f"lev_{lvl}_mb": "on" for lvl in levels})
     return _query(NOMADS_GEFS_PL, {
         "dir": f"%2Fgefs.{run:%Y%m%d}%2F{run:%H}%2Fatmos%2Fpgrb2ap5",

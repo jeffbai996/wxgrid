@@ -1,7 +1,7 @@
 """Turn a (721, 1440) lat/lon field into what the browser wants.
 
 - `to_mercator`   : resample the equirectangular grid onto a Web-Mercator
-                    image (lat ±85.05°) so MapLibre's ImageSource can drape it
+                    image (lat ±89.99°) so MapLibre's globe has no polar hole
                     with four corner coordinates and no local distortion.
 - `colorize`      : fixed per-variable colour ramps → RGBA PNG bytes. Fixed
                     ranges, not per-frame min/max, so colours mean the same
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import io
 import json
-import math
 
 import numpy as np
 from PIL import Image
@@ -22,7 +21,7 @@ from scipy.ndimage import distance_transform_edt, zoom
 
 from wxgrid.config import GRID_LAT_N, GRID_LON_N, GRID_RES
 
-MERC_LAT_MAX = 85.05112878          # Web-Mercator clip latitude
+MERC_LAT_MAX = 89.99                # finite ImageSource edge; visually closes the globe
 MERC_H = 1440                        # output rows; square with the 1440 columns
 
 _merc_src_rows: np.ndarray | None = None
@@ -34,8 +33,9 @@ def _mercator_rows() -> tuple[np.ndarray, np.ndarray]:
     global _merc_src_rows, _merc_frac
     if _merc_src_rows is None:
         r = (np.arange(MERC_H, dtype=np.float64) + 0.5) / MERC_H          # 0..1 top→bottom
-        y = math.pi * (1.0 - 2.0 * r)                                      # +π..-π
-        lat = np.degrees(np.arctan(np.sinh(y)))                            # 85.05..-85.05
+        y_max = np.arcsinh(np.tan(np.deg2rad(MERC_LAT_MAX)))
+        y = y_max * (1.0 - 2.0 * r)
+        lat = np.degrees(np.arctan(np.sinh(y)))                            # 89.99..-89.99
         src = (90.0 - lat) / GRID_RES                                      # fractional row
         src = np.clip(src, 0, GRID_LAT_N - 1 - 1e-6)
         _merc_src_rows = np.floor(src).astype(np.int32)
@@ -93,13 +93,24 @@ RAMPS: dict[str, dict] = {
         (16, (58, 214, 108)), (20, (154, 228, 58)), (24, (250, 224, 56)), (28, (255, 176, 38)),
         (32, (250, 118, 36)), (36, (240, 58, 48)), (40, (204, 36, 124)), (44, (150, 40, 196))]},
     "msl": {"units": "hPa", "lo": 950, "hi": 1050, "stops": [
-        (950, (110, 20, 140)), (970, (60, 60, 200)), (990, (40, 150, 220)), (1005, (120, 210, 150)),
-        (1013, (240, 240, 200)), (1025, (240, 180, 80)), (1040, (220, 80, 40)), (1050, (150, 0, 60))]},
+        (950, (92, 24, 150)), (970, (54, 66, 204)), (990, (34, 148, 222)), (1005, (48, 196, 188)),
+        (1013, (190, 216, 226)), (1025, (120, 202, 118)), (1040, (244, 192, 58)), (1050, (226, 72, 58))]},
     "tp6": {"units": "mm/6h", "lo": 0, "hi": 40, "stops": [
         (0, (110, 160, 230)), (1, (80, 130, 220)), (3, (40, 100, 200)), (8, (30, 170, 90)),
         (15, (240, 220, 40)), (25, (240, 120, 30)), (40, (200, 20, 60))]},
     "tcc": {"units": "%", "lo": 0, "hi": 100, "stops": [
         (0, (20, 30, 50)), (30, (90, 110, 140)), (60, (170, 180, 195)), (100, (245, 245, 250))]},
+    "cloudlow": {"units": "%", "lo": 0, "hi": 100, "stops": [
+        (0, (18, 34, 48)), (30, (62, 105, 126)), (60, (135, 170, 182)), (100, (230, 240, 242))]},
+    "cloudmid": {"units": "%", "lo": 0, "hi": 100, "stops": [
+        (0, (24, 28, 52)), (30, (75, 84, 137)), (60, (145, 151, 191)), (100, (232, 230, 247))]},
+    "cloudhigh": {"units": "%", "lo": 0, "hi": 100, "stops": [
+        (0, (31, 25, 51)), (30, (94, 72, 128)), (60, (164, 143, 184)), (100, (244, 225, 244))]},
+    "fog": {"units": "%", "lo": 0, "hi": 100, "stops": [
+        (0, (40, 55, 65)), (20, (86, 112, 122)), (50, (154, 180, 184)), (80, (216, 229, 227)), (100, (250, 252, 248))]},
+    "solar": {"units": "W/m²", "lo": 0, "hi": 1050, "stops": [
+        (0, (35, 30, 70)), (100, (83, 58, 145)), (300, (185, 76, 125)), (550, (241, 118, 61)),
+        (800, (250, 194, 52)), (1050, (255, 244, 144))]},
     "sf6": {"units": "cm/6h", "lo": 0, "hi": 30, "stops": [
         (0, (150, 170, 220)), (1, (120, 150, 230)), (3, (80, 120, 230)), (8, (140, 90, 220)),
         (15, (200, 80, 200)), (30, (240, 60, 120))]},
@@ -178,6 +189,9 @@ RAMPS: dict[str, dict] = {
     "gfactor": {"units": "m/s", "lo": 0, "hi": 15, "stops": [
         (0, (40, 60, 90)), (3, (60, 150, 190)), (6, (120, 210, 130)), (9, (240, 210, 60)),
         (12, (245, 130, 40)), (15, (210, 40, 60))]},
+    "wavepower": {"units": "kW/m", "lo": 0, "hi": 100, "stops": [
+        (0, (30, 48, 95)), (5, (36, 111, 180)), (15, (30, 184, 178)), (30, (103, 208, 102)),
+        (50, (238, 217, 62)), (75, (241, 117, 43)), (100, (196, 38, 80))]},
     "prob_gust": {"units": "%", "lo": 0, "hi": 100, "stops": [
         (0, (40, 35, 60)), (20, (120, 80, 170)), (40, (190, 80, 170)), (60, (240, 100, 110)),
         (80, (250, 150, 60)), (100, (250, 220, 60))]},
@@ -191,6 +205,11 @@ DISPLAY = {
     "gust": lambda ms: ms,
     "wind": lambda ms: ms,
     "tcc": lambda frac: frac * 100.0,
+    "cloudlow": lambda frac: frac * 100.0,
+    "cloudmid": lambda frac: frac * 100.0,
+    "cloudhigh": lambda frac: frac * 100.0,
+    "fog": lambda pct: pct,
+    "solar": lambda wm2: wm2,
     "cape": lambda j: j,
     "sf6": lambda mm_we: mm_we,      # ramp is labelled cm at a 10:1 ratio: 1 mm w.e. ≈ 1 cm fresh snow
     "sd_cm": lambda cm: cm,
@@ -203,6 +222,7 @@ DISPLAY = {
     "sf72": lambda mm_we: mm_we,
     "waves": lambda m: m,
     "wperiod": lambda s: s,
+    "wavepower": lambda kwm: kwm,
     "uvi": lambda u: u,
     "feels": lambda k: k - 273.15,
     "prob_rain": lambda pct: pct,
@@ -254,6 +274,42 @@ def uv_index(tcc: np.ndarray, when, *, lat0: float = 90.0, lon0: float = -180.0,
     return (clear * cloud).astype(np.float32)
 
 
+def solar_power(tcc: np.ndarray, when, *, lat0: float = 90.0, lon0: float = -180.0,
+                dlat: float = -GRID_RES, dlon: float = GRID_RES) -> np.ndarray:
+    """Approximate downwelling shortwave power at the surface in W/m².
+
+    Solar geometry supplies the honest day/night and seasonal signal; total
+    cloud supplies an empirical attenuation. This is a planning layer, not a
+    pyranometer or a PV-production forecast (no aerosol, terrain or panel
+    geometry).
+    """
+    doy = when.timetuple().tm_yday
+    hour = when.hour + when.minute / 60.0
+    decl = np.deg2rad(23.44) * np.sin(2 * np.pi * (284 + doy) / 365.0)
+    lats = np.deg2rad(lat0 + np.arange(tcc.shape[0]) * dlat)[:, None]
+    lons = (lon0 + np.arange(tcc.shape[1]) * dlon)[None, :]
+    ha = np.deg2rad(15.0 * (hour - 12.0) + lons)
+    mu = np.clip(np.sin(lats) * np.sin(decl) + np.cos(lats) * np.cos(decl) * np.cos(ha), 0.0, 1.0)
+    cloud = np.clip(np.nan_to_num(tcc, nan=1.0), 0.0, 1.0)
+    attenuation = 1.0 - 0.75 * cloud ** 3.4
+    return (1100.0 * mu * attenuation).astype(np.float32)
+
+
+def wave_power(height_m: np.ndarray, period_s: np.ndarray) -> np.ndarray:
+    """Deep-water wave-energy flux in kW per metre of wave crest."""
+    return (0.49 * np.square(height_m) * period_s).astype(np.float32)
+
+
+def fog_potential(rh_pct: np.ndarray, low_cloud: np.ndarray) -> np.ndarray:
+    """A deliberately labelled fog *potential* from saturation and low cloud.
+
+    RH below 80 % contributes nothing; the final 20 points scale to 100 and
+    low-cloud fraction gates the result. It avoids pretending the model has a
+    direct visibility diagnosis where it does not.
+    """
+    return (np.clip((rh_pct - 80.0) * 5.0, 0.0, 100.0) * np.clip(low_cloud, 0.0, 1.0)).astype(np.float32)
+
+
 def relative_humidity(t_k: np.ndarray, td_k: np.ndarray) -> np.ndarray:
     """RH % from temperature and dew point (Magnus, over water)."""
     t = t_k - 273.15
@@ -284,9 +340,11 @@ IMAGE_FORMATS = {"png": "image/png", "webp": "image/webp"}
 # The rendered pixels changed from native-size linear sampling to 2x
 # value-space interpolation. Keep that fact in the immutable cache key so an
 # old frame can never masquerade as the new output after deploy.
-LAYER_CACHE_VERSION = "r2x-v1"
+LAYER_CACHE_VERSION = "r2x-v3"
 # Layers whose alpha varies with the value, so they cannot be palette images.
-_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "uvi", "prob_rain", "prob_gust", "vis", "sst", "ptype", "vort500", "ptend", "dt24", "gfactor")
+_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar",
+                "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "wavepower", "uvi", "prob_rain", "prob_gust",
+                "vis", "sst", "ptype", "vort500", "ptend", "dt24", "gfactor")
 
 
 def pick_format(accept: str | None) -> str:
@@ -388,8 +446,10 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: st
             a = np.clip(x / {"tp6": 1.0, "tp24": 2.0, "tp72": 4.0}[layer], 0, 1)
         elif layer in ("sf6", "sf24", "sf72"):
             a = np.clip(x / {"sf6": 0.5, "sf24": 1.0, "sf72": 2.0}[layer], 0, 1)
-        elif layer in ("waves", "wperiod"):
+        elif layer in ("waves", "wperiod", "wavepower"):
             a = np.where(np.isnan(field_display), 0.0, 1.0)      # land is NaN: show the map
+        elif layer == "solar":
+            a = np.clip(x / 120.0, 0, 1)                         # night is the bare map
         elif layer == "uvi":
             a = np.clip(x / 1.0, 0, 1)                            # night is transparent
         elif layer == "sd_cm":

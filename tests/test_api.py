@@ -10,6 +10,62 @@ def _full(val):
     return np.full((GRID_LAT_N, GRID_LON_N), val, np.float32)
 
 
+class _TinyReader:
+    def __init__(self, fields):
+        self.fields = fields
+        self.variables = list(fields)
+        self.grid_shape = next(iter(fields.values())).shape
+        self.rid = "2026-06-21T12"
+        self.lat0 = 1.0
+        self.lon0 = -1.0
+        self.dlat = -1.0
+        self.dlon = 1.0
+        self.steps = [0]
+
+    def slab(self, name, step):
+        assert step == 0
+        return self.fields[name]
+
+
+def test_new_windy_style_layers_are_physical_or_plainly_potential():
+    shape = (3, 4)
+    reader = _TinyReader({
+        "t2m": np.full(shape, 283.15, np.float32),
+        "d2m": np.full(shape, 282.95, np.float32),
+        "tcc": np.full(shape, 0.4, np.float32),
+        "lcc": np.full(shape, 0.8, np.float32),
+        "mcc": np.full(shape, 0.5, np.float32),
+        "hcc": np.full(shape, 0.2, np.float32),
+        "swh": np.full(shape, 2.0, np.float32),
+        "mwp": np.full(shape, 10.0, np.float32),
+    })
+    np.testing.assert_allclose(api.field_for(reader, "cloudlow", None, 0), 0.8)
+    np.testing.assert_allclose(api.field_for(reader, "cloudmid", None, 0), 0.5)
+    np.testing.assert_allclose(api.field_for(reader, "cloudhigh", None, 0), 0.2)
+    assert api.field_for(reader, "fog", None, 0).min() > 70
+    assert api.field_for(reader, "solar", None, 0).max() > 500
+    np.testing.assert_allclose(api.field_for(reader, "wavepower", None, 0), 19.6, rtol=0.01)
+
+
+def test_cloud_bands_fall_back_to_pressure_level_cloud_cover():
+    shape = (2, 2)
+    reader = _TinyReader({
+        "cc_1000": np.full(shape, 0.2, np.float32),
+        "cc_925": np.full(shape, 0.6, np.float32),
+        "cc_850": np.full(shape, 0.4, np.float32),
+        "cc_700": np.full(shape, 0.3, np.float32),
+        "cc_600": np.full(shape, 0.7, np.float32),
+        "cc_500": np.full(shape, 0.5, np.float32),
+        "cc_400": np.full(shape, 0.1, np.float32),
+        "cc_300": np.full(shape, 0.8, np.float32),
+        "cc_250": np.full(shape, 0.6, np.float32),
+        "cc_200": np.full(shape, 0.2, np.float32),
+    })
+    np.testing.assert_allclose(api.field_for(reader, "cloudlow", None, 0), 0.6)
+    np.testing.assert_allclose(api.field_for(reader, "cloudmid", None, 0), 0.7)
+    np.testing.assert_allclose(api.field_for(reader, "cloudhigh", None, 0), 0.8)
+
+
 def _seed():
     variables = ["u10", "v10", "t2m", "tp6", "u_850", "v_850", "t_850", "gh_850", "u_700", "v_700", "t_700", "gh_700"]
     w = RunWriter("aifs", "2026-01-01T00", [0, 6], variables, root=STORE_DIR)

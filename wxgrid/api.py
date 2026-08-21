@@ -36,7 +36,7 @@ log = logging.getLogger("wxgrid.api")
 app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=2048)   # wind JSON shrinks ~5x
 
-LAYERS = ("wind", "temp", "feels", "wbt", "dt24", "gust", "msl", "ptend", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "prob_rain", "prob_gust", "gfactor", "vis", "sst", "ptype", "vort500")
+LAYERS = ("wind", "temp", "feels", "wbt", "dt24", "gust", "msl", "ptend", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "wavepower", "prob_rain", "prob_gust", "gfactor", "vis", "sst", "ptype", "vort500")
 LEVEL_LAYERS = ("wind", "temp")
 _ALIAS = {"t2m": "temp", "snow": "sf6", "snowdepth": "sd_cm", "dewpt": "d2m", "swh": "waves", "mwp": "wperiod"}
 # Layers computed from several store variables at request time.
@@ -46,7 +46,11 @@ _DERIVED = {"frz": tuple(f"{p}_{l}" for l in LEVELS for p in ("t", "gh")),
             "feels": ("t2m", "u10", "v10", "d2m"),
             "ptype": ("tp6", "t2m"), "vort500": ("u_500", "v_500"),
             "ptend": ("msl",), "cbase": ("t2m", "d2m"), "gfactor": ("gust", "u10", "v10"),
-            "wbt": ("t2m", "d2m"), "dt24": ("t2m",)}
+            "wbt": ("t2m", "d2m"), "dt24": ("t2m",), "solar": ("tcc",),
+            "wavepower": ("swh", "mwp")}
+_CLOUD_BANDS = {"cloudlow": ("lcc", (1000, 925, 850)),
+                "cloudmid": ("mcc", (700, 600, 500)),
+                "cloudhigh": ("hcc", (400, 300, 250, 200))}
 # Accumulation windows (hours) for the derived precip/snow layers.
 _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72": ("sf6", 72)}
 # Layers that live only on LEVEL_EVERY steps (like the pressure levels).
@@ -104,6 +108,8 @@ def _vars_for(layer: str, level: int | None) -> tuple[str, ...]:
         return ("u10", "v10") if level is None else (f"u_{level}", f"v_{level}")
     if layer == "temp":
         return ("t2m",) if level is None else (f"t_{level}",)
+    if layer in _CLOUD_BANDS:
+        return (_CLOUD_BANDS[layer][0],)
     if layer in _DERIVED:
         return _DERIVED[layer]
     return (layer,)
@@ -156,6 +162,20 @@ def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndar
         return _freezing_level_grid(r, step)
     if layer == "rh":
         return render.relative_humidity(r.slab("t2m", step), r.slab("d2m", step))
+    if layer in _CLOUD_BANDS:
+        direct, levels = _CLOUD_BANDS[layer]
+        if direct in r.variables:
+            return r.slab(direct, step)
+        return np.nanmax(np.stack([r.slab(f"cc_{lvl}", step) for lvl in levels]), axis=0).astype(np.float32)
+    if layer == "fog":
+        rh = render.relative_humidity(r.slab("t2m", step), r.slab("d2m", step))
+        low = field_for(r, "cloudlow", None, step) if _available(r, "cloudlow") else r.slab("tcc", step)
+        return render.fog_potential(rh, low)
+    if layer == "solar":
+        return render.solar_power(r.slab("tcc", step), parse_run_id(r.rid) + timedelta(hours=step),
+                                  lat0=r.lat0, lon0=r.lon0, dlat=r.dlat, dlon=r.dlon)
+    if layer == "wavepower":
+        return render.wave_power(r.slab("swh", step), r.slab("mwp", step))
     if layer in _ACCUM:
         var, hours = _ACCUM[layer]
         return _accumulate(r, var, step, hours)
@@ -257,6 +277,11 @@ def _available(reader: RunReader, layer: str, level: int | None = None) -> bool:
     if layer == "frz":
         # needs at least two levels with both temperature and height
         return len([l for l in _levels_for(reader) if f"gh_{l}" in reader.variables]) >= 2
+    if layer in _CLOUD_BANDS:
+        direct, levels = _CLOUD_BANDS[layer]
+        return direct in reader.variables or all(f"cc_{lvl}" in reader.variables for lvl in levels)
+    if layer == "fog":
+        return all(v in reader.variables for v in ("t2m", "d2m")) and (_available(reader, "cloudlow") or "tcc" in reader.variables)
     return all(v in reader.variables for v in _vars_for(layer, level))
 
 
@@ -329,7 +354,8 @@ def api_layer(request: Request, model: str, run: str, step: int, layer: str, lev
     r = _reader(model, run)
     if step not in r.steps or not _available(r, layer, level):
         raise HTTPException(404, "step, layer or level not in run")
-    step = _level_step(r, step, level is not None or layer in _SIX_HOURLY)
+    cloud_from_levels = layer in _CLOUD_BANDS and _CLOUD_BANDS[layer][0] not in r.variables
+    step = _level_step(r, step, level is not None or layer in _SIX_HOURLY or cloud_from_levels)
     tag = f"{layer}{'' if level is None else '-' + str(level)}"
     # WebP where the client takes it (~22 % smaller overall, up to 40 % on the
     # alpha layers), PNG otherwise. `Vary: Accept` is load-bearing: without it
@@ -516,7 +542,7 @@ def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge
     # in-between steps by linear interpolation so aloft/freezing-level read
     # at every column of the tape.
     for var in list(series):
-        if (var.split("_")[0] in ("u", "v", "t", "gh") and "_" in var) or var in ("swh", "mwd", "mwp"):
+        if (var.split("_")[0] in ("u", "v", "t", "gh", "cc") and "_" in var) or var in ("swh", "mwd", "mwp"):
             series[var] = _fill_gaps(series[var])
     if "tcc" in series:
         series["uvi"] = render.uv_index_point(series["tcc"], [t0 + timedelta(hours=h) for h in r.steps], lat, lon)

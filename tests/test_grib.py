@@ -3,12 +3,20 @@ import pytest
 
 from wxgrid.config import GRID_LAT_N, GRID_LON_N, GRID_RES
 from wxgrid.grib import _hour_step, _normalise, regrid_to_common
+from wxgrid.models import MODELS
 
 
 def test_analysis_minute_step_is_normalised_to_hour_zero():
     assert _hour_step("0m") == 0
     assert _hour_step("60m") == 1
     assert _hour_step(6) == 6
+
+
+def test_cloud_layers_map_from_direct_and_pressure_level_products():
+    assert MODELS["aifs"].canonical("lcc", "lowCloudLayer", 0) == "lcc"
+    assert MODELS["aifs"].canonical("mcc", "mediumCloudLayer", 800) == "mcc"
+    assert MODELS["aifs"].canonical("hcc", "highCloudLayer", 450) == "hcc"
+    assert MODELS["gfs"].canonical("tcc", "isobaricInhPa", 850) == "cc_850"
 
 
 def test_gfs_style_grid_is_rolled_to_minus180_origin():

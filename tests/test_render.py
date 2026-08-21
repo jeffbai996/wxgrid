@@ -1,6 +1,8 @@
 import io
+from datetime import datetime, timezone
 
 import numpy as np
+import pytest
 from PIL import Image
 from scipy.ndimage import zoom
 
@@ -16,7 +18,7 @@ def test_mercator_preserves_columns_and_maps_equator_to_middle_row():
     assert m.shape == (render.MERC_H, GRID_LON_N)
     mid = m[render.MERC_H // 2, 0]
     assert abs(mid) < 0.5                       # equator sits at the middle row
-    assert m[0, 0] > 84.9 and m[-1, 0] < -84.9  # clipped at ±85.05
+    assert m[0, 0] > 89.9 and m[-1, 0] < -89.9  # finite visual poles close the globe
     assert np.all(np.diff(m[:, 0]) <= 0)       # monotone north → south
 
 
@@ -56,6 +58,34 @@ def test_layer_cache_name_carries_the_render_version():
     name, fmt, media = render.layer_cache_name(6, "temp", "image/webp")
     assert render.LAYER_CACHE_VERSION in name
     assert name.endswith("-temp.webp") and fmt == "webp" and media == "image/webp"
+
+
+def test_pressure_neutral_is_cool_instead_of_beige():
+    neutral = next(rgb for value, rgb in render.RAMPS["msl"]["stops"] if value == 1013)
+    assert neutral[2] >= neutral[0]
+    assert abs(neutral[0] - neutral[1]) < 30
+
+
+def test_solar_power_obeys_sun_and_cloud():
+    clear = np.zeros((3, 4), dtype=np.float32)
+    overcast = np.ones_like(clear)
+    noon = datetime(2026, 6, 21, 12, tzinfo=timezone.utc)
+    clear_wm2 = render.solar_power(clear, noon, lat0=1.0, lon0=-1.0, dlat=-1.0, dlon=1.0)
+    cloudy_wm2 = render.solar_power(overcast, noon, lat0=1.0, lon0=-1.0, dlat=-1.0, dlon=1.0)
+    assert clear_wm2[1, 1] > 900
+    assert 0 < cloudy_wm2[1, 1] < clear_wm2[1, 1] * 0.35
+
+
+def test_wave_power_uses_deep_water_energy_flux():
+    height = np.array([[2.0]], dtype=np.float32)
+    period = np.array([[10.0]], dtype=np.float32)
+    assert render.wave_power(height, period)[0, 0] == pytest.approx(19.6, rel=0.01)
+
+
+def test_fog_potential_needs_saturated_low_cloud():
+    rh = np.array([[75.0, 98.0, 98.0]], dtype=np.float32)
+    low = np.array([[1.0, 0.1, 0.9]], dtype=np.float32)
+    np.testing.assert_allclose(render.fog_potential(rh, low), [[0.0, 9.0, 81.0]], atol=0.1)
 
 
 def test_all_missing_field_is_fully_transparent():

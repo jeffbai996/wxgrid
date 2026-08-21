@@ -188,7 +188,7 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
                 continue
             got_start[canon] = f.start_step
             vals = f.values
-            if canon == "tcc" and f.units.strip() == "%":
+            if (canon == "tcc" or canon in {"lcc", "mcc", "hcc"} or canon.startswith("cc_")) and f.units.strip() == "%":
                 vals = vals / 100.0                                        # GFS TCDC is percent
             if canon in ("tp", "sf") and f.units.strip().startswith("m"):      # "m" or "m of water equivalent"
                 vals = vals * 1000.0                                       # IFS tp/sf in metres → mm

@@ -54,7 +54,8 @@ LEVELS = (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200)
 
 # GRIB typeOfLevel values that mean "a surface-ish single layer" for our purposes.
 SURFACE_LEVEL_TYPES = {"surface", "heightAboveGround", "meanSea", "atmosphere",
-                       "entireAtmosphere", "atmosphereSingleLayer", "unknown"}
+                       "entireAtmosphere", "atmosphereSingleLayer", "lowCloudLayer",
+                       "mediumCloudLayer", "highCloudLayer", "unknown"}
 
 
 @dataclass(frozen=True)
@@ -76,9 +77,9 @@ class Model:
     # 250 kg/m³); GFS/GEFS/GEM send physical depth in m (×100).
     snow_depth_factor: float = 400.0
     attribution: str = ""
-    # The model's own resolution, for the UI. Every model is stored on the
-    # common 0.25° grid, so this describes the FORECAST, not our sampling of
-    # it — the same number Windy and the agencies quote.
+    # The producer's nominal resolution, for the UI. For global models this
+    # describes the forecast rather than our 0.25° sampling; regional models
+    # also declare their separate store grid below.
     grid: str = ""
     # ECMWF wave-stream shortName → canonical name (fetched on LEVEL_EVERY steps; IFS only)
     wave_params: dict[str, str] = field(default_factory=dict)
@@ -160,6 +161,7 @@ class Model:
 
 
 _ECMWF_PL = {"u": "u", "v": "v", "t": "t", "gh": "gh"}
+_NCEP_PL = {"u": "u", "v": "v", "t": "t", "gh": "gh", "tcc": "cc"}
 
 MODELS: dict[str, Model] = {
     "ifs": Model(
@@ -174,7 +176,7 @@ MODELS: dict[str, Model] = {
     "aifs": Model(
         key="aifs", label="ECMWF AIFS (AI)", short="AIFS", grid="28km", source="ecmwf", ecmwf_model="aifs-single",
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "msl": "msl", "tp": "tp", "tcc": "tcc",
-                    "2d": "d2m", "sf": "sf"},
+                    "2d": "d2m", "sf": "sf", "lcc": "lcc", "mcc": "mcc", "hcc": "hcc"},
         pl_params=_ECMWF_PL,
         precip_mode="since_start",
         attribution="ECMWF open data (AIFS), CC BY 4.0",
@@ -185,7 +187,7 @@ MODELS: dict[str, Model] = {
                     "gust": "gust", "tcc": "tcc", "cape": "cape", "2d": "d2m", "sde": "sd", "csnow": "csnow",
                     # skin temperature masked to water at ingest → sst; lsm is the mask
                     "vis": "vis", "t": "tsk", "lsm": "lsm"},
-        pl_params=_ECMWF_PL,
+        pl_params=_NCEP_PL,
         precip_mode="bucket6",
         snow_depth_factor=100.0,
         attribution="NOAA NCEP GFS via NOMADS, public domain",
@@ -221,7 +223,7 @@ MODELS: dict[str, Model] = {
         sfc_params={"10u": "u10", "10v": "v10", "2t": "t2m", "prmsl": "msl", "tp": "tp",
                     "gust": "gust", "tcc": "tcc", "cape": "cape", "2d": "d2m", "sde": "sd",
                     "csnow": "csnow"},
-        pl_params=_ECMWF_PL,
+        pl_params=_NCEP_PL,
         # The ensemble mean has no 0.25° pressure levels; we take the 0.5°
         # "a" file and regrid. It carries t+gh+u+v on these levels only —
         # 300/400 hPa ship winds without temperature and 600 hPa not at all,
