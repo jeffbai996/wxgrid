@@ -250,6 +250,13 @@
       this._view = { z, lng: c.lng, lat: c.lat };
       if (!prev || (prev.z === z && prev.lng === c.lng && prev.lat === c.lat)) return;
       const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      // On the sphere a drag is a ROTATION: every screen point moves along a
+      // different vector, so translating the old frame smears trails off the
+      // limb into space, where the slow fade leaves them hanging (Jeff
+      // 2026-08-20, screenshot). There is no affine warp for a rotation —
+      // start the trails over and let them re-grow, which at these zooms
+      // takes under a second.
+      if (this.map.getProjection && (this.map.getProjection() || {}).type === "globe" && z < 6) { this.wipe(); return; }
       const s = Math.pow(2, z - prev.z);
       const p = m.project([prev.lng, prev.lat]);
       const tx = p.x - s * w / 2, ty = p.y - s * h / 2;

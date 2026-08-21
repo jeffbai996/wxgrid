@@ -19,7 +19,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v4";   // v4: MapLibre v5 — the globe
+const VERSION = "wxgrid-v5";   // v5: force the shell (theme.js) past every stale cache
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
