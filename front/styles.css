@@ -164,7 +164,11 @@ button { font: inherit; color: inherit; }
    and every notch stays reachable; only the viewport negotiates. */
 #models { flex: 0 1 auto; min-width: 132px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 #models::-webkit-scrollbar { display: none; }
-#levels { flex: 0 1 auto; min-width: 176px; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+/* the ladder never gives up a notch: it refuses to shrink, and the model
+   row (which scrolls) absorbs all compression. At widths where even a full
+   ladder cannot fit, its own scroll takes over — nothing clips silently
+   ("the 200 is cut off", Jeff 2026-08-21). */
+#levels { flex: 0 0 auto; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 /* the buttons themselves never shrink or wrap — the pill scrolls instead,
    so "850 5k ft" cannot fold onto two lines on a zoomed page */
 #levels button { white-space: nowrap; flex: 0 0 auto; }
