@@ -223,6 +223,20 @@
 
     start() {
       if (this.raf || !this.enabled || !this.field || this.mode === "barbs") return;
+      // The watchdog. Twice now a boot has produced a running loop that
+      // paints nothing until the user zooms "a few times" (Jeff 2026-08-20,
+      // both times unreproducible here). Whatever the degenerate state is,
+      // its cure is always the same — re-measure, re-deal — so when the loop
+      // draws zero segments for ~2 s straight, do exactly that, once a cycle.
+      if (!this._watch) {
+        this._starve = 0;
+        this._watch = setInterval(() => {
+          if (!this.raf || !this.field || this.mode === "barbs") { this._starve = 0; return; }
+          if (this._drawn === 0 && this.particles.length) {
+            if (++this._starve >= 3) { this._starve = 0; console.warn("wxgrid: particle loop starved, re-dealing"); this.resize(); }
+          } else this._starve = 0;
+        }, 700);
+      }
       // A canvas measured before layout settled is 0×0 (or stale after a
       // page-zoom): every frame then paints nothing while the loop runs
       // happily. Re-measure at the moment the animation actually starts.
@@ -277,6 +291,7 @@
       const dt = Math.min(50, t - (this.lastFrame || t)) / 1000;   // s, capped for tab wake-ups
       this.lastFrame = t;
       const ctx = this.ctx, w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      this._drawn = 0;
       this.warpTrails();
       // Fade the previous frame: this is the trail.
       ctx.globalCompositeOperation = "destination-out";
@@ -352,6 +367,7 @@
         if (!path) { path = new Path2D(); buckets.set(key, path); }
         path.moveTo(a.x, a.y);
         path.lineTo(q.x, q.y);
+        this._drawn++;
       }
       for (const [color, path] of buckets) { ctx.strokeStyle = color; ctx.stroke(path); }
     }
