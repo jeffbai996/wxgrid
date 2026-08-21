@@ -353,8 +353,19 @@
     }
 
     frame(t) {
-      const dt = Math.min(50, t - (this.lastFrame || t)) / 1000;   // s, capped for tab wake-ups
+      const dtMs = t - (this.lastFrame || t);
+      const dt = Math.min(50, dtMs) / 1000;   // s, capped for tab wake-ups
       this.lastFrame = t;
+      // Adaptive relief for weak compositors (iPad Safari, 2026-08-21): when
+      // frames are already late while the map is being dragged, painting
+      // particles every frame just makes the drag fight for the same budget.
+      // Skip every other particle frame until the frame time recovers — the
+      // map's own motion stays smooth, the trails just update at half rate.
+      this._ema = (this._ema || 16) * 0.85 + Math.min(80, dtMs || 16) * 0.15;
+      if (this._ema > 26 && this.map.isMoving && this.map.isMoving()) {
+        this._skip = !this._skip;
+        if (this._skip) return;
+      }
       const ctx = this.ctx, w = this.canvas.clientWidth, h = this.canvas.clientHeight;
       const zoom = this.map.getZoom();
       const polarView = zoom < 3.5 && Math.abs(this.map.getCenter().lat) > 65;
