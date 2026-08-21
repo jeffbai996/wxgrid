@@ -1251,6 +1251,21 @@ def _kmz_features(url: str) -> list[dict]:
     return feats
 
 
+# The NHC feed classifies in code — "HU", "TS" — and the map printed the code
+# verbatim ("HU Lala"). A storm label is read by people; give it the word.
+_STORM_CLASSES = {
+    "HU": "Hurricane", "MH": "Major Hurricane", "TS": "Tropical Storm",
+    "TD": "Tropical Depression", "STS": "Subtropical Storm", "STD": "Subtropical Depression",
+    "TY": "Typhoon", "STY": "Super Typhoon", "TC": "Tropical Cyclone",
+    "PT": "Post-tropical Cyclone", "PTC": "Post-tropical Cyclone", "EX": "Extratropical Cyclone",
+    "SD": "Subtropical Depression", "SS": "Subtropical Storm", "LO": "Low", "DB": "Disturbance",
+}
+
+
+def _storm_class(code) -> str:
+    return _STORM_CLASSES.get((code or "").strip().upper(), code or "")
+
+
 def storms() -> dict:
     """Active tropical cyclones (NHC/CPHC): current position + intensity from
     CurrentStorms.json, forecast track and cone from the advisory KMZs."""
@@ -1262,7 +1277,7 @@ def storms() -> dict:
             return {"type": "FeatureCollection", "features": [], "storms": []}
         feats, meta = [], []
         for s in j.get("activeStorms", []):
-            base = {"id": s.get("id"), "name": s.get("name"), "class": s.get("classification"), "intensity_kt": s.get("intensity"),
+            base = {"id": s.get("id"), "name": s.get("name"), "class": _storm_class(s.get("classification")), "intensity_kt": s.get("intensity"),
                     "pressure_mb": s.get("pressure"), "movement": f"{s.get('movementDir')}° at {s.get('movementSpeed')} kt",
                     "updated": s.get("lastUpdate"), "advisory": (s.get("publicAdvisory") or {}).get("advNum"),
                     "url": (s.get("publicAdvisory") or {}).get("url")}
