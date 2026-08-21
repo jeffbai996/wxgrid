@@ -51,6 +51,17 @@
       map.on("zoom", this._onMove);
       window.addEventListener("resize", this._resize);
       map.on("resize", this._resize);
+      // Ctrl+/− changes devicePixelRatio, and a canvas sized under the old
+      // ratio draws soft or (booted at zero) not at all — "zoom in and out
+      // to make it work" was the manual version of this listener
+      // (Jeff 2026-08-20). matchMedia only fires once per resolution, so it
+      // re-arms itself after every change.
+      this._armDpr = () => {
+        const mq = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+        const once = () => { mq.removeEventListener("change", once); this.resize(); this._armDpr(); };
+        mq.addEventListener("change", once);
+      };
+      this._armDpr();
       map.on("moveend", this._moveEnd);
       this.resize();
     }
@@ -70,6 +81,7 @@
         return;
       }
       const w = this.map.getContainer().clientWidth, h = this.map.getContainer().clientHeight;
+      this.dpr = Math.min(window.devicePixelRatio || 1, 2);   // page zoom moves it; never trust the boot value
       this.canvas.width = Math.round(w * this.dpr);
       this.canvas.height = Math.round(h * this.dpr);
       this.canvas.style.width = w + "px";
@@ -211,6 +223,11 @@
 
     start() {
       if (this.raf || !this.enabled || !this.field || this.mode === "barbs") return;
+      // A canvas measured before layout settled is 0×0 (or stale after a
+      // page-zoom): every frame then paints nothing while the loop runs
+      // happily. Re-measure at the moment the animation actually starts.
+      const want = Math.round(this.map.getContainer().clientWidth * this.dpr);
+      if (!this.canvas.width || Math.abs(this.canvas.width - want) > 2 * this.dpr) this.resize();
       const loop = (t) => { this.raf = requestAnimationFrame(loop); this.frame(t); };
       this.raf = requestAnimationFrame(loop);
     }

@@ -60,8 +60,11 @@
   #settings details.advanced summary{display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;list-style:none;
     font:650 12px var(--font-display);color:var(--fg-2)}
   #settings details.advanced summary::-webkit-details-marker{display:none}
-  #settings details.advanced summary::after{content:"⌄";margin-left:auto;color:var(--dim);font-size:15px;transition:transform .16s}
-  #settings details.advanced[open] summary::after{transform:rotate(180deg)}
+  #settings details.advanced summary::after{content:"";margin-left:auto;width:7px;height:7px;flex:0 0 7px;
+    border-right:1.7px solid var(--dim);border-bottom:1.7px solid var(--dim);border-radius:0.5px;
+    transform:rotate(45deg) translate(-1px,-1px);transition:transform .16s}
+  #settings details.advanced summary:hover::after{border-color:var(--fg-2)}
+  #settings details.advanced[open] summary::after{transform:rotate(225deg) translate(-2px,-2px)}
   #settings details.advanced .advanced-body{padding:2px 10px 8px;border-top:1px solid var(--line)}
   #settings .row{display:flex;align-items:center;gap:10px;margin-bottom:7px}
   #settings .row>span{font:600 12.5px var(--font-display);color:var(--fg-2);flex:0 0 84px}
