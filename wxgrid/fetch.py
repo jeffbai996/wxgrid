@@ -479,11 +479,14 @@ HRRR_SFC = {
 
 def hrrr_wanted(rows: list[dict], step: int) -> list[dict]:
     """Surface story plus the since-start precip/snow totals we deaccumulate."""
-    total = f"0-{step} hour acc fcst"
+    # At exact day boundaries NOAA changes the index grammar (0-1 day,
+    # 0-2 day) instead of retaining 0-24 / 0-48 hour. The field semantics do
+    # not change, only the label does.
+    total = (f"0-{step // 24} day acc fcst" if step % 24 == 0
+             else f"0-{step} hour acc fcst")
     out = [r for r in rows if (r["var"], r["level"]) in HRRR_SFC]
-    if step:
-        out.extend(r for r in rows if r["var"] in {"APCP", "WEASD"}
-                   and r["level"] == "surface" and r["window"] == total)
+    out.extend(r for r in rows if r["var"] in {"APCP", "WEASD"}
+               and r["level"] == "surface" and r["window"] == total)
     return out
 
 

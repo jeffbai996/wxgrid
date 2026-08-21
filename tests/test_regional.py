@@ -1,11 +1,13 @@
+import io
 import json
 
 import numpy as np
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from wxgrid import api, render
 from wxgrid.config import STORE_DIR
-from wxgrid.ingest import accumulation_bucket
+from wxgrid.ingest import accumulation_bucket, ingest_order
 from wxgrid.models import MODELS, Model
 from wxgrid.store import RunReader, RunWriter
 
@@ -82,6 +84,13 @@ def test_hrrr_since_start_precip_is_deaccumulated_per_hour():
     np.testing.assert_allclose(accumulation_bucket("per_step", 2, 1, total, previous), total)
 
 
+def test_regional_ingests_follow_every_global_model():
+    order = ingest_order()
+    first_regional = next(i for i, key in enumerate(order) if MODELS[key].regional)
+    assert all(not MODELS[key].regional for key in order[:first_regional])
+    assert order[first_regional:] == ["hrdps", "hrrr"]
+
+
 def test_regional_render_and_particle_grid_do_not_wrap():
     field = np.tile(np.array([50.0, 49.975, 49.95], dtype=np.float32)[:, None], (1, 5))
     merc = render.to_mercator(field, lat0=50.0, lon0=-124.0, dlat=-0.025, dlon=0.025)
@@ -103,3 +112,30 @@ def test_regional_render_and_particle_grid_do_not_wrap():
     assert payload["nx"] == 5
     assert payload["ny"] == 3
     assert payload["lon0"] == -124.0 and payload["lat0"] == 50.0
+
+
+def test_regional_layer_keeps_native_resolution(tmp_path, monkeypatch):
+    model = _regional_model("regional-render-test")
+    reader = type("Reader", (), {
+        "rid": "2026-01-01T00",
+        "steps": [0],
+        "variables": ["t2m"],
+        "grid_shape": model.grid_shape,
+        "lat0": model.lat0,
+        "lon0": model.lon0,
+        "dlat": model.dlat,
+        "dlon": model.dlon,
+        "slab": lambda self, name, step: np.full(model.grid_shape, 280.0, np.float32),
+    })()
+    monkeypatch.setitem(MODELS, model.key, model)
+    monkeypatch.setattr(api, "_reader", lambda *_args: reader)
+    monkeypatch.setattr(api, "CACHE_DIR", tmp_path)
+
+    response = TestClient(api.app).get(
+        f"/api/layer/{model.key}/{reader.rid}/0/temp.png"
+    )
+
+    assert response.status_code == 200
+    with Image.open(io.BytesIO(response.content)) as image:
+        assert image.width == model.grid_shape[1]
+    assert any("temp-native" in path.name for path in tmp_path.rglob("*.png"))

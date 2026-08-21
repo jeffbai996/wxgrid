@@ -28,7 +28,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from wxgrid import render
-from wxgrid.config import CACHE_DIR, FRONT_DIR, GRID_LAT_N, GRID_LON_N, PUBLIC
+from wxgrid.config import CACHE_DIR, FRONT_DIR, PUBLIC
 from wxgrid.models import LEVEL_EVERY, LEVELS, MODELS
 from wxgrid.store import RunReader, list_runs, parse_run_id, run_path, store_summary
 
@@ -152,7 +152,7 @@ def _accumulate(r: RunReader, var: str, step: int, hours: int) -> np.ndarray:
 
 
 def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndarray:
-    """The (721, 1440) field a layer shows at a step, in STORE units. One
+    """The model-grid field a layer shows at a step, in STORE units. One
     place for the layer/level → array logic, shared by the PNG route and the
     static build."""
     vars_ = _vars_for(layer, level)
@@ -327,6 +327,20 @@ def _norm_level(level: int | None, layer: str) -> int | None:
     return level
 
 
+def _render_plan(model: str, tag: str) -> tuple[str, int]:
+    """Cache tag and value-space scale for a model layer.
+
+    The 2x pass earns its keep on the 0.25 degree global fields. Regional
+    grids already arrive near display resolution; doubling them manufactures
+    no forecast detail and turns a 2.5 km layer into a 50-megapixel image.
+    Give native regional rasters their own cache namespace so an oversized
+    frame made by an older worker can never be served after this change.
+    """
+    if MODELS[model].regional:
+        return f"{tag}-native", 1
+    return tag, 2
+
+
 @app.get("/api/models")
 def api_models() -> dict:
     out = []
@@ -360,7 +374,8 @@ def api_layer(request: Request, model: str, run: str, step: int, layer: str, lev
     # WebP where the client takes it (~22 % smaller overall, up to 40 % on the
     # alpha layers), PNG otherwise. `Vary: Accept` is load-bearing: without it
     # a shared cache hands a WebP to a client that asked for PNG.
-    name, fmt, media = render.layer_cache_name(step, tag, request.headers.get("accept"))
+    cache_tag, scale = _render_plan(model, tag)
+    name, fmt, media = render.layer_cache_name(step, cache_tag, request.headers.get("accept"))
     path = CACHE_DIR / model / r.rid / name
     if not path.exists():
         with _cache_lock(path):
@@ -368,7 +383,8 @@ def api_layer(request: Request, model: str, run: str, step: int, layer: str, lev
                 path.parent.mkdir(parents=True, exist_ok=True)
                 field = field_for(r, layer, level, step)
                 disp = render.upscale_values(render.DISPLAY[layer](render.to_mercator(
-                    field, lat0=r.lat0, lon0=r.lon0, dlat=r.dlat, dlon=r.dlon)), layer)
+                    field, lat0=r.lat0, lon0=r.lon0, dlat=r.dlat, dlon=r.dlon)),
+                    layer, factor=scale)
                 tmp = _tmp_for(path)
                 tmp.write_bytes(render.colorize(disp, layer, fmt=fmt))
                 tmp.replace(path)

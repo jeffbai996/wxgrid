@@ -187,3 +187,21 @@ def test_hrrr_urls_and_since_start_accumulation_selection():
     assert ("WEASD", "surface", "0-6 hour acc fcst") in keys
     assert ("TMP", "surface", "6 hour fcst") not in keys
     assert len(picked) == 10
+
+    # NOAA changes the wording exactly at day boundaries. These are still
+    # since-start totals and must not become holes in otherwise-hourly data.
+    day = fetch.parse_idx(
+        "1:0:d=x:APCP:surface:0-1 day acc fcst:\n"
+        "2:100:d=x:APCP:surface:23-24 hour acc fcst:\n"
+        "3:200:d=x:WEASD:surface:0-1 day acc fcst:\n"
+    )
+    day_picked = fetch.hrrr_wanted(day, 24)
+    assert {(r["var"], r["window"]) for r in day_picked} == {
+        ("APCP", "0-1 day acc fcst"), ("WEASD", "0-1 day acc fcst")
+    }
+
+    analysis = fetch.parse_idx(
+        "1:0:d=x:APCP:surface:0-0 day acc fcst:\n"
+        "2:100:d=x:WEASD:surface:0-0 day acc fcst:\n"
+    )
+    assert len(fetch.hrrr_wanted(analysis, 0)) == 2

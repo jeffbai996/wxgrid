@@ -266,7 +266,7 @@ WARM_LAYERS = ("wind", "temp", "tp6")
 
 def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
     from wxgrid import render
-    from wxgrid.api import _SIX_HOURLY, _available, _level_step, field_for
+    from wxgrid.api import _SIX_HOURLY, _available, _level_step, _render_plan, field_for
     from wxgrid.config import CACHE_DIR
     from wxgrid.store import RunReader
 
@@ -280,7 +280,8 @@ def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
         # WebP only: every current browser asks for it, and PNG for the odd
         # client that does not still renders on demand.
         for step in sorted({_level_step(r, st, layer in _SIX_HOURLY) for st in r.steps}):
-            name, _, _ = render.layer_cache_name(step, layer, "image/webp")
+            cache_tag, scale = _render_plan(model_key, layer)
+            name, _, _ = render.layer_cache_name(step, cache_tag, "image/webp")
             path = CACHE_DIR / model_key / rid / name
             if path.exists():
                 continue
@@ -288,7 +289,7 @@ def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
             disp = render.upscale_values(
                 render.DISPLAY[layer](render.to_mercator(
                     field_for(r, layer, None, step), lat0=r.lat0, lon0=r.lon0,
-                    dlat=r.dlat, dlon=r.dlon)), layer)
+                    dlat=r.dlat, dlon=r.dlon)), layer, factor=scale)
             tmp = path.with_suffix(path.suffix + ".tmp")
             tmp.write_bytes(render.colorize(disp, layer, fmt="webp"))
             tmp.replace(path)
@@ -349,6 +350,15 @@ def augment_waves(model: Model, rid: str, grib_root: Path = GRIB_DIR, store_root
     return {"model": model.key, "run": rid, "wave_fields": written}
 
 
+def ingest_order() -> list[str]:
+    """Global products first, then the two heavier regional products.
+
+    Keeping each group sorted makes the timer deterministic while ensuring a
+    slow regional fetch never delays an available global cycle.
+    """
+    return sorted(MODELS, key=lambda key: (MODELS[key].regional, key))
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", choices=sorted(MODELS), help="one model")
@@ -362,7 +372,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    keys = sorted(MODELS) if args.all else ([args.model] if args.model else [])
+    keys = ingest_order() if args.all else ([args.model] if args.model else [])
     if not keys:
         ap.error("--model or --all")
     rc = 0
