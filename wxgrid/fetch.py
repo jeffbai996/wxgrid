@@ -30,6 +30,7 @@ NOMADS = "https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_0p25.pl"
 # message's byte offset, so we subset with HTTP Range requests instead — same
 # result as the CGI, done client-side.
 AIGFS = "https://noaa-nws-graphcastgfs-pds.s3.amazonaws.com"
+HRRR = "https://noaa-hrrr-bdp-pds.s3.amazonaws.com"
 GEM_WORKERS = 4          # datamart is happy with a handful of parallel GETs
 # GFS variable/level flags for the filter CGI. The CGI ANDs the var set with
 # the level set, so surface TMP / HGT at pressure levels etc. come along; the
@@ -396,6 +397,120 @@ def fetch_gem(model: Model, run: datetime, root: Path = GRIB_DIR,
             got.append((step, paths))
             if on_step:
                 on_step(step, paths)
+    return got
+
+
+# ── HRDPS 2.5 km via the MSC datamart ───────────────────────────────────
+
+def hrdps_candidate_runs(now: datetime | None = None, back: int = 6) -> list[datetime]:
+    """HRDPS publishes the 00/06/12/18 Z synoptic cycles."""
+    return gfs_candidate_runs(now, back)
+
+
+def hrdps_file_url(run: datetime, step: int, var: str) -> str:
+    return (f"{DATAMART}/{run:%Y%m%d}/WXO-DD/model_hrdps/continental/2.5km/{run:%H}/{step:03d}/"
+            f"{run:%Y%m%d}T{run:%H}Z_MSC_HRDPS_{var}_RLatLon0.0225_PT{step:03d}H.grib2")
+
+
+def hrdps_step_files(model: Model, step: int) -> list[tuple[str, str]]:
+    return [(short, token) for short, token in model.file_params.items()
+            if step != 0 or short not in {"tp", "sf"}]
+
+
+def fetch_hrdps(model: Model, run: datetime, root: Path = GRIB_DIR,
+                session: requests.Session | None = None,
+                on_step: Callable[[int, list[Path]], None] | None = None) -> list[tuple[int, list[Path]]]:
+    """Fetch one GRIB per hourly surface variable from the ECCC datamart."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    local = threading.local()
+
+    def _session() -> requests.Session:
+        if session is not None:
+            return session
+        if not hasattr(local, "s"):
+            local.s = new_session()
+        return local.s
+
+    out_dir = _run_dir(model, run, root)
+    got: list[tuple[int, list[Path]]] = []
+    with ThreadPoolExecutor(max_workers=GEM_WORKERS) as pool:
+        for step in model.steps:
+            def _one(item: tuple[str, str]) -> Path | None:
+                short, token = item
+                target = _gem_target(out_dir, step, short)
+                if _have(target):
+                    return target
+                return target if _download(_session(), hrdps_file_url(run, step, token), target,
+                                           timeout=(10.0, 90.0)) else None
+
+            paths = [p for p in pool.map(_one, hrdps_step_files(model, step)) if p is not None]
+            if not paths:
+                continue
+            got.append((step, paths))
+            if on_step:
+                on_step(step, paths)
+    return got
+
+
+# ── HRRR 3 km over S3 byte ranges ────────────────────────────────────────
+
+def hrrr_candidate_runs(now: datetime | None = None, back: int = 6) -> list[datetime]:
+    """wxgrid deliberately ingests only HRRR's 00/06/12/18 Z cycles."""
+    return gfs_candidate_runs(now, back)
+
+
+def hrrr_url(run: datetime, step: int) -> str:
+    return (f"{HRRR}/hrrr.{run:%Y%m%d}/conus/"
+            f"hrrr.t{run:%H}z.wrfsfcf{step:02d}.grib2")
+
+
+def hrrr_probe_url(run: datetime, step: int) -> str:
+    return hrrr_url(run, step) + ".idx"
+
+
+HRRR_SFC = {
+    ("GUST", "surface"), ("UGRD", "10 m above ground"), ("VGRD", "10 m above ground"),
+    ("TMP", "2 m above ground"), ("DPT", "2 m above ground"), ("MSLMA", "mean sea level"),
+    ("SNOD", "surface"), ("TCDC", "entire atmosphere"),
+}
+
+
+def hrrr_wanted(rows: list[dict], step: int) -> list[dict]:
+    """Surface story plus the since-start precip/snow totals we deaccumulate."""
+    total = f"0-{step} hour acc fcst"
+    out = [r for r in rows if (r["var"], r["level"]) in HRRR_SFC]
+    if step:
+        out.extend(r for r in rows if r["var"] in {"APCP", "WEASD"}
+                   and r["level"] == "surface" and r["window"] == total)
+    return out
+
+
+def fetch_hrrr(model: Model, run: datetime, root: Path = GRIB_DIR,
+               session: requests.Session | None = None,
+               on_step: Callable[[int, list[Path]], None] | None = None) -> list[tuple[int, list[Path]]]:
+    s = session or new_session()
+    out_dir = _run_dir(model, run, root)
+    got: list[tuple[int, list[Path]]] = []
+    for step in model.steps:
+        target = out_dir / f"step{step:03d}.grib2"
+        if not _have(target):
+            url = hrrr_url(run, step)
+            try:
+                idx = s.get(url + ".idx", timeout=(10.0, 60.0))
+                if idx.status_code == 404:
+                    continue
+                idx.raise_for_status()
+            except requests.RequestException as exc:
+                log.warning("HRRR index unavailable for %s: %s", url.rsplit("/", 1)[-1], exc)
+                continue
+            wanted = hrrr_wanted(parse_idx(idx.text), step)
+            if not wanted or not _download_ranges(s, url, merge_ranges(wanted), target):
+                continue
+        got.append((step, [target]))
+        if on_step:
+            on_step(step, [target])
     return got
 
 

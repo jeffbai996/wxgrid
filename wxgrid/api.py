@@ -114,7 +114,7 @@ def _freezing_level_grid(r: RunReader, step: int) -> np.ndarray:
     stored levels bottom-up; NaN where the column never crosses (all frozen
     at 925 hPa, or still above 0 °C at 250 hPa)."""
     lv = sorted([l for l in _levels_for(r) if f"gh_{l}" in r.variables], reverse=True)
-    out = np.full((GRID_LAT_N, GRID_LON_N), np.nan, dtype=np.float32)
+    out = np.full(r.grid_shape, np.nan, dtype=np.float32)
     done = np.zeros(out.shape, dtype=bool)
     prev_t = prev_gh = None
     for lvl in lv:
@@ -134,7 +134,7 @@ def _accumulate(r: RunReader, var: str, step: int, hours: int) -> np.ndarray:
     """Sum of the per-step buckets that fall in (step, step + hours]: the
     total that will fall in the next `hours` after the selected time. NaN if
     no bucket at all lands in the window (run ends before then)."""
-    acc = np.zeros((GRID_LAT_N, GRID_LON_N), dtype=np.float32)
+    acc = np.zeros(r.grid_shape, dtype=np.float32)
     n = 0
     for h in r.steps:
         if step < h <= step + hours:
@@ -160,7 +160,8 @@ def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndar
         var, hours = _ACCUM[layer]
         return _accumulate(r, var, step, hours)
     if layer == "uvi":
-        return render.uv_index(r.slab("tcc", step), parse_run_id(r.rid) + timedelta(hours=step))
+        return render.uv_index(r.slab("tcc", step), parse_run_id(r.rid) + timedelta(hours=step),
+                               lat0=r.lat0, lon0=r.lon0, dlat=r.dlat, dlon=r.dlon)
     if layer == "feels":
         return _feels_grid(r, step)
     if layer == "ptype":
@@ -177,7 +178,7 @@ def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndar
         # the falling-glass signal a barometer gives, on the whole map
         prevs = [h for h in r.steps if h < step]
         if not prevs:
-            return np.full((GRID_LAT_N, GRID_LON_N), np.nan, dtype=np.float32)
+            return np.full(r.grid_shape, np.nan, dtype=np.float32)
         prev = prevs[-1]
         return ((r.slab("msl", step) - r.slab("msl", prev)) * (3.0 / max(1, step - prev))).astype(np.float32)
     if layer == "wbt":
@@ -194,7 +195,7 @@ def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndar
         # warmer or colder than the same hour yesterday: the front-finder
         prev = step - 24
         if prev not in r.steps:
-            return np.full((GRID_LAT_N, GRID_LON_N), np.nan, dtype=np.float32)
+            return np.full(r.grid_shape, np.nan, dtype=np.float32)
         return (r.slab("t2m", step) - r.slab("t2m", prev)).astype(np.float32)
     if layer == "cbase":
         # lifted-condensation cloud base, metres AGL: ~125 m per °C of dew-point
@@ -223,13 +224,13 @@ def _vort500_grid(r: RunReader, step: int) -> np.ndarray:
     nothing on a lat-lon grid; they go NaN rather than screaming red."""
     u = r.slab("u_500", step)
     v = r.slab("v_500", step)
-    lat = np.linspace(90, -90, u.shape[0])[:, None] * np.pi / 180.0
+    lat = np.deg2rad(r.lats.astype(np.float64))[:, None]
     a = 6.371e6
-    dlon = 2 * np.pi / u.shape[1]
-    dlat = np.pi / (u.shape[0] - 1)
+    dlon = np.deg2rad(abs(r.dlon))
+    dlat = np.deg2rad(abs(r.dlat))
     with np.errstate(invalid="ignore", divide="ignore"):
         dvdx = (np.roll(v, -1, axis=1) - np.roll(v, 1, axis=1)) / (2 * dlon * a * np.cos(lat))
-        dudy = np.gradient(u, axis=0) / (-dlat * a)          # lat axis runs 90 → -90
+        dudy = np.gradient(u, axis=0) / (-dlat * a)          # latitude axis runs north → south
     z = (dvdx - dudy).astype(np.float32)
     z[np.abs(np.cos(lat))[:, 0] < 0.05] = np.nan
     return z
@@ -306,7 +307,9 @@ def api_models() -> dict:
     out = []
     summary = store_summary()
     for key, m in MODELS.items():
-        entry = {"key": key, "label": m.label, "short": m.short, "grid": m.grid, "attribution": m.attribution, "runs": []}
+        entry = {"key": key, "label": m.label, "short": m.short, "grid": m.grid,
+                 "attribution": m.attribution, "domain": list(m.domain),
+                 "grid_shape": list(m.grid_shape), "regional": m.regional, "runs": []}
         for rid in summary.get(key, []):
             r = _reader(key, rid)
             entry["runs"].append({
@@ -338,7 +341,8 @@ def api_layer(request: Request, model: str, run: str, step: int, layer: str, lev
             if not path.exists():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 field = field_for(r, layer, level, step)
-                disp = render.upscale_values(render.DISPLAY[layer](render.to_mercator(field)), layer)
+                disp = render.upscale_values(render.DISPLAY[layer](render.to_mercator(
+                    field, lat0=r.lat0, lon0=r.lon0, dlat=r.dlat, dlon=r.dlon)), layer)
                 tmp = _tmp_for(path)
                 tmp.write_bytes(render.colorize(disp, layer, fmt=fmt))
                 tmp.replace(path)
@@ -366,7 +370,10 @@ def api_wind(model: str, run: str, step: int, level: int | None = None, field: s
                     # mwd is the direction waves come FROM (met convention): propagation is the opposite way
                     u = -np.sin(mwd) * swh * 3.0; v = -np.cos(mwd) * swh * 3.0
                     tmp = _tmp_for(path)
-                    tmp.write_bytes(render.wind_json(u, v, mask=valid))
+                    factor = max(1, int(round(1.0 / abs(r.dlon))))
+                    tmp.write_bytes(render.wind_json(
+                        u, v, factor=factor, mask=valid, lat0=r.lat0, lon0=r.lon0,
+                        dlat=r.dlat, dlon=r.dlon, wrap=not MODELS[model].regional))
                     tmp.replace(path)
         return FileResponse(path, media_type="application/json", headers={"Cache-Control": "public, max-age=31536000, immutable"})
     level = _norm_level(level, "wind")
@@ -381,7 +388,12 @@ def api_wind(model: str, run: str, step: int, level: int | None = None, field: s
                 path.parent.mkdir(parents=True, exist_ok=True)
                 u, v = _vars_for("wind", level)
                 tmp = _tmp_for(path)
-                tmp.write_bytes(render.wind_json(r.slab(u, step), r.slab(v, step)))
+                uu, vv = r.slab(u, step), r.slab(v, step)
+                factor = max(1, int(round(1.0 / abs(r.dlon))))
+                valid = np.isfinite(uu) & np.isfinite(vv) if MODELS[model].regional else None
+                tmp.write_bytes(render.wind_json(
+                    uu, vv, factor=factor, mask=valid, lat0=r.lat0, lon0=r.lon0,
+                    dlat=r.dlat, dlon=r.dlon, wrap=not MODELS[model].regional))
                 tmp.replace(path)
     return FileResponse(path, media_type="application/json",
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})
@@ -492,6 +504,9 @@ def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge
               model: str = "aifs", run: str = "latest"):
     lon = _wrap_lon(lon)
     r = _reader(model, run)
+    if not r.contains(lat, lon):
+        return {"available": False, "model": model, "run": r.rid, "lat": lat, "lon": lon,
+                "reason": f"Point is outside the {MODELS[model].label} forecast domain."}
     t0 = parse_run_id(r.rid)
     n = len(r.steps)
     # One step per chunk means a point series decompresses every step of every
@@ -516,7 +531,8 @@ def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge
         spd, dr = _wind_pair(series[f"u_{lvl}"], series[f"v_{lvl}"])
         aloft[str(lvl)] = {"wind": spd, "wdir": dr, "temp": series[f"t_{lvl}"], "gh": series.get(f"gh_{lvl}")}
     derived = {"freezing_level_m": _freezing_level(series, levels, n) if levels else None}
-    return {"model": model, "run": r.rid, "lat": lat, "lon": lon, "steps": r.steps,
+    return {"available": True, "model": model, "run": r.rid, "lat": lat, "lon": lon,
+            "steps": r.steps,
             "valid": [(t0 + timedelta(hours=h)).isoformat() for h in r.steps],
             "series": series, "aloft": aloft, "derived": derived, "levels": levels,
             "units": {"t2m": "K", "msl": "Pa", "tp6": "mm", "wind": "m/s", "gust": "m/s",
@@ -536,11 +552,13 @@ def api_thunder(model: str, run: str, step: int):
     path = CACHE_DIR / model / r.rid / f"{step:03d}-thunder.json"
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        cape = r.slab("cape", step)[::4, ::4]
-        tp = r.slab("tp6", step)[::4, ::4]
+        stride = max(1, int(round(1.0 / abs(r.dlat))))
+        cape = r.slab("cape", step)[::stride, ::stride]
+        tp = r.slab("tp6", step)[::stride, ::stride]
         mask = (cape >= 800) & (tp >= 0.5)
         ys, xs = np.nonzero(mask)
-        feats = [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [round(-180 + x * 1.0, 2), round(90 - y * 1.0, 2)]},
+        feats = [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [
+                  round(r.lon0 + x * stride * r.dlon, 3), round(r.lat0 + y * stride * r.dlat, 3)]},
                   "properties": {"cape": int(cape[y, x]), "mm": round(float(tp[y, x]), 1)}} for y, x in zip(ys.tolist(), xs.tolist())]
         tmp = _tmp_for(path)
         tmp.write_text(json.dumps({"type": "FeatureCollection", "features": feats}, separators=(",", ":")))
@@ -556,7 +574,10 @@ ISOLINE_SPECS = {   # var → (interval, display transform, unit)
 }
 
 
-def _isoline_geojson(src: np.ndarray, interval: float, disp, unit: str) -> dict:
+def _isoline_geojson(src: np.ndarray, interval: float, disp, unit: str, *,
+                     lat0: float = 90.0, lon0: float = -180.0,
+                     dlat: float = -0.25, dlon: float = 0.25,
+                     wrap: bool = True) -> dict:
     """Trace contours on the stored grid without inventing extra resolution.
 
     contourpy linearly locates crossings inside each native/common-grid cell.
@@ -577,8 +598,8 @@ def _isoline_geojson(src: np.ndarray, interval: float, disp, unit: str) -> dict:
     with np.errstate(invalid="ignore", divide="ignore"):
         z = np.where(good, gaussian_filter(filled, sigma) / np.maximum(weight, 1e-9), np.nan)
     ny, nx = z.shape
-    lats = np.linspace(90.0, -90.0, ny)
-    lons = -180.0 + np.arange(nx) * (360.0 / nx)
+    lats = lat0 + np.arange(ny) * dlat
+    lons = lon0 + np.arange(nx) * dlon
     finite = np.isfinite(z)
     if not finite.any():
         raise ValueError("field is empty")
@@ -602,11 +623,12 @@ def _isoline_geojson(src: np.ndarray, interval: float, disp, unit: str) -> dict:
     # be a system, not a col (same thresholds as the discussion writer).
     if unit == "hPa":
         from scipy.ndimage import maximum_filter, minimum_filter
-        win = max(9, int(round(15.0 / (360.0 / nx))) | 1)
+        win = max(9, int(round(15.0 / abs(dlon))) | 1)
         zc = np.where(finite, z, 1013.0)
+        edge_mode = ("nearest", "wrap" if wrap else "nearest")
         for kind, mask in (
-            ("L", (zc == minimum_filter(zc, size=win, mode=("nearest", "wrap"))) & (zc <= 1011.0)),
-            ("H", (zc == maximum_filter(zc, size=win, mode=("nearest", "wrap"))) & (zc >= 1017.0)),
+            ("L", (zc == minimum_filter(zc, size=win, mode=edge_mode)) & (zc <= 1011.0)),
+            ("H", (zc == maximum_filter(zc, size=win, mode=edge_mode)) & (zc >= 1017.0)),
         ):
             ii, jj = np.nonzero(mask & finite)
             for i, j in zip(ii.tolist(), jj.tolist()):
@@ -616,7 +638,7 @@ def _isoline_geojson(src: np.ndarray, interval: float, disp, unit: str) -> dict:
                               "properties": {"kind": kind, "label": kind, "value": round(float(z[i, j]))},
                               "geometry": {"type": "Point", "coordinates": [round(float(lons[j]), 3), round(float(lats[i]), 3)]}})
     return {"type": "FeatureCollection", "unit": unit, "interval": interval,
-            "grid_degrees": round(360.0 / nx, 3), "features": feats}
+            "grid_degrees": round(abs(dlon), 4), "features": feats}
 
 
 @app.get("/api/isolines/{model}/{run}/{step}/{var}.json")
@@ -644,7 +666,8 @@ def api_isolines(model: str, run: str, step: int, var: str, level: int | None = 
                 raise HTTPException(404, "variable not in run")
             src = r.slab(var, step)
         try:
-            payload = _isoline_geojson(src, interval, disp, unit)
+            payload = _isoline_geojson(src, interval, disp, unit, lat0=r.lat0, lon0=r.lon0,
+                                       dlat=r.dlat, dlon=r.dlon, wrap=not MODELS[model].regional)
         except ValueError:
             raise HTTPException(404, "field is empty")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -812,8 +835,7 @@ def api_xsection(lat1: float = Query(..., ge=-90, le=90), lon1: float = Query(..
         if var not in r.variables:
             return [None] * n
         sl = r.slab(var, at)
-        i = np.clip(np.rint((90.0 - lats) / 0.25).astype(int), 0, GRID_LAT_N - 1)
-        j = (np.rint((lons + 180.0) / 0.25).astype(int)) % GRID_LON_N
+        i, j = r.indices(lats, lons)
         vals = sl[i, j]
         return [None if np.isnan(v) else round(float(v), 2) for v in vals]
 

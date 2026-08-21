@@ -24,7 +24,6 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from wxgrid.config import GRID_LON_N, GRID_RES
 from wxgrid.ext import _bbox_hit, _in_geom
 from wxgrid.store import RunReader, parse_run_id
 
@@ -270,11 +269,10 @@ def hazards(wx: dict, elev_m: float | None, thr: dict) -> tuple[int, list[str]]:
 
 # ── store reads ───────────────────────────────────────────────────────────
 
-def _grid_key(lat: float, lon: float) -> tuple[int, int]:
+def _grid_key(reader: RunReader, lat: float, lon: float) -> tuple[int, int]:
     """The gridpoint a lat/lon lands on — samples that share one only read once."""
-    i = int(round((90.0 - lat) / GRID_RES))
-    j = int(round((lon + 180.0) / GRID_RES)) % GRID_LON_N
-    return (min(max(i, 0), 720), j)
+    i, j = reader.indices(lat, lon)
+    return int(i), int(j)
 
 
 def _series(reader: RunReader, lat: float, lon: float, levels: list[int]) -> dict:
@@ -346,14 +344,19 @@ def forecast(reader: RunReader, samples: list[Sample], *, elevs: list | None = N
         h = (s.eta - t0).total_seconds() / 3600.0
         # The run cannot answer for a time it does not cover; say so rather
         # than silently clamping to the last step and pretending.
-        outside = not (steps[0] - 1e-6 <= h <= steps[-1] + 1e-6)
+        outside_run = not (steps[0] - 1e-6 <= h <= steps[-1] + 1e-6)
+        outside_domain = not reader.contains(s.lat, s.lon)
+        outside = outside_run or outside_domain
         hc = min(max(h, steps[0]), steps[-1])
         while k < len(steps) - 2 and hc > steps[k + 1]:
             k += 1
-        key = _grid_key(s.lat, s.lon)
-        ser = cache.get(key)
-        if ser is None:
-            ser = cache[key] = _series(reader, s.lat, s.lon, levels)
+        if outside_domain:
+            ser = {}
+        else:
+            key = _grid_key(reader, s.lat, s.lon)
+            ser = cache.get(key)
+            if ser is None:
+                ser = cache[key] = _series(reader, s.lat, s.lon, levels)
 
         def at(var, _s=steps, _ser=ser, _k=k, _h=hc):
             return _lerp_at(_s, _ser.get(var, []), _k, _h)
@@ -401,7 +404,7 @@ def forecast(reader: RunReader, samples: list[Sample], *, elevs: list | None = N
             "i": idx, "lon": s.lon, "lat": s.lat, "dist_km": s.dist_km,
             "hours": s.hours, "leg_h": s.leg_h, "eta": s.eta.isoformat(),
             "step_h": round(h, 2), "elev_m": s.elev_m,
-            "outside_run": outside, **wx,
+            "outside_run": outside_run, "outside_domain": outside_domain, **wx,
             "hazard": level, "flags": flags,
         })
 

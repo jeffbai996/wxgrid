@@ -43,11 +43,33 @@ def _mercator_rows() -> tuple[np.ndarray, np.ndarray]:
     return _merc_src_rows, _merc_frac
 
 
-def to_mercator(field: np.ndarray) -> np.ndarray:
-    """(721, 1440) → (MERC_H, 1440), linear in latitude between grid rows."""
-    rows, frac = _mercator_rows()
+def to_mercator(field: np.ndarray, *, lat0: float = 90.0, lon0: float = -180.0,
+                dlat: float = -GRID_RES, dlon: float = GRID_RES) -> np.ndarray:
+    """Resample a regular lat/lon field into a Web-Mercator image.
+
+    The original global grid keeps its exact 1440-square sampling path. A
+    regional grid uses its own latitude extent and a Mercator-correct output
+    aspect ratio; longitude columns never move.
+    """
+    ny, nx = field.shape
+    if (ny, nx, lat0, lon0, dlat, dlon) == (GRID_LAT_N, GRID_LON_N, 90.0, -180.0, -GRID_RES, GRID_RES):
+        rows, frac = _mercator_rows()
+    else:
+        last_lat = lat0 + (ny - 1) * dlat
+        north = min(MERC_LAT_MAX, max(lat0, last_lat))
+        south = max(-MERC_LAT_MAX, min(lat0, last_lat))
+        lon_span = max(abs((nx - 1) * dlon), abs(dlon))
+        y_n = np.arcsinh(np.tan(np.deg2rad(north)))
+        y_s = np.arcsinh(np.tan(np.deg2rad(south)))
+        out_h = max(2, int(round(nx * abs(y_n - y_s) / np.deg2rad(lon_span))))
+        y = np.linspace(y_n, y_s, out_h, dtype=np.float64)
+        target_lats = np.rad2deg(np.arctan(np.sinh(y)))
+        src = (target_lats - lat0) / dlat
+        src = np.clip(src, 0, ny - 1 - 1e-6)
+        rows = np.floor(src).astype(np.int32)
+        frac = (src - rows).astype(np.float32)
     a = field[rows]
-    b = field[np.minimum(rows + 1, GRID_LAT_N - 1)]
+    b = field[np.minimum(rows + 1, ny - 1)]
     return (a * (1.0 - frac)[:, None] + b * frac[:, None]).astype(np.float32)
 
 
@@ -213,7 +235,8 @@ def uv_index_point(tcc: list, valid: list, lat: float, lon: float) -> list:
     return out
 
 
-def uv_index(tcc: np.ndarray, when) -> np.ndarray:
+def uv_index(tcc: np.ndarray, when, *, lat0: float = 90.0, lon0: float = -180.0,
+             dlat: float = -GRID_RES, dlon: float = GRID_RES) -> np.ndarray:
     """Estimated UV index on the whole grid at a UTC datetime: clear-sky index
     from solar elevation (UVI ≈ 12.5·μ₀^2.42, sea level, ~300 DU ozone; Allaart
     et al. 2004 fit) reduced by cloud (1 − 0.56·tcc). No ozone, aerosol or
@@ -221,8 +244,8 @@ def uv_index(tcc: np.ndarray, when) -> np.ndarray:
     doy = when.timetuple().tm_yday
     hour = when.hour + when.minute / 60.0
     decl = np.deg2rad(23.44) * np.sin(2 * np.pi * (284 + doy) / 365.0)
-    lats = np.deg2rad(np.linspace(90, -90, GRID_LAT_N))[:, None]
-    lons = np.linspace(-180, 179.75, GRID_LON_N)[None, :]
+    lats = np.deg2rad(lat0 + np.arange(tcc.shape[0]) * dlat)[:, None]
+    lons = (lon0 + np.arange(tcc.shape[1]) * dlon)[None, :]
     ha = np.deg2rad(15.0 * (hour - 12.0) + lons)
     mu = np.sin(lats) * np.sin(decl) + np.cos(lats) * np.cos(decl) * np.cos(ha)
     mu = np.clip(mu, 0.0, 1.0)
@@ -421,21 +444,24 @@ def legend(layer: str) -> dict:
 # ── wind vectors for particles ────────────────────────────────────────────
 
 def wind_json(u: np.ndarray, v: np.ndarray, factor: int = 4, decimals: int = 1,
-              mask: np.ndarray | None = None) -> bytes:
-    """Coarsen 0.25° u/v to `factor`×0.25° (default 1°) and emit compact JSON.
-    Row 0 = 90°N, col 0 = 180°W; last column duplicates the first so the
-    client can wrap longitude without a special case."""
+              mask: np.ndarray | None = None, *, lat0: float = 90.0,
+              lon0: float = -180.0, dlat: float = -GRID_RES,
+              dlon: float = GRID_RES, wrap: bool = True) -> bytes:
+    """Coarsen a regular-grid u/v field and emit compact particle JSON."""
     uu = u[::factor, ::factor]
     vv = v[::factor, ::factor]
-    uu = np.concatenate([uu, uu[:, :1]], axis=1)
-    vv = np.concatenate([vv, vv[:, :1]], axis=1)
+    if wrap:
+        uu = np.concatenate([uu, uu[:, :1]], axis=1)
+        vv = np.concatenate([vv, vv[:, :1]], axis=1)
     mm = None
     if mask is not None:
         mm = np.asarray(mask, dtype=bool)[::factor, ::factor]
-        mm = np.concatenate([mm, mm[:, :1]], axis=1)
+        if wrap:
+            mm = np.concatenate([mm, mm[:, :1]], axis=1)
     ny, nx = uu.shape
     payload = {
-        "lat0": 90.0, "lon0": -180.0, "dlat": -GRID_RES * factor, "dlon": GRID_RES * factor,
+        "lat0": lat0, "lon0": lon0, "dlat": dlat * factor, "dlon": dlon * factor,
+        "wrap": wrap,
         "ny": int(ny), "nx": int(nx),
         "u": (np.round(np.nan_to_num(uu), decimals) if decimals else np.rint(np.nan_to_num(uu)).astype(int)).ravel().tolist(),
         "v": (np.round(np.nan_to_num(vv), decimals) if decimals else np.rint(np.nan_to_num(vv)).astype(int)).ravel().tolist(),

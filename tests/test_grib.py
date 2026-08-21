@@ -2,7 +2,13 @@ import numpy as np
 import pytest
 
 from wxgrid.config import GRID_LAT_N, GRID_LON_N, GRID_RES
-from wxgrid.grib import _normalise, regrid_to_common
+from wxgrid.grib import _hour_step, _normalise, regrid_to_common
+
+
+def test_analysis_minute_step_is_normalised_to_hour_zero():
+    assert _hour_step("0m") == 0
+    assert _hour_step("60m") == 1
+    assert _hour_step(6) == 6
 
 
 def test_gfs_style_grid_is_rolled_to_minus180_origin():

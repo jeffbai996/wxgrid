@@ -146,3 +146,44 @@ def test_neighbouring_messages_become_one_request():
     # a gap wider than the slack is not bridged
     far = [{"start": 0, "end": 99}, {"start": 10_000_000, "end": 10_000_099}]
     assert len(fetch.merge_ranges(far)) == 2
+
+
+# ── regional models ──────────────────────────────────────────────────────
+
+def test_hrdps_url_and_hourly_surface_file_set():
+    url = fetch.hrdps_file_url(RUN, 6, "GUST_AGL-10m")
+    assert url == ("https://dd.weather.gc.ca/20260818/WXO-DD/model_hrdps/continental/2.5km/12/006/"
+                   "20260818T12Z_MSC_HRDPS_GUST_AGL-10m_RLatLon0.0225_PT006H.grib2")
+    files = dict(fetch.hrdps_step_files(get_model("hrdps"), 6))
+    assert files["10u"] == "UGRD_AGL-10m"
+    assert files["tp"] == "APCP-Accum1h_Sfc"
+    assert files["sf"] == "WEASN-Accum1h_Sfc"
+
+
+_HRRR_IDX = """1:0:d=x:GUST:surface:6 hour fcst:
+2:100:d=x:UGRD:10 m above ground:6 hour fcst:
+3:200:d=x:VGRD:10 m above ground:6 hour fcst:
+4:300:d=x:TMP:2 m above ground:6 hour fcst:
+5:400:d=x:DPT:2 m above ground:6 hour fcst:
+6:500:d=x:MSLMA:mean sea level:6 hour fcst:
+7:600:d=x:APCP:surface:0-6 hour acc fcst:
+8:700:d=x:APCP:surface:5-6 hour acc fcst:
+9:800:d=x:WEASD:surface:0-6 hour acc fcst:
+10:900:d=x:WEASD:surface:5-6 hour acc fcst:
+11:1000:d=x:SNOD:surface:6 hour fcst:
+12:1100:d=x:TCDC:entire atmosphere:6 hour fcst:
+13:1200:d=x:TMP:surface:6 hour fcst:
+"""
+
+
+def test_hrrr_urls_and_since_start_accumulation_selection():
+    assert fetch.hrrr_url(RUN, 6).endswith(
+        "hrrr.20260818/conus/hrrr.t12z.wrfsfcf06.grib2")
+    assert fetch.hrrr_probe_url(RUN, 48).endswith("wrfsfcf48.grib2.idx")
+    picked = fetch.hrrr_wanted(fetch.parse_idx(_HRRR_IDX), 6)
+    keys = {(r["var"], r["level"], r["window"]) for r in picked}
+    assert ("APCP", "surface", "0-6 hour acc fcst") in keys
+    assert ("APCP", "surface", "5-6 hour acc fcst") not in keys
+    assert ("WEASD", "surface", "0-6 hour acc fcst") in keys
+    assert ("TMP", "surface", "6 hour fcst") not in keys
+    assert len(picked) == 10

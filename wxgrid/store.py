@@ -2,8 +2,8 @@
 
 Layout:  STORE_DIR/<model>/<run>.zarr
            attrs: model, run (ISO), steps [h], complete (bool), attribution
-           step (int32[n]), latitude (f32[721]), longitude (f32[1440])
-           <var> (f32[n, 721, 1440]) chunked one step at a time, zstd
+           step (int32[n]), latitude (f32[ny]), longitude (f32[nx])
+           <var> (f32[n, ny, nx]) chunked one step at a time, zstd
 
 Chunking one step per chunk means the API reads exactly one 4 MB chunk per
 layer request and a point query touches n small slices — both cheap.
@@ -21,7 +21,7 @@ import zarr
 from zarr.codecs import BloscCodec
 
 from wxgrid.config import GRID_LAT_N, GRID_LON_N, GRID_RES, KEEP_RUNS, STORE_DIR
-from wxgrid.models import HALF_PRECISION_PREFIXES
+from wxgrid.models import HALF_PRECISION_PREFIXES, get_model
 
 LATS = np.linspace(90.0, -90.0, GRID_LAT_N, dtype=np.float32)
 LONS = (np.arange(GRID_LON_N, dtype=np.float32) * GRID_RES - 180.0).astype(np.float32)
@@ -73,22 +73,28 @@ class RunWriter:
             shutil.rmtree(self.path)
         self.steps = list(steps)
         self.variables = list(dict.fromkeys(variables))
+        grid = get_model(model)
+        self.grid_shape = grid.grid_shape
+        self.lats = (grid.lat0 + np.arange(grid.grid_shape[0], dtype=np.float64) * grid.dlat).astype(np.float32)
+        self.lons = (grid.lon0 + np.arange(grid.grid_shape[1], dtype=np.float64) * grid.dlon).astype(np.float32)
         self.group = zarr.open_group(self.path, mode="w")
         self.group.attrs.update({
             "model": model, "run": rid, "steps": self.steps, "complete": False,
             "attribution": attribution, "variables": self.variables,
             "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "grid_shape": list(grid.grid_shape), "lat0": grid.lat0, "lon0": grid.lon0,
+            "dlat": grid.dlat, "dlon": grid.dlon, "domain": list(grid.domain),
         })
         self.group.create_array("step", data=np.asarray(self.steps, dtype=np.int32),
                                 dimension_names=("step",))
-        self.group.create_array("latitude", data=LATS, dimension_names=("latitude",))
-        self.group.create_array("longitude", data=LONS, dimension_names=("longitude",))
+        self.group.create_array("latitude", data=self.lats, dimension_names=("latitude",))
+        self.group.create_array("longitude", data=self.lons, dimension_names=("longitude",))
         codec = BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle")
         for var in self.variables:
             dtype = "float16" if var.startswith(HALF_PRECISION_PREFIXES) else "float32"
             arr = self.group.create_array(
-                var, shape=(len(self.steps), GRID_LAT_N, GRID_LON_N), dtype=dtype,
-                chunks=(1, GRID_LAT_N, GRID_LON_N), compressors=codec,
+                var, shape=(len(self.steps), *self.grid_shape), dtype=dtype,
+                chunks=(1, *self.grid_shape), compressors=codec,
                 fill_value=np.nan, dimension_names=("step", "latitude", "longitude"),
             )
             arr.attrs["units"] = _UNITS.get(var, {"u": "m s-1", "v": "m s-1", "t": "K", "gh": "m"}.get(var.split("_")[0], ""))
@@ -98,7 +104,10 @@ class RunWriter:
         if var not in self.variables:
             return
         idx = self.steps.index(step)
-        self.group[var][idx] = np.asarray(values, dtype=self.group[var].dtype)
+        values = np.asarray(values)
+        if values.shape != self.grid_shape:
+            raise ValueError(f"{self.group.attrs['model']} grid expects {self.grid_shape}, got {values.shape}")
+        self.group[var][idx] = values.astype(self.group[var].dtype, copy=False)
         self._written[var].add(step)
 
     def has(self, var: str, step: int) -> bool:
@@ -131,18 +140,45 @@ class RunReader:
         self.steps: list[int] = list(self.group.attrs["steps"])
         self.variables: list[str] = list(self.group.attrs.get("variables", []))
         self.attrs = dict(self.group.attrs)
+        fallback = get_model(model)
+        self.grid_shape = tuple(self.attrs.get("grid_shape", fallback.grid_shape))
+        self.lat0 = float(self.attrs.get("lat0", fallback.lat0))
+        self.lon0 = float(self.attrs.get("lon0", fallback.lon0))
+        self.dlat = float(self.attrs.get("dlat", fallback.dlat))
+        self.dlon = float(self.attrs.get("dlon", fallback.dlon))
+        self.domain = tuple(self.attrs.get("domain", fallback.domain))
+        self.lats = np.asarray(self.group["latitude"][:], dtype=np.float32)
+        self.lons = np.asarray(self.group["longitude"][:], dtype=np.float32)
 
     def slab(self, var: str, step: int) -> np.ndarray:
-        """One (721, 1440) float32 field."""
+        """One (ny, nx) float32 field on this model's regular lat/lon grid."""
         return np.asarray(self.group[var][self.steps.index(step)], dtype=np.float32)
+
+    def contains(self, lat: float, lon: float) -> bool:
+        west, south, east, north = self.domain
+        return south <= lat <= north and west <= lon <= east
+
+    def indices(self, lat, lon) -> tuple[np.ndarray, np.ndarray]:
+        """Nearest row/column indices for scalar or array coordinates."""
+        lats = np.asarray(lat, dtype=np.float64)
+        lons = np.asarray(lon, dtype=np.float64)
+        i = np.rint((lats - self.lat0) / self.dlat).astype(int)
+        j = np.rint((lons - self.lon0) / self.dlon).astype(int)
+        i = np.clip(i, 0, self.grid_shape[0] - 1)
+        if self.domain == (-180.0, -90.0, 180.0, 90.0):
+            j %= self.grid_shape[1]
+        else:
+            j = np.clip(j, 0, self.grid_shape[1] - 1)
+        return i, j
 
     def point(self, var: str, lat: float, lon: float) -> np.ndarray:
         """Nearest-gridpoint series over all steps, shape (n,). Reads the
         point cube (all steps × a small tile per chunk) when the run has one;
         the step-per-chunk layout means decompressing every step otherwise."""
-        i = int(round((90.0 - lat) / GRID_RES))
-        j = int(round((lon + 180.0) / GRID_RES)) % GRID_LON_N
-        i = min(max(i, 0), GRID_LAT_N - 1)
+        if not self.contains(lat, lon):
+            raise ValueError(f"point ({lat}, {lon}) is outside {self.model} domain")
+        ii, jj = self.indices(lat, lon)
+        i, j = int(ii), int(jj)
         pt = self._pt.get(var)
         if pt is not None:
             return np.asarray(pt[:, i, j], dtype=np.float32)
@@ -160,7 +196,8 @@ class RunReader:
     def manifest(self) -> dict:
         return {"model": self.model, "run": self.rid, "steps": self.steps,
                 "variables": self.variables, "attribution": self.attrs.get("attribution", ""),
-                "coverage": self.attrs.get("coverage", {})}
+                "coverage": self.attrs.get("coverage", {}), "grid_shape": list(self.grid_shape),
+                "domain": list(self.domain)}
 
 
 POINT_TILE = 24    # point-cube spatial chunk (24 × 24 gridpoints = 6° × 6°)
@@ -192,9 +229,11 @@ def build_point_cube(model: str, rid: str, root: Path = STORE_DIR, variables: li
     return n
 
 
-def prune(model: str, keep: int = KEEP_RUNS, root: Path = STORE_DIR) -> list[str]:
+def prune(model: str, keep: int | None = None, root: Path = STORE_DIR) -> list[str]:
     """Delete all but the newest `keep` complete runs (and any incomplete
     run older than the newest complete one — a fetch that died mid-way)."""
+    if keep is None:
+        keep = get_model(model).keep_runs or KEEP_RUNS
     mdir = root / model
     if not mdir.is_dir():
         return []

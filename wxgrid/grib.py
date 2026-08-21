@@ -1,14 +1,12 @@
-"""GRIB2 → numpy on the common grid.
+"""GRIB2 → numpy on a model's regular lat/lon store grid.
 
 Raw eccodes rather than cfgrib: the open-data files mix levels (10 m wind,
 2 m temperature, mean sea level) that cfgrib refuses to stack into one
 Dataset, and all we need is "shortName + step → 2-D array" anyway.
 
-Every field comes out as float32 (721, 1440), latitude 90 → -90, longitude
--180 → 179.75, regardless of how the producer stored it. Producers already on
-0.25° (ECMWF, GFS, GEFS surface) are only rolled in longitude — no resampling.
-Anything else (GEM at 0.15°, the GEFS ensemble mean's 0.5° pressure levels) is
-bilinearly regridded; see `regrid_to_common`.
+Global fields retain the original float32 (721, 1440) common-grid path.
+Regional Lambert/rotated grids are reprojected at ingest onto the fine regular
+lat/lon grid declared by their Model.
 """
 from __future__ import annotations
 
@@ -19,6 +17,7 @@ from typing import Iterator
 import numpy as np
 
 from wxgrid.config import GRID_LAT_N, GRID_LON_N, GRID_RES
+from wxgrid.models import Model
 
 # Target axes. Latitudes ascending here because interpolation wants monotonic
 # increasing; the result is flipped back to N→S before it leaves this module.
@@ -35,6 +34,106 @@ class Field:
     level: int = 0
     units: str = ""
     start_step: int = 0    # accumulation start (hours) for accum fields; == step for instant
+
+
+_REPROJECT_INDEX_CACHE: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
+
+
+def _code(gid, key: str, default=None):
+    import eccodes
+    try:
+        return eccodes.codes_get(gid, key)
+    except Exception:
+        return default
+
+
+def _hour_step(value) -> int:
+    """ecCodes may spell analysis time as ``0m`` instead of integer hour 0."""
+    text = str(value).strip()
+    if text.endswith("m"):
+        return int(round(float(text[:-1]) / 60.0))
+    if text.endswith("h"):
+        text = text[:-1]
+    return int(float(text))
+
+
+def _target_indices(gid, model: Model) -> tuple[np.ndarray, np.ndarray]:
+    """Fractional native row/column for every target-model grid point."""
+    from pyproj import CRS, Transformer
+
+    grid_type = str(_code(gid, "gridType", ""))
+    ni, nj = int(_code(gid, "Ni", _code(gid, "Nx"))), int(_code(gid, "Nj", _code(gid, "Ny")))
+    i_neg = bool(int(_code(gid, "iScansNegatively", 0)))
+    j_pos = bool(int(_code(gid, "jScansPositively", 0)))
+    lat_first = float(_code(gid, "latitudeOfFirstGridPointInDegrees"))
+    lon_first = float(_code(gid, "longitudeOfFirstGridPointInDegrees"))
+    key = (model.key, model.grid_shape, model.lat0, model.lon0, model.dlat, model.dlon,
+           grid_type, ni, nj, i_neg, j_pos, lat_first, lon_first,
+           _code(gid, "projTargetString"), _code(gid, "latitudeOfSouthernPoleInDegrees"),
+           _code(gid, "longitudeOfSouthernPoleInDegrees"), _code(gid, "DxInMetres"),
+           _code(gid, "DyInMetres"), _code(gid, "iDirectionIncrementInDegrees"),
+           _code(gid, "jDirectionIncrementInDegrees"))
+    hit = _REPROJECT_INDEX_CACHE.get(key)
+    if hit is not None:
+        return hit
+
+    target_lats = model.lat0 + np.arange(model.grid_shape[0], dtype=np.float64) * model.dlat
+    target_lons = model.lon0 + np.arange(model.grid_shape[1], dtype=np.float64) * model.dlon
+    lon2, lat2 = np.meshgrid(target_lons, target_lats)
+    if grid_type == "lambert":
+        native = CRS.from_user_input(str(_code(gid, "projTargetString")))
+        to_native = Transformer.from_crs("EPSG:4326", native, always_xy=True)
+        x, y = to_native.transform(lon2, lat2)
+        x0, y0 = to_native.transform(((lon_first + 180.0) % 360.0) - 180.0, lat_first)
+        dx = float(_code(gid, "DxInMetres")) * (-1.0 if i_neg else 1.0)
+        dy = float(_code(gid, "DyInMetres")) * (1.0 if j_pos else -1.0)
+        cols = (x - x0) / dx
+        rows = (y - y0) / dy
+    elif grid_type == "rotated_ll":
+        south_lat = float(_code(gid, "latitudeOfSouthernPoleInDegrees"))
+        south_lon = float(_code(gid, "longitudeOfSouthernPoleInDegrees"))
+        rotated = CRS.from_cf({
+            "grid_mapping_name": "rotated_latitude_longitude",
+            "grid_north_pole_latitude": -south_lat,
+            "grid_north_pole_longitude": ((south_lon + 180.0 + 180.0) % 360.0) - 180.0,
+            "north_pole_grid_longitude": 0.0,
+        })
+        to_native = Transformer.from_crs("EPSG:4326", rotated, always_xy=True)
+        rlon, rlat = to_native.transform(lon2, lat2)
+        rlon = lon_first + ((rlon - lon_first + 180.0) % 360.0) - 180.0
+        di = float(_code(gid, "iDirectionIncrementInDegrees")) * (-1.0 if i_neg else 1.0)
+        dj = float(_code(gid, "jDirectionIncrementInDegrees")) * (1.0 if j_pos else -1.0)
+        cols = (rlon - lon_first) / di
+        rows = (rlat - lat_first) / dj
+    else:
+        raise ValueError(f"unsupported regional GRIB grid {grid_type!r}")
+    out = np.asarray(rows, dtype=np.float32), np.asarray(cols, dtype=np.float32)
+    _REPROJECT_INDEX_CACHE[key] = out
+    return out
+
+
+def reproject_to_model(values: np.ndarray, gid, model: Model, *, order: int = 1) -> np.ndarray:
+    """Lambert/rotated producer grid → the model's regular lat/lon subgrid."""
+    from scipy.ndimage import map_coordinates
+
+    ni, nj = int(_code(gid, "Ni", _code(gid, "Nx"))), int(_code(gid, "Nj", _code(gid, "Ny")))
+    if int(_code(gid, "jPointsAreConsecutive", 0)):
+        native = np.asarray(values, dtype=np.float32).reshape(ni, nj).T
+    else:
+        native = np.asarray(values, dtype=np.float32).reshape(nj, ni)
+    rows, cols = _target_indices(gid, model)
+    coords = np.asarray([rows.ravel(), cols.ravel()])
+    if order == 0:
+        out = map_coordinates(native, coords, order=0, mode="constant", cval=np.nan, prefilter=False)
+    else:
+        valid = np.isfinite(native)
+        num = map_coordinates(np.where(valid, native, 0.0), coords, order=1,
+                              mode="constant", cval=0.0, prefilter=False)
+        den = map_coordinates(valid.astype(np.float32), coords, order=1,
+                              mode="constant", cval=0.0, prefilter=False)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out = np.where(den > 1e-6, num / den, np.nan)
+    return np.ascontiguousarray(out.reshape(model.grid_shape), dtype=np.float32)
 
 
 def _weights(src: np.ndarray, dst: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -109,7 +208,7 @@ def _normalise(values: np.ndarray, lat0: float, lat1: float, lon0: float, lon_st
 
 
 def iter_fields(path: str | Path, short_name: str | None = None,
-                units: str | None = None) -> Iterator[Field]:
+                units: str | None = None, target_model: Model | None = None) -> Iterator[Field]:
     """Yield every message in a GRIB file as a normalised Field.
 
     `short_name`/`units` override what eccodes reports. One-file-per-variable
@@ -126,13 +225,13 @@ def iter_fields(path: str | Path, short_name: str | None = None,
                 return
             try:
                 short = short_name or eccodes.codes_get(gid, "shortName")
-                step = int(eccodes.codes_get(gid, "endStep"))
+                step = _hour_step(eccodes.codes_get(gid, "endStep"))
                 lat_n = int(eccodes.codes_get(gid, "Nj"))
                 lon_n = int(eccodes.codes_get(gid, "Ni"))
                 lat0 = float(eccodes.codes_get(gid, "latitudeOfFirstGridPointInDegrees"))
-                lat1 = float(eccodes.codes_get(gid, "latitudeOfLastGridPointInDegrees"))
+                lat1 = float(_code(gid, "latitudeOfLastGridPointInDegrees", lat0))
                 lon0 = float(eccodes.codes_get(gid, "longitudeOfFirstGridPointInDegrees"))
-                lon_step = float(eccodes.codes_get(gid, "iDirectionIncrementInDegrees"))
+                lon_step = float(_code(gid, "iDirectionIncrementInDegrees", 0.0))
                 if int(eccodes.codes_get(gid, "iScansNegatively")):
                     lon_step = -lon_step
                 # jScansPositively == 1 means rows run south → north.
@@ -141,7 +240,7 @@ def iter_fields(path: str | Path, short_name: str | None = None,
                 level = int(eccodes.codes_get(gid, "level"))
                 unit = units if units is not None else str(eccodes.codes_get(gid, "units"))
                 try:
-                    start_step = int(eccodes.codes_get(gid, "startStep"))
+                    start_step = _hour_step(eccodes.codes_get(gid, "startStep"))
                 except Exception:
                     start_step = step
                 values = np.asarray(eccodes.codes_get_values(gid), dtype=np.float32)
@@ -150,7 +249,10 @@ def iter_fields(path: str | Path, short_name: str | None = None,
                 missing = eccodes.codes_get(gid, "missingValue")
                 if missing is not None:
                     values[values == np.float32(missing)] = np.nan
-                grid = _normalise(values, lat0, lat1, lon0, lon_step, lat_n, lon_n, south_north)
+                if target_model is not None and target_model.regional:
+                    grid = reproject_to_model(values, gid, target_model, order=0 if short in {"ptype"} else 1)
+                else:
+                    grid = _normalise(values, lat0, lat1, lon0, lon_step, lat_n, lon_n, south_north)
                 yield Field(short, step, grid, level_type, level, unit, start_step)
             finally:
                 eccodes.codes_release(gid)

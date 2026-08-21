@@ -19,13 +19,29 @@ import numpy as np
 import requests
 
 from wxgrid import fetch
-from wxgrid.config import GRIB_DIR, GRID_LAT_N, GRID_LON_N, STORE_DIR
+from wxgrid.config import GRIB_DIR, STORE_DIR
 from wxgrid.ens import wind_speed_spread
 from wxgrid.grib import iter_fields
 from wxgrid.models import MODELS, Model, get_model
 from wxgrid.store import RunWriter, build_point_cube, list_runs, prune, run_id, run_path
 
 log = logging.getLogger("wxgrid.ingest")
+
+
+def accumulation_bucket(mode: str, step: int, start_step: int, accum: np.ndarray,
+                        previous: tuple[int, int, np.ndarray] | None) -> np.ndarray:
+    """Turn a producer accumulation into this stored step's increment."""
+    if step == 0:
+        return np.zeros_like(accum)
+    if mode == "per_step":
+        return accum
+    if mode == "bucket6":
+        if previous and previous[0] == start_step and previous[1] < step:
+            return np.clip(accum - previous[2], 0.0, None)
+        return accum
+    if previous:
+        return np.clip(accum - previous[2], 0.0, None)
+    return accum
 
 
 def _resolve_run(model: Model, run: str | None) -> datetime:
@@ -45,6 +61,9 @@ def _resolve_run(model: Model, run: str | None) -> datetime:
         "aws-aigfs": (fetch.aigfs_candidate_runs, lambda c: fetch.aigfs_probe_url(c, model.steps[-1])),
         "datamart": (fetch.gem_candidate_runs,
                      lambda c: fetch.gem_file_url(c, model.steps[-1], model.file_params["2t"])),
+        "hrdps": (fetch.hrdps_candidate_runs,
+                  lambda c: fetch.hrdps_file_url(c, model.steps[-1], model.file_params["2t"])),
+        "aws-hrrr": (fetch.hrrr_candidate_runs, lambda c: fetch.hrrr_probe_url(c, model.steps[-1])),
     }
     if model.source in probes:
         candidates, url_for = probes[model.source]
@@ -147,7 +166,8 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         for p in paths:
             short, _ = fetch.grib_override(p)
             yield from iter_fields(p, short_name=short,
-                                   units=model.unit_override.get(short) if short else None)
+                                   units=model.unit_override.get(short) if short else None,
+                                   target_model=model if model.regional else None)
 
     def on_step(step: int, paths: list[Path]) -> None:
         # The ensemble-spread GRIB decodes to the same shortNames as the mean,
@@ -160,6 +180,11 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         for f in _fields(paths):
             canon = model.canonical(f.short_name, f.level_type, f.level)
             if canon is None:
+                continue
+            # HRRR files publish both the since-start total and the last-hour
+            # bucket with the same shortName. Range coalescing may bring both
+            # messages along; only the total belongs to the deaccumulation path.
+            if model.precip_mode == "since_start" and canon in {"tp", "sf"} and f.start_step != 0:
                 continue
             got_start[canon] = f.start_step
             vals = f.values
@@ -176,22 +201,11 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
                 # GEM publishes no accumulation file for hour 000; nothing has
                 # fallen at t0 either way, so store the zero rather than a hole.
                 if step == 0 and out in writer.variables:
-                    writer.write(out, step, np.zeros((GRID_LAT_N, GRID_LON_N), dtype=np.float32))
+                    writer.write(out, step, np.zeros(model.grid_shape, dtype=np.float32))
                 continue
             accum = np.nan_to_num(got[canon])
             prev = prev_accum.get(canon)
-            if step == 0:
-                bucket = np.zeros_like(accum)
-            elif model.precip_mode == "bucket6":
-                # same bucket as the previous step → difference; new bucket → the field itself
-                bucket = np.clip(accum - prev[2], 0.0, None) if (prev and prev[0] == starts.get(canon, -1) and prev[1] < step) else accum
-            elif prev:
-                bucket = np.clip(accum - prev[2], 0.0, None)
-            else:
-                # First step that delivered this field. If it is not step 0 the
-                # model simply has no hour-0 accumulation file (GEM), and the
-                # total since t0 IS the bucket for this step.
-                bucket = accum
+            bucket = accumulation_bucket(model.precip_mode, step, starts.get(canon, 0), accum, prev)
             buckets[out] = bucket
             writer.write(out, step, bucket)
             prev_accum[canon] = (starts.get(canon, 0), step, accum)
@@ -213,7 +227,8 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         log.info("%s %s step %03d written", model.key, rid, step)
 
     fetcher = {"ecmwf": fetch.fetch_ecmwf, "nomads": fetch.fetch_gfs, "aws-aigfs": fetch.fetch_aigfs,
-               "nomads-gefs": fetch.fetch_gefs, "datamart": fetch.fetch_gem}[model.source]
+               "nomads-gefs": fetch.fetch_gefs, "datamart": fetch.fetch_gem,
+               "hrdps": fetch.fetch_hrdps, "aws-hrrr": fetch.fetch_hrrr}[model.source]
     got = fetcher(model, run, grib_root, on_step=on_step)
 
     counts = writer.finish()
@@ -271,7 +286,9 @@ def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
                 continue
             path.parent.mkdir(parents=True, exist_ok=True)
             disp = render.upscale_values(
-                render.DISPLAY[layer](render.to_mercator(field_for(r, layer, None, step))), layer)
+                render.DISPLAY[layer](render.to_mercator(
+                    field_for(r, layer, None, step), lat0=r.lat0, lon0=r.lon0,
+                    dlat=r.dlat, dlon=r.dlon)), layer)
             tmp = path.with_suffix(path.suffix + ".tmp")
             tmp.write_bytes(render.colorize(disp, layer, fmt="webp"))
             tmp.replace(path)
@@ -287,7 +304,6 @@ def augment_waves(model: Model, rid: str, grib_root: Path = GRIB_DIR, store_root
     models without a wave stream, are a no-op."""
     import zarr
     from zarr.codecs import BloscCodec
-    from wxgrid.config import GRID_LAT_N, GRID_LON_N
     from wxgrid.models import LEVEL_EVERY
 
     if not model.wave_params:
@@ -302,8 +318,9 @@ def augment_waves(model: Model, rid: str, grib_root: Path = GRIB_DIR, store_root
     codec = BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle")
     for var in want:
         if var not in g:
-            g.create_array(var, shape=(len(steps), GRID_LAT_N, GRID_LON_N), dtype="float32",
-                           chunks=(1, GRID_LAT_N, GRID_LON_N), compressors=codec, fill_value=np.nan,
+            shape = tuple(g["t2m"].shape[1:]) if "t2m" in g else get_model(model.key).grid_shape
+            g.create_array(var, shape=(len(steps), *shape), dtype="float32",
+                           chunks=(1, *shape), compressors=codec, fill_value=np.nan,
                            dimension_names=("step", "latitude", "longitude"))
     from ecmwf.opendata import Client
     client = Client(source="ecmwf", model=model.ecmwf_model, resol="0p25")

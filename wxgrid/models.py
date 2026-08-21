@@ -99,6 +99,25 @@ class Model:
     # shortName → units string to trust instead of the GRIB's own (GEM's cloud
     # cover is percent but declares no units).
     unit_override: dict[str, str] = field(default_factory=dict)
+    # Regular lat/lon store grid. Global models retain the original 721x1440
+    # layout byte-for-byte; regional producers are reprojected onto their own
+    # finer subgrid at ingest.
+    grid_shape: tuple[int, int] = (721, 1440)
+    lat0: float = 90.0
+    lon0: float = -180.0
+    dlat: float = -0.25
+    dlon: float = 0.25
+    # west, south, east, north — the image footprint and point-validity gate.
+    domain: tuple[float, float, float, float] = (-180.0, -90.0, 180.0, 90.0)
+    keep_runs: int | None = None
+
+    @property
+    def regional(self) -> bool:
+        return self.domain != (-180.0, -90.0, 180.0, 90.0)
+
+    def contains(self, lat: float, lon: float) -> bool:
+        west, south, east, north = self.domain
+        return south <= lat <= north and west <= lon <= east
 
     def canonical(self, short_name: str, level_type: str, level: int) -> str | None:
         """Map a decoded GRIB field to its store variable, or None to skip."""
@@ -217,6 +236,34 @@ MODELS: dict[str, Model] = {
         precip_mode="bucket6",
         snow_depth_factor=100.0,
         attribution="NOAA NCEP GEFS ensemble mean via NOMADS, public domain",
+    ),
+    "hrdps": Model(
+        key="hrdps", label="ECCC HRDPS", short="HRDPS", grid="2.5km", source="hrdps",
+        steps=list(range(0, 49)),
+        sfc_params={"10u": "u10", "10v": "v10", "gust": "gust", "2t": "t2m", "2d": "d2m",
+                    "prmsl": "msl", "tp": "tp", "sf": "sf", "sde": "sd", "tcc": "tcc"},
+        file_params={"10u": "UGRD_AGL-10m", "10v": "VGRD_AGL-10m", "gust": "GUST_AGL-10m",
+                     "2t": "TMP_AGL-2m", "2d": "DPT_AGL-2m", "prmsl": "PRMSL_MSL",
+                     "tp": "APCP-Accum1h_Sfc", "sf": "WEASN-Accum1h_Sfc", "sde": "SNOD_Sfc",
+                     "tcc": "TCDC_Sfc"},
+        unit_override={"tcc": "%", "tp": "kg m-2", "sf": "kg m-2"},
+        precip_mode="per_step", snow_depth_factor=100.0,
+        attribution="Environment and Climate Change Canada HRDPS, Open Government Licence",
+        grid_shape=(1241, 2481), lat0=70.0, lon0=-152.0, dlat=-0.025, dlon=0.025,
+        domain=(-152.0, 39.0, -90.0, 70.0), keep_runs=2,
+    ),
+    "hrrr": Model(
+        key="hrrr", label="NOAA HRRR", short="HRRR", grid="3km", source="aws-hrrr",
+        steps=list(range(0, 49)),
+        # Some ecCodes builds expose NOAA local-table names differently; all
+        # observed aliases map to the same canonical store field.
+        sfc_params={"10u": "u10", "10v": "v10", "gust": "gust", "2t": "t2m", "2d": "d2m",
+                    "prmsl": "msl", "mslet": "msl", "mslma": "msl", "tp": "tp", "sdwe": "sf", "weasd": "sf",
+                    "sde": "sd", "tcc": "tcc"},
+        precip_mode="since_start", snow_depth_factor=100.0,
+        attribution="NOAA NCEP HRRR via AWS Open Data, public domain",
+        grid_shape=(1401, 3001), lat0=55.0, lon0=-135.0, dlat=-0.025, dlon=0.025,
+        domain=(-135.0, 20.0, -60.0, 55.0), keep_runs=2,
     ),
 }
 
