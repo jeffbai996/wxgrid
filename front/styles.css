@@ -128,15 +128,21 @@ button { font: inherit; color: inherit; }
 #models button .grid { font: 600 10px var(--font-display); font-style: normal; margin-left: 3px; opacity: .65; letter-spacing: 0; }
 /* the badge pads INSIDE its own clipped box: an outside margin survived
    the collapse and left the pill elongated by a ghost gap (2026-08-21) */
+/* Desktop keeps the altitude badge; a phone shows it for a beat and folds
+   it away (Jeff 2026-08-21). The padding lives INSIDE the clipped box —
+   an outside margin survives the collapse as a ghost gap. */
 #levels button .level-alt { font: 600 9px var(--font-display); font-style: normal; padding-left: 3px; opacity: .65; letter-spacing: 0;
-  display: inline-block; overflow: hidden; vertical-align: baseline; max-width: 0; animation: level-peek 3s ease forwards; }
-@keyframes level-peek {
-  0%   { max-width: 0;    opacity: 0; }
-  12%  { max-width: 64px; opacity: .65; }
-  78%  { max-width: 64px; opacity: .65; }
-  100% { max-width: 0;    opacity: 0; }
+  display: inline-block; overflow: hidden; vertical-align: baseline; }
+@media (max-width: 820px) {
+  #levels button .level-alt { max-width: 0; opacity: 0; animation: level-peek 3s ease forwards; }
+  @keyframes level-peek {
+    0%   { max-width: 0;    opacity: 0;   padding-left: 0; }
+    12%  { max-width: 64px; opacity: .65; padding-left: 3px; }
+    78%  { max-width: 64px; opacity: .65; padding-left: 3px; }
+    100% { max-width: 0;    opacity: 0;   padding-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { #levels button .level-alt { animation: none; } }
 }
-@media (prefers-reduced-motion: reduce) { #levels button .level-alt { animation: none; } }
 #models .model-child { max-width: 0; min-width: 0; overflow: hidden; opacity: 0; padding-left: 0; padding-right: 0;
   margin-left: -2px; pointer-events: none; transform: translateX(-7px) scale(.92); }
 #models .model-child.open { max-width: 110px; opacity: 1; padding-left: 11px; padding-right: 11px; margin-left: 0;

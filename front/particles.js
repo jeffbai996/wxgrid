@@ -15,7 +15,7 @@
 
   const TAU = Math.PI * 2;
   const MAX_STEP_DEG = 1.5;      // per frame, per axis
-  const MAX_STEP_PX = 2.5;       // pole-on globe views must not amplify one step (4.0 still read as a sprint at 80°N)
+  const MAX_STEP_PX = 1.8;       // the universal speed governor: ~1.2× a brisk mid-latitude flow, poles pinned to it
 
   class WindLayer {
     constructor(map, canvas) {
@@ -244,8 +244,9 @@
       // At a pole the meridians and their trajectories converge into the same
       // few pixels. Fewer particles there preserves motion without turning
       // the cap into a black starburst.
-      const polarQuiet = this._seedZoom < 3.5 && this._seedLat > 65 ? 0.4 : 1.0;
-      const n = Math.max(0, Math.min(9800, Math.round(base * this.density * 0.014 * polarQuiet)));
+      // No polar thinning: the 0.4 factor read as the wind dying at 65°N
+      // (Jeff 2026-08-21). The px-per-frame governor handles the pole now.
+      const n = Math.max(0, Math.min(9800, Math.round(base * this.density * 0.014)));
       this.particles = new Array(n);
       for (let i = 0; i < n; i++) this.particles[i] = this.spawn(b, true);
       this.wipe();

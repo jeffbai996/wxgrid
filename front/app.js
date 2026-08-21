@@ -468,6 +468,14 @@
       el._segRo = new ResizeObserver(() => el._segPlace && el._segPlace());
       el._segRo.observe(el);
     }
+    // The altitude badge grows and folds by animation, and the cursor plate
+    // measured mid-peek kept the wide width forever — the "elongated pill"
+    // (Jeff 2026-08-21, twice). Re-place at both ends of any child animation.
+    if (!el._segAnim) {
+      el._segAnim = true;
+      el.addEventListener("animationstart", () => requestAnimationFrame(() => el._segPlace && el._segPlace()));
+      el.addEventListener("animationend", () => el._segPlace && el._segPlace());
+    }
     if (prior && prior.width) {
       const box = el.getBoundingClientRect();
       cursor.style.width = `${prior.width}px`;

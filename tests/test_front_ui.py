@@ -26,7 +26,10 @@ def test_particles_settle_on_real_cold_boot_lifecycle_and_bound_polar_steps():
     assert "MAX_STEP_PX" in source and "screenStep > MAX_STEP_PX" in source
     assert "this.map.unproject([x, y])" in source
     assert "nlat > 89.99 || nlat < -89.99" in source
-    assert "polarQuiet" in source and "this._seedLat > 65" in source
+    # polarQuiet (0.4 density above 65N) was removed 2026-08-21 on Jeff's
+    # order - the thinning read as the wind dying at the pole. The px
+    # governor asserted above is the polar control now.
+    assert "this._seedLat > 65" in source
     assert "polarView ? 0.12 : 0.06" in source
 
 
