@@ -69,17 +69,32 @@
     resize() {
       // Never SKIP a resize: a return here left the canvas at its old size
       // and the particles painting one corner of the map (2026-08-19). While
-      // the page is pinch-zoomed, defer — and catch up the moment it ends.
+      // the page is actively pinch-zooming, defer — but "settled" means the
+      // scale STOPPED MOVING, not "returned to exactly 1": iOS parks at 1.03
+      // forever (documented at the card-height fix in app.js), and waiting
+      // for 1.0 deferred this resize for the life of the page. That was the
+      // invisible-particles boot: a parked pinch meant the canvas was never
+      // sized at all, and every later cure re-entered the same wait
+      // (Jeff 2026-08-20, three screenshots). The poll therefore calls
+      // _apply() directly — going through resize() again would re-defer.
       if (window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.02) {
         if (!this._pinchWait) {
+          let last = window.visualViewport.scale, stable = 0;
           this._pinchWait = setInterval(() => {
-            if (Math.abs(window.visualViewport.scale - 1) <= 0.02) {
-              clearInterval(this._pinchWait); this._pinchWait = null; this.resize();
+            const sc = window.visualViewport.scale;
+            if (Math.abs(sc - last) < 0.001) stable++; else stable = 0;
+            last = sc;
+            if (Math.abs(sc - 1) <= 0.02 || stable >= 2) {
+              clearInterval(this._pinchWait); this._pinchWait = null; this._apply();
             }
           }, 300);
         }
         return;
       }
+      this._apply();
+    }
+
+    _apply() {
       const w = this.map.getContainer().clientWidth, h = this.map.getContainer().clientHeight;
       this.dpr = Math.min(window.devicePixelRatio || 1, 2);   // page zoom moves it; never trust the boot value
       this.canvas.width = Math.round(w * this.dpr);
