@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+import os
 import numpy as np
 
 from wxgrid.config import GRID_LAT_N, GRID_LON_N, GRID_RES
@@ -222,6 +223,13 @@ def iter_fields(path: str | Path, short_name: str | None = None,
         while True:
             gid = eccodes.codes_grib_new_from_file(fh)
             if gid is None:
+                # A decoded GRIB is never read again (the ingest deletes it),
+                # so hand its pages back instead of letting a 6 GB run push
+                # every other service's working set out of the page cache.
+                try:
+                    os.posix_fadvise(fh.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+                except (AttributeError, OSError):
+                    pass
                 return
             try:
                 short = short_name or eccodes.codes_get(gid, "shortName")

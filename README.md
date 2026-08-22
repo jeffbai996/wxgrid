@@ -255,8 +255,9 @@ uvicorn wxgrid.api:app --port 8097       # http://127.0.0.1:8097/
 Production: `deploy/wxgrid.service` (API) + `deploy/wxgrid-ingest.timer`
 (hourly; a run already in the store is skipped, so it costs one HEAD per
 model when nothing is new). Tailnet: `tailscale serve --https=8464 http://127.0.0.1:8097`.
-The ingest paces its own writes (`WXGRID_WRITE_MBPS`, default 60) so a
-run lands over minutes rather than as one burst the API's reads queue
+The ingest paces its own writes (`WXGRID_WRITE_MBPS`, default 60) and its
+downloads (`WXGRID_DOWNLOAD_MBPS`, default 20) so a run lands over minutes
+rather than as one burst the API's reads and the box's other traffic queue
 behind — on a shared disk a cold point read during ingest once waited 35 s.
 `IOWeight`/`IOWriteBandwidthMax` on the unit only work where the `io`
 cgroup controller is delegated to the user manager (it is not, by default,
@@ -393,8 +394,9 @@ lifts) degrade quietly.
 Short version; the commit log is the long one.
 
 - **2026-08-22** — the store halves: float16 with stored offsets for every
-  field, and the ingest gets a block-level write cap so the API never queues
-  behind it. Cyclone glyph redrawn, hero re-shot.
+  field; the ingest paces its writes and downloads, reads each variable once
+  when building the point cube (it was thirty times), and hands decoded GRIB
+  pages back to the kernel. Cyclone glyph redrawn, hero re-shot.
 - **2026-08-21** — the globe (MapLibre v5, auto-flattens as you zoom in).
   HRDPS 2.5 km + HRRR 3 km as real regional models. Tropical cyclones get
   basin-correct categories, a proper card, and a chip on the point card when
