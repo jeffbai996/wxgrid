@@ -64,7 +64,7 @@
           layout: { "text-field": ["get", "label"], "text-size": 21, "text-font": ["Noto Sans Regular"], "text-allow-overlap": true },
           paint: { "text-color": ["match", ["get", "kind"], "H", "#6ea8ff", "#ff6a5e"], "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1.6 } });
       }
-    } catch (e) { WX.fn.toast("No isolines for this layer.", 4000, "error"); }
+    } catch (e) { WX.fn.toast("No isolines for this layer", 4000, "error"); }
   }
   // ── satellite imagery base ────────────────────────────────────────────
   // Not a weather overlay: a ground truth to put UNDER the field. Vector
@@ -165,7 +165,7 @@
         M().addLayer({ id: "avy-line", type: "line", source: "avy", paint: { "line-color": ["get", "color"], "line-width": 1.2, "line-opacity": 0.8 } }, WX.fn.firstSymbolId());
       }
       const rated = gj.features.filter((x) => x.properties.danger_level > 0).length;
-      WX.fn.toast(rated ? `Avalanche regions: ${rated} with a current rating` : "Avalanche regions loaded — off season, no current ratings (forecasts resume ~November)", 5000);
+      WX.fn.toast(rated ? `${rated} avalanche regions rated` : "Avalanche regions · off season, no ratings", 5000);
     } catch (e) { WX.fn.toast("Avalanche layer unavailable", 4000, "error"); state.avy = false; $("#avy-toggle").classList.remove("on"); }
   }
   function clearAvy() { ["avy-line", "avy-fill"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("avy")) M().removeSource("avy"); }
@@ -280,7 +280,7 @@
           tiles: ["https://geo.weather.gc.ca/geomet?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ALERTS&CRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=true&STYLES="] });
         M().addLayer({ id: "ec-alerts", type: "raster", source: "ec-alerts", paint: { "raster-opacity": 0.55, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
       }
-      WX.fn.toast(`${gj.features.length} NWS alerts, plus the Environment Canada layer.`, 4000);
+      WX.fn.toast(`${gj.features.length} NWS alerts + Environment Canada`, 4000);
     } catch (e) { WX.fn.toast("Alerts unavailable", 4000, "error"); state.alerts = false; $("#alerts-toggle").classList.remove("on"); }
   }
   function clearAlerts() { ["alerts-line", "alerts-fill", "ec-alerts"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); ["alerts", "ec-alerts"].forEach((sname) => M().getSource(sname) && M().removeSource(sname)); }
@@ -304,11 +304,11 @@
         // colour (Jeff 2026-08-22: the yellow circle was a placeholder).
         for (const col of STORM_COLORS) if (!M().hasImage(`cyc-${col}`)) M().addImage(`cyc-${col}`, cycloneIcon(col), { pixelRatio: 2 });
         M().addLayer({ id: "storm-now", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "icon-image": ["concat", "cyc-", ["coalesce", ["get", "category_color"], "#ef786f"]], "icon-size": 0.6, "icon-allow-overlap": true, "icon-ignore-placement": true } });
+          layout: { "icon-image": ["concat", "cyc-", ["coalesce", ["get", "category_color"], "#ef786f"]], "icon-size": 0.68, "icon-allow-overlap": true, "icon-ignore-placement": true } });
         // the category lives INSIDE the eye — "2" in the dark centre, "TD"
         // in the blue one — and the sub-label carries the motion instead
         M().addLayer({ id: "storm-eye", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 8, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true, "text-ignore-placement": true },
+          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 6.5, "text-letter-spacing": -0.04, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true, "text-ignore-placement": true },
           paint: { "text-color": "#fff" } });
         M().addLayer({ id: "storm-lbl", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
           layout: { "text-field": ["concat", ["get", "class"], " ", ["get", "name"], "\n", ["coalesce", ["get", "moving_short"], ""]], "text-size": 11.5, "text-offset": [0, 1.4], "text-anchor": "top", "text-font": ["Noto Sans Bold"] },
@@ -319,7 +319,7 @@
         M().on("mouseleave", "storm-now", () => { M().getCanvas().style.cursor = ""; });
       }
       const names = (gj.storms || []).map((x) => `${x.class} ${x.name}`).join(", ");
-      WX.fn.toast(names ? `Tropical systems: ${names}` : "No tropical systems in the NHC, CPHC and JTWC feeds.", 5000);
+      WX.fn.toast(names ? `${gj.storms.length} tropical system${gj.storms.length === 1 ? "" : "s"} on the map` : "No tropical systems", 5000);
       if (gj.storms && gj.storms.length && !state.point) { const st = gj.storms[0]; const f = gj.features.find((x) => x.properties.kind === "current" && x.properties.id === st.id); if (f) M().flyTo({ center: f.geometry.coordinates, zoom: Math.max(3.5, Math.min(M().getZoom(), 5)), duration: 1200 }); }
     } catch (e) { WX.fn.toast("Storm feed unavailable", 4000, "error"); state.storms = false; $("#storms-toggle").classList.remove("on"); }
   }
@@ -446,7 +446,7 @@
     if (!picked) { try { picked = await rainviewerDirect(); } catch (e) { /* nothing left */ } }
     if (my !== radarReq || !state.radar) return;
     if (!picked) {
-      WX.fn.toast("No radar source answered.", 4500, "error");
+      WX.fn.toast("No radar source answered", 4500, "error");
       state.radar = false; $("#radar-toggle").classList.remove("on"); clearRadar();
       return;
     }
@@ -469,7 +469,7 @@
     const failed = (catalog && (catalog.sources || []).filter((s) => s.error).map((s) => s.id)) || [];
     if (!quiet) {
       const span = state.radarFrames.length ? Math.round((state.radarFrames[state.radarFrames.length - 1].time - state.radarFrames[0].time) / 60) : 0;
-      WX.fn.toast(`${picked.label}, ${picked.detail}. ${state.radarFrames.length} frames over ${span} min.`
+      WX.fn.toast(`${picked.label} · ${state.radarFrames.length} frames, ${span} min`
         + (failed.length ? ` (${failed.join(", ")} unavailable, fell back)` : ""), 5500);
     }
   }
@@ -548,14 +548,14 @@
     if (M().getSource("smoke")) return;
     M().addSource("smoke", { type: "raster", tileSize: 256, attribution: "Smoke/PM2.5: ECCC RAQDPS", tiles: [WMS("RAQDPS.SFC_PM2.5", "https://geo.weather.gc.ca/geomet")] });
     M().addLayer({ id: "smoke", type: "raster", source: "smoke", paint: { "raster-opacity": 0.6, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
-    toast("Smoke: surface PM2.5 forecast (ECCC RAQDPS), North America, latest model hour", 4500);
+    toast("Smoke · surface PM2.5, ECCC RAQDPS", 4500);
   }
   function clearSmoke() { if (M().getLayer("smoke")) M().removeLayer("smoke"); if (M().getSource("smoke")) M().removeSource("smoke"); }
   function loadFires() {
     if (M().getSource("fires")) return;
     M().addSource("fires", { type: "raster", tileSize: 256, attribution: "Hotspots: NRCan CWFIS", tiles: [WMS("public:hotspots_last24hrs", "https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms")] });
     M().addLayer({ id: "fires", type: "raster", source: "fires", paint: { "raster-opacity": 0.95, "raster-fade-duration": 0 } });
-    toast("Satellite hotspots, last 24 h. NRCan CWFIS, Canada and border states.", 4500);
+    toast("Hotspots, last 24 h · NRCan CWFIS", 4500);
   }
   function clearFires() { if (M().getLayer("fires")) M().removeLayer("fires"); if (M().getSource("fires")) M().removeSource("fires"); }
   async function loadQuakes() {
@@ -587,7 +587,7 @@
         M().on("mouseenter", "quakes", () => { M().getCanvas().style.cursor = "pointer"; });
         M().on("mouseleave", "quakes", () => { M().getCanvas().style.cursor = ""; });
       }
-      toast(`${gj.features.length} quakes M2.5 and up in the past day. USGS.`, 4000);
+      toast(`${gj.features.length} quakes M2.5+, 24 h · USGS`, 4000);
     } catch (e) { toast("USGS feed unavailable", 4000, "error"); }
   }
   // ── aerosol optical depth: MODIS Terra+Aqua combined, yesterday (NASA GIBS)
@@ -597,7 +597,7 @@
     M().addSource("aod", { type: "raster", tileSize: 256, maxzoom: 6, attribution: "Aerosol: NASA GIBS MODIS",
       tiles: [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Combined_Value_Added_AOD/default/${d}/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png`] });
     M().addLayer({ id: "aod", type: "raster", source: "aod", paint: { "raster-opacity": 0.75, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
-    toast(`Aerosol optical depth, MODIS, ${d}. Gaps are cloud, or no pass.`, 5000);
+    toast(`Aerosol depth · MODIS ${d}`, 5000);
   }
   function clearAod() { if (M().getLayer("aod")) M().removeLayer("aod"); if (M().getSource("aod")) M().removeSource("aod"); }
 
@@ -615,7 +615,7 @@
         M().addLayer({ id: "thunder", type: "symbol", source: "thunder", layout: { "icon-image": "bolt", "icon-size": ["interpolate", ["linear"], ["get", "cape"], 800, 0.55, 3000, 1.0], "icon-allow-overlap": true, "icon-ignore-placement": true },
                        paint: { "icon-opacity": 0.95 } });
       }
-    } catch (e) { if (my === thunderReq) toast("No thunder marks for this model.", 4000, "error"); }
+    } catch (e) { if (my === thunderReq) toast("No thunder marks for this model", 4000, "error"); }
   }
   // A yellow lightning bolt with a dark outline, drawn once into a canvas.
   // The hurricane symbol, tinted, with a dark eye the category text sits in.
@@ -627,10 +627,10 @@
     const S = 80, c = document.createElement("canvas"); c.width = S; c.height = S; const x = c.getContext("2d");
     const P = new Path2D(CYCLONE_PATH);
     // same mirror + tilt as CYCLONE_SVG in panes.js
-    x.translate(S / 2, S / 2); x.scale(S / 24, S / 24); x.rotate(-35 * Math.PI / 180); x.scale(-1, 1); x.translate(-12, -12);
+    x.translate(S / 2, S / 2); x.scale(S / 24, S / 24); x.rotate(55 * Math.PI / 180); x.scale(-1, 1); x.translate(-12, -12);
     x.lineJoin = "round"; x.lineWidth = 1.6; x.strokeStyle = "rgba(0,0,0,.7)"; x.stroke(P);
     x.fillStyle = color; x.fill(P);
-    x.beginPath(); x.arc(12, 12, 3.2, 0, Math.PI * 2); x.fillStyle = "#10131a"; x.fill();
+    x.beginPath(); x.arc(12, 12, 3.8, 0, Math.PI * 2); x.fillStyle = "#10131a"; x.fill();
     return x.getImageData(0, 0, S, S);
   }
   function boltIcon() {

@@ -49,7 +49,7 @@
       ["Pin this value", I.pin || I.point, () => WX.probe && WX.probe.pin(lngLat)],
       ["Cross-section from here", I.xs, () => { if (!WX.state.xsection) $("#xsection-toggle").click(); WX.xs.click(lngLat); }],
       ["Measure from here", I.ruler, () => { if (!WX.state.measure) $("#measure-toggle").click(); WX.ov.measureClick(lngLat); }],
-      ["Save this place", I.star, () => { WX.search.toggleFav(lngLat.lat, lon, WX.fmtCoords(lngLat.lat, lngLat.lng)); WX.fn.toast("Saved. Find it in the search box.", 3000); }],
+      ["Save this place", I.star, () => { WX.search.toggleFav(lngLat.lat, lon, WX.fmtCoords(lngLat.lat, lngLat.lng)); WX.fn.toast("Saved to search", 3000); }],
       ["Copy coordinates", I.copy, async () => { const t = `${lngLat.lat.toFixed(4)}, ${lon.toFixed(4)}`; try { await navigator.clipboard.writeText(t); WX.fn.toast("Copied " + t, 2500); } catch (e) { WX.fn.toast(t, 5000); } }],
       ["Centre the map here", I.centre, () => M().easeTo({ center: [lngLat.lng, lngLat.lat], duration: 500 })],
     ];

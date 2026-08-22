@@ -251,7 +251,7 @@
     const gustRow = s.gust ? dates.map((_, i) => { const v = s.gust[i]; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("") : "";
     const dirRow = dates.map((_, i) => cell(i, s.wdir && s.wdir[i] != null ? `<i class="dirarrow" style="${arrowRot(s.wdir[i])}"></i>` : "", "dir")).join("");
     const label = (t, u) => `<th class="lab">${t}${u ? `<small>${u}</small>` : ""}</th>`;
-    tape.innerHTML = `<table class="wtape"><thead><tr><th class="lab corner"></th>${dayRow}</tr></thead><tbody>
+    tape.innerHTML = `<table class="wtape${agg ? " agg" : ""}"><thead><tr><th class="lab corner"></th>${dayRow}</tr></thead><tbody>
       ${showHours ? `<tr class="r-hour">${label("Time")}${hourRow}</tr>` : ""}
       <tr class="r-icon">${label("")}${iconRow}</tr>
       <tr class="r-temp">${label(agg ? "Temp high / low" : "Temp", WX.units.tempUnit)}${tempRow}</tr>

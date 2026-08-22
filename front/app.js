@@ -196,9 +196,9 @@
     wirePanelResizers();
 
     catalog = await WX.api(`${API}/models?ts=${Date.now()}`);
-    if (catalog.static) toast(`Static demo, run ${catalog.static.built}Z. ${catalog.static.note}.`, 9000);
+    if (catalog.static) toast(`Static demo · run ${catalog.static.built}Z`, 9000);
     const withRuns = catalog.models.filter((m) => m.runs.length);
-    if (!withRuns.length) { toast("No model runs yet. Ingest is still running.", 8000); return; }
+    if (!withRuns.length) { toast("No model runs yet", 8000); return; }
     const pref = localStorage.getItem("wxgrid.model");
     state.model = (withRuns.find((m) => m.key === pref) || withRuns[0]).key;
     state.run = modelEntry().runs[0].run;
@@ -709,7 +709,7 @@
       $("#locate-btn").classList.add("on");
       navigator.geolocation.getCurrentPosition(
         (pos) => { $("#locate-btn").classList.remove("on"); map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: Math.max(map.getZoom(), 8), duration: 900 }); openPoint(pos.coords.latitude, pos.coords.longitude); },
-        () => { $("#locate-btn").classList.remove("on"); toast("Location unavailable. Allow it for this site and try again.", 5000, "error"); },
+        () => { $("#locate-btn").classList.remove("on"); toast("Location blocked for this site", 5000, "error"); },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     };
     $("#locate-btn").onclick = goToMe;
@@ -757,7 +757,7 @@
     }
     $("#theme-toggle").onclick = () => { applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light"); $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme; };
     $("#route-toggle").onclick = () => {
-      if (!WX.route) { toast("Route forecast is not in this build.", 4000, "error"); return; }
+      if (!WX.route) { toast("Route forecast is not in this build", 4000, "error"); return; }
       const on = !state.route; state.route = on; $("#route-toggle").classList.toggle("on", on);
       if (on) WX.route.start(); else WX.route.stop();
     };
@@ -773,7 +773,7 @@
     $("#locate").onclick = goToMe;
     $("#point-close").onclick = closePoint;
     wireSheet();
-    $("#point-fav").onclick = () => { if (!state.point) return; const on = WX.search.toggleFav(state.point.lat, state.point.lon, state.point.name); $("#point-fav").classList.toggle("on", on); $("#point-fav").title = on ? "Saved place" : "Save place"; toast(on ? "Saved. Find it in the search box." : "Removed", 2500); };
+    $("#point-fav").onclick = () => { if (!state.point) return; const on = WX.search.toggleFav(state.point.lat, state.point.lon, state.point.name); $("#point-fav").classList.toggle("on", on); $("#point-fav").title = on ? "Saved place" : "Save place"; toast(on ? "Saved to search" : "Removed", 2500); };
     WX.search.wireSearch();
     const toggleMenu = (b) => { const m = b.parentElement; const open = m.classList.contains("open"); $$(".menu.open").forEach((x) => x.classList.remove("open")); if (!open) m.classList.add("open"); };
     // iOS Safari was swallowing taps on these two buttons (the only top-bar
@@ -1466,6 +1466,8 @@
   // ── misc ──────────────────────────────────────────────────────────────
   let toastTimer = null;
   function toast(msg, ms = 3000, kind = "", onTap = null) {
+    // One line, one fact. Anything longer is a card, not a toast.
+    msg = String(msg).replace(/\.\s*$/, ""); if (msg.length > 72) msg = msg.slice(0, 70).replace(/\s+\S*$/, "") + "…";
     const t = $("#toast"); t.textContent = msg; t.hidden = false; t.className = kind + (onTap ? " tappable" : "");
     t.onclick = onTap ? () => { t.hidden = true; onTap(); } : null;
     clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), ms);

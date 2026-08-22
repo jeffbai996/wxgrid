@@ -96,7 +96,7 @@
     }
     if (my !== reqSeq) return;
     if (!catalog.run || !catalog.steps || !catalog.steps.length) {
-      WX.fn.toast("No air-quality data cached. Run wxgrid.cams --refresh.", 5000, "error");
+      WX.fn.toast("No air-quality data cached", 5000, "error");
       return;
     }
     if (!catalog.vars || !catalog.vars[varName]) {

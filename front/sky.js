@@ -34,7 +34,7 @@
       meta = await WX.api(U(`${API}/radar/aurora.json`));
     } catch (e) {
       if (my !== auroraReq) return;
-      toast("Aurora nowcast unavailable. SWPC did not answer.", 4500, "error");
+      toast("Aurora nowcast unavailable", 4500, "error");
       state.aurora = false;
       const b = $("#aurora-toggle"); if (b) b.classList.remove("on");
       return;
@@ -62,7 +62,7 @@
     auroraTimer = setInterval(() => { if (state.aurora) loadAurora(true); else clearInterval(auroraTimer); }, 5 * 60 * 1000);
     if (!quiet) {
       const kp = meta.kp ? ` Kp ${fmtKp(meta.kp)}.` : "";
-      toast(`OVATION nowcast for ${hhmm(meta.forecast_time)}Z. Peak ${meta.max_pct}% chance.${kp}`
+      toast(`Aurora ${hhmm(meta.forecast_time)}Z · peak ${meta.max_pct}%${kp}`
             + ` Below ${meta.min_pct}% is drawn as nothing.`, 6000);
     }
   }

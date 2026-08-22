@@ -557,22 +557,24 @@ table.bandtape .nil { color: var(--line-strong); }
 @media (max-width: 820px) { .kv { grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); } }
 .note { font-size: 11px; color: var(--dim); margin-top: 6px; line-height: 1.4; }
 
-/* Notifications: the same surface and the same type as every other panel,
-   with a coloured edge doing the work a second background colour used to. */
+/* Notifications: one line in a pill, a dot for the state. Short by rule —
+   toast() trims anything over 72 characters. */
 #toast {
   position: absolute; z-index: 17; top: calc(var(--top-h) + 10px); left: 50%; transform: translateX(-50%);
-  max-width: min(520px, calc(100vw - 32px)); padding: 10px 15px 11px;
-  background: var(--panel-solid); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent);
-  border-radius: 12px; box-shadow: 0 14px 40px rgba(0,0,0,.45);
-  font: 540 12.5px/1.45 var(--font-body); color: var(--fg); letter-spacing: -.004em;
+  display: inline-flex; align-items: center; gap: 9px; max-width: calc(100vw - 32px); padding: 8px 14px 8px 12px;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  font: 600 12px/1.2 var(--font-body); color: var(--fg); letter-spacing: -.004em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   animation: toast-in .18s cubic-bezier(.2,.7,.3,1);
 }
+#toast::before { content: ""; flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 @keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) { #toast { animation: none; } }
-#toast.error { border-left-color: var(--bad); color: var(--fg); }
-#toast.tappable { cursor: pointer; border-left-color: var(--accent); }
+#toast.error::before { background: var(--bad); }
+#toast.tappable { cursor: pointer; }
 #toast.tappable:hover { border-color: var(--accent); }
-:root[data-theme="light"] #toast { box-shadow: 0 14px 40px rgba(20,30,50,.18); }
+:root[data-theme="light"] #toast { box-shadow: 0 8px 24px rgba(20,30,50,.14); }
 #fatal { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0,0,0,.55); backdrop-filter: blur(6px); padding: 20px; }
 .fatal-card { width: min(440px, 100%); background: var(--panel-solid); border: 1px solid rgba(239,120,111,.5); border-radius: var(--radius); padding: 18px 20px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
 .fatal-head { display: flex; align-items: center; gap: 10px; font: 800 16px var(--font-display); color: var(--fg); }
@@ -1013,7 +1015,12 @@ table.wtape tr.r-hour td.now .hr, table.wtape tbody tr:first-child td.now .hr {
 table.wtape tr.r-hour td.now.on .hr { box-shadow: none; }
 table.wtape th.day { padding-top: 3px; }
 /* the cold end of an aggregated column, beside the warm one */
-table.wtape .lo { color: var(--fg-2); font-weight: 600; font-size: .82em; margin-left: 4px; }
+table.wtape .lo { color: var(--fg-2); font-weight: 600; font-size: .82em; margin-left: 5px; }
+/* High/low pairs need a wider column and air at the edges, or "25° 25°"
+   runs into the next cell's "25°" (Jeff 2026-08-22). */
+table.wtape.agg td { min-width: 60px; padding: 0 5px; }
+table.wtape.agg tr.r-temp td, table.wtape.agg tr.r-feels td { letter-spacing: -.01em; }
+@media (max-width: 820px) { table.wtape.agg td { min-width: 60px; } }
 
 /* ensemble spread pane */
 .spread-vars { display: flex; margin: 8px 0 6px; }

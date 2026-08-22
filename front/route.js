@@ -134,7 +134,7 @@
       <div class="wxr-readout"></div>`;
     document.body.appendChild(el);
     el.querySelector(".wxr-x").onclick = stop;
-    el.querySelector(".wxr-clear").onclick = () => { clear(); WX.fn.toast("Route cleared. Tap the map to start again.", 3000); };
+    el.querySelector(".wxr-clear").onclick = () => { clear(); WX.fn.toast("Route cleared", 3000); };
     const dep = el.querySelector(".wxr-depart");
     dep.value = localISO(new Date(Math.ceil(Date.now() / 9e5) * 9e5));
     dep.onchange = () => { departISO = dep.value ? new Date(dep.value).toISOString() : null; load(); };
@@ -262,7 +262,7 @@
     }
   }
   function removePoint(i) {
-    if (pts.length <= 2) { WX.fn.toast("A route needs two points. Clear to start over.", 3000); return; }
+    if (pts.length <= 2) { WX.fn.toast("A route needs two points", 3000); return; }
     pts.splice(i, 1); load();
   }
 
@@ -568,7 +568,7 @@
     el.querySelector(".wxr-depart").value = localISO(new Date(departISO));
     styleWatch = () => { paintPath(); paintSamples(); paintCursor(); };
     M().on("styledata", styleWatch);
-    WX.fn.toast("Tap the map to drop points along the route.", 4500);
+    WX.fn.toast("Tap the map to drop route points", 4500);
     render();
     if (pts.length) load();          // a route closed and reopened comes back
   }
@@ -658,7 +658,7 @@
               // A stale tab running yesterday's scripts against today's API is
               // the one bug class users cannot see; the toast is the reload,
               // not advice to perform one.
-              WX.fn.toast("wxgrid updated — tap to reload", 30000, "", () => location.reload());
+              WX.fn.toast("Update ready · tap to reload", 30000, "", () => location.reload());
             }
           });
         });
