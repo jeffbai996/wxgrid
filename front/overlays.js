@@ -304,11 +304,11 @@
         // colour (Jeff 2026-08-22: the yellow circle was a placeholder).
         for (const col of STORM_COLORS) if (!M().hasImage(`cyc-${col}`)) M().addImage(`cyc-${col}`, cycloneIcon(col), { pixelRatio: 2 });
         M().addLayer({ id: "storm-now", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "icon-image": ["concat", "cyc-", ["coalesce", ["get", "category_color"], "#ef786f"]], "icon-size": 1, "icon-allow-overlap": true, "icon-ignore-placement": true } });
+          layout: { "icon-image": ["concat", "cyc-", ["coalesce", ["get", "category_color"], "#ef786f"]], "icon-size": 1.15, "icon-allow-overlap": true, "icon-ignore-placement": true } });
         // the category lives INSIDE the eye — "2" in the dark centre, "TD"
         // in the blue one — and the sub-label carries the motion instead
         M().addLayer({ id: "storm-eye", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 7.5, "text-letter-spacing": -0.04, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true, "text-ignore-placement": true },
+          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 8.5, "text-letter-spacing": -0.04, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true, "text-ignore-placement": true },
           paint: { "text-color": "#fff" } });
         M().addLayer({ id: "storm-lbl", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
           // name in bold, motion a notch smaller in regular — two rows, two
@@ -339,8 +339,10 @@
     const esc_ = (x) => String(x == null ? "" : x).replace(/</g, "&lt;");
     if (stormPopup) stormPopup.remove();
     // No × in the corner: a tap elsewhere closes it, and a small "close"
-    // sits bottom-right for the deliberate (Jeff 2026-08-22).
-    stormPopup = new maplibregl.Popup({ className: "quake-pop storm-pop", closeButton: false, maxWidth: "300px", offset: 12 })
+    // sits bottom-right for the deliberate (Jeff 2026-08-22). focusAfterOpen
+    // off: MapLibre would focus the advisory link and its focus ring read as
+    // a pill around the link.
+    stormPopup = new maplibregl.Popup({ className: "quake-pop storm-pop", closeButton: false, focusAfterOpen: false, maxWidth: "320px", offset: 12 })
       .setLngLat([slon, slat])
       .setHTML(`<div class="sp-head"><i class="sp-ico" style="color:${p.category_color || "#ef786f"}">${WX.CYCLONE_SVG || ""}</i>
           <div class="sp-title"><b>${esc_(p.class)} ${esc_(p.name)}</b>

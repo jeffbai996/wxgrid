@@ -206,6 +206,9 @@
     if (!runEntry().layers.includes(state.layer)) state.layer = runEntry().layers[0];
 
     if (hash) { if (hash.model && catalog.models.some((m) => m.key === hash.model && m.runs.length)) state.model = hash.model; if (hash.layer && LAYERS.includes(hash.layer)) state.layer = hash.layer; state.level = hash.level || 0; state.run = modelEntry().runs[0].run; if (hash.step != null) state.stepIdx = Math.min(hash.step, steps().length - 1); }
+    // A fresh load opens at the current hour, whatever the link said — the
+    // map should show now, not the run's first frame (Jeff 2026-08-22).
+    state.stepIdx = currentStepIdx();
     // The controls and forecast table only need the local catalog. Painting
     // them behind MapLibre's `load` event made a cold start wait for the
     // remote basemap's tiles, glyphs and sprites before showing local data.
@@ -749,7 +752,10 @@
     $("#terrain-toggle").classList.toggle("on", state.terrain); if (state.terrain) WX.ov.loadTerrain();
     $("#night-toggle").onclick = () => { state.night = !state.night; $("#night-toggle").classList.toggle("on", state.night); if (state.night) WX.ov.updateNight(); else WX.ov.clearNight(); };
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
-    $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms); if (state.storms) WX.ov.loadStorms(); else WX.ov.clearStorms(); };
+    $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms);
+      // storm positions are "now"; the particles must be too, or the wind
+      // field and the eye disagree on where the storm is
+      if (state.storms) { if (state.stepIdx !== currentStepIdx()) setStep(currentStepIdx()); WX.ov.loadStorms(); } else WX.ov.clearStorms(); };
     $("#sat-toggle").onclick = () => { state.sat = !state.sat; $("#sat-toggle").classList.toggle("on", state.sat); if (state.sat) { clearOtherCover("sat"); WX.ov.loadSat(); } else WX.ov.clearSat(); };
     for (const [k, load, clear] of [["smoke", "loadSmoke", "clearSmoke"], ["quakes", "loadQuakes", "clearQuakes"], ["aod", "loadAod", "clearAod"], ["thunder", "loadThunder", "clearThunder"]]) {
       $(`#${k}-toggle`).onclick = () => { state[k] = !state[k]; $(`#${k}-toggle`).classList.toggle("on", state[k]);

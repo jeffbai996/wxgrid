@@ -1316,8 +1316,11 @@ def storm_category(kt, lat, lon) -> dict:
                 return {"badge": badge, "label": label, "color": col}
         return {"badge": "D", "label": "Depression", "color": "#9fd0ff"}
     if 100 <= lon <= 180:                   # Western Pacific (JTWC convention)
-        if kt >= 130: return {"badge": "STY", "label": "Super Typhoon", "color": "#ff5b45"}
-        if kt >= 64: return {"badge": "TY", "label": "Typhoon", "color": "#ffa23c"}
+        # typhoons carry no number of their own; the Saffir-Simpson
+        # equivalent is what people reach for, so the label says it
+        ss = next((n for lo, n in ((137, 5), (113, 4), (96, 3), (83, 2), (64, 1)) if kt >= lo), None)
+        if kt >= 130: return {"badge": "STY", "label": f"Super Typhoon · Category {ss} Equivalent", "color": "#ff5b45"}
+        if kt >= 64: return {"badge": "TY", "label": f"Typhoon · Category {ss} Equivalent", "color": "#ffa23c" if ss < 3 else "#ff7a3d"}
         if kt >= 34: return {"badge": "TS", "label": "Tropical Storm", "color": "#ffe873"}
         return {"badge": "TD", "label": "Tropical Depression", "color": "#9fd0ff"}
     # Atlantic / Eastern & Central Pacific: Saffir-Simpson
@@ -1487,7 +1490,7 @@ def storms() -> dict:
                     log.info("nhc %s %s: %s", s.get("id"), kind, exc)
         jf, jm = _jtwc_storms()
         return {"type": "FeatureCollection", "features": feats + jf, "storms": meta + jm}
-    return cache.get("storms-v6", 900, fetch)
+    return cache.get("storms-v7", 900, fetch)
 
 
 # ── air quality / UV (Open-Meteo) ────────────────────────────────────────

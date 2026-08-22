@@ -1081,8 +1081,8 @@ table.wtape.agg tr.r-temp td, table.wtape.agg tr.r-feels td { letter-spacing: -.
 
 /* With no pin the tape reads the map centre; this hairline cross says where
    that is. It leaves when a point card is open — the marker owns that job. */
-#centre-mark { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px;
-  margin: -8px 0 0 -8px; z-index: 4; pointer-events: none; opacity: .5; display: none; }
+#centre-mark { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px;
+  margin: -6px 0 0 -6px; z-index: 4; pointer-events: none; opacity: .5; display: none; }
 #centre-mark::before, #centre-mark::after { content: ""; position: absolute; background: var(--fg);
   box-shadow: 0 0 3px rgba(0,0,0,.85); }
 #centre-mark::before { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-.5px); }
@@ -1111,9 +1111,13 @@ body:has(#point[hidden]) #centre-mark { display: block; }
 /* the cyclone block lives in the wind box's spare right half: UI type,
    category colour, tap for the storm view */
 .wind-readout .wind-storm { display: none; }
-.wind-readout .wind-storm.on { display: inline-flex; align-items: center; gap: 8px; justify-self: end;
+.wind-readout .wind-storm.on { display: inline-flex; align-items: center; gap: 9px; justify-self: end;
   cursor: pointer; padding: 2px 4px 2px 8px; border-left: 1px solid var(--line); }
+/* icon above its category pill, the way the storm card wears it */
+.wind-readout .wind-storm .ws-ico { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .wind-readout .wind-storm svg { width: 22px; height: 22px; flex: 0 0 22px; }
+.wind-readout .wind-storm .ws-cat { font: 800 8px var(--font-display); letter-spacing: .05em; padding: 1px 5px; border-radius: 5px;
+  color: var(--cat); background: color-mix(in srgb, var(--cat) 18%, transparent); white-space: nowrap; }
 .wind-readout .wind-storm .ws-txt { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
 .wind-readout .wind-storm small { font: 700 8px var(--font-display); letter-spacing: .08em; opacity: .85; }
 .wind-readout .wind-storm b { font: 700 13.5px var(--font-display); color: var(--fg); }
@@ -1124,7 +1128,7 @@ body:has(#point[hidden]) #centre-mark { display: block; }
 .storm-pop .sp-ico svg { width: 30px; height: 30px; }
 .storm-pop .sp-title { min-width: 0; }
 .storm-pop .sp-title b { display: block; font: 800 19px/1.1 var(--font-display); letter-spacing: -.01em; }
-.storm-pop .sp-sub { display: flex; align-items: center; gap: 6px; margin-top: 3px; font: 600 11px var(--font-display); color: var(--fg-2); }
+.storm-pop .sp-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 3px; font: 600 11px var(--font-display); color: var(--fg-2); }
 .storm-pop .sp-ago { color: var(--dim); }
 .storm-pop .sp-ago::before { content: "·"; margin-right: 6px; }
 .storm-pop .sp-cat { display: inline-block; font: 800 9px var(--font-display); letter-spacing: .05em;

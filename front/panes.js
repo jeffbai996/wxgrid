@@ -750,7 +750,9 @@
       el.classList.add("on");
       el.style.color = p.category_color || "#ef786f";
       el.title = `${p.category_label || ""} — tap for the storm view`;
-      el.innerHTML = `${CYCLONE_SVG}<span class="ws-txt"><small>${esc((p.class || "").toUpperCase())}${p.category ? ` · ${esc(p.category)}` : ""}</small><b>${esc(p.name || "")}</b><em>${Math.round(best.km / 10) * 10} km ${dir}</em></span>`;
+      // distance in the user's unit — aviation profile reads nm, not km
+      const d = W().units.dist(Math.round(best.km / 10) * 10, 0);
+      el.innerHTML = `<span class="ws-ico">${CYCLONE_SVG}${p.category ? `<span class="ws-cat" style="--cat:${p.category_color || "#ef786f"}">${esc(p.category)}</span>` : ""}</span><span class="ws-txt"><small>${esc((p.class || "").toUpperCase())}</small><b>${esc(p.name || "")}</b><em>${d.txt} ${dir}</em></span>`;
       el.onclick = () => {
         if (!W().state.storms) document.getElementById("storms-toggle").click();
         W().map.flyTo({ center: [best.slon, best.slat], zoom: Math.max(4.5, W().map.getZoom()), duration: 1400 });
