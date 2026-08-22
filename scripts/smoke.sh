@@ -14,11 +14,10 @@ P=$(curl -sf --max-time 60 "$BASE/api/point?lat=$LAT&lon=$LON&model=$MODEL&run=$
 python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d.get('available') and d['series'], d" "$P" || fail "point body"
 curl -sf --max-time 60 -o /dev/null "$BASE/api/layer/$MODEL/$RUN/$STEP/wind.png" || fail "/api/layer"
 # the card stream: the first line must be the point and must not carry an error
-S=$(curl -sN --max-time 60 "$BASE/api/card?lat=$LAT&lon=$LON&model=$MODEL&run=$RUN" | head -c 20000)
+S=$(curl -sN --max-time 60 "$BASE/api/card?lat=$LAT&lon=$LON&model=$MODEL&run=$RUN" | head -n 1)
 python3 - "$S" <<'PY' || fail "card stream"
 import json, sys
-lines = [l for l in sys.argv[1].splitlines() if l.strip()]
-pt = [json.loads(l) for l in lines if l.startswith("{") and '"kind": "point"' in l or '"kind":"point"' in l]
-assert pt and not pt[0].get("error"), (pt[:1] or lines[:2])
+first = json.loads(sys.argv[1])
+assert first.get("kind") == "point" and "error" not in first and first["data"]["available"], first.get("error", first.get("kind"))
 PY
 echo "SMOKE OK: $MODEL $RUN point+layer+card"
