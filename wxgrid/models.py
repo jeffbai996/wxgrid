@@ -194,6 +194,7 @@ MODELS: dict[str, Model] = {
     ),
     "aigfs": Model(
         key="aigfs", label="NOAA AI-GFS", short="AI-GFS", grid="25km", source="aws-aigfs", steps=STEPS_AI,
+        keep_runs=3,   # 16-day runs four times a day: three is a day of history (Jeff 2026-08-22)
         # eccodes gives these the same shortNames as GFS — same GRIB2 tables.
         # No cloud, CAPE, gust or snow in this model's output: the catalog
         # advertises layers per run, so the UI drops them on its own.
