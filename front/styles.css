@@ -206,9 +206,11 @@ select.run {
 #side { position: absolute; right: 12px; top: calc(var(--top-h) + 6px); z-index: 5; display: flex; align-items: stretch; gap: 0;
         max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 46px); }
 /* with the card open the agency badge moves under the rail, so the rail
-   has to stop above it — 40 px of badge, 12 above it, 12 below it: the same
-   gap as badge-to-tape (Jeff 2026-08-22, "make em equi-width") */
-body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 70px); }
+   has to stop above it — 40 px of badge, 10 below it, ~14 above. The
+   safe-area inset is NOT added here: the tape already sits above it, so
+   adding it again opened a 30 px gap on an iPad in landscape while the
+   desktop showed 12 (Jeff 2026-08-22). */
+body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 76px); }
 #side:hover, #side:focus-within { z-index: 12; }
 /* desktop: pinned to the bottom of the strip. phone: floating, bottom right. */
 .locate-btn { position: absolute; left: 12px; z-index: 5; width: 40px; height: 40px; border-radius: 12px;
@@ -438,7 +440,7 @@ input#step { width: 100%; accent-color: var(--accent); height: 14px; margin: 2px
 /* ── point card ──────────────────────────────────────────────────────── */
 #point {
   position: absolute; z-index: 6; left: 62px; top: calc(var(--top-h) + 8px); width: min(480px, calc(100vw - 24px));
-  max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 22px - env(safe-area-inset-bottom));
+  max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 18px);
   display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 8px;
   backdrop-filter: blur(10px);
@@ -937,9 +939,9 @@ details.alert[open] { padding-bottom: 9px; }
    climbs over the legend; with the card open it lives on the RIGHT, where the
    legend isn't, so it must not climb — that lift left it floating mid-map
    (Jeff 2026-08-22, "jank ass spacing"). */
-body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 104px + env(safe-area-inset-bottom)); }
-body.has-aq-legend #point:not([hidden]) ~ .provider { bottom: calc(var(--tb-h) + 12px + env(safe-area-inset-bottom)); }
-.provider { position: absolute; z-index: 13; left: 62px; bottom: calc(var(--tb-h) + 12px + env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 8px;
+body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 104px); }
+body.has-aq-legend #point:not([hidden]) ~ .provider { bottom: calc(var(--tb-h) + 10px); }
+.provider { position: absolute; z-index: 13; left: 62px; bottom: calc(var(--tb-h) + 10px); display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 11px 6px 9px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px);
   font: 700 11.5px var(--font-display); color: var(--fg-2); letter-spacing: .01em; opacity: 0; transform: translateY(6px); transition: opacity .35s ease, transform .35s ease; pointer-events: none; }
 .provider.show { opacity: 1; transform: translateY(0); }
