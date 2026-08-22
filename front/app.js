@@ -1023,8 +1023,13 @@
         // clipped table (vertical scroll is locked, so clipped rows — the
         // gust row — were simply gone; a floor on the height instead made
         // the grip feel dead, Jeff 2026-08-22). Above the rows it stretches.
+        // Phones only. Wider screens cap the tape below its content (480 px
+        // against a taller table on an iPad), so there every release was
+        // "below the rows" and the tape could hold no height but the cap —
+        // "stretches until it becomes this big, not draggable at all"
+        // (Jeff 2026-08-22). Desktop and tablet keep whatever height was set.
         const content = tapeContentMax();
-        if (tapeState === "full" && isFinite(content) && tapeHeight && tapeHeight < content - 6) { resetTapeHeight(); setTapeState("mini"); }
+        if (innerWidth <= 820 && tapeState === "full" && isFinite(content) && tapeHeight && tapeHeight < content - 6) { resetTapeHeight(); setTapeState("mini"); }
         localStorage.setItem("wxgrid.tapeState", tapeState);
       }
       if (tapeHeight && tapeState === "full") localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
