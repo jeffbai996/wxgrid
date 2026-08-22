@@ -57,3 +57,19 @@ def test_every_request_logs_timing_and_cache_outcome(client, caplog):
     assert len(lines) == 3
     assert "cache=miss" in lines[0] and "cache=hit" in lines[1] and "cache=-" in lines[2]
     assert all(" 200 " in l and l.endswith("ms") for l in lines)
+
+
+def test_card_stream_still_carries_the_point(client):
+    """The card opens from one NDJSON stream whose first line is the point
+    series, produced by calling the series function directly. Adding an HTTP
+    `request` parameter to the route broke that call and the card went
+    'point forecast unavailable' while /api/point itself still answered
+    (2026-08-22) — the route and the function are separate now, and this
+    guards the seam."""
+    import json
+    r = client.get("/api/card", params={"lat": 49.2, "lon": -123.1, "model": "gfs", "run": RID})
+    assert r.status_code == 200
+    first = json.loads(r.text.splitlines()[0])
+    assert first["kind"] == "point" and "error" not in first, first
+    assert first["data"]["available"] and first["data"]["series"]["t2m"]
+    assert api.point_series(lat=49.2, lon=-123.1, model="gfs", run=RID)["available"]

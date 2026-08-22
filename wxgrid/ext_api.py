@@ -27,7 +27,7 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
     Zarr read), the external lookups follow in completion order, and a line
     whose upstream fails is a {"error": ...} rather than a dropped connection.
     """
-    from wxgrid.api import api_point, prob_point   # circular at module load, fine at call
+    from wxgrid.api import point_series, prob_point   # circular at module load, fine at call
 
     def _prob(la, lo):
         try:
@@ -43,7 +43,7 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
             return json.dumps({"kind": kind, "error": str(exc)[:120]}) + "\n"
 
     def gen():
-        yield line("point", lambda: api_point(lat=lat, lon=lon, model=model, run=run))
+        yield line("point", lambda: point_series(lat=lat, lon=lon, model=model, run=run))
         jobs = {
             "local": lambda: {"place": ext.reverse(lat, lon), "elevation_m": ext.elevation(lat, lon),
                               "timezone": ext.timezone(lat, lon)},

@@ -531,7 +531,7 @@ def api_discussion(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..
     lon = _wrap_lon(lon)
     def build():
         r = _reader(model, run)
-        point = api_point(lat=lat, lon=lon, model=model, run=run)
+        point = point_series(lat=lat, lon=lon, model=model, run=run)
         try:
             prob = prob_point(lat, lon)
         except FileNotFoundError:
@@ -553,17 +553,26 @@ def api_prob(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
 @app.get("/api/point")
 def api_point(request: Request, lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-540, le=540),
               model: str = "aifs", run: str = "latest"):
-    lon = _wrap_lon(lon)
+    """HTTP face of `point_series`: the same body, plus cache semantics. The
+    series for a (run, cell) never changes; what changes is which run is
+    "latest". A short public max-age lets an edge and a browser share the
+    answer across users, and the ETag turns the re-ask into a 304."""
     r = _reader(model, run)
-    # The series for a (run, cell) never changes; what changes is which run
-    # is "latest". A short public max-age lets an edge and a browser share the
-    # answer across users, and the ETag turns the re-ask into a 304.
-    etag = f'"{model}:{r.rid}:{lat:.3f}:{lon:.3f}"'
+    etag = f'"{model}:{r.rid}:{lat:.3f}:{_wrap_lon(lon):.3f}"'
     if request.headers.get("if-none-match") == etag:
         return _Response(status_code=304, headers={"ETag": etag})
-    body = _point_body(r, model, lat, lon)
-    return JSONResponse(jsonable_encoder(body),
+    return JSONResponse(jsonable_encoder(point_series(lat=lat, lon=lon, model=model, run=run)),
                         headers={"ETag": etag, "Cache-Control": "public, max-age=300"})
+
+
+def point_series(lat: float, lon: float, model: str = "aifs", run: str = "latest") -> dict:
+    """The point forecast as data. The card stream and the route both call
+    this; the route is the only place that knows about HTTP (2026-08-22: a
+    `request` parameter added to the route broke every internal caller —
+    the card went "unavailable" while the route itself still answered)."""
+    lon = _wrap_lon(lon)
+    r = _reader(model, run)
+    return _point_body(r, model, lat, lon)
 
 
 def _point_body(r, model: str, lat: float, lon: float) -> dict:
