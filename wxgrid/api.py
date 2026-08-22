@@ -918,6 +918,15 @@ def api_legend(layer: str):
 
 
 _access = logging.getLogger("wxgrid.access")
+# uvicorn configures only its own loggers; ours would otherwise fall to the
+# silent root. One stderr handler, no propagation, and the unit runs uvicorn
+# with --no-access-log so each request is logged once, with its timing.
+if not _access.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
+    _access.addHandler(_h)
+    _access.setLevel(logging.INFO)
+    _access.propagate = False
 
 
 @app.middleware("http")
