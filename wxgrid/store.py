@@ -330,7 +330,31 @@ def prune(model: str, keep: int | None = None, root: Path = STORE_DIR) -> list[s
         if rid not in keepers:
             shutil.rmtree(run_path(model, rid, root), ignore_errors=True)
             removed.append(rid)
+    strip_stale_point_cubes(model, root)
     return removed
+
+
+def strip_stale_point_cubes(model: str, root: Path = STORE_DIR) -> list[str]:
+    """Drop pt/ from every complete run except the newest. The app reads
+    points only from the newest run (the run picker retired 2026-08-21), so
+    a superseded run's cube is dead weight — it was half of every run, and
+    99 GB of a 200 GB store when this landed. Older runs still answer point
+    queries through the step layout, just slower. Rebuildable any time with
+    `python -m wxgrid.ingest --model <m> --point-cube`."""
+    complete = list_runs(model, root, complete_only=True)
+    stripped = []
+    for rid in complete[1:]:
+        p = run_path(model, rid, root)
+        pt = p / "pt"
+        if pt.is_dir():
+            shutil.rmtree(pt, ignore_errors=True)
+            # the API caches readers keyed on the group's zarr.json mtime; a
+            # reader holding handles to the deleted cube must be reopened
+            meta = p / "zarr.json"
+            if meta.exists():
+                meta.touch()
+            stripped.append(rid)
+    return stripped
 
 
 def store_summary(root: Path = STORE_DIR) -> dict:

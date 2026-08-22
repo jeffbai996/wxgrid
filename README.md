@@ -228,9 +228,12 @@ step), freezing level, and wave-propagation vectors for the particle layer.
 
 After a run lands, ingest re-chunks it into a **point cube** (`pt/<var>`,
 all steps × 24×24-gridpoint tiles) so a point series decompresses one small
-chunk instead of every step (~50 ms instead of seconds). Runs ingested before
-this existed: `python -m wxgrid.ingest --model <m> --point-cube`; older IFS
-runs can pick up waves with `--augment-waves`.
+chunk instead of every step (~50 ms instead of seconds). Only the newest run
+of each model keeps its cube — the app reads points from the newest run, so
+a superseded run's cube was dead weight (half of every run); older runs
+still answer, through the step layout. Rebuild one any time:
+`python -m wxgrid.ingest --model <m> --point-cube`; older IFS runs can pick
+up waves with `--augment-waves`.
 
 All free and keyless. ECMWF data is CC BY 4.0 (attribute ECMWF); NOAA model
 data is public domain. `tp6` is precipitation over the previous stored step
