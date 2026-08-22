@@ -646,6 +646,9 @@
     navigator.serviceWorker.addEventListener("message", (e) => {
       const d = e.data || {};
       if (d.type === "wx-offline") show(d.boot ? "offline — showing the cached app" : "offline — last loaded data only");
+      // the worker served a cached script because the network was slow, then
+      // fetched a newer one: offer the reload rather than wait for next time
+      if (d.type === "wx-shell-updated" && window.WX && WX.fn) WX.fn.toast("Update ready · tap to reload", 30000, "", () => location.reload());
       if (d.type === "wx-online") sync();
     });
     const boot = () => {

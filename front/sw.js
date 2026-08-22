@@ -19,7 +19,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v11";   // v6: the tape grip fixes must reach every device
+const VERSION = "wxgrid-v12";   // v6: the tape grip fixes must reach every device
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
@@ -149,23 +149,42 @@ async function pruneRuns(catalog) {
 // a project being edited live reads as "you didn't fix it" (Jeff, 2026-08-18,
 // twice). Offline still works: the timeout or the error drops straight to the
 // cached copy.
-const SHELL_TIMEOUT_MS = 2500;
+// Slow links (a tablet on a Tailscale relay, a server still binding after a
+// restart) used to lose the 2.5 s race and get the cached copy — and the
+// cache was only written when the network WON, so a device could stay on a
+// two-hour-old bundle through deploy after deploy (Jeff 2026-08-22, the old
+// storm card under the new data). Now: a longer race, and when the cache
+// answers first the network request runs on, updates the cache, and tells
+// the page a fresh shell is ready.
+const SHELL_TIMEOUT_MS = 8000;
 async function shellFirst(req, cacheName, event) {
   const cached = caches.match(req, { cacheName });
-  try {
-    const res = await Promise.race([
-      fetch(req),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("slow")), SHELL_TIMEOUT_MS)),
-    ]);
+  const network = fetch(req).then(async (res) => {
     if (res && res.ok) {
       const cache = await caches.open(cacheName);
-      cache.put(req, res.clone());
-      return res;
+      await cache.put(req, res.clone());
     }
+    return res;
+  });
+  try {
+    const res = await Promise.race([
+      network,
+      new Promise((_, rej) => setTimeout(() => rej(new Error("slow")), SHELL_TIMEOUT_MS)),
+    ]);
     return res;
   } catch (err) {
     const hit = await cached;
-    if (hit) { tell("wx-offline", { url: req.url, stale: true }); return hit; }
+    if (hit) {
+      // serve what we have, but let the fetch finish and announce the update
+      const later = network.then(async (res) => {
+        if (!res || !res.ok) return;
+        const fresh = res.headers.get("etag"), old = hit.headers.get("etag");
+        if (!fresh || fresh !== old) tell("wx-shell-updated", { url: req.url });
+      }).catch(() => {});
+      if (event) event.waitUntil(later);
+      tell("wx-offline", { url: req.url, stale: true });
+      return hit;
+    }
     tell("wx-offline", { url: req.url });
     throw err;
   }

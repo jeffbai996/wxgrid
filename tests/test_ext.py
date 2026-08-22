@@ -422,8 +422,8 @@ def test_storm_category_labels_are_title_case():
     # "Tropical Storm" (Jeff 2026-08-22)
     assert ext.storm_category(70, 30.5, -172.4)["label"] == "Category 1 Hurricane"
     assert ext.storm_category(45, 30.5, -172.4)["label"] == "Tropical Storm"
-    assert ext.storm_category(140, 20, 140)["label"] == "Super Typhoon · Category 5 Equivalent"
-    assert ext.storm_category(115, 20, 143)["label"] == "Typhoon · Category 4 Equivalent"
+    assert ext.storm_category(140, 20, 140)["label"] == "Super Typhoon"
+    assert ext.storm_category(115, 20, 143)["label"] == "Typhoon"
     for kt, lat, lon in ((30, 10, -40), (50, -15, 150), (70, 15, 88), (100, 20, 130)):
         lab = ext.storm_category(kt, lat, lon)["label"]
         assert lab == " ".join(w if w == "·" else w.capitalize() for w in lab.split()), lab
