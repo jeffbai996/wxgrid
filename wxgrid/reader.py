@@ -37,6 +37,15 @@ def open_run(model: str, run: str | None = None, root: Path = STORE_DIR) -> xr.D
         raise FileNotFoundError(f"no complete runs for {model}")
     ds = xr.open_zarr(run_path(model, rid, root), consolidated=False)
     ds.attrs.setdefault("run", rid)
+    # Fields are stored float16 against an offset/scale (wxgrid.store
+    # encoding_for); hand consumers real units, lazily.
+    for v in list(ds.data_vars):
+        a = ds[v].attrs
+        off, sc = float(a.get("offset", 0.0)), float(a.get("scale", 1.0))
+        if off or sc != 1.0 or ds[v].dtype == np.float16:
+            units = a.get("units", "")
+            ds[v] = ds[v].astype("float32") * sc + off
+            ds[v].attrs["units"] = units
     return ds
 
 

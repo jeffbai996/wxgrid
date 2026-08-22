@@ -174,7 +174,7 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
     lon_idx = np.arange(0, 1440, int(POINT_DEG / 0.25))         # -180 → 178
     cube = {}
     for v in allvars:
-        arr = np.asarray(r.group[v].oindex[step_idx, lat_idx, lon_idx], dtype=np.float32)
+        arr = r.decode(v, r.group[v].oindex[step_idx, lat_idx, lon_idx])
         cube[v] = arr
     n_tiles = 0
     tiles_lat = int(180 / TILE_DEG); tiles_lon = int(360 / TILE_DEG)

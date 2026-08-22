@@ -62,6 +62,44 @@ def latest_run(model: str, root: Path = STORE_DIR) -> str | None:
     return runs[0] if runs else None
 
 
+# ── on-disk encoding ────────────────────────────────────────────────────
+# Every field is stored float16 (half the bytes of float32, and the pt/ cube
+# mirrors it, so a run shrinks by half twice). float16 keeps ~3 significant
+# digits, so fields that live far from zero are stored as an OFFSET from a
+# reference (temperatures in °C, pressure as Pa above 100 000) and wide
+# fields are SCALED down (geopotential height in 4 m units, visibility in
+# decametres) — worst-case errors land in the hundredths, measured on real
+# GFS fields 2026-08-22 (t2m 0.03 K, msl 2 Pa, u10 0.016 m/s). The reader
+# undoes it from the array attrs, so runs written before this (no attrs)
+# decode as identity and keep working.
+def encoding_for(var: str) -> tuple[float, float]:
+    """(offset, scale): stored = (value - offset) / scale, as float16."""
+    base = var.split("_")[0]
+    if var in ("t2m", "d2m", "sst") or base == "t":
+        return 273.15, 1.0
+    if var == "msl":
+        return 100000.0, 1.0
+    if base == "gh":
+        return 0.0, 4.0
+    if var == "vis":
+        return 0.0, 10.0
+    return 0.0, 1.0
+
+
+def encode_values(var: str, values: np.ndarray) -> np.ndarray:
+    off, sc = encoding_for(var)
+    v = np.asarray(values, dtype=np.float32)
+    if off or sc != 1.0:
+        v = (v - off) / sc
+    return v.astype(np.float16, copy=False)
+
+
+def decode_values(arr_attrs: dict, values: np.ndarray) -> np.ndarray:
+    off = float(arr_attrs.get("offset", 0.0)); sc = float(arr_attrs.get("scale", 1.0))
+    v = np.asarray(values, dtype=np.float32)
+    return v * sc + off if (off or sc != 1.0) else v
+
+
 class RunWriter:
     """Create the group up front, fill step slabs as GRIBs land, mark complete."""
 
@@ -91,13 +129,14 @@ class RunWriter:
         self.group.create_array("longitude", data=self.lons, dimension_names=("longitude",))
         codec = BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle")
         for var in self.variables:
-            dtype = "float16" if var.startswith(HALF_PRECISION_PREFIXES) else "float32"
             arr = self.group.create_array(
-                var, shape=(len(self.steps), *self.grid_shape), dtype=dtype,
+                var, shape=(len(self.steps), *self.grid_shape), dtype="float16",
                 chunks=(1, *self.grid_shape), compressors=codec,
                 fill_value=np.nan, dimension_names=("step", "latitude", "longitude"),
             )
-            arr.attrs["units"] = _UNITS.get(var, {"u": "m s-1", "v": "m s-1", "t": "K", "gh": "m"}.get(var.split("_")[0], ""))
+            off, sc = encoding_for(var)
+            arr.attrs.update({"units": _UNITS.get(var, {"u": "m s-1", "v": "m s-1", "t": "K", "gh": "m"}.get(var.split("_")[0], "")),
+                              "offset": off, "scale": sc})
         self._written: dict[str, set[int]] = {v: set() for v in self.variables}
 
     def write(self, var: str, step: int, values: np.ndarray) -> None:
@@ -107,7 +146,7 @@ class RunWriter:
         values = np.asarray(values)
         if values.shape != self.grid_shape:
             raise ValueError(f"{self.group.attrs['model']} grid expects {self.grid_shape}, got {values.shape}")
-        self.group[var][idx] = values.astype(self.group[var].dtype, copy=False)
+        self.group[var][idx] = encode_values(var, values)
         self._written[var].add(step)
 
     def has(self, var: str, step: int) -> bool:
@@ -150,9 +189,13 @@ class RunReader:
         self.lats = np.asarray(self.group["latitude"][:], dtype=np.float32)
         self.lons = np.asarray(self.group["longitude"][:], dtype=np.float32)
 
+    def decode(self, var: str, values: np.ndarray) -> np.ndarray:
+        """Undo the on-disk encoding (see encoding_for) for raw reads of `var`."""
+        return decode_values(dict(self.group[var].attrs), values)
+
     def slab(self, var: str, step: int) -> np.ndarray:
         """One (ny, nx) float32 field on this model's regular lat/lon grid."""
-        return np.asarray(self.group[var][self.steps.index(step)], dtype=np.float32)
+        return self.decode(var, self.group[var][self.steps.index(step)])
 
     def contains(self, lat: float, lon: float) -> bool:
         west, south, east, north = self.domain
@@ -180,9 +223,8 @@ class RunReader:
         ii, jj = self.indices(lat, lon)
         i, j = int(ii), int(jj)
         pt = self._pt.get(var)
-        if pt is not None:
-            return np.asarray(pt[:, i, j], dtype=np.float32)
-        return np.asarray(self.group[var][:, i, j], dtype=np.float32)
+        raw = pt[:, i, j] if pt is not None else self.group[var][:, i, j]
+        return self.decode(var, raw)
 
     @property
     def _pt(self) -> dict:
@@ -219,6 +261,7 @@ def build_point_cube(model: str, rid: str, root: Path = STORE_DIR, variables: li
         arr = pt.create_array(var, shape=src.shape, dtype=src.dtype,
                               chunks=(src.shape[0], POINT_TILE, POINT_TILE), compressors=codec,
                               fill_value=np.nan, dimension_names=("step", "latitude", "longitude"))
+        arr.attrs.update({k: src.attrs[k] for k in ("offset", "scale", "units") if k in src.attrs})
         # Copy one latitude band at a time. Reading the whole variable would be
         # ~250 MB resident per variable and, with several ingests and the API
         # in flight, that was enough to put fragserv into swap (2026-08-18).

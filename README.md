@@ -252,10 +252,17 @@ uvicorn wxgrid.api:app --port 8097       # http://127.0.0.1:8097/
 Production: `deploy/wxgrid.service` (API) + `deploy/wxgrid-ingest.timer`
 (hourly; a run already in the store is skipped, so it costs one HEAD per
 model when nothing is new). Tailnet: `tailscale serve --https=8464 http://127.0.0.1:8097`.
+On a shared disk, cap the ingest's write rate at the block layer with a
+drop-in — `IOWriteBandwidthMax=/dev/<data-disk> 80M` — rather than trusting
+`IOWeight`, which needs an IO scheduler the disk may not have (WSL's runs
+`none`); without the cap a cold point read during ingest waited 35 s.
 
-`WXGRID_DATA_DIR` moves the store (default `./data`). Two runs per model are
-kept (`WXGRID_KEEP_RUNS`); each run is ~0.9–1.2 GB compressed with the aloft
-levels (winds/heights aloft are stored float16, temperatures float32).
+`WXGRID_DATA_DIR` moves the store (default `./data`). Four runs per model are
+kept (`WXGRID_KEEP_RUNS`). Every field is stored float16 against a per-field
+offset/scale (temperatures as °C, pressure as Pa above 100 000, heights in
+4 m units) — half the bytes of float32 with worst-case errors in the
+hundredths; the reader hands back real units. A global 0.25° run with ten
+levels is ~6–7 GB including the point cube.
 
 `WXGRID_PUBLIC=1` (see `deploy/wxgrid-public.service`) runs a second instance
 that never serves `front/private/` — the place for an operator's own fonts or
@@ -380,6 +387,9 @@ lifts) degrade quietly.
 
 Short version; the commit log is the long one.
 
+- **2026-08-22** — the store halves: float16 with stored offsets for every
+  field, and the ingest gets a block-level write cap so the API never queues
+  behind it. Cyclone glyph redrawn, hero re-shot.
 - **2026-08-21** — the globe (MapLibre v5, auto-flattens as you zoom in).
   HRDPS 2.5 km + HRRR 3 km as real regional models. Tropical cyclones get
   basin-correct categories, a proper card, and a chip on the point card when

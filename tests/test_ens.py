@@ -337,7 +337,9 @@ def test_latest_is_resolved_before_the_cache_is_keyed():
 
     try:
         second = c.get("/api/ens/plume", params={"lat": 49.25, "lon": -123.25}).json()
-        assert second["run"] == "2026-08-18T18" and second["mean"] == [300.0, 300.0]
+        # Stored float16 as °C since 2026-08-22: 300 K round-trips to within
+        # 0.01 K, not to the bit. The contract here is the RUN, not the digit.
+        assert second["run"] == "2026-08-18T18" and all(abs(m - 300.0) < 0.05 for m in second["mean"])
     finally:
         # do not leave a newer run behind for whatever runs next
         shutil.rmtree(run_path("gefs", "2026-08-18T18", STORE_DIR), ignore_errors=True)
