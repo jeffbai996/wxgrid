@@ -172,8 +172,10 @@
       // often collision-hides the town name while its point still answers a
       // query, leaving the value orphaned — and a wind NUMBER without its
       // direction is half a fact anyway. The particles already show the wind.
-      const CITY_LAYERS = ["temp", "feels", "wbt", "d2m", "sst", "dt24", "msl", "frz", "cbase", "vis", "prob_rain", "prob_gust"];
-      if (m.getZoom() < 4.2 || !CITY_LAYERS.includes(WX.state.layer)) { src.setData({ type: "FeatureCollection", features: [] }); return; }
+      // Town values are retired (Jeff 2026-08-21: "temperatures all over the
+      // map"). The source stays so the layer plumbing is inert, not broken.
+      const CITY_LAYERS = [];
+      if (true || m.getZoom() < 4.2 || !CITY_LAYERS.includes(WX.state.layer)) { src.setData({ type: "FeatureCollection", features: [] }); return; }
       const ids = cityLayerIds();
       const seen = new Set(); const feats = [];
       for (const f of (ids.length ? m.queryRenderedFeatures({ layers: ids }) : [])) {

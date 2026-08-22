@@ -977,7 +977,13 @@
     const setTapeHeight = (height, persist = false) => {
       const bounds = tapeBounds();
       const maxH = innerWidth <= 820 ? Math.min(bounds.max, tapeContentMax()) : bounds.max;
-      tapeHeight = clamp(Math.round(height), bounds.min, Math.max(bounds.min, maxH));
+      // Never shorter than the rows either: with vertical scroll locked, a
+      // tape dragged below its content simply hid the gust row (Jeff
+      // 2026-08-21, "gust pills disappeared"). Smaller than content is what
+      // the mini state is for.
+      const content = tapeContentMax();
+      const minH = isFinite(content) ? Math.min(content, Math.max(bounds.min, maxH)) : bounds.min;
+      tapeHeight = clamp(Math.round(height), Math.max(bounds.min, minH), Math.max(bounds.min, maxH, minH));
       tb.style.height = `${tapeHeight}px`; tb.classList.add("user-sized");
       tapeGrip.setAttribute("aria-valuemin", bounds.min); tapeGrip.setAttribute("aria-valuemax", bounds.max); tapeGrip.setAttribute("aria-valuenow", tapeHeight);
       if (persist) localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
