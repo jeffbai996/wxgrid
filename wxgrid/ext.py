@@ -665,9 +665,10 @@ def nws_alerts_layer() -> dict:
                 "id": p.get("id"), "event": p.get("event"), "severity": p.get("severity"), "sev": sev,
                 "color": _SEV_COLOR[sev], "headline": p.get("headline"), "area": p.get("areaDesc"),
                 "onset": p.get("onset"), "ends": p.get("ends") or p.get("expires"), "sender": p.get("senderName"),
+                "urgency": p.get("urgency"), "certainty": p.get("certainty"),
                 "source": "NWS"}})
         return {"type": "FeatureCollection", "features": feats}
-    return cache.get("alerts:layer", 300, fetch)
+    return cache.get("alerts:layer-v2", 300, fetch)
 
 
 def _nws_point(lat: float, lon: float) -> list[dict]:
@@ -683,6 +684,7 @@ def _nws_point(lat: float, lon: float) -> list[dict]:
             sev = _SEV.get(p.get("severity"), 0)
             out.append({"id": p.get("id"), "event": p.get("event"), "severity": p.get("severity"), "sev": sev, "color": _SEV_COLOR[sev],
                         "headline": p.get("headline"), "area": p.get("areaDesc"), "onset": p.get("onset"), "ends": p.get("ends") or p.get("expires"),
+                        "urgency": p.get("urgency"), "certainty": p.get("certainty"),
                         "description": (p.get("description") or "")[:900], "instruction": (p.get("instruction") or "")[:400],
                         # The feature id is the API's own JSON document. Linking a
                         # reader to it dumped raw CAP on their phone, so NWS
@@ -1189,7 +1191,7 @@ def alerts_point(lat: float, lon: float) -> list[dict]:
     MeteoAlarm and BoM we test the point against the polygons we already hold,
     which costs nothing extra upstream. A MeteoAlarm hit then pulls its CAP
     message for the text the Atom summary doesn't carry."""
-    key = f"alerts:pt:{lat:.2f}:{lon:.2f}"
+    key = f"alerts:pt-v2:{lat:.2f}:{lon:.2f}"
     def fetch():
         out = _nws_point(lat, lon)
         for name, source in (("meteoalarm", _ma_warnings), ("bom", _bom_warnings)):

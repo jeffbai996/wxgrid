@@ -1107,3 +1107,25 @@ body:has(#point[hidden]) #centre-mark { display: block; }
   color: var(--cat, var(--warm)); background: color-mix(in srgb, var(--cat, var(--warm)) 16%, transparent);
   border-radius: 5px; padding: 1.5px 6px; margin-right: 4px; vertical-align: 1px; }
 .storm-pop dl { row-gap: 3px; }
+
+/* ── alert cards, expanded: the CAP payload worn properly ─────────────── */
+/* the note and the warnings each own a full row of the card (they used to
+   share one flex line and the warnings floated beside the AI-GFS note) */
+#point-now > .days-note, #point-now > .alerts, #point-now > .air { flex: 0 0 100%; }
+.alert .al-ag { display: inline-block; font: 800 8px var(--font-display); font-style: normal; letter-spacing: .05em;
+  color: var(--ag, var(--dim)); background: color-mix(in srgb, var(--ag, var(--dim)) 14%, transparent);
+  border-radius: 4px; padding: 1px 5px; margin-right: 6px; vertical-align: 1px; }
+.alert .al-pills { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 0 14px; }
+.alert .al-pill { font: 700 8.5px var(--font-display); font-style: normal; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--fg-2); background: rgba(127,127,127,.14); border-radius: 5px; padding: 2px 7px; }
+.alert .al-pill.al-left { color: var(--al, var(--warm)); background: color-mix(in srgb, var(--al, var(--warm)) 15%, transparent); }
+.alert .al-line { height: 3px; border-radius: 2px; background: rgba(127,127,127,.18); margin: 7px 2px 0 14px; overflow: hidden; }
+.alert .al-line i { display: block; height: 100%; border-radius: 2px; background: var(--al, var(--warm)); }
+.alert .al-areas { display: flex; flex-wrap: wrap; gap: 3px; margin: 7px 0 0 14px; }
+.alert .al-area { font: 600 9.5px var(--font-body); font-style: normal; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+.alert .alert-x .alert-text { margin: 8px 0 0 14px; }
+.alert .al-instr { margin: 9px 0 2px 14px; padding: 7px 9px 2px; border-left: 2px solid var(--al, var(--warm));
+  background: color-mix(in srgb, var(--al, transparent) 5%, rgba(127,127,127,.04)); border-radius: 0 8px 8px 0; }
+.alert .al-instr > b { font: 800 8.5px var(--font-display); text-transform: uppercase; letter-spacing: .08em; color: var(--al, var(--warm)); }
+.alert .al-instr .alert-text { margin: 3px 0 6px; }

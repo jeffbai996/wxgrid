@@ -491,11 +491,32 @@
     const fmtT = (d) => d.toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }));
     const when = (a) => { const o = a.onset ? new Date(a.onset) : null, e = a.ends ? new Date(a.ends) : null;
       return o && e ? `${fmtT(o)} → ${fmtT(e)}` : e ? `until ${fmtT(e)}` : ""; };
-    const head = (a) => `<span class="al-row"><i class="dot"></i><b>${esc(a.event)}</b>${a.severity ? `<em class="sev">${esc(a.severity)}</em>` : ""}</span>
-      <span class="al-meta">${[when(a), a.sender || (a.area || "").slice(0, 60)].filter(Boolean).map(esc).join(" · ")}</span>`;
+    // who issued it, as a compact monogram (real marks are trademarks; the
+    // private theme can dress this up the way it does the provider badge)
+    const AGENCY = { NWS: ["NWS", "#1a5fb4"], EC: ["ECCC", "#c8102e"], ECCC: ["ECCC", "#c8102e"],
+                     MeteoAlarm: ["EU", "#e8850c"], BoM: ["BOM", "#00205b"], BOM: ["BOM", "#00205b"] };
+    const agency = (a) => AGENCY[a.source] || (a.source ? [a.source, "var(--dim)"] : null);
+    const head = (a) => { const ag = agency(a);
+      return `<span class="al-row"><i class="dot"></i><b>${esc(a.event)}</b>${a.severity ? `<em class="sev">${esc(a.severity)}</em>` : ""}</span>
+      <span class="al-meta">${ag ? `<i class="al-ag" style="--ag:${ag[1]}">${esc(ag[0])}</i>` : ""}${[when(a), a.sender || (a.area || "").slice(0, 60)].filter(Boolean).map(esc).join(" · ")}</span>`; };
     const body = (a) => {
-      const text = [a.description, a.instruction].filter(Boolean).join("\n\n");
-      return text ? `<div class="alert-text selectable">${esc(text)}</div>` : "";
+      const now = Date.now();
+      const o = a.onset ? new Date(a.onset).getTime() : null, e = a.ends ? new Date(a.ends).getTime() : null;
+      const left = e && e > now ? (e - now < 3600e3 ? `ends in ${Math.max(1, Math.round((e - now) / 60e3))} min` : `ends in ${Math.round((e - now) / 3600e3)} h`) : e ? "expired" : "";
+      const frac = o && e && e > o ? Math.min(1, Math.max(0, (now - o) / (e - o))) : null;
+      const pills = [a.severity, a.urgency, a.certainty].filter(Boolean)
+        .map((x) => `<i class="al-pill">${esc(x)}</i>`).join("");
+      const areas = (a.area || "").split(";").map((x) => x.trim()).filter(Boolean).slice(0, 8)
+        .map((x) => `<i class="al-area">${esc(x)}</i>`).join("");
+      const desc = (a.description || "").trim();
+      const instr = (a.instruction || "").trim();
+      return `<div class="alert-x">
+        <div class="al-pills">${pills}${left ? `<i class="al-pill al-left">${left}</i>` : ""}</div>
+        ${frac != null ? `<div class="al-line" title="how far through its window this alert is"><i style="width:${(frac * 100).toFixed(1)}%"></i></div>` : ""}
+        ${areas ? `<div class="al-areas">${areas}</div>` : ""}
+        ${desc ? `<div class="alert-text selectable">${esc(desc)}</div>` : ""}
+        ${instr ? `<div class="al-instr"><b>What to do</b><div class="alert-text selectable">${esc(instr)}</div></div>` : ""}
+      </div>`;
     };
     return `<div class="alerts">${al.slice(0, 3).map((a) => (a.url
       ? `<a class="alert" href="${esc(a.url)}" target="_blank" rel="noopener" style="--al:${esc(a.color)}">${head(a)}</a>`
