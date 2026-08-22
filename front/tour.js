@@ -13,7 +13,7 @@
     { sel: "#layers", title: "Layers", text: "Wind, temperature, rain, snow, waves, air quality. Some have variants — rain over 6, 24 or 72 hours — and the picker for those sits next to the legend." },
     { sel: "#tstrip, #overlays-menu .menu-btn", title: "Overlays and tools", text: "Radar, satellite, warnings, wildfires, avalanche, cross-sections. Hover any icon for its name." },
     { sel: "#timebar", title: "The forecast tape", text: "Scrub with ← and →, space to animate, click any column to jump. The chevron folds it away." },
-    { sel: "#strip-settings, #tools-menu .menu-btn", title: "Make it yours", text: "Units, clock, theme and motion. Set °F and inches once and every number on screen follows." },
+    { sel: "#strip-settings, #strip-more, #tools-menu .menu-btn", title: "Make it yours", text: "Units, clock, theme and motion. Set °F and inches once and every number on screen follows." },
   ];
   let i = 0, box = null, ring = null;
 
@@ -42,8 +42,15 @@
     // gear lives on the strip on desktop and in the tools menu on a phone).
     // Ring the first one that is actually on screen; a hidden target has a
     // zero rect and put the tip in the wrong corner (Jeff 2026-08-20).
+    // checkVisibility sees what offsetParent cannot: the strip's overflow
+    // flyout keeps layout at opacity 0, so a control that overflowed into it
+    // passed the old test and the ring landed on an invisible corner of the
+    // screen (Jeff 2026-08-21, "make it yours highlights a random part").
+    const vis = (el) => (el.checkVisibility
+      ? el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+      : el.offsetParent !== null);
     const t = [...document.querySelectorAll(s.sel)]
-      .find((el) => el.offsetParent !== null && el.getBoundingClientRect().width > 0);
+      .find((el) => vis(el) && el.getBoundingClientRect().width > 0);
     if (!t) return next();
     const r = t.getBoundingClientRect();
     const pad = 6;
