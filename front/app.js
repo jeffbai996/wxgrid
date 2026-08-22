@@ -977,13 +977,7 @@
     const setTapeHeight = (height, persist = false) => {
       const bounds = tapeBounds();
       const maxH = innerWidth <= 820 ? Math.min(bounds.max, tapeContentMax()) : bounds.max;
-      // Never shorter than the rows either: with vertical scroll locked, a
-      // tape dragged below its content simply hid the gust row (Jeff
-      // 2026-08-21, "gust pills disappeared"). Smaller than content is what
-      // the mini state is for.
-      const content = tapeContentMax();
-      const minH = isFinite(content) ? Math.min(content, Math.max(bounds.min, maxH)) : bounds.min;
-      tapeHeight = clamp(Math.round(height), Math.max(bounds.min, minH), Math.max(bounds.min, maxH, minH));
+      tapeHeight = clamp(Math.round(height), bounds.min, Math.max(bounds.min, maxH));
       tb.style.height = `${tapeHeight}px`; tb.classList.add("user-sized");
       tapeGrip.setAttribute("aria-valuemin", bounds.min); tapeGrip.setAttribute("aria-valuemax", bounds.max); tapeGrip.setAttribute("aria-valuenow", tapeHeight);
       if (persist) localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
@@ -1024,7 +1018,15 @@
       tapeDrag = null; tb.classList.remove("is-resizing"); document.body.classList.remove("resizing-tape");
       restoreSheetHeight();                    // the card re-budgets around the new tape
       if (tap) setTapeState(tapeState === "full" ? "mini" : "full");     // a tap on the grip cycles
-      else localStorage.setItem("wxgrid.tapeState", tapeState);
+      else {
+        // A release below the rows snaps to mini rather than parking on a
+        // clipped table (vertical scroll is locked, so clipped rows — the
+        // gust row — were simply gone; a floor on the height instead made
+        // the grip feel dead, Jeff 2026-08-22). Above the rows it stretches.
+        const content = tapeContentMax();
+        if (tapeState === "full" && isFinite(content) && tapeHeight && tapeHeight < content - 6) { resetTapeHeight(); setTapeState("mini"); }
+        localStorage.setItem("wxgrid.tapeState", tapeState);
+      }
       if (tapeHeight && tapeState === "full") localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
       restorePointPanelSize();
     };
