@@ -21,6 +21,7 @@ from urllib3.util.retry import Retry
 
 from wxgrid.config import GRIB_DIR
 from wxgrid.models import LEVEL_EVERY, Model
+from wxgrid.store import _Pacer
 
 log = logging.getLogger(__name__)
 
@@ -138,6 +139,9 @@ def _ecmwf_get(client, model: Model, run: datetime, step: int, target: Path, req
         try:
             client.retrieve(type="fc", date=run.strftime("%Y%m%d"), time=run.hour, step=step,
                             target=str(target), **{**req, "param": params})
+            # the ECMWF client streams the file itself; charge it afterwards
+            # so the average over the run still holds the cap
+            _dl_pacer.spend(target.stat().st_size if target.exists() else 0)
             return True
         except Exception as exc:
             msg = str(exc)
@@ -192,6 +196,12 @@ def fetch_gfs(model: Model, run: datetime, root: Path = GRIB_DIR,
     return got
 
 
+# Inbound GRIB is ~25 GB a cycle. Unpaced it arrives at line rate and the
+# box's other traffic waits behind it; 20 MB/s is still far faster than the
+# decode that follows. Same bucket as the store writes, separate knob.
+_dl_pacer = _Pacer(env="WXGRID_DOWNLOAD_MBPS", default=20.0)
+
+
 def _download(s: requests.Session, url: str, target: Path, tries: int = 3,
               timeout: tuple[float, float] = (10.0, 120.0)) -> bool:
     """`timeout` is (connect, read). Read is per-chunk, not for the whole body,
@@ -208,6 +218,7 @@ def _download(s: requests.Session, url: str, target: Path, tries: int = 3,
             tmp = target.with_suffix(".part")
             with open(tmp, "wb") as fh:
                 for chunk in r.iter_content(1 << 16):
+                    _dl_pacer.spend(len(chunk))
                     fh.write(chunk)
             if tmp.stat().st_size < 1000:      # NOMADS returns an HTML error page at 200 sometimes
                 tmp.unlink()

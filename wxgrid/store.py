@@ -112,8 +112,9 @@ def decode_values(arr_attrs: dict, values: np.ndarray) -> np.ndarray:
 # a run's writes over minutes instead of seconds and leaves the disk idle
 # gaps for the server. Costs nothing when the disk is the bottleneck anyway.
 class _Pacer:
-    def __init__(self, mbps: float | None = None) -> None:
-        rate = float(os.environ.get("WXGRID_WRITE_MBPS", "60")) if mbps is None else mbps
+    def __init__(self, mbps: float | None = None, env: str = "WXGRID_WRITE_MBPS",
+                 default: float = 60.0) -> None:
+        rate = float(os.environ.get(env, str(default))) if mbps is None else mbps
         self.rate = rate * 1e6
         self.t = time.monotonic()
         self.budget = self.rate           # one second of credit to start
