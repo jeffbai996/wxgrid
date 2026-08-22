@@ -22,7 +22,7 @@ import numpy as np
 import zarr
 from zarr.codecs import BloscCodec
 
-from wxgrid.config import GRID_LAT_N, GRID_LON_N, GRID_RES, KEEP_RUNS, STORE_DIR
+from wxgrid.config import CACHE_DIR, GRID_LAT_N, GRID_LON_N, GRID_RES, KEEP_RUNS, STORE_DIR
 from wxgrid.models import HALF_PRECISION_PREFIXES, get_model
 
 LATS = np.linspace(90.0, -90.0, GRID_LAT_N, dtype=np.float32)
@@ -339,6 +339,15 @@ def prune(model: str, keep: int | None = None, root: Path = STORE_DIR) -> list[s
             shutil.rmtree(run_path(model, rid, root), ignore_errors=True)
             removed.append(rid)
     strip_stale_point_cubes(model, root)
+    # The render cache is keyed by run too; renders of a run that no longer
+    # exists can never be served again. Only whole run directories go — the
+    # model-level JSON caches live beside them and stay.
+    cdir = CACHE_DIR / model
+    if cdir.is_dir():
+        live = set(everything) - set(removed)
+        for sub in cdir.iterdir():
+            if sub.is_dir() and sub.name not in live and sub.name < (complete[0] if complete else ""):
+                shutil.rmtree(sub, ignore_errors=True)
     return removed
 
 
