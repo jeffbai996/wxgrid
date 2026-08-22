@@ -261,7 +261,11 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
 # The layers a fresh visit paints, warmed right after ingest so the first
 # request of each step hits disk instead of paying the cold render (~0.5 s a
 # frame, felt hardest when someone presses play on a new run).
-WARM_LAYERS = ("wind", "temp", "tp6")
+# The set a visit actually opens: the defaults plus the tape's own layers.
+# Every surface layer for every step would be ~14,000 frames a generation —
+# four CPU-hours a cycle — so the warm set is chosen, not total; levels and
+# the long tail still render on first request.
+WARM_LAYERS = ("wind", "temp", "gust", "tp6", "tcc", "msl")
 
 
 def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
@@ -275,13 +279,15 @@ def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
     for layer in WARM_LAYERS:
         if not _available(r, layer, None):
             continue
-        # the same step mapping the request path uses, so the names collide
-        # (that is the point) and a six-hourly layer is not rendered twice
-        # WebP only: every current browser asks for it, and PNG for the odd
-        # client that does not still renders on demand.
+        # the same step mapping and the same name/format decision as the
+        # request path, so the names collide (that is the point) and a
+        # six-hourly layer is not rendered twice. The format comes from the
+        # name function: for a while this wrote WebP bytes into .png names
+        # (and paid WebP's 3-5 s encode per frame) after the request path
+        # had moved to PNG (2026-08-22).
         for step in sorted({_level_step(r, st, layer in _SIX_HOURLY) for st in r.steps}):
             cache_tag, scale = _render_plan(model_key, layer)
-            name, _, _ = render.layer_cache_name(step, cache_tag, "image/webp")
+            name, fmt, _ = render.layer_cache_name(step, cache_tag, None)
             path = CACHE_DIR / model_key / rid / name
             if path.exists():
                 continue
@@ -291,7 +297,7 @@ def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
                     field_for(r, layer, None, step), lat0=r.lat0, lon0=r.lon0,
                     dlat=r.dlat, dlon=r.dlon)), layer, factor=scale)
             tmp = path.with_suffix(path.suffix + ".tmp")
-            tmp.write_bytes(render.colorize(disp, layer, fmt="webp"))
+            tmp.write_bytes(render.colorize(disp, layer, fmt=fmt))
             tmp.replace(path)
             done += 1
     log.info("%s %s warmed %d frames", model_key, rid, done)

@@ -255,6 +255,12 @@ uvicorn wxgrid.api:app --port 8097       # http://127.0.0.1:8097/
 Production: `deploy/wxgrid.service` (API) + `deploy/wxgrid-ingest.timer`
 (hourly; a run already in the store is skipped, so it costs one HEAD per
 model when nothing is new). Tailnet: `tailscale serve --https=8464 http://127.0.0.1:8097`.
+After a run lands, the ingest pre-renders the layers a visit actually opens
+(wind, temperature, gusts, rain, cloud, pressure) for every step, as the exact
+files the request path would write, so those never render on a click. Every
+request logs one line — method, path, status, cache hit or miss, wall time —
+so the next bottleneck is measured rather than guessed.
+
 The ingest paces its own writes (`WXGRID_WRITE_MBPS`, default 60) and its
 downloads (`WXGRID_DOWNLOAD_MBPS`, default 20) so a run lands over minutes
 rather than as one burst the API's reads and the box's other traffic queue

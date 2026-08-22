@@ -340,7 +340,7 @@ IMAGE_FORMATS = {"png": "image/png", "webp": "image/webp"}
 # The rendered pixels changed from native-size linear sampling to 2x
 # value-space interpolation. Keep that fact in the immutable cache key so an
 # old frame can never masquerade as the new output after deploy.
-LAYER_CACHE_VERSION = "r2x-v3"
+LAYER_CACHE_VERSION = "r2x-v4"   # v4: warmed frames are real PNGs; v3 held WebP bytes under .png names
 # Layers whose alpha varies with the value, so they cannot be palette images.
 _RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar",
                 "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "wavepower", "uvi", "prob_rain", "prob_gust",

@@ -20,9 +20,12 @@ def test_warm_layers_writes_the_request_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(api_mod, "CACHE_DIR", tmp_path, raising=False)
     n = ingest.warm_layers("gem", "2026-01-02T00", STORE_DIR)
-    assert n == 6                                       # 3 layers × 2 steps
+    assert n == 6                                       # 3 available layers × 2 steps (gust/tcc/msl absent → skipped)
     for layer in ("wind", "temp", "tp6"):
-        name, _, _ = render.layer_cache_name(0, layer, "image/webp")
-        assert (tmp_path / "gem" / "2026-01-02T00" / name).exists()
+        name, fmt, _ = render.layer_cache_name(0, layer, None)
+        path = tmp_path / "gem" / "2026-01-02T00" / name
+        assert path.exists()
+        # the bytes match the name: for a while these were WebP under .png
+        assert fmt == "png" and path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     # a second pass renders nothing: the names are the cache
     assert ingest.warm_layers("gem", "2026-01-02T00", STORE_DIR) == 0
