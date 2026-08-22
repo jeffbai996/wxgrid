@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import os
 import threading
 import uuid
@@ -24,7 +25,8 @@ from datetime import timedelta
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from wxgrid import render
@@ -377,6 +379,7 @@ def api_layer(request: Request, model: str, run: str, step: int, layer: str, lev
     cache_tag, scale = _render_plan(model, tag)
     name, fmt, media = render.layer_cache_name(step, cache_tag, request.headers.get("accept"))
     path = CACHE_DIR / model / r.rid / name
+    request.state.cache = "hit" if path.exists() else "miss"
     if not path.exists():
         with _cache_lock(path):
             if not path.exists():
@@ -542,10 +545,22 @@ def api_prob(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
 
 
 @app.get("/api/point")
-def api_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-540, le=540),
+def api_point(request: Request, lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-540, le=540),
               model: str = "aifs", run: str = "latest"):
     lon = _wrap_lon(lon)
     r = _reader(model, run)
+    # The series for a (run, cell) never changes; what changes is which run
+    # is "latest". A short public max-age lets an edge and a browser share the
+    # answer across users, and the ETag turns the re-ask into a 304.
+    etag = f'"{model}:{r.rid}:{lat:.3f}:{lon:.3f}"'
+    if request.headers.get("if-none-match") == etag:
+        return _Response(status_code=304, headers={"ETag": etag})
+    body = _point_body(r, model, lat, lon)
+    return JSONResponse(jsonable_encoder(body),
+                        headers={"ETag": etag, "Cache-Control": "public, max-age=300"})
+
+
+def _point_body(r, model: str, lat: float, lon: float) -> dict:
     if not r.contains(lat, lon):
         return {"available": False, "model": model, "run": r.rid, "lat": lat, "lon": lon,
                 "reason": f"Point is outside the {MODELS[model].label} forecast domain."}
@@ -900,6 +915,27 @@ def api_xsection(lat1: float = Query(..., ge=-90, le=90), lon1: float = Query(..
 @app.get("/api/legend/{layer}")
 def api_legend(layer: str):
     return render.legend(_norm_layer(layer))
+
+
+_access = logging.getLogger("wxgrid.access")
+
+
+@app.middleware("http")
+async def _access_and_defaults(request: Request, call_next):
+    """One line per request — method, path, status, wall time, cache outcome
+    — so the next bottleneck is measured, not guessed. And a default: any
+    response that did not choose its own caching revalidates (`no-cache`
+    with the ETag StaticFiles/FileResponse already set). Without it the
+    shell was heuristically cached off Last-Modified and a fix could take
+    hours to reach a device (2026-08-22)."""
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    if "cache-control" not in response.headers:
+        response.headers["Cache-Control"] = "no-cache"
+    ms = (time.perf_counter() - t0) * 1000
+    _access.info("%s %s %d cache=%s %.0fms", request.method, request.url.path, response.status_code,
+                 getattr(request.state, "cache", "-"), ms)
+    return response
 
 
 @app.get("/healthz")
