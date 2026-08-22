@@ -61,6 +61,12 @@ _readers: dict[tuple[str, str], RunReader] = {}
 _pool = ThreadPoolExecutor(max_workers=8)
 _cache_locks: dict[str, threading.Lock] = {}
 _cache_locks_guard = threading.Lock()
+# How many cold renders may run at once, across all keys. The per-key lock
+# stops the same image rendering twice; this stops six different images
+# rendering together — each is a global-grid upscale and encode, and a burst
+# of misses from one scrub used to take the box with it (2026-08-22).
+RENDER_SLOTS = 2
+_render_slots = threading.BoundedSemaphore(RENDER_SLOTS)
 
 
 def _cache_lock(path) -> threading.Lock:
@@ -381,7 +387,7 @@ def api_layer(request: Request, model: str, run: str, step: int, layer: str, lev
     path = CACHE_DIR / model / r.rid / name
     request.state.cache = "hit" if path.exists() else "miss"
     if not path.exists():
-        with _cache_lock(path):
+        with _cache_lock(path), _render_slots:
             if not path.exists():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 field = field_for(r, layer, level, step)
