@@ -302,11 +302,18 @@ def build_point_cube(model: str, rid: str, root: Path = STORE_DIR, variables: li
         # ~250 MB resident per variable and, with several ingests and the API
         # in flight, that was enough to put fragserv into swap (2026-08-18).
         pacer = _Pacer()
+        # One read of the whole variable. The map chunks span the full grid
+        # per step, so reading in bands decompressed every chunk once per
+        # band — thirty times over for a global run, 400 GB of reads and
+        # most of the ingest's CPU per cycle (2026-08-22). A global variable
+        # is ~270 MB in float16; the writes stay banded for the pacer.
+        full = src[:]
         for y0 in range(0, src.shape[1], POINT_TILE):
             y1 = min(y0 + POINT_TILE, src.shape[1])
-            band = src[:, y0:y1, :]
+            band = full[:, y0:y1, :]
             pacer.spend(band.nbytes)
             arr[:, y0:y1, :] = band
+        del full
         n += 1
     return n
 
