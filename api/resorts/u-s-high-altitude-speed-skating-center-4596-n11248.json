@@ -1,0 +1,62 @@
+{
+  "resort": {
+    "id": "u-s-high-altitude-speed-skating-center-4596-n11248",
+    "name": "U.S. High Altitude Speed Skating Center",
+    "lat": 45.96357,
+    "lon": -112.47642,
+    "country": "US",
+    "region": null,
+    "website": null,
+    "ele_base_m": null,
+    "ele_summit_m": null,
+    "osm_type": "way",
+    "osm_id": 1224877034
+  },
+  "lifts": {
+    "type": "FeatureCollection",
+    "features": []
+  },
+  "boundary": {
+    "type": "Feature",
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            -112.4757475,
+            45.9647802
+          ],
+          [
+            -112.4746209,
+            45.9631395
+          ],
+          [
+            -112.4765092,
+            45.9625354
+          ],
+          [
+            -112.4778342,
+            45.962362
+          ],
+          [
+            -112.4782258,
+            45.964109
+          ],
+          [
+            -112.4757475,
+            45.9647802
+          ]
+        ]
+      ]
+    },
+    "properties": {
+      "name": "U.S. High Altitude Speed Skating Center",
+      "osm_type": "way",
+      "osm_id": 1224877034
+    }
+  },
+  "elevation": {
+    "base_m": null,
+    "summit_m": null
+  }
+}

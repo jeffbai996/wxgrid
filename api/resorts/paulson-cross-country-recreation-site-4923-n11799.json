@@ -1,0 +1,28 @@
+{
+  "resort": {
+    "id": "paulson-cross-country-recreation-site-4923-n11799",
+    "name": "Paulson Cross-Country Recreation Site",
+    "lat": 49.22895,
+    "lon": -117.98953,
+    "country": "CA",
+    "region": null,
+    "website": "https://www.castlegarnordic.ca/",
+    "ele_base_m": null,
+    "ele_summit_m": null,
+    "osm_type": "relation",
+    "osm_id": 2241053
+  },
+  "lifts": {
+    "type": "FeatureCollection",
+    "features": []
+  },
+  "pistes": {
+    "type": "FeatureCollection",
+    "features": []
+  },
+  "boundary": null,
+  "elevation": {
+    "base_m": null,
+    "summit_m": null
+  }
+}

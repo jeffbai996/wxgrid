@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>wxgrid</title>
+<meta name="wxgrid-mode" content="static">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<script>
+// iOS Safari ignores user-scalable=no, so pinching zooms the whole document —
+// chrome, card and map together, which is never what the gesture meant here.
+// WebKit's gesture events are what drive that page zoom; MapLibre reads raw
+// touch events instead, so cancelling these leaves map pinch-zoom untouched.
+for (const ev of ["gesturestart", "gesturechange", "gestureend"])
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+</script>
+</head>
+<body>
+<div id="map"></div>
+<canvas id="particles"></canvas>
+<div id="centre-mark" aria-hidden="true" title=""></div>
+
+<header id="topbar">
+  <a class="brand" href="./" title="wxgrid"><img src="logo.svg" alt="" width="26" height="26"><span>wxgrid</span></a>
+  <form id="search" class="search" role="search" autocomplete="off">
+    <input id="q" type="search" placeholder="Search a location…" aria-label="Search a location" enterkeyhint="search">
+  </form>
+  <span class="rowbreak" aria-hidden="true"></span>
+  <div class="seg" id="models" role="tablist" aria-label="Model"></div>
+  <select id="run" class="run" title="Model run (UTC)"></select>
+  <button id="tuck" class="chip iconbtn tuck" hidden title="Tuck the controls away" aria-label="Tuck the controls away"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+  <button id="tucked" class="chip tucked" hidden title="Show the controls"></button>
+  <div class="spacer"></div>
+  <span class="rowbreak" aria-hidden="true"></span>
+  <div class="seg small levels" id="levels" hidden aria-label="Altitude"></div>
+  <div class="menu" id="overlays-menu">
+    <button class="chip menu-btn iconbtn" data-menu="overlays" aria-haspopup="true" title="Overlays"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 4.5-9 4.5-9-4.5L12 2z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 17 9 4.5 9-4.5"/></svg><span>layers</span></button>
+    <div class="menu-pop menu-list">
+      <div class="menu-sec">Wind</div>
+      <button id="particles-toggle" class="row chip on" title="Wind particles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h20"/><path d="M6 8c2 0 3 4 6 4s4-4 6-4"/><path d="M6 16c2 0 3-4 6-4s4 4 6 4"/></svg><span>Particles</span><i class="sw"></i></button>
+      <button id="barbs-toggle" class="row chip" title="Wind barbs, knots"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V3"/><path d="M12 3l6 3-6 3"/><path d="M12 9l5 2.5-5 2.5"/></svg><span>Barbs</span><i class="sw"></i></button>
+      <div class="menu-sec">Overlays</div>
+      <button id="radar-toggle" class="row chip" title="Live radar (RainViewer)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62A10 10 0 1 0 21.31 8.35"/><path d="M16.24 7.76A6 6 0 1 0 8.23 16.67"/><path d="M12 18h.01"/><path d="M17.99 11.66A6 6 0 0 1 15.77 16.67"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/></svg><span>Radar</span><i class="sw"></i></button>
+      <button id="sat-toggle" class="row chip" title="GOES satellite, latest hour"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 7 9 3 5 7l4 4"/><path d="m17 11 4 4-4 4-4-4"/><path d="m8 12 4 4 6-6-4-4Z"/><path d="m16 8 3-3"/><path d="M9 21a6 6 0 0 0-6-6"/></svg><span>Satellite</span><i class="sw"></i></button>
+      <div class="menu-sec">Basemap</div>
+      <div class="row base-row" role="radiogroup" aria-label="Basemap">
+        <button data-base="" class="on">Map</button><button data-base="topo">Topo</button><button data-base="sat">Satellite</button>
+      </div>
+      <button id="terrain-toggle" class="row chip" title="Hillshade relief under the field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 18 5-8 4 6 3-4 6 6"/><path d="M3 18h18"/></svg><span>Terrain</span><i class="sw"></i></button>
+      <button id="night-toggle" class="row chip" title="Day/night at the selected time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><span>Day/night</span><i class="sw"></i></button>
+      <button id="iso-toggle" class="row chip" title="Isolines (isobars / isotherms)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7c3-3 6-3 9 0s6 3 9 0"/><path d="M3 12c3-3 6-3 9 0s6 3 9 0"/><path d="M3 17c3-3 6-3 9 0s6 3 9 0"/></svg><span>Isolines</span><i class="sw"></i></button>
+      <button id="alerts-toggle" class="row chip warn" title="Weather alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><span>Alerts</span><i class="sw"></i></button>
+      <button id="storms-toggle" class="row chip warn" title="Active tropical cyclones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6a6 6 0 1 0 6 6"/><path d="M12 10a2 2 0 1 0 2 2"/></svg><span>Storms</span><i class="sw"></i></button>
+      <button id="smoke-toggle" class="row chip" title="Wildfire smoke forecast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c4-2 4-6 8-6s4 4 8 6"/><path d="M6 14c3-2 3-5 6-5s3 3 6 5"/><path d="M8 8c2-1 2-3 4-3s2 2 4 3"/></svg><span>Smoke</span><i class="sw"></i></button>
+      <button id="fires-toggle" class="row chip warn" title="Active wildfires and perimeters, last 24 h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg><span>Fires</span><i class="sw"></i></button>
+      <button id="sigmet-toggle" class="row chip warn" title="Aviation hazard areas (SIGMET / AIRMET)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.6 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><span>SIGMET</span><i class="sw"></i></button>
+      <button id="aurora-toggle" class="row chip" title="Aurora nowcast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c0-6 2-12 5-12s2 6 4 6 2-6 4-6 3 6 3 12"/><path d="M2 20h20"/></svg><span>Aurora</span><i class="sw"></i></button>
+      <button id="lightning-toggle" class="row chip" title="Lightning observations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg><span>Lightning</span><i class="sw"></i></button>
+      <button id="aq-toggle" class="row chip" title="Aerosols: PM2.5, PM10, dust"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h13a3 3 0 1 0-3-3"/><path d="M3 13h16a3 3 0 1 1-3 3"/><path d="M3 18h9"/></svg><span>Air quality</span><i class="sw"></i></button>
+      <button id="quakes-toggle" class="row chip" title="Earthquakes M2.5+, past day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l3-8 4 16 3-10 2 4h5"/></svg><span>Quakes</span><i class="sw"></i></button>
+      <button id="aod-toggle" class="row chip" title="Aerosol optical depth, yesterday"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="8" r="2.5"/><circle cx="16" cy="6" r="2"/><circle cx="12" cy="14" r="3"/><circle cx="18" cy="16" r="2"/><circle cx="6" cy="17" r="2"/></svg><span>Aerosol</span><i class="sw"></i></button>
+      <button id="thunder-toggle" class="row chip warn" title="Thunderstorm marks (CAPE + rain)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg><span>Thunder</span><i class="sw"></i></button>
+      <div class="menu-sec">Mountains</div>
+      <button id="avy-toggle" class="row chip" title="Avalanche forecast regions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/><path d="M4 21 12 9"/></svg><span>Avalanche</span><i class="sw"></i></button>
+      <button id="resorts-toggle" class="row chip" title="Ski resorts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20l6-10 4 6 3-4 7 8H2z"/><path d="M14 8V4l3 2-3 2"/></svg><span>Ski resorts</span><i class="sw"></i></button>
+    </div>
+  </div>
+  <div class="menu" id="tools-menu">
+    <button class="chip menu-btn iconbtn" data-menu="tools" aria-haspopup="true" title="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M2 14h4"/><path d="M10 8h4"/><path d="M18 16h4"/></svg><span>tools</span></button>
+    <div class="menu-pop menu-list">
+      <button id="units-toggle" class="row" title="Wind speed units"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="m12 12 4-4"/><path d="M12 3v2M3 12h2M19 12h2M12 19v2"/></svg><span>Wind units</span><b class="val mono">km/h</b></button>
+      <button id="route-toggle" class="row chip" title="Weather along a route at the time you would be there"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="19" r="2.4"/><circle cx="19" cy="5" r="2.4"/><path d="M7.2 18C13 17 11 10 17 7"/></svg><span>Route forecast</span><i class="sw"></i></button>
+      <button id="xsection-toggle" class="row chip" title="Vertical cross section along a line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M3 16c4-6 8 2 12-3 2-2.5 4-3 6-3"/><path d="M7 20v-3M12 20v-6M17 20v-4"/></svg><span>Cross section</span><i class="sw"></i></button>
+      <button id="measure-toggle" class="row chip" title="Measure distance and bearing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg><span>Measure</span><b class="val">off</b></button>
+      <button id="locate" class="row" title="My location"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg><span>My location</span></button>
+      <button id="share-btn" class="row" title="Copy a link to this view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>Copy link</span></button>
+      <button id="theme-toggle" class="row" title="Light / dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span>Theme</span><b class="val">dark</b></button>
+      <label class="row range" title="Layer opacity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg><span>Opacity</span><input id="opacity" type="range" min="20" max="100" value="100" aria-label="Layer opacity"></label>
+      <button id="settings-btn" class="row" title="Units, clock, map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.2.5.66.86 1.2.98H21a2 2 0 1 1 0 4h-.09c-.54.02-1 .38-1.2.88z"/></svg><span>Settings</span></button>
+      <button id="keys-btn" class="row" title="Keyboard shortcuts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 13h6"/></svg><span>Shortcuts</span></button>
+    </div>
+  </div>
+</header>
+<div id="search-results" class="results" hidden></div>
+
+<nav id="tstrip" class="tstrip" aria-label="Overlays and tools"></nav>
+<button id="locate-btn" class="locate-btn" title="My location" aria-label="My location"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3.2M12 18.8V22M2 12h3.2M18.8 12H22"/><circle cx="12" cy="12" r="8"/></svg></button>
+<div id="side">
+  <nav id="layers" class="rail" aria-label="Layers"></nav>
+  <div id="side-resize" class="side-resize-handle" role="separator" aria-orientation="horizontal" aria-label="Resize the layer list" tabindex="0" title="Drag to resize · double-click to reset"><i></i></div>
+</div>
+
+<footer id="timebar">
+  <div id="tape-resize" class="tape-resize-handle" role="separator" aria-orientation="horizontal" aria-label="Resize forecast tape" tabindex="0" title="Drag to resize · double-click to reset"><i></i></div>
+  <div class="tape-head">
+    <button id="play" class="icon" title="Animate (space)">▶</button>
+    <div class="time-meta">
+      <span id="valid-local"></span>
+      <span id="valid-utc" class="mono dim"></span>
+    </div>
+    <span id="lead" class="mono dim"></span>
+    <button id="tape-now" class="now-btn" title="Jump to the current hour">Now</button>
+    <div id="tape-res" role="group" aria-label="Tape resolution"></div>
+    <span id="tape-where" class="dim"></span>
+    <button id="tape-min" class="icon tape-min" title="Hide the forecast table" aria-label="Hide the forecast table"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    <div id="variant" class="seg small variant" hidden aria-label="Layer variant"></div>
+    <aside id="legend" hidden>
+      <div class="legend-head"><b></b><i></i></div>
+      <div class="legend-bar"></div>
+      <div class="legend-ticks"></div>
+    </aside>
+  </div>
+  <div id="tape" class="tape" tabindex="0" aria-label="Forecast timeline"></div>
+  <input id="step" type="range" min="0" max="0" value="0" step="1" aria-label="Forecast step">
+</footer>
+
+<div id="point" hidden>
+  <div class="sheet-grip" aria-hidden="true"><i></i></div>
+  <div class="point-head">
+    <div class="point-titles"><span id="point-title"></span><span id="point-local" class="dim"></span></div>
+    <button id="point-fav" class="icon fav" title="Save place" aria-label="Save place"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3.6 2.6 5.27 5.82.85-4.21 4.1.99 5.79L12 16.88l-5.2 2.73.99-5.79-4.21-4.1 5.82-.85L12 3.6z"/></svg></button>
+    <button id="point-close" class="icon" title="Close">×</button>
+  </div>
+  <div class="point-tabs seg small">
+    <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="air">Airgram</button><button data-tab="skewt">Skew-T</button><button data-tab="winter">Winter</button><button data-tab="out">Outdoors</button><button data-tab="cmp">Compare</button><button data-tab="spread">Spread</button><button data-tab="resort" hidden>Resort</button>
+  </div>
+  <div id="point-body">
+    <section data-pane="now">
+      <div id="point-now"></div>
+      <canvas id="meteogram" width="640" height="220"></canvas>
+    </section>
+    <section data-pane="aloft" hidden><div id="aloft"></div></section>
+    <section data-pane="air" hidden><canvas id="airgram" width="640" height="260"></canvas><div id="airgram-note" class="note"></div></section>
+    <section data-pane="skewt" hidden><canvas id="skewt" width="640" height="520"></canvas><div id="skewt-note" class="note"></div></section>
+    <section data-pane="winter" hidden><div id="winter"></div></section>
+    <section data-pane="out" hidden><div id="outdoors"></div></section>
+    <section data-pane="cmp" hidden><div id="compare"></div></section>
+    <section data-pane="spread" hidden>
+      <div class="seg small spread-vars" id="spread-vars"></div>
+      <canvas id="plume" width="640" height="240"></canvas>
+      <div id="plume-note" class="note"></div>
+    </section>
+    <section data-pane="resort" hidden><div id="resort"></div></section>
+  </div>
+  <div id="point-foot" class="dim"></div>
+  <div id="point-resize" class="point-resize-handle" role="button" aria-label="Resize location card" tabindex="0" title="Drag to resize · double-click to reset">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 17 17 8M13 17l4-4"/></svg>
+  </div>
+</div>
+
+<div id="measure" class="measure" hidden></div>
+<div id="provider" class="provider" aria-live="polite"><span class="dot"></span><span class="txt"></span></div>
+<div id="toast" hidden></div>
+
+<script defer src="vendor/maplibre-gl.js"></script>
+<!-- the app scripts, one body: /bundle.js is the files below concatenated in
+     this order. wxgrid/bundle.py reads this list; it lives here so the page
+     stays the one owner of the load order. -->
+<script type="application/json" data-bundled>particles.js app.js units.js settings.js menu.js tour.js overlays.js tape.js search.js panes.js</script>
+<script defer src="static-api.js"></script>
+<script defer src="bundle.js"></script>
+<!-- Feature modules are part of the offline shell, but they do not block the
+     first forecast. features.js loads them after the initial tape and wind. -->
+<script type="application/json" data-lazy-src="fires.js"></script>
+<script type="application/json" data-lazy-src="sigmet.js"></script>
+<script type="application/json" data-lazy-src="cams.js"></script>
+<script type="application/json" data-lazy-src="sky.js"></script>
+<script type="application/json" data-lazy-src="route.js"></script>
+<script type="application/json" data-lazy-src="xsection.js"></script>
+<script type="application/json" data-lazy-src="sounding.js"></script>
+<script type="application/json" data-lazy-src="ens.js"></script>
+<script type="application/json" data-lazy-src="provider.js"></script>
+<script type="application/json" data-lazy-src="probe.js"></script>
+<script defer src="features.js"></script>
+</body>
+</html>

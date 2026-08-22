@@ -1,0 +1,1140 @@
+@font-face { font-family: "Inter"; src: url("fonts/inter.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Urbanist"; src: url("fonts/Urbanist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+/* DM Sans carries the numerals: it has the cleanest lining figures of the
+   three faces here, and every reading in this app is a number first. */
+@font-face { font-family: "DM Sans"; src: url("fonts/DMSans-Variable.woff2") format("woff2"); font-weight: 100 1000; font-display: swap; }
+
+:root {
+  color-scheme: dark;
+  /* dvh is the viewport you can actually see. Safari's 100vh includes the
+     space under its own toolbars, so a panel sized to it hangs off the top. */
+  --tb-h: 150px;   /* live height of #timebar, set by app.js */
+  --top-h: 52px;   /* live height of #topbar, set by app.js */
+  /* OLED-friendly dark: true black ground, near-black panels, no grey haze */
+  --bg: #000000;
+  --panel: rgba(0, 0, 0, 0.78);
+  --panel-solid: #0a0b0d;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --fg: #eef1f5;
+  --fg-2: #b4bbc6;
+  --dim: #7c8492;
+  --accent: #ff8a3d;
+  --accent-ink: #1a0d04;
+  --accent-soft: rgba(255, 138, 61, 0.16);
+  --accent-glow: rgba(255, 138, 61, 0.35);
+  --warm: #ffb454;
+  --rain: #6cb6ff;
+  --bad: #ef786f;
+  --good: #78d39a;
+  --tape-night: rgba(255,255,255,.035);
+  --radius: 14px;
+  --font-body: "DM Sans", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Urbanist", "Inter", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-num: "DM Sans", "Urbanist", system-ui, sans-serif;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef1f5;
+  --panel: rgba(255, 255, 255, 0.86);
+  --panel-solid: #ffffff;
+  --line: rgba(0, 0, 0, 0.09);
+  --line-strong: rgba(0, 0, 0, 0.18);
+  --fg: #141821;
+  --fg-2: #3a4250;
+  --dim: #6b7482;
+  --accent: #e8651f;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(232, 101, 31, 0.14);
+  --accent-glow: rgba(232, 101, 31, 0.3);
+  --warm: #d97706;
+  --rain: #1f74d8;
+  --bad: #d63d3d;
+  --good: #1f8f4a;
+  --tape-night: rgba(0,0,0,.05);
+}
+* { box-sizing: border-box; }
+/* a display rule on a component beats the UA's [hidden]; several of ours did,
+   leaving empty stubs on screen */
+[hidden] { display: none !important; }
+/* Chrome behaves like an app, not a document: no text selection, no double-tap
+   zoom, no tap flash. The map canvas keeps its own gestures, and anything
+   worth copying (raw METAR, alert text) opts back in with .selectable. */
+html { touch-action: manipulation; }
+body { user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+input, textarea, select, .selectable, .obs .raw, .alert .hl, #point-body .note { user-select: text; -webkit-user-select: text; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13.5px/1.35 var(--font-body); overflow: hidden; -webkit-font-smoothing: antialiased; }
+#map { position: absolute; inset: 0; }
+/* The particle canvas is a sibling of the map, so without a z-index it paints
+   over everything inside it — popups and the location pin included, which is
+   how a fire report ended up with wind streaks drawn through its text. */
+#particles { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.maplibregl-marker { z-index: 3; }
+.maplibregl-popup { z-index: 4; }
+.maplibregl-ctrl-attrib { font-size: 10px; background: rgba(0,0,0,.45) !important; color: #aab; }
+.maplibregl-ctrl-attrib a { color: #cde; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.dim { color: var(--dim); }
+button { font: inherit; color: inherit; }
+
+/* ── top bar ─────────────────────────────────────────────────────────── */
+#topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  padding-top: calc(8px + env(safe-area-inset-top));
+  background: linear-gradient(to bottom, rgba(11,13,16,.88), rgba(11,13,16,.45) 62%, transparent);
+  pointer-events: none;
+}
+#topbar > * { pointer-events: auto; }
+.brand { font: 800 16px/1 var(--font-display); letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; margin-right: 2px; color: var(--fg); text-decoration: none; }
+.brand img { display: block; border-radius: 7px; }
+.brand { position: relative; }
+.brand.degraded::after { content: ""; position: absolute; top: -1px; left: 19px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--warm); box-shadow: 0 0 0 2px var(--panel-solid), 0 0 8px var(--warm); }
+.search { display: flex; position: relative; align-items: center; }
+/* the magnifier is the input's own background, not a sibling element: as a
+   sibling it sat under the input's background and vanished (twice) */
+.search input {
+  width: 210px; color: var(--fg); border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px 10px 6px 31px; font: 500 12.5px var(--font-body); backdrop-filter: blur(8px); outline: none;
+  background-color: var(--panel);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b4bbc6' stroke-width='2.1' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.6-3.6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 9px center; background-size: 14px 14px;
+}
+:root[data-theme="light"] .search input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233a4250' stroke-width='2.1' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.6-3.6'/%3E%3C/svg%3E");
+}
+.search input::-webkit-search-cancel-button { filter: invert(.6); }
+.search input:focus { border-color: var(--accent); }
+.search input::placeholder { color: var(--dim); }
+.spacer { flex: 1; }
+.rowbreak { display: none; }
+
+.seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; backdrop-filter: blur(8px); }
+.seg button { position: relative; z-index: 1; border: 0; background: transparent; color: var(--fg-2); padding: 5px 11px; border-radius: 7px; font: 700 12.5px var(--font-display); cursor: pointer; letter-spacing: .01em; transition: color .18s ease, background .15s ease; }
+/* hover answers before the click does: unchosen options light up under a
+   pointer. Guarded to real pointers so touch never leaves a stuck highlight. */
+@media (hover: hover) {
+  .seg button:not(.on):not(:disabled):hover { color: var(--fg); background: rgba(127, 127, 127, .14); }
+}
+.seg.sliding { position: relative; isolation: isolate; }
+.seg.sliding .seg-cursor { position: absolute; z-index: 0; top: 3px; bottom: 3px; left: 0; width: 0; border-radius: 7px;
+  background: var(--accent); pointer-events: none; will-change: transform,width; }
+.seg.sliding .seg-cursor.ready { transition: transform .24s cubic-bezier(.22,.8,.25,1), width .24s cubic-bezier(.22,.8,.25,1), opacity .12s ease; }
+.seg.sliding button.on { background: transparent; }
+#models button { white-space: nowrap; }   /* "AI-GFS" was breaking across two lines */
+#models button .grid { font: 600 10px var(--font-display); font-style: normal; margin-left: 3px; opacity: .65; letter-spacing: 0; }
+/* the badge pads INSIDE its own clipped box: an outside margin survived
+   the collapse and left the pill elongated by a ghost gap (2026-08-21) */
+/* Desktop keeps the altitude badge; a phone shows it for a beat and folds
+   it away (Jeff 2026-08-21). The padding lives INSIDE the clipped box —
+   an outside margin survives the collapse as a ghost gap. */
+/* No overflow:hidden here: on an inline-block it moves the baseline to the
+   box bottom, which floated the badge above the number (Jeff 2026-08-21).
+   The clip is a phone concern only, where the peek animation needs it. */
+#levels button .level-alt { font: 600 9px var(--font-display); font-style: normal; padding-left: 3px; opacity: .65; letter-spacing: 0; }
+@media (max-width: 820px) {
+  #levels button .level-alt { display: inline-block; overflow: hidden; vertical-align: text-bottom; max-width: 0; opacity: 0; animation: level-peek 3s ease forwards; }
+  @keyframes level-peek {
+    0%   { max-width: 0;    opacity: 0;   padding-left: 0; }
+    12%  { max-width: 64px; opacity: .65; padding-left: 3px; }
+    78%  { max-width: 64px; opacity: .65; padding-left: 3px; }
+    100% { max-width: 0;    opacity: 0;   padding-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { #levels button .level-alt { animation: none; } }
+}
+#models .model-child { max-width: 0; min-width: 0; overflow: hidden; opacity: 0; padding-left: 0; padding-right: 0;
+  margin-left: -2px; pointer-events: none; transform: translateX(-7px) scale(.92); }
+#models .model-child.open { max-width: 110px; opacity: 1; padding-left: 11px; padding-right: 11px; margin-left: 0;
+  pointer-events: auto; transform: none; animation: model-child-in .24s cubic-bezier(.2,.8,.2,1); }
+@keyframes model-child-in { from { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; transform: translateX(-7px) scale(.92); } }
+.seg button.on { background: var(--accent); color: var(--accent-ink); }
+.seg button:disabled { opacity: .35; cursor: default; }
+.seg.small button { padding: 4px 8px; font-size: 11.5px; }
+.seg.disabled { opacity: .38; }
+.seg.disabled button.on { background: var(--line-strong); color: var(--fg-2); }
+.seg.disabled.sliding button.on { background: transparent; }
+.seg.disabled.sliding .seg-cursor { background: var(--line-strong); }
+/* The altitude pill is the top bar's longest item. On a zoomed-in page it
+   shrinks and scrolls inside itself instead of running off the screen edge. */
+/* the model list and the ladder each scroll inside their own box: with
+   eight models the row used to push the ladder off the page. Every model
+   and every notch stays reachable; only the viewport negotiates. */
+#models { flex: 0 1 auto; min-width: 132px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+#models::-webkit-scrollbar { display: none; }
+/* the ladder never gives up a notch: it refuses to shrink, and the model
+   row (which scrolls) absorbs all compression. At widths where even a full
+   ladder cannot fit, its own scroll takes over — nothing clips silently
+   ("the 200 is cut off", Jeff 2026-08-21). */
+#levels { flex: 0 0 auto; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+/* the buttons themselves never shrink or wrap — the pill scrolls instead,
+   so "850 5k ft" cannot fold onto two lines on a zoomed page */
+#levels button { white-space: nowrap; flex: 0 0 auto; }
+#levels::-webkit-scrollbar { display: none; }
+
+select.run {
+  appearance: none; background: var(--panel); color: var(--fg-2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 6px 24px 6px 10px; font: 500 12px var(--font-mono);
+  background-image: linear-gradient(45deg, transparent 50%, var(--dim) 50%), linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+  background-position: calc(100% - 12px) 12px, calc(100% - 8px) 12px; background-size: 4px 4px; background-repeat: no-repeat;
+}
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  background: var(--panel); border: 1px solid var(--line); color: var(--fg-2);
+  padding: 6px 11px; border-radius: 999px; font: 600 12px var(--font-display); cursor: pointer; backdrop-filter: blur(8px);
+}
+.chip.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.chip.warn.on { background: var(--warm); border-color: var(--warm); }
+.chip:disabled { opacity: .35; cursor: default; }
+.icon {
+  width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); font: 500 14px/1 var(--font-body); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0; text-align: center;
+}
+.icon svg { display: block; }
+/* a text glyph sits on its own baseline; nudge the ones that need it so the
+   optical centre matches the geometric one */
+#play { font-size: 13px; padding-left: 2px; }
+#point-close, .xs-close, #settings-close { font-size: 17px; line-height: 1; }
+
+/* ── layer rail (desktop) / chips row (mobile) ───────────────────────── */
+/* right side: a strip of tool/overlay toggles (icons, tooltips) and the layer
+   list, one panel. The strip proxies the real buttons in the topbar menus, so
+   state lives in one place. */
+#side { position: absolute; right: 12px; top: calc(var(--top-h) + 6px); z-index: 5; display: flex; align-items: stretch; gap: 0;
+        max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 46px); }
+/* with the card open the agency badge moves under the rail, so the rail
+   has to stop above it — 39 px of badge plus its gap */
+body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 104px); }
+#side:hover, #side:focus-within { z-index: 12; }
+/* desktop: pinned to the bottom of the strip. phone: floating, bottom right. */
+.locate-btn { position: absolute; left: 12px; z-index: 5; width: 40px; height: 40px; border-radius: 12px;
+  bottom: calc(var(--tb-h) + 22px + env(safe-area-inset-bottom)); display: none; place-items: center; cursor: pointer;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); color: var(--fg); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.locate-btn svg { width: 20px; height: 20px; display: block; }
+.tstrip .strip-locate { color: var(--fg); }
+.locate-btn:hover { border-color: var(--accent); color: var(--accent); }
+.locate-btn.on { color: var(--accent); border-color: var(--accent); }
+.rail { display: flex; flex-direction: column; gap: 2px; max-height: 100%; overflow-y: auto; scrollbar-width: none;
+        background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; backdrop-filter: blur(10px); min-width: 188px; }
+.rail::-webkit-scrollbar { display: none; }
+/* the rail's own height, dragged from its bottom edge */
+#side { flex-direction: column; }
+.side-resize-handle { position: relative; z-index: 3; align-self: center; flex: 0 0 18px; margin-top: -6px;
+  width: 64px; height: 18px; display: grid; place-items: center; cursor: ns-resize; touch-action: none; outline: none; }
+.side-resize-handle i { display: block; width: 34px; height: 4px; border-radius: 999px;
+  background: color-mix(in srgb, var(--fg-2) 55%, transparent); box-shadow: 0 0 0 4px var(--panel-solid), 0 2px 10px rgba(0,0,0,.28);
+  transition: width .14s ease, background .14s ease; }
+.side-resize-handle:hover i, .side-resize-handle:focus-visible i, #side.is-resizing .side-resize-handle i {
+  width: 44px; background: var(--accent); }
+@media (max-width: 820px) { .side-resize-handle { display: none; } }
+.rail button { position: relative; display: flex; align-items: center; gap: 11px; border: 0; background: transparent; color: var(--fg-2); padding: 9px 13px 9px 11px; border-radius: 10px; font: 600 13.5px var(--font-display); cursor: pointer; text-align: left; white-space: nowrap; transition: background .15s, color .15s, transform .15s; }
+.rail button svg { width: 20px; height: 20px; flex: 0 0 20px; opacity: .8; transition: opacity .15s, transform .15s; }
+.rail button:hover { background: rgba(255,255,255,.06); color: var(--fg); }
+.rail button:hover svg { transform: scale(1.08); opacity: 1; }
+.rail button.on { background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 18px var(--accent-glow); }
+.rail button.on svg { opacity: 1; }
+.rail button:disabled { opacity: .3; cursor: default; }
+.rail button:disabled:hover { background: transparent; }
+/* the icon strip lives on the LEFT edge; the layer list stays on the right.
+   Its height is clamped above the time bar and the locate button, so the last
+   buttons never end up underneath the tape where they cannot be clicked. */
+/* The strip is fixed: it never scrolls, because a scrolling toolbar hides
+   controls and moves them under your cursor. app.js sizes --strip-btn so the
+   whole set always fits the available height. */
+.tstrip { position: absolute; left: 12px; top: calc(var(--top-h) + 6px); z-index: 5;
+  --strip-btn: 36px;
+  display: flex; flex-direction: column; gap: 3px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px; backdrop-filter: blur(10px); overflow: visible; }
+.tstrip:hover, .tstrip:focus-within { z-index: 12; }
+.tstrip button { position: relative; width: var(--strip-btn); height: var(--strip-btn); border: 0; border-radius: 10px; background: transparent; color: var(--fg-2); display: flex; align-items: center; justify-content: center; line-height: 0; cursor: pointer; transition: background .15s, color .15s; }
+.tstrip button svg { width: calc(var(--strip-btn) * 0.5); height: calc(var(--strip-btn) * 0.5); opacity: .85; display: block; }
+.tstrip button:hover { background: rgba(255,255,255,.06); color: var(--fg); }
+.tstrip button.on { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-glow); }
+.tstrip button.warn.on { color: var(--warm); background: rgba(255,180,84,.16); box-shadow: inset 0 0 0 1px rgba(255,180,84,.4); }
+.tstrip .sep.sep-hide { display: none; }
+.tstrip .sep { height: 1px; background: var(--line); margin: 3px 4px; }
+/* tooltip to the right of the strip */
+.tstrip button[data-tip]::after { content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%) translateX(-4px); background: var(--panel-solid); color: var(--fg); border: 1px solid var(--line-strong); border-radius: 7px; padding: 4px 8px; font: 600 11.5px var(--font-display); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .12s, transform .12s; }
+.tstrip button:hover[data-tip]::after { opacity: 1; transform: translateY(-50%) translateX(0); }
+:root[data-theme="light"] .rail button:hover, :root[data-theme="light"] .tstrip button:hover { background: rgba(0,0,0,.05); }
+/* topbar menu buttons become icons */
+.menu .menu-btn.iconbtn { width: 34px; height: 34px; padding: 0; border-radius: 10px; display: grid; place-items: center; }
+.menu .menu-btn.iconbtn svg { width: 17px; height: 17px; }
+.menu .menu-btn.iconbtn span { display: none; }
+@media (min-width: 821px) { #overlays-menu, #tools-menu { display: none; } }
+.rail button .var { margin-left: auto; padding-left: 10px; font: 600 10.5px var(--font-mono); font-style: normal; color: var(--dim); }
+.rail button.on .var { color: var(--accent-ink); opacity: .75; }
+.rail .rail-sec { font: 700 10px var(--font-display); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; padding: 8px 10px 3px; border-top: 1px solid var(--line); margin-top: 3px; }
+.rail .rail-sec:first-child { border-top: 0; margin-top: 0; padding-top: 4px; }
+.rail-seg { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 11px 3px; }
+.rail-seg > span { font: 600 12px var(--font-display); color: var(--fg-2); }
+.rail-seg .seg.small button { padding: 4px 8px; font-size: 10.5px; }
+.rail-flat { position: relative; display: flex; align-items: center; gap: 11px; width: 100%; border: 0; background: transparent;
+  color: var(--fg-2); padding: 9px 13px 9px 11px; border-radius: 10px; font: 600 13.5px var(--font-display); cursor: pointer; text-align: left; }
+.rail-flat svg { width: 20px; height: 20px; flex: 0 0 20px; opacity: .8; }
+.rail-flat:hover { background: rgba(255,255,255,.06); color: var(--fg); }
+.rail-flat.on { background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 18px var(--accent-glow); }
+:root[data-theme="light"] .rail-flat:hover { background: rgba(0,0,0,.05); }
+.rail-opacity { display: flex; align-items: center; gap: 9px; padding: 6px 11px 8px; }
+.rail-opacity span { font: 600 12px var(--font-display); color: var(--fg-2); }
+.rail-opacity input { flex: 1; min-width: 0; accent-color: var(--accent); height: 14px; }
+.rail-opacity i { font: 600 10.5px var(--font-mono); font-style: normal; color: var(--dim); min-width: 30px; text-align: right; }
+.seg.variant { margin-left: 8px; }
+.seg.variant button { white-space: nowrap; }
+/* Keep all ten pressure levels on screen without shrinking the type. */
+@media (min-width: 821px) and (max-width: 1180px) {
+  #topbar { gap: 6px; }
+  .search input { width: 160px; }
+  #models button { padding-left: 8px; padding-right: 8px; }
+  #levels button { padding-left: 5px; padding-right: 5px; }
+  select.run { max-width: 94px; }
+}
+@media (min-width: 821px) and (max-width: 1010px) {
+  #topbar { flex-wrap: wrap; }
+  .spacer { display: none; }
+  .rowbreak { display: block; flex: 0 0 100%; height: 0; }
+  #levels { margin-left: auto; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+}
+@media (max-width: 820px) { .seg.variant { margin-left: 4px; padding: 2px; } .seg.variant button { padding: 3px 6px; font-size: 10.5px; } }
+
+/* ── topbar menus: layers ▾ / tools ▾ popovers (all widths) ──────────── */
+.menu { position: relative; display: block; }
+.menu .menu-btn { white-space: nowrap; }
+.menu .menu-pop { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 9; min-width: 168px; padding: 6px;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.45); flex-direction: column; gap: 4px; }
+.menu.open .menu-pop { display: flex; }
+/* an open menu paints over the card and the rail, which share the bar's layer */
+#topbar:has(.menu.open) { z-index: 12; }
+.menu .menu-pop .chip, .menu .menu-pop .icon { width: 100%; border-radius: 8px; text-align: left; justify-content: flex-start; height: auto; padding: 7px 10px; }
+.menu .menu-btn.has-on { border-color: var(--accent); color: var(--accent); }
+.menu-list { min-width: 200px; max-height: calc(100dvh - var(--top-h) - 20px); overflow-y: auto; scrollbar-width: none; }
+.menu-list .menu-sec { font: 700 9.5px var(--font-display); color: var(--dim); text-transform: uppercase; letter-spacing: .08em; padding: 8px 10px 3px; }
+.menu-list .menu-sec:not(:first-child) { border-top: 1px solid var(--line); margin-top: 3px; }
+.menu .menu-pop .row .sw { margin-left: auto; width: 26px; height: 14px; border-radius: 999px; background: rgba(255,255,255,.12); position: relative; flex: 0 0 26px; transition: background .15s; }
+.menu .menu-pop .row .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--fg-2); transition: transform .15s, background .15s; }
+.menu .menu-pop .row.on .sw { background: var(--accent); }
+.menu .menu-pop .row.warn.on .sw { background: var(--warm); }
+.menu .menu-pop .row.on .sw::after { transform: translateX(12px); background: var(--accent-ink); }
+.menu .menu-pop .row.on { color: var(--fg); }
+:root[data-theme="light"] .menu .menu-pop .row .sw { background: rgba(0,0,0,.12); }
+.menu .menu-pop .row { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; color: var(--fg-2);
+  padding: 8px 10px; border-radius: 8px; font: 600 12.5px var(--font-display); cursor: pointer; text-align: left; }
+.menu .menu-pop .row:hover { background: rgba(255,255,255,.06); color: var(--fg); }
+.menu .menu-pop .row svg { width: 16px; height: 16px; flex: 0 0 16px; opacity: .8; }
+.menu .menu-pop .row .val { margin-left: auto; font: 600 11px var(--font-mono); color: var(--dim); }
+.menu .menu-pop .row.on { color: var(--accent); }
+.menu .menu-pop .row.on .val { color: var(--accent); }
+.menu .menu-pop .row.chip { background: transparent; border: 0; }
+/* the basemap picker: three flat choices on one menu row */
+.menu .menu-pop .base-row { display: flex; gap: 4px; padding: 4px 6px 6px; }
+.menu .menu-pop .base-row button { flex: 1; border: 1px solid var(--line); background: transparent; color: var(--fg-2);
+  padding: 5px 6px; border-radius: 8px; font: 600 11.5px var(--font-display); cursor: pointer; }
+.menu .menu-pop .base-row button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.menu .menu-pop .row.chip.on { background: transparent; color: var(--fg); border: 0; }
+:root[data-theme="light"] .menu .menu-pop .row:hover, :root[data-theme="light"] .rail button:hover { background: rgba(0,0,0,.05); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+button:focus:not(:focus-visible) { outline: none; }
+
+/* ── legend ──────────────────────────────────────────────────────────── */
+#legend { width: 220px; margin-left: 12px; flex: 0 0 auto; }
+.legend-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+.legend-head b { font: 700 11px var(--font-display); color: var(--fg); letter-spacing: .01em; white-space: nowrap; }
+/* units are case-sensitive science, not shouting: MM/6H with .07em gaps
+   read as broken type (Jeff 2026-08-21) */
+.legend-head i { font: 600 9.5px var(--font-display); font-style: normal; color: var(--dim); letter-spacing: .01em; }
+.legend-head i .per { font-size: 8px; color: color-mix(in srgb, var(--dim) 55%, transparent); margin-left: 1px; }
+.legend-bar { height: 9px; border-radius: 5px; }
+.legend-ticks { display: flex; justify-content: space-between; font: 600 10.5px var(--font-num); font-variant-numeric: tabular-nums; color: var(--dim); margin-top: 3px; }
+.legend-ticks b { color: var(--fg); font-weight: 600; font-family: var(--font-display); }
+
+/* ── time bar + tape ─────────────────────────────────────────────────── */
+#timebar {
+  position: absolute; left: 8px; right: 8px; z-index: 5;
+  /* Keep the outer gutter a true 8 px on all three sides. The safe-area room
+     belongs inside the tape; putting it below the card exposed MapLibre's
+     compact attribution "i" in a fat, lopsided bottom moat. */
+  bottom: 8px;
+  /* The tape is opaque. It used to be translucent, which forced the sticky
+     label column to paint its own background — and that block of near-black
+     over a see-through panel read as a box sitting on the table. One surface,
+     no box, and a dense grid of numbers stays legible over any map. */
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom)); background: var(--panel-solid); border: 1px solid var(--line); border-radius: var(--radius);
+  backdrop-filter: blur(10px); display: flex; flex-direction: column;
+}
+.tape-resize-handle { position: absolute; z-index: 2; left: 50%; top: -9px; width: 72px; height: 18px;
+  transform: translateX(-50%); display: grid; place-items: center; cursor: ns-resize; touch-action: none; outline: none; }
+/* The visible pill is 72×18; the thing a finger hits is this. An 18 px target
+   missed low lands on the tape header and nothing moves (Jeff 2026-08-22,
+   iPad, "doesn't resize at all"). */
+.tape-resize-handle::before { content: ""; position: absolute; inset: -16px -28px; }
+.tape-resize-handle i { display: block; width: 42px; height: 4px; border-radius: 999px;
+  background: color-mix(in srgb, var(--fg-2) 58%, transparent); box-shadow: 0 0 0 4px var(--panel), 0 2px 10px rgba(0,0,0,.28);
+  transition: width .14s ease, background .14s ease, box-shadow .14s ease; }
+.tape-resize-handle:hover i, .tape-resize-handle:focus-visible i, #timebar.is-resizing .tape-resize-handle i {
+  width: 52px; background: var(--accent); box-shadow: 0 0 0 4px var(--panel), 0 0 16px var(--accent-glow); }
+#timebar.user-sized .tape { flex: 1 1 auto; min-height: 0; overflow-y: hidden; }
+#timebar.user-sized table.wtape { min-height: 100%; }
+/* phone: the table never stretches to fill an over-tall tape — that stretch
+   is what strands the day row over a void (2026-08-20 screenshots) */
+@media (max-width: 820px) { #timebar.user-sized table.wtape { min-height: 0; } }
+#timebar.mini { height: auto !important; }
+/* the fold glide: an explicit height + clip while sliding between states */
+#timebar.tape-anim { transition: height .22s cubic-bezier(.4,0,.2,1); overflow: hidden; }
+#timebar.tape-anim #step { display: none; }
+/* out of the way entirely: only the grip is left to pull it back */
+#timebar.tape-away { height: 14px !important; min-height: 0; padding: 0; overflow: hidden; }
+#timebar.tape-away > *:not(.tape-resize-handle) { display: none; }
+#timebar.tape-away .tape-resize-handle, #timebar.mini .tape-resize-handle { display: grid; }
+.tape-head { display: flex; align-items: center; gap: 10px; padding: 0 2px 2px; }
+.tape-head .icon { flex: 0 0 auto; }
+.now-btn { border: 1px solid var(--line-strong); background: transparent; color: var(--fg-2); cursor: pointer;
+  font: 700 10.5px var(--font-display); letter-spacing: .05em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.now-btn:hover { border-color: var(--accent); color: var(--accent); }
+.now-btn.on { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 14px var(--accent-glow); }
+                    /* never squash the play circle */
+.time-meta { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+#valid-local { font: 700 13px var(--font-num); white-space: nowrap; }
+#valid-utc { white-space: nowrap; }
+#valid-utc { font-size: 10.5px; }
+#lead { font-size: 11.5px; min-width: 46px; }
+#tape-where { font-size: 11px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30%; }
+.tape-min { width: 26px; height: 26px; flex: 0 0 auto; margin-left: 6px; }
+.tape-min svg { width: 15px; height: 15px; transition: transform .2s cubic-bezier(.4,0,.2,1); }
+#timebar.mini .tape-min svg { transform: rotate(180deg); }
+/* Minimised is not empty: it keeps the day headers, the sky and the
+   temperature. The rest of the rows and the scrubber go. */
+#timebar.mini #step { display: none; }
+/* mini keeps the CLOCK: sky and temperature without their hours read as
+   decoration, not a forecast (Jeff 2026-08-20, phone screenshot) */
+#timebar.mini table.wtape tbody tr:not(.r-icon):not(.r-temp):not(.r-hour) { display: none; }
+#timebar.mini table.wtape tr.r-hour td, #timebar.mini table.wtape tr.r-hour th { font-size: 9px; padding-top: 1px; }
+#timebar.mini table.wtape tr.r-icon td { height: 18px; }
+#timebar.mini table.wtape tr.r-icon .tape-glyph { width: 18px; height: 13px; }
+#timebar.mini table.wtape th.day { padding-top: 2px; font-size: 10.5px; }
+#timebar.mini .tape { padding-top: 1px; }
+#timebar.mini { padding-bottom: 4px; }
+#timebar.mini .tape-head { padding-bottom: 0; }
+.tape-empty { padding: 10px 4px 6px; color: var(--dim); font: 500 11.5px var(--font-body); }
+/* left-right only: vertical touch drags belong to nobody here — the
+   table neither scrolls nor drags on the y axis (Jeff 2026-08-21) */
+.tape { display: block; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; overscroll-behavior: contain; scrollbar-width: none; min-width: 0; max-width: 100%; border-top: 1px solid var(--line); padding-top: 2px; }
+.tape.radar { display: flex; }
+.tape::-webkit-scrollbar { display: none; }
+.tape-day { display: flex; flex-direction: column; flex: 0 0 auto; border-right: 1px solid var(--line); }
+.tape-day:last-child { border-right: 0; }
+.tape-dayname { font: 700 10.5px var(--font-display); color: var(--fg-2); padding: 0 6px 2px; letter-spacing: .04em; text-transform: uppercase; }
+.tape-cols { display: flex; }
+.tape-col { width: 46px; flex: 0 0 46px; padding: 2px 0 3px; display: flex; flex-direction: column; align-items: center; gap: 1px; cursor: pointer; border-radius: 7px; position: relative; }
+.tape-col:hover { background: rgba(255,255,255,.05); }
+.tape-col.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-glow); }
+.tape-hour { font: 500 10px var(--font-mono); color: var(--dim); }
+.tape-glyph { width: 20px; height: 14px; }
+input#step { width: 100%; accent-color: var(--accent); height: 14px; margin: 2px 0 0; }
+
+/* ── point card ──────────────────────────────────────────────────────── */
+#point {
+  position: absolute; z-index: 6; left: 62px; top: calc(var(--top-h) + 8px); width: min(480px, calc(100vw - 24px));
+  max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 30px - env(safe-area-inset-bottom));
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px 8px;
+  backdrop-filter: blur(10px);
+}
+.point-resize-handle { position: absolute; z-index: 3; right: 2px; bottom: 2px; width: 24px; height: 24px;
+  display: grid; place-items: center; border-radius: 8px 0 10px 0; color: var(--dim); cursor: nwse-resize;
+  touch-action: none; outline: none; transition: color .14s ease, background .14s ease; }
+.point-resize-handle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.point-resize-handle:hover, .point-resize-handle:focus-visible, #point.is-resizing .point-resize-handle {
+  color: var(--accent); background: var(--accent-soft); }
+body.resizing-tape, body.resizing-tape * { cursor: ns-resize !important; }
+body.resizing-point, body.resizing-point * { cursor: nwse-resize !important; }
+#timebar.is-resizing, #point.is-resizing { border-color: color-mix(in srgb, var(--accent) 58%, var(--line)); }
+/* the head and tabs stay put; the body scrolls, so a late METAR or a long
+   Winter pane grows downward inside the card instead of pushing the title
+   off the top of the screen */
+#point[hidden] { display: none; }
+#point-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin: 0 -6px; padding: 0 6px; }
+#point-foot { flex: 0 0 auto; }
+.point-head { display: flex; align-items: flex-start; gap: 8px; }
+.sheet-grip { display: none; }
+.point-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.point-head #point-title { font: 700 23px/1.32 var(--font-display); letter-spacing: -.014em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the card is a flex column: without a hard basis the body's overflow squeezes
+   this row flat whenever a pane is tall (the resort board collapsed it to 17 px) */
+#point .point-tabs { display: flex; align-items: center; margin: 9px 0 3px; max-width: none; padding: 3px; flex: 0 0 auto; }
+#point .point-tabs button { flex: 1 1 auto; padding: 6px 5px; font-size: 11px; line-height: 1.15; white-space: nowrap; letter-spacing: -.01em; }
+/* ten tabs when a resort is selected: the same strip, a notch tighter, so the
+   pill neither overflows nor shrinks into the middle of the card */
+#point .point-tabs:has(button[data-tab="resort"]:not([hidden])) button { padding: 6px 4px; font-size: 10.5px; }
+.point-head .icon { width: 26px; height: 26px; font-size: 13px; }
+#point-now { display: flex; gap: 14px; margin: 8px 0 4px; font: 500 12px var(--font-num); flex-wrap: wrap; align-items: baseline; }
+#point-now b { font-size: 17px; color: var(--fg); font-family: var(--font-display); font-weight: 700; }
+#meteogram { width: 100%; height: 110px; display: block; }
+#point-foot { font-size: 10.5px; margin-top: 4px; }
+table.aloft { width: 100%; border-collapse: collapse; font: 500 12px var(--font-mono); margin: 6px 0 2px; }
+table.aloft th { text-align: left; font: 700 10.5px var(--font-display); color: var(--dim); letter-spacing: .04em; text-transform: uppercase; padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line); }
+table.aloft td { padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.aloft td.lvl { font: 600 12px var(--font-display); color: var(--fg); }
+table.aloft td.lvl i.u { font: 600 9px var(--font-display); font-style: normal; color: var(--dim); margin-left: 1px; }
+table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-left: 1.5px solid currentColor; border-top: 1.5px solid currentColor; margin-right: 5px; transform-origin: center; }
+/* readings as small tiles: label over value, two per row, so the eye can scan
+   down the values instead of reading a list */
+/* readings as small tiles: label over value, so the eye scans the values */
+/* the pane's one-line opinion, said before the table backs it up */
+.verdict { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 10px 0 4px;
+  padding: 9px 12px 10px; border-radius: 12px; border-left: 3px solid var(--line-strong);
+  background: rgba(127,127,127,.06); }
+.verdict b { font: 700 14.5px var(--font-display); color: var(--fg); letter-spacing: -.01em; }
+.verdict.good { border-left-color: var(--good); } .verdict.good b { color: var(--good); }
+.verdict.meh { border-left-color: var(--warm); } .verdict.meh b { color: var(--warm); }
+.verdict.bad { border-left-color: var(--bad); } .verdict.bad b { color: var(--bad); }
+.verdict .dim { font-size: 11px; }
+.verdict-win { display: inline-flex; align-items: baseline; gap: 7px; }
+.verdict-win i { font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.verdict-win b { font: 650 12.5px var(--font-num); color: var(--fg); }
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin: 9px 0 6px; }
+.kv .stat { display: flex; flex-direction: column; gap: 3px; padding: 7px 10px 8px; border-radius: 10px;
+  background: rgba(127,127,127,.07); box-shadow: inset 0 0 0 1px rgba(127,127,127,.06); }
+.kv .stat .k { color: var(--dim); font: 700 8.5px var(--font-display); letter-spacing: .08em; text-transform: uppercase; }
+.kv .stat .v { font: 600 15px var(--font-num); font-variant-numeric: tabular-nums; color: var(--fg); line-height: 1.2; }
+.kv .stat .v .dim { font-size: 11px; }
+.kv .stat.good { box-shadow: inset 0 0 0 1px rgba(120,211,154,.28); }
+.kv .stat.meh  { box-shadow: inset 0 0 0 1px rgba(255,180,84,.28); }
+.kv .stat.bad  { box-shadow: inset 0 0 0 1px rgba(239,120,111,.32); }
+.kv .stat.good .v { color: var(--good); } .kv .stat.meh .v { color: var(--warm); } .kv .stat.bad .v { color: var(--bad); }
+/* the door from a snow forecast to the band-by-band one */
+.resort-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
+  margin: 8px 0 2px; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  border-radius: 11px; background: var(--accent-soft); color: var(--fg); cursor: pointer; text-align: left; }
+.resort-link:hover { border-color: var(--accent); }
+.resort-link .k { font: 700 8.5px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.resort-link .v { font: 700 13.5px var(--font-display); display: flex; align-items: baseline; gap: 7px; }
+.resort-link .v i { font: 500 11px var(--font-mono); font-style: normal; color: var(--dim); }
+.resort-link::after { content: "\2192"; color: var(--accent); font-size: 15px; }
+
+/* ── elevation board (bands down, morning/afternoon/night across) ────── */
+.board-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 12px 0 5px; }
+.board-head span:first-child { font: 700 10px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--fg-2); }
+.board-head .dim { font: 500 10.5px var(--font-mono); }
+.board { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; border: 1px solid var(--line); border-radius: 12px; }
+table.bandtape { border-collapse: separate; border-spacing: 0; width: 100%; font: 500 11.5px var(--font-num); color: var(--fg-2); }
+table.bandtape th.lab { position: sticky; left: 0; z-index: 2; background: var(--panel-solid); text-align: left;
+  font: 600 10px var(--font-display); color: var(--dim); padding: 0 9px 0 9px; min-width: 78px; white-space: nowrap; }
+table.bandtape th.lab small { display: block; font: 500 8.5px var(--font-mono); opacity: .7; }
+table.bandtape th.corner { background: var(--panel-solid); }
+table.bandtape th.day { text-align: left; font: 700 11px var(--font-display); color: var(--fg); padding: 5px 8px 3px;
+  border-left: 1px solid var(--line-strong); white-space: nowrap; }
+table.bandtape th.slot { font: 600 9px var(--font-display); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--dim); padding: 0 4px 4px; border-left: 1px solid var(--line); min-width: 42px; }
+table.bandtape th.slot.nite { color: color-mix(in srgb, var(--rain) 62%, var(--dim)); }
+/* the band's own row: a full-width rule with its height on the right */
+table.bandtape th.band { position: sticky; left: 0; background: color-mix(in srgb, var(--fg) 7%, var(--panel-solid));
+  border-top: 1px solid var(--line-strong); padding: 5px 10px 4px; }
+table.bandtape th.band span { font: 700 11px var(--font-display); letter-spacing: .04em; text-transform: uppercase; color: var(--fg); }
+table.bandtape th.band i { font: 600 10px var(--font-mono); font-style: normal; color: var(--dim); margin-left: 8px; }
+table.bandtape td { text-align: center; padding: 2px 3px; border-left: 1px solid var(--line); height: 21px; }
+table.bandtape tr.frzrow td, table.bandtape tr.frzrow th.lab { border-top: 1px solid var(--line-strong); color: var(--dim); }
+table.bandtape .dimrow { color: var(--dim); }
+table.bandtape .nil { color: var(--line-strong); }
+/* amounts read as bars of colour, the way a snow table should scan */
+.bandtape .fall { display: inline-block; min-width: 26px; padding: 1px 5px; border-radius: 5px; font-weight: 700; color: var(--fg); }
+.bandtape .fall.snow { background: rgba(150, 200, 255, calc(var(--w) * .82)); }
+.bandtape .fall.rain { background: rgba(72, 140, 220, calc(var(--w) * .78)); }
+.bandtape .wv { display: inline-block; min-width: 22px; padding: 1px 4px; border-radius: 5px; font-weight: 700; }
+/* the arrow always sits under its pill: left inline, a wide column kept it
+   beside the pill and read as a different layout from its neighbours */
+.bandtape .dirarrow { display: block; width: 9px; height: 9px; margin: 1px auto 0; }
+@media (max-width: 820px) {
+  #tape-where .tape-region { display: none; }
+  table.bandtape th.lab { min-width: 66px; font-size: 9.5px; padding: 0 6px; }
+  table.bandtape th.slot, table.bandtape td { min-width: 38px; }
+}
+@media (max-width: 820px) { .kv { grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); } }
+.note { font-size: 11px; color: var(--dim); margin-top: 6px; line-height: 1.4; }
+
+/* Notifications: the same surface and the same type as every other panel,
+   with a coloured edge doing the work a second background colour used to. */
+#toast {
+  position: absolute; z-index: 17; top: calc(var(--top-h) + 10px); left: 50%; transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 32px)); padding: 10px 15px 11px;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent);
+  border-radius: 12px; box-shadow: 0 14px 40px rgba(0,0,0,.45);
+  font: 540 12.5px/1.45 var(--font-body); color: var(--fg); letter-spacing: -.004em;
+  animation: toast-in .18s cubic-bezier(.2,.7,.3,1);
+}
+@keyframes toast-in { from { opacity: 0; transform: translateX(-50%) translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { #toast { animation: none; } }
+#toast.error { border-left-color: var(--bad); color: var(--fg); }
+#toast.tappable { cursor: pointer; border-left-color: var(--accent); }
+#toast.tappable:hover { border-color: var(--accent); }
+:root[data-theme="light"] #toast { box-shadow: 0 14px 40px rgba(20,30,50,.18); }
+#fatal { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0,0,0,.55); backdrop-filter: blur(6px); padding: 20px; }
+.fatal-card { width: min(440px, 100%); background: var(--panel-solid); border: 1px solid rgba(239,120,111,.5); border-radius: var(--radius); padding: 18px 20px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.fatal-head { display: flex; align-items: center; gap: 10px; font: 800 16px var(--font-display); color: var(--fg); }
+.fatal-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 12px var(--bad); }
+.fatal-card p { margin: 10px 0 12px; color: var(--fg-2); line-height: 1.5; font-size: 13.5px; }
+.fatal-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fatal-actions .chip { background: var(--bad); border-color: var(--bad); color: #fff; }
+.fatal-actions .mono { font-size: 11px; }
+
+@media (max-width: 820px) {
+  /* three predictable rows instead of whatever wrapping produced:
+     brand + search + the two menus · models + run · levels */
+  /* Keep the last icon out of the phone browser's edge-swipe strip: a button
+     flush with the screen edge renders fine and eats every tap. */
+  #topbar { flex-wrap: wrap; gap: 6px 5px; padding: 6px 16px 6px 10px;
+    padding-top: calc(6px + env(safe-area-inset-top)); padding-right: calc(16px + env(safe-area-inset-right)); }
+  .menu .menu-btn.iconbtn { width: 38px; height: 38px; }
+  .brand span { display: none; }
+  .brand { order: 1; margin-right: 0; }
+  .search { order: 2; flex: 1 1 90px; min-width: 0; }
+  .search input { width: 100%; }
+  #overlays-menu { order: 3; flex: 0 0 auto; }
+  #tools-menu { order: 4; flex: 0 0 auto; }
+  /* The model list gives ground so the run picker can share its row, but it
+     keeps a floor: with min-width 0 it collapsed to nothing and the models
+     vanished off the phone entirely. */
+  /* a zero-height break starts the models row and the altitude row where
+     they belong, whatever the phone's width — a wide phone used to fit the
+     model list onto the search row and push the run picker out on its own */
+  .rowbreak { display: block; flex: 0 0 100%; height: 0; margin: 0; }
+  .rowbreak:first-of-type { order: 5; }
+  #models { order: 6; flex: 1 1 120px; min-width: 90px; overflow-x: auto; scrollbar-width: none; }
+  #models::-webkit-scrollbar { display: none; }
+  select.run { order: 7; flex: 0 0 auto; padding: 5px 22px 5px 8px; font-size: 11.5px; }
+  #tuck { order: 7; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; flex: 0 0 auto; }
+  #tuck svg { width: 15px; height: 15px; }
+  .rowbreak:last-of-type { order: 8; }
+  #levels { order: 9; flex: 0 1 auto; max-width: 100%; align-self: flex-start; }
+  #levels button { white-space: nowrap; }
+  /* The altitude peek: picking a pressure level shows its height for a
+     couple of seconds, then folds away so the pill stays thin. The badge is
+     re-rendered on every selection, so the animation replays each time. */
+  body.no-levels #levels, body.no-levels .rowbreak:last-of-type { display: none; }
+  /* tucked: the model, run, level and layer rows fold into one chip that
+     says what the map is showing, and a tap brings them back */
+  body.tucked #models, body.tucked select.run, body.tucked #levels, body.tucked #tuck, body.tucked .rowbreak:last-of-type, body.tucked #side { display: none; }
+  body.tucked #tucked { display: inline-flex; order: 6; }
+  #tucked { align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 11px; font: 700 12px var(--font-display); color: var(--fg); white-space: nowrap; max-width: 100%; overflow: hidden; }
+  #tucked i { font-style: normal; color: var(--dim); font-weight: 600; }
+  #tucked .grid { font: 600 10px var(--font-display); opacity: .65; margin-left: 1px; }
+  #tucked svg { width: 13px; height: 13px; margin-left: 2px; flex: 0 0 auto; }
+  #topbar > .seg:not(#models), #topbar > .menu, #topbar > select.run { flex-shrink: 0; }
+  .seg button { padding: 5px 10px; }
+  .seg.small button { padding: 4px 7px; }
+  .spacer { display: none; }
+  #side { left: 8px; right: 8px; top: calc(var(--top-h) + 4px); max-height: none; }
+  .tstrip { display: none; }
+  /* the card owns the left side on a phone, so the crosshair moves right */
+  .cams-legend { left: 8px; right: 8px; }
+  .locate-btn { display: grid; left: auto; right: 8px; width: 38px; height: 38px; bottom: calc(var(--tb-h) + 14px + env(safe-area-inset-bottom)); }
+  .rail { flex: 1; min-width: 0; flex-direction: row; overflow-x: auto; scrollbar-width: none; border-radius: 999px; padding: 3px; }
+  .rail::-webkit-scrollbar { display: none; }
+  .side-resize-handle { display: none; }
+  /* one thin row of chips, not a second toolbar: the sliders and the motion
+     picker are desktop furniture (the tools menu has them), and the chips
+     sit on their own height instead of stretching to the tallest neighbour */
+  .rail { align-items: center; }
+  .rail .rail-seg, .rail .rail-opacity, .rail .rail-flat { display: none; }
+  .rail button { padding: 4px 9px; border-radius: 999px; box-shadow: none; font-size: 12px; line-height: 1.2; }
+  .rail button svg { display: none; }
+  .rail .rail-sec { display: none; }
+  .rail button .var { display: none; }
+  /* On a phone the card is a bottom sheet: it sits above the time bar at
+     rest, drags up over it, and drags down to close. Two snap points, so a
+     thumb never has to be precise. */
+  #point { left: 8px; right: 8px; top: auto; border-radius: 16px 16px 12px 12px;
+    bottom: calc(var(--tb-h) + 10px + env(safe-area-inset-bottom));
+    max-height: min(56dvh, calc(100dvh - var(--top-h) - var(--tb-h) - 40px));
+    transition: bottom .22s cubic-bezier(.4,0,.2,1), max-height .22s cubic-bezier(.4,0,.2,1); }
+  /* max(--top-h, 48px): a stale or mid-transition topbar measurement must
+     never let the card climb past the screen top and take its × with it */
+  #point.sheet-full { bottom: calc(6px + env(safe-area-inset-bottom)); max-height: calc(100dvh - max(var(--top-h), 48px) - 20px - env(safe-area-inset-top)); }
+  #point.sheet-drag { transition: none; }
+  #point.sheet-sized { max-height: calc(100dvh - max(var(--top-h), 48px) - max(var(--tb-h), 96px) - 22px - env(safe-area-inset-top)); }
+  /* while the tape grip is being dragged, the card must not chase it through
+     a .22s ease — that lag is the jitter */
+  body.resizing-tape #point { transition: none; }
+  .sheet-grip { display: block; padding: 2px 0 6px; margin: -4px 0 0; touch-action: none; cursor: grab; }
+  /* peek: the map stays usable, the card keeps only its name and hero. The
+     tabs and everything under the hero go, so nothing half-renders. */
+  #point.sheet-peek .point-tabs, #point.sheet-peek #point-foot, #point.sheet-peek #point-local { display: none; }
+  #point.sheet-peek #point-body { overflow: hidden; }
+  #point.sheet-peek #point-now > :not(.hero) { display: none; }
+  #point.sheet-peek .hero { margin: 2px 0 0; }
+  .sheet-grip i { display: block; width: 38px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 0 auto; }
+  #levels { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+  /* on a phone the legend gets its own full-width line under the controls,
+     with its name and its two ends — a bare gradient means nothing */
+  /* two rows: the time and its buttons, then the resolution. The fold
+     button rides the first row instead of owning a third. */
+  .tape-head { flex-wrap: wrap; gap: 4px 6px; }
+  #play { order: 1; } .time-meta { order: 2; min-width: 0; flex: 1 1 90px; overflow: hidden; }
+  #lead { order: 3; min-width: 0; } #tape-now { order: 4; } .tape-min { order: 5; margin-left: 0; }
+  #tape-res { order: 6; } #variant { order: 7; }
+  /* mini on a phone is one glance: the resolution picker and the row labels
+     are full-view furniture, and the label gutter was costing two columns */
+  #timebar.mini #tape-res { display: none; }
+  #timebar.mini table.wtape .lab { display: none; }
+  #timebar.mini .tape-head { gap: 4px; }
+  #valid-local, #valid-utc { overflow: hidden; text-overflow: ellipsis; }
+  #tape-where { display: none; }
+  /* The legend is about the map, not the tape, so on a phone it sits on the
+     map: a small card above the tape's left end that stays put however far
+     the tape folds. */
+  #timebar { left: 8px; right: 8px; overflow: visible; }
+  #legend { position: absolute; left: 0; bottom: calc(100% + 10px); width: 150px; margin: 0; padding: 6px 8px 5px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(10px); box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+  #legend .legend-head { margin-bottom: 4px; }
+  #legend .legend-head b { font-size: 10.5px; }
+  #legend .legend-head i { font-size: 9px; }
+  #legend .legend-bar { height: 7px; }
+  #legend .legend-ticks { display: flex; font-size: 9px; margin-top: 2px; }
+  #legend .legend-ticks span:nth-child(2), #legend .legend-ticks span:nth-child(4) { display: none; }
+  #timebar.tape-away { overflow: visible; }
+  #timebar.tape-away .tape-head { display: flex; }
+  #timebar.tape-away .tape-head > *:not(#legend) { display: none; }
+  #point { left: 8px; right: 8px; width: auto; }
+  /* the place line wraps rather than losing the elevation off its end */
+  #point-local { white-space: normal; line-height: 1.35; }
+  .point-resize-handle { display: none; }
+  #point-now { gap: 10px; }
+}
+@media (max-width: 350px) { #lead { display: none; } }
+
+/* ── v3 additions ────────────────────────────────────────────────────── */
+
+.results { position: absolute; z-index: 8; top: calc(var(--top-h) - 2px); left: 12px; width: 340px; max-height: 50vh; overflow: auto;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 12px; padding: 4px; box-shadow: 0 18px 50px rgba(0,0,0,.5); }
+.results button { display: flex; width: 100%; align-items: center; gap: 10px; border: 0; background: transparent; color: var(--fg); padding: 8px 10px; border-radius: 8px; text-align: left; cursor: pointer; font: 500 12.5px var(--font-body); }
+.results button:hover, .results button.sel { background: rgba(255,255,255,.06); }
+.results .kind { font: 700 9.5px var(--font-display); text-transform: uppercase; letter-spacing: .06em; color: var(--accent); min-width: 42px; }
+.results .kind.resort { color: var(--warm); }
+.results .kind.fav { color: var(--warm); font-size: 12px; }
+.results .kind.recent { color: var(--dim); font-size: 12px; }
+.results .kind.airport { color: var(--good); }
+.results .kind.point { color: var(--accent); }
+.results .unfav { margin-left: 8px; color: var(--dim); font-size: 14px; padding: 0 4px; border-radius: 4px; }
+.results .unfav:hover { color: var(--bad); background: rgba(255,255,255,.06); }
+.point-head .icon.fav { color: var(--dim); padding: 0; }
+.point-head .icon svg { width: 15px; height: 15px; display: block; }
+.point-head .icon.fav.on { color: var(--warm); }
+.point-head .icon.fav.on svg { fill: var(--warm); }
+.results .sub { color: var(--dim); font-size: 11px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+
+/* the pinned picker: a value flag on a stem, wxgrid's own dress */
+.wx-pin { display: flex; flex-direction: column; align-items: center; cursor: grab; }
+.wx-pin .flag { display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px 5px 11px; border-radius: 10px;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); box-shadow: 0 8px 24px rgba(0,0,0,.4); white-space: nowrap; }
+.wx-pin .val b { font: 700 15px var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; }
+.wx-pin .val span { font: 600 10.5px var(--font-display); color: var(--fg-2); margin-left: 5px; }
+.wx-pin .x { border: 0; background: transparent; color: var(--dim); font-size: 14px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.wx-pin .x:hover { color: var(--bad); }
+.wx-pin .stem { width: 1.5px; height: 16px; background: color-mix(in srgb, var(--fg-2) 65%, transparent); }
+.wx-pin .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg); box-shadow: 0 0 0 2px rgba(8,10,14,.6); margin-top: -1px; }
+
+/* the marker's value flag: what the map reads at the tapped point */
+.wx-marker .mflag { position: absolute; left: 50%; bottom: calc(100% + 9px); transform: translateX(-50%);
+  display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 8px 4px; border-radius: 8px; white-space: nowrap;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.wx-marker .mflag b { font: 700 12.5px var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; }
+.wx-marker .mflag span { font: 600 9.5px var(--font-display); color: var(--fg-2); }
+.wx-marker .mflag::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 4px solid transparent; border-top-color: var(--line-strong); }
+
+/* tapped-point marker: white dot with a breathing halo */
+.wx-marker { width: 14px; height: 14px; position: relative; }
+.wx-marker::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(11,13,16,.6), 0 2px 10px rgba(0,0,0,.5); }
+.wx-marker::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid rgba(255,255,255,.85); animation: wx-pulse 1.8s ease-out infinite; }
+@keyframes wx-pulse { 0% { transform: scale(.55); opacity: .9; } 70% { transform: scale(1.6); opacity: 0; } 100% { transform: scale(1.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .wx-marker::after { animation: none; opacity: .5; } }
+
+#point-local { font: 500 13px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#point-local b { color: var(--fg-2); font-weight: 600; }
+#point-local .sep { margin: 0 6px; opacity: .5; }
+#point-local > span { white-space: nowrap; }
+.obs { margin: 8px 0 2px; padding: 10px 12px 11px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.035); }
+.obs .obs-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.obs .stn { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.obs .stn b { font: 750 15px var(--font-display); color: var(--fg); letter-spacing: .01em; }
+.obs .stn .nm { font: 600 11.5px var(--font-display); color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.obs .obs-when { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; font: 500 10.5px var(--font-display); color: var(--dim); }
+.obs .obs-when b { font: 600 11.5px var(--font-num); color: var(--fg-2); }
+/* One rule for the whole row: figures in the numeral face, units and labels in
+   the display face at one size, dimmed. It used to mix mono, display and body
+   depending on which value you were looking at. */
+.obs .obs-vals { display: flex; gap: 4px 14px; flex-wrap: wrap; align-items: baseline; margin-top: 8px; }
+.obs .obs-vals > span { display: inline-flex; align-items: baseline; gap: 4px; }
+.obs .obs-vals b { font: 700 14px var(--font-num); font-variant-numeric: tabular-nums; color: var(--fg); }
+.obs .obs-vals u, .obs .obs-vals i { font: 600 10.5px var(--font-display); font-style: normal; text-decoration: none; color: var(--dim); }
+.obs .obs-vals .codes { font: 600 11.5px var(--font-mono); color: var(--fg-2); gap: 6px; }
+.obs .obs-vals abbr { text-decoration: none; border-bottom: 1px dotted var(--line-strong); cursor: help; }
+.obs .raw { font: 400 10.5px/1.5 var(--font-mono); color: var(--dim); margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--line); word-break: break-all; }
+.fc { padding: 2px 7px; border-radius: 6px; font: 700 10.5px var(--font-display); letter-spacing: .04em; }
+.fc.VFR { background: #2f9e44; color: #fff; } .fc.MVFR { background: #1c7ed6; color: #fff; } .fc.IFR { background: #e03131; color: #fff; } .fc.LIFR { background: #ae3ec9; color: #fff; }
+
+table.cmp { width: 100%; border-collapse: collapse; font: 500 11.5px var(--font-mono); margin: 6px 0 2px; }
+table.cmp td.mdl i { font: 600 9.5px var(--font-display); font-style: normal; color: var(--dim); margin-left: 5px; }
+table.cmp th { text-align: center; font: 700 10px var(--font-display); color: var(--dim); padding: 3px 4px; border-bottom: 1px solid var(--line); text-transform: uppercase; letter-spacing: .04em; }
+table.cmp th:first-child, table.cmp td:first-child { text-align: left; font-family: var(--font-display); font-weight: 700; color: var(--fg-2); }
+table.cmp td { text-align: center; padding: 3px 4px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.cmp td .r { color: var(--rain); }
+
+.avy { margin: 6px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.03); }
+.avy-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 700 12px var(--font-display); }
+.avy-head a { color: var(--accent); text-decoration: none; font-weight: 600; font-size: 11px; }
+.avy-days { display: grid; grid-template-columns: 70px repeat(3, 1fr); gap: 3px 6px; margin-top: 6px; font: 500 11px var(--font-mono); align-items: center; }
+.avy-days .lab { font: 700 10px var(--font-display); color: var(--dim); text-transform: uppercase; letter-spacing: .04em; }
+.avy-days .band { padding: 3px 4px; border-radius: 5px; text-align: center; font-weight: 700; color: #111; }
+.avy-prob { margin-top: 6px; font-size: 11.5px; }
+.avy-prob b { color: var(--fg-2); }
+.avy-note { margin-top: 5px; font-size: 11px; color: var(--fg-2); line-height: 1.4; }
+
+table.bands { width: 100%; border-collapse: collapse; font: 500 11.5px var(--font-mono); margin: 6px 0 2px; }
+table.bands th { text-align: left; font: 700 10px var(--font-display); color: var(--dim); padding: 3px 5px; border-bottom: 1px solid var(--line); text-transform: uppercase; letter-spacing: .04em; }
+table.bands td { padding: 4px 5px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.bands td.name { font: 700 12px var(--font-display); color: var(--fg); }
+table.bands td.name small { display: block; font: 500 10px var(--font-mono); color: var(--dim); }
+.snowline { display: flex; gap: 14px; margin: 6px 0; font: 500 12px var(--font-mono); flex-wrap: wrap; }
+.snowline b { font: 700 15px var(--font-display); }
+.pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font: 700 10px var(--font-display); background: rgba(255,255,255,.08); color: var(--fg-2); }
+.pill.snow { background: rgba(157,211,255,.2); color: #cfe8ff; } .pill.rain { background: rgba(108,182,255,.18); color: #9fcbff; } .pill.mixed { background: rgba(255,180,84,.18); color: #ffd39a; }
+#airgram { width: 100%; height: 150px; display: block; margin-top: 6px; }
+/* Sideways only. The strip picked up a vertical scroll of a few pixels and
+   the tab labels drifted out of their own pills. */
+.point-tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
+  scrollbar-width: none; max-width: 70%; }
+.point-tabs button { flex-shrink: 0; }
+.point-tabs::-webkit-scrollbar { display: none; }
+@media (max-width: 820px) { .results { left: 8px; right: 8px; width: auto; } .point-tabs { max-width: 62%; } }
+
+/* ── tape table ──────────────────────────────────────────────────────── */
+.tape { border-top: 0; padding-top: 0; }
+table.wtape { border-collapse: separate; border-spacing: 0; font: 500 11.5px var(--font-num); color: var(--fg-2); }
+table.wtape th, table.wtape td { padding: 0; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.wtape th.lab { position: sticky; left: 0; z-index: 2; background: var(--panel-solid); text-align: left; font: 500 10.5px var(--font-body); color: var(--dim); padding: 0 10px 0 4px; min-width: 84px; }
+table.wtape th.lab small { color: var(--dim); opacity: .7; margin-left: 4px; font: 500 9.5px var(--font-mono); }
+table.wtape th.corner { background: transparent; }
+table.wtape th.day { text-align: left; font: 700 12px var(--font-display); color: var(--fg); padding: 2px 8px 3px; border-left: 1px solid var(--line-strong); letter-spacing: .01em; cursor: pointer; }
+table.wtape th.day[data-first]:hover { color: var(--accent); }
+table.wtape th.day.wknd { color: color-mix(in srgb, var(--warm) 60%, var(--fg)); }
+table.wtape th.day:first-of-type { border-left: 0; }
+table.wtape td { width: 44px; min-width: 44px; height: 20px; border-left: 1px solid transparent; cursor: pointer; }
+table.wtape td.night { background: var(--tape-night); }
+table.wtape td.on { background: var(--accent-soft); }
+table.wtape tr.r-hour td.on { box-shadow: inset 0 2px 0 var(--accent); }
+table.wtape tr.r-hour td { color: var(--fg-2); font-size: 11px; height: 19px; }
+table.wtape tr.r-hour td .hr small { font-size: 8.5px; margin-left: 1px; color: var(--dim); }
+table.wtape tr.r-icon td { height: 24px; }
+table.wtape tr.r-icon svg { width: 22px; height: 16px; vertical-align: middle; }
+table.wtape tr.r-temp td { font: 700 13px var(--font-num); font-variant-numeric: tabular-nums; color: var(--fg); height: 22px; }
+table.wtape tr.r-feels td { color: var(--fg-2); }
+table.wtape tr.r-rain td { color: var(--rain); font-weight: 600; position: relative; }
+table.wtape tr.r-rain td span { position: relative; }
+/* sunrise and sunset: thin amber notches at the top of their columns */
+table.wtape td.sun-rise, table.wtape td.sun-set { position: relative; }
+table.wtape tr.r-hour td.sun-rise::after, table.wtape tr.r-hour td.sun-set::after {
+  content: ""; position: absolute; left: 20%; right: 20%; top: -1px; height: 2.5px; border-radius: 2px;
+  background: var(--warm); opacity: .8; }
+table.wtape tr.r-hour td.sun-set::after { opacity: .5; }
+table.wtape tr.r-rain td .snow { color: #cfe8ff; }
+table.wtape tr.r-prob td { color: #71b8ff; font-weight: 600; font-size: 11px; }
+table.wtape tr.r-wind td span { display: inline-flex; align-items: center; justify-content: center; min-width: 26px;
+  padding: 1px 4px; border-radius: 5px; color: var(--fg); font-weight: 700; font-size: 12px; line-height: 1.35; }
+table.wtape tr.r-dir td { height: 20px; }
+/* a real arrow, not a corner of a box: readable at 11 px and unambiguous
+   about which way the wind is going */
+.dirarrow { display: inline-block; width: 11px; height: 11px; transform-origin: center; color: var(--fg-2);
+  background: currentColor; vertical-align: -1px;
+  -webkit-mask: var(--arrow-mask) center/contain no-repeat; mask: var(--arrow-mask) center/contain no-repeat; }
+:root { --arrow-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 19 20 12 16 5 20Z' fill='black'/%3E%3C/svg%3E"); }
+/* tape resolution picker, in the tape's own header */
+#tape-res { display: inline-flex; gap: 2px; margin-left: 8px; padding: 2px; border-radius: 8px;
+  background: rgba(127,127,127,.12); }
+#tape-res button { border: 0; background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap;
+  font: 700 10px var(--font-display); padding: 3px 7px; border-radius: 6px; letter-spacing: .02em; }
+#tape-res button.on { background: var(--accent); color: var(--accent-ink); }
+@media (max-width: 820px) { #tape-res { margin-left: 0; } #tape-res button { padding: 3px; } }
+@media (max-width: 820px) { table.wtape th.lab { min-width: 64px; font-size: 9.5px; } table.wtape td { width: 40px; min-width: 40px; } }
+
+/* ── card: hero + colour ─────────────────────────────────────────────── */
+.hero { display: flex; align-items: center; gap: 14px; margin: 6px 0 6px; }
+.hero .glyph { display: block; width: 54px; height: 54px; flex: 0 0 54px; align-self: center; overflow: visible; }
+.hero .big { font: 650 54px/1 var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -.004em; display: flex; align-items: flex-start; color: var(--fg); }
+.hero .big .deg { font-size: 24px; margin-top: 5px; margin-left: 1px; opacity: .5; }
+.hero .hl { display: flex; flex-direction: column; gap: 4px; margin-left: 10px; min-width: 0; }
+.hero .hilo { display: inline-flex; align-items: stretch; gap: 10px; }
+.hero .hilo .hi, .hero .hilo .lo { display: flex; flex-direction: column; line-height: 1.05;
+  font: 600 17px var(--font-num); font-variant-numeric: tabular-nums; color: var(--fg); }
+.hero .hilo .lo { color: var(--fg-2); }
+.hero .hilo i { font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--dim); margin-bottom: 2px; }
+.hero .hilo .rule { width: 1px; background: var(--line); }
+.hero .sun { display: flex; align-items: center; gap: 3px 10px; font: 500 11px var(--font-num); color: var(--dim); flex-wrap: wrap; }
+.hero .sun span { display: inline-flex; align-items: center; gap: 4px; }
+/* daylight + moon breathe on their own line under the sun times */
+.hero .sun .brk { flex-basis: 100%; height: 0; }
+.hero .sun svg { width: 12px; height: 12px; }
+.hero .sun .len { color: var(--fg-2); }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 8px; font: 500 12px var(--font-mono); color: var(--fg-2); margin: 0 0 4px; }
+.meta b { color: var(--fg); font-weight: 700; }
+.wind-readout { flex: 1 0 100%; min-width: 0; display: grid; grid-template-columns: 34px minmax(96px,1fr) auto auto;
+  align-items: center; gap: 10px; padding: 9px 11px; border-radius: 11px;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--wind-color) 16%, transparent), rgba(127,127,127,.035));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wind-color) 35%, var(--line)); color: var(--fg); }
+.wind-arrow { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px;
+  background: var(--wind-color); color: #fff; font: 750 18px var(--font-display); text-shadow: 0 1px 4px rgba(0,0,0,.35); }
+.wind-main, .wind-gust { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.wind-main small, .wind-gust small { font: 700 8.5px var(--font-display); letter-spacing: .09em; text-transform: uppercase; color: var(--dim); }
+.wind-main b, .wind-gust b { font: 650 17px/1 var(--font-num) !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wind-main b i, .wind-gust b i { font: 550 10px var(--font-mono); color: var(--fg-2); font-style: normal; }
+.wind-gust { padding-left: 12px; border-left: 1px solid var(--line); align-items: flex-end; }
+/* Compact weather readouts: soft pills, with the number kept in the numeral face. */
+.chipv { display: inline-flex; align-items: center; line-height: 1.1; gap: 5px; min-height: 26px; padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: 999px;
+  background: color-mix(in srgb, currentColor 11%, rgba(127,127,127,.055));
+  box-shadow: 0 1px 2px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.04);
+  font: 600 11px var(--font-body); font-variant-numeric: tabular-nums; color: var(--fg-2); }
+.chipv b { font: 700 13.5px/1 var(--font-num); color: var(--fg); }
+.chipv i.sw { display: none; }
+.meta { gap: 5px 6px; }
+.hero .sun { display: flex; gap: 3px 10px; align-items: center; flex-wrap: wrap; font: 500 11.5px var(--font-mono); color: var(--fg-2); }
+.hero .sun svg { width: 14px; height: 14px; }
+.tempc { font-weight: 700; }
+.wchip { display: inline-block; min-width: 26px; padding: 1px 4px; border-radius: 4px; color: #fff; text-align: center; }
+.spark { width: 100%; height: 34px; display: block; margin: 4px 0 2px; }
+.measure { position: absolute; z-index: 7; left: 50%; transform: translateX(-50%); top: calc(var(--top-h) + 6px); background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 10px; padding: 6px 12px; font: 600 12px var(--font-mono); }
+.measure b { color: var(--accent); }
+
+/* ── alerts / air / tides in the card ────────────────────────────────── */
+details.alert > summary { list-style: none; cursor: pointer; display: contents; }
+details.alert > summary::-webkit-details-marker { display: none; }
+details.alert[open] { padding-bottom: 9px; }
+.alert-text { grid-column: 1 / -1; margin-top: 7px; white-space: pre-wrap; font: 500 11.5px/1.5 var(--font-body); color: var(--fg-2); max-height: 260px; overflow-y: auto; }
+.alerts { display: flex; flex-direction: column; gap: 5px; margin: 2px 0 8px; }
+.alert { display: block; padding: 7px 10px 7px 11px; border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--al, var(--warm)); border-radius: 9px;
+  background: color-mix(in srgb, var(--al, transparent) 7%, rgba(127,127,127,.05));
+  color: var(--fg); text-decoration: none; font: 500 12px var(--font-body); }
+.alert .al-row { display: flex; align-items: baseline; gap: 7px; }
+.alert .al-row .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--al, var(--warm)); align-self: center; flex: 0 0 7px; }
+.alert b { font: 700 11px var(--font-display); }
+.alert .sev { margin-left: auto; font: 700 8.5px var(--font-display); font-style: normal;
+  text-transform: uppercase; letter-spacing: .07em; color: var(--al, var(--warm)); }
+.alert .al-meta { display: block; margin-top: 2px; padding-left: 14px; color: var(--dim); font: 600 10.5px var(--font-num); }
+.alert i.sw { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.air { display: flex; flex-wrap: wrap; gap: 5px 6px; margin: 0 0 8px; font: 500 12px var(--font-num); }
+.tides { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; }
+.tide { display: inline-flex; flex-direction: column; font: 500 11px var(--font-mono); color: var(--fg-2); }
+.tide b { font: 700 13px var(--font-display); color: var(--fg); }
+.tide.H b { color: var(--rain); }
+
+/* ── met-service badge for the country under the cursor ─────────────── */
+/* The chip sits just above the tape. With the aerosol legend in its column it
+   climbs over the legend; with the card open it lives on the RIGHT, where the
+   legend isn't, so it must not climb — that lift left it floating mid-map
+   (Jeff 2026-08-22, "jank ass spacing"). */
+body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 104px + env(safe-area-inset-bottom)); }
+body.has-aq-legend #point:not([hidden]) ~ .provider { bottom: calc(var(--tb-h) + 12px + env(safe-area-inset-bottom)); }
+.provider { position: absolute; z-index: 13; left: 62px; bottom: calc(var(--tb-h) + 12px + env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 11px 6px 9px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px);
+  font: 700 11.5px var(--font-display); color: var(--fg-2); letter-spacing: .01em; opacity: 0; transform: translateY(6px); transition: opacity .35s ease, transform .35s ease; pointer-events: none; }
+.provider.show { opacity: 1; transform: translateY(0); }
+.provider .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px currentColor; }
+.provider.linked { cursor: pointer; pointer-events: auto; }
+.provider.linked:hover { border-color: var(--fg-2); }
+.provider.linked::after { content: "↗"; font-size: 10px; color: var(--dim); margin-left: 2px; }
+.provider .dot.logo { width: auto; height: 26px; border-radius: 0; box-shadow: none; display: flex; align-items: center; }
+.provider .dot.logo img { height: 26px; width: auto; max-width: 120px; display: block; }
+.provider .dot.logo svg.mono { height: 26px; width: auto; display: block; }
+.provider .dot.logo img.chip { background: #fff; border-radius: 4px; padding: 2px 5px; height: 26px; box-sizing: border-box; }
+.provider .dot.logo img.chip.chip-dark { background: #10131a; }
+#point:not([hidden]) ~ .provider { left: auto; right: 12px; }
+@media (max-width: 820px) { .provider { display: none; } }
+
+/* cursor value chip */
+#probe { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; display: flex; align-items: baseline; gap: 6px;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 8px; padding: 4px 8px; box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  font: 700 12.5px var(--font-display); color: var(--fg); will-change: transform; }
+#probe span { font: 500 10.5px var(--font-mono); color: var(--dim); }
+#probe[hidden] { display: none; }
+
+.menu .menu-pop .row.range { cursor: default; }
+.menu .menu-pop .row.range input { margin-left: auto; width: 90px; accent-color: var(--accent); }
+
+/* seven-day strip in the Now pane */
+/* The days divide the card between them instead of running off its edge: one
+   column each, equal share, so a wider card gives every day more room rather
+   than revealing the one that was hidden. */
+.days { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; margin: 4px 0 8px; }
+.days.extended { grid-auto-columns: minmax(63px, 1fr); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent; padding-bottom: 4px; scroll-snap-type: x proximity; }
+.days .day { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 3px 6px; border: 0; border-radius: 11px; background: transparent; color: var(--fg-2); cursor: pointer; font: 500 10.5px var(--font-num); font-variant-numeric: tabular-nums; transition: background .15s; }
+.days.extended .day { scroll-snap-align: start; }
+.days .day > * { max-width: 100%; }
+.days .day:hover { background: rgba(255,255,255,.05); }
+.days .day.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-glow); }
+.days .day .dn { font: 700 10.5px var(--font-display); color: var(--fg-2); text-transform: uppercase; letter-spacing: .04em; }
+.days .day .dn i { display: inline-flex; margin-left: 3px; padding: 1px 3px; border-radius: 4px; background: #65a8ff22;
+  color: #80b8ff; font: 800 7px/1 var(--font-display); font-style: normal; letter-spacing: .04em; vertical-align: 1px; }
+.days .day.ai { background: linear-gradient(to bottom, #65a8ff0d, transparent 70%); }
+.days .day .dg { width: 100%; height: 19px; display: grid; place-items: center; }
+.days .day .dg svg { display: block; width: 26px; height: 19px; margin: auto; overflow: visible; }
+.days .day .hl { display: flex; gap: 4px; align-items: baseline; white-space: nowrap; padding-inline: 1px; }
+.days .day .hl b { font: 650 12.5px var(--font-num); }
+.days .day .hl i { font-style: normal; color: var(--dim); font-size: 10px; }
+.days .day .pr { color: var(--rain); font-size: 10px; min-height: 12px; }
+.days .day .pr .sn { color: #cfe8ff; }
+/* pale snow-blue is white-on-white in the light theme */
+:root[data-theme="light"] table.wtape tr.r-rain td .snow, :root[data-theme="light"] .days .day .pr .sn { color: #3c7fd0; }
+:root[data-theme="light"] .pill.snow { background: rgba(60,127,208,.14); color: #2f6cb4; }
+/* the wind number wears the map's own colour, and says its unit once */
+.days .day .wd { display: inline-flex; align-items: baseline; gap: 2px; margin-top: 1px;
+  padding: 1px 5px; border-radius: 6px; font: 700 11px var(--font-num); color: var(--fg); }
+.days .day .wd em { font: 600 8px var(--font-display); font-style: normal; opacity: .75; }
+.days-note { margin: -5px 2px 8px; color: var(--dim); font: 550 10.5px var(--font-body); }
+.days-note b { color: #80b8ff; font: 750 10.5px var(--font-display); }
+
+/* current time on the tape: a thin accent line down the column, "now" tag on the hour row */
+/* "now" is a hairline down the column with one small tag, so it never fights
+   the selected column's tint */
+table.wtape td.now { border-left-color: var(--accent); }
+/* "Now" used to be a pill floating in a lane of its own above the day titles.
+   The lane was dead space and the pill landed on the date anyway. The current
+   column is marked in place instead: an outlined time, against the filled tint
+   the SELECTED column already wears, so the two never read as the same thing. */
+table.wtape tr.r-hour td.now .hr, table.wtape tbody tr:first-child td.now .hr {
+  box-shadow: inset 0 0 0 1px var(--accent); border-radius: 5px; padding: 1px 5px; color: var(--accent); }
+table.wtape tr.r-hour td.now.on .hr { box-shadow: none; }
+table.wtape th.day { padding-top: 3px; }
+/* the cold end of an aggregated column, beside the warm one */
+table.wtape .lo { color: var(--fg-2); font-weight: 600; font-size: .82em; margin-left: 4px; }
+
+/* ensemble spread pane */
+.spread-vars { display: flex; margin: 8px 0 6px; }
+.spread-vars button { flex: 1; border: 0; background: transparent; color: var(--fg-2); padding: 5px 6px; border-radius: 7px;
+  font: 700 11.5px var(--font-display); cursor: pointer; }
+.spread-vars button.on { background: var(--accent); color: var(--accent-ink); }
+#plume { width: 100%; height: 220px; display: block; }
+
+/* strip overflow: a second column that animates out, so the bar itself never
+   scrolls and never moves a control under your cursor */
+.tstrip.strip-pop { position: fixed; left: 0; top: 0; z-index: 6; opacity: 0; transform: translateX(-8px) scale(.97);
+  transform-origin: left center; pointer-events: none; transition: opacity .16s ease, transform .16s cubic-bezier(.4,0,.2,1); }
+#tstrip.more-open ~ #strip-more-pop, body:has(#tstrip.more-open) #strip-more-pop { opacity: 1; transform: none; pointer-events: auto; }
+#strip-more { color: var(--dim); }
+#tstrip.more-open #strip-more { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-glow); }
+@media (max-width: 820px) { .tstrip.strip-pop { display: none; } }
+
+/* The report is the human answer; telemetry below is supporting detail. */
+.summary i { display: block; font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; }
+.uvstrip { display: flex; gap: 2px; margin: 2px 0 8px; }
+.uvstrip i { flex: 1; height: 9px; border-radius: 2.5px; }
+/* the kicker: a slim uppercase label that names a section without a box */
+.kicker { display: block; font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--dim); margin: 4px 0 2px; }
+.chipv .pspark { width: 44px; height: 12px; margin-left: 2px; align-self: center; }
+.chipv .pspark polyline { fill: none; stroke: currentColor; stroke-width: 1.4; opacity: .75; }
+.summary .why-btn { display: inline-block; margin-left: 7px; border: 0; background: transparent; cursor: pointer;
+  color: var(--accent); font: 700 11px var(--font-display); letter-spacing: .02em; padding: 1px 2px; }
+.summary .why-btn:hover { text-decoration: underline; }
+.why { margin: 2px 0 10px; padding: 8px 11px 9px; border-radius: 11px; background: rgba(127,127,127,.06);
+  border-left: 3px solid var(--line-strong); }
+.why p { margin: 0 0 7px; font: 480 12.5px/1.5 var(--font-body); color: var(--fg-2); }
+.why p:last-child { margin-bottom: 0; }
+.summary { margin: 1px 0 3px; padding: 0 0 0 11px; border-left: 3px solid var(--accent);
+  font: 540 13px/1.48 var(--font-body); color: var(--fg); letter-spacing: -.006em; }
+@media (max-width: 380px) {
+  .wind-readout { grid-template-columns: 30px minmax(88px,1fr) auto auto; gap: 8px; padding: 8px 9px; }
+  .wind-arrow { width: 30px; height: 30px; }
+  .wind-main b, .wind-gust b { font-size: 15.5px !important; }
+}
+
+/* The hero reads a notch smaller on a phone: the desktop sizes were set
+   against a wide card and crowd a 390px sheet (Jeff 2026-08-20). Lives at
+   the end of the file because .hero .sun is (re)defined twice above and a
+   same-specificity override must come after both. */
+@media (max-width: 820px) {
+  .hero { gap: 12px; margin: 6px 0 5px; }
+  .hero .glyph { width: 46px; height: 46px; flex-basis: 46px; }
+  .hero .big { font-size: 46px; }
+  .hero .big .deg { font-size: 20px; margin-top: 4px; }
+  .hero .hilo .hi, .hero .hilo .lo { font-size: 15px; }
+  .hero .sun { font-size: 10.5px; }
+  .hero .sun svg { width: 12px; height: 12px; }
+}
+
+/* Desktop only: the card title half a notch down (Jeff 2026-08-20). */
+@media (min-width: 821px) { .point-head #point-title { font-size: 22px; } }
+
+/* With no pin the tape reads the map centre; this hairline cross says where
+   that is. It leaves when a point card is open — the marker owns that job. */
+#centre-mark { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px;
+  margin: -8px 0 0 -8px; z-index: 4; pointer-events: none; opacity: .5; display: none; }
+#centre-mark::before, #centre-mark::after { content: ""; position: absolute; background: var(--fg);
+  box-shadow: 0 0 3px rgba(0,0,0,.85); }
+#centre-mark::before { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-.5px); }
+#centre-mark::after  { top: 50%; left: 0; height: 1px; width: 100%; transform: translateY(-.5px); }
+body:has(#point[hidden]) #centre-mark { display: block; }
+
+/* earthquake card (was a toast banner; Jeff 2026-08-20) */
+.quake-pop .maplibregl-popup-content { background: var(--panel-solid); color: var(--fg); border: 1px solid var(--line-strong);
+  border-radius: 12px; padding: 12px 14px 10px; font: 500 12px var(--font-body); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.quake-pop .maplibregl-popup-tip { border-top-color: var(--panel-solid); border-bottom-color: var(--panel-solid); }
+.quake-pop .maplibregl-popup-close-button { color: var(--dim); font-size: 16px; right: 6px; top: 4px; }
+.quake-pop .qp-head { display: flex; align-items: baseline; gap: 8px; }
+.quake-pop .qp-head b { font: 800 19px var(--font-display); letter-spacing: -.01em; }
+.quake-pop .qp-head span { color: var(--dim); font: 600 10.5px var(--font-display); }
+.quake-pop .qp-place { font: 700 12.5px var(--font-display); margin: 3px 0 6px; }
+.quake-pop dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+.quake-pop dt { color: var(--dim); font: 600 10px var(--font-display); text-transform: uppercase; letter-spacing: .05em; align-self: baseline; }
+.quake-pop dd { margin: 0; font: 600 11.5px var(--font-num); }
+.quake-pop .qp-link { display: inline-block; margin-top: 7px; color: var(--accent); font: 700 11px var(--font-display); text-decoration: none; }
+
+/* the hero's cyclone chip: a chip that acts like a button */
+.chipv.storm-chip { border: 0; cursor: pointer; font: inherit; background: rgba(255, 122, 61, .10);
+  border-radius: 7px; padding: 2px 8px; }
+.chipv.storm-chip:hover { background: rgba(255, 122, 61, .18); }
+
+/* the cyclone block lives in the wind box's spare right half: UI type,
+   category colour, tap for the storm view */
+.wind-readout .wind-storm { display: none; }
+.wind-readout .wind-storm.on { display: inline-flex; align-items: center; gap: 8px; justify-self: end;
+  cursor: pointer; padding: 2px 4px 2px 8px; border-left: 1px solid var(--line); }
+.wind-readout .wind-storm svg { width: 22px; height: 22px; flex: 0 0 22px; }
+.wind-readout .wind-storm .ws-txt { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
+.wind-readout .wind-storm small { font: 700 8px var(--font-display); letter-spacing: .08em; opacity: .85; }
+.wind-readout .wind-storm b { font: 700 13.5px var(--font-display); color: var(--fg); }
+.wind-readout .wind-storm em { font: 600 9.5px var(--font-num); font-style: normal; color: var(--dim); }
+/* storm card: the category pill and the head icon */
+.storm-pop .qp-head { gap: 7px; }
+.storm-pop .sp-ico { display: inline-flex; align-self: center; }
+.storm-pop .sp-ico svg { width: 17px; height: 17px; }
+.storm-pop .sp-cat { display: inline-block; font: 800 9px var(--font-display); letter-spacing: .05em;
+  color: var(--cat, var(--warm)); background: color-mix(in srgb, var(--cat, var(--warm)) 16%, transparent);
+  border-radius: 5px; padding: 1.5px 6px; margin-right: 4px; vertical-align: 1px; }
+.storm-pop dl { row-gap: 3px; }
+
+/* ── alert cards, expanded: the CAP payload worn properly ─────────────── */
+/* the note and the warnings each own a full row of the card (they used to
+   share one flex line and the warnings floated beside the AI-GFS note) */
+#point-now > .days-note, #point-now > .alerts, #point-now > .air { flex: 0 0 100%; }
+.alert .al-ag { display: inline-block; font: 800 8px var(--font-display); font-style: normal; letter-spacing: .05em;
+  color: var(--ag, var(--dim)); background: color-mix(in srgb, var(--ag, var(--dim)) 14%, transparent);
+  border-radius: 4px; padding: 1px 5px; margin-right: 6px; vertical-align: 1px; }
+.alert .al-pills { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 0 14px; }
+.alert .al-pill { font: 700 8.5px var(--font-display); font-style: normal; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--fg-2); background: rgba(127,127,127,.14); border-radius: 5px; padding: 2px 7px; }
+.alert .al-pill.al-left { color: var(--al, var(--warm)); background: color-mix(in srgb, var(--al, var(--warm)) 15%, transparent); }
+.alert .al-line { height: 3px; border-radius: 2px; background: rgba(127,127,127,.18); margin: 7px 2px 0 14px; overflow: hidden; }
+.alert .al-line i { display: block; height: 100%; border-radius: 2px; background: var(--al, var(--warm)); }
+.alert .al-areas { display: flex; flex-wrap: wrap; gap: 3px; margin: 7px 0 0 14px; }
+.alert .al-area { font: 600 9.5px var(--font-body); font-style: normal; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+.alert .alert-x .alert-text { margin: 8px 0 0 14px; }
+.alert .al-instr { margin: 9px 0 2px 14px; padding: 7px 9px 2px; border-left: 2px solid var(--al, var(--warm));
+  background: color-mix(in srgb, var(--al, transparent) 5%, rgba(127,127,127,.04)); border-radius: 0 8px 8px 0; }
+.alert .al-instr > b { font: 800 8.5px var(--font-display); text-transform: uppercase; letter-spacing: .08em; color: var(--al, var(--warm)); }
+.alert .al-instr .alert-text { margin: 3px 0 6px; }
