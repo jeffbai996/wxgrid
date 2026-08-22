@@ -252,10 +252,12 @@ uvicorn wxgrid.api:app --port 8097       # http://127.0.0.1:8097/
 Production: `deploy/wxgrid.service` (API) + `deploy/wxgrid-ingest.timer`
 (hourly; a run already in the store is skipped, so it costs one HEAD per
 model when nothing is new). Tailnet: `tailscale serve --https=8464 http://127.0.0.1:8097`.
-On a shared disk, cap the ingest's write rate at the block layer with a
-drop-in — `IOWriteBandwidthMax=/dev/<data-disk> 80M` — rather than trusting
-`IOWeight`, which needs an IO scheduler the disk may not have (WSL's runs
-`none`); without the cap a cold point read during ingest waited 35 s.
+The ingest paces its own writes (`WXGRID_WRITE_MBPS`, default 60) so a
+run lands over minutes rather than as one burst the API's reads queue
+behind — on a shared disk a cold point read during ingest once waited 35 s.
+`IOWeight`/`IOWriteBandwidthMax` on the unit only work where the `io`
+cgroup controller is delegated to the user manager (it is not, by default,
+under WSL); the pacer needs nothing from the kernel.
 
 `WXGRID_DATA_DIR` moves the store (default `./data`). Four runs per model are
 kept (`WXGRID_KEEP_RUNS`). Every field is stored float16 against a per-field

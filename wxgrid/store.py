@@ -16,6 +16,8 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+import os
+import time
 import numpy as np
 import zarr
 from zarr.codecs import BloscCodec
@@ -100,6 +102,37 @@ def decode_values(arr_attrs: dict, values: np.ndarray) -> np.ndarray:
     return v * sc + off if (off or sc != 1.0) else v
 
 
+# ── write pacing ────────────────────────────────────────────────────────
+# The ingest used to fire a whole run at the disk as fast as it decoded, and
+# the live API's cold point reads queued behind it (35 s, 2026-08-21).
+# cgroup io.max would be the right tool, but WSL's user manager has no `io`
+# controller delegated, so IOWeight/IOWriteBandwidthMax on a user unit are
+# silently inert. Pacing in userland works everywhere: a token bucket on
+# bytes handed to zarr, default 60 MB/s (WXGRID_WRITE_MBPS), which stretches
+# a run's writes over minutes instead of seconds and leaves the disk idle
+# gaps for the server. Costs nothing when the disk is the bottleneck anyway.
+class _Pacer:
+    def __init__(self, mbps: float | None = None) -> None:
+        rate = float(os.environ.get("WXGRID_WRITE_MBPS", "60")) if mbps is None else mbps
+        self.rate = rate * 1e6
+        self.t = time.monotonic()
+        self.budget = self.rate           # one second of credit to start
+
+    def spend(self, nbytes: int) -> None:
+        if self.rate <= 0:
+            return
+        now = time.monotonic()
+        self.budget = min(self.rate, self.budget + (now - self.t) * self.rate)
+        self.t = now
+        self.budget -= nbytes
+        if self.budget < 0:
+            time.sleep(-self.budget / self.rate)
+            # the sleep must not count as refill time, or the bucket pays
+            # every debt twice and the real rate doubles (measured 2026-08-22)
+            self.t = time.monotonic()
+            self.budget = 0.0
+
+
 class RunWriter:
     """Create the group up front, fill step slabs as GRIBs land, mark complete."""
 
@@ -138,6 +171,7 @@ class RunWriter:
             arr.attrs.update({"units": _UNITS.get(var, {"u": "m s-1", "v": "m s-1", "t": "K", "gh": "m"}.get(var.split("_")[0], "")),
                               "offset": off, "scale": sc})
         self._written: dict[str, set[int]] = {v: set() for v in self.variables}
+        self._pacer = _Pacer()
 
     def write(self, var: str, step: int, values: np.ndarray) -> None:
         if var not in self.variables:
@@ -146,7 +180,9 @@ class RunWriter:
         values = np.asarray(values)
         if values.shape != self.grid_shape:
             raise ValueError(f"{self.group.attrs['model']} grid expects {self.grid_shape}, got {values.shape}")
-        self.group[var][idx] = encode_values(var, values)
+        enc = encode_values(var, values)
+        self._pacer.spend(enc.nbytes)
+        self.group[var][idx] = enc
         self._written[var].add(step)
 
     def has(self, var: str, step: int) -> bool:
@@ -265,9 +301,12 @@ def build_point_cube(model: str, rid: str, root: Path = STORE_DIR, variables: li
         # Copy one latitude band at a time. Reading the whole variable would be
         # ~250 MB resident per variable and, with several ingests and the API
         # in flight, that was enough to put fragserv into swap (2026-08-18).
+        pacer = _Pacer()
         for y0 in range(0, src.shape[1], POINT_TILE):
             y1 = min(y0 + POINT_TILE, src.shape[1])
-            arr[:, y0:y1, :] = src[:, y0:y1, :]
+            band = src[:, y0:y1, :]
+            pacer.spend(band.nbytes)
+            arr[:, y0:y1, :] = band
         n += 1
     return n
 
