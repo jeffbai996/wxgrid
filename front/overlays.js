@@ -304,14 +304,19 @@
         // colour (Jeff 2026-08-22: the yellow circle was a placeholder).
         for (const col of STORM_COLORS) if (!M().hasImage(`cyc-${col}`)) M().addImage(`cyc-${col}`, cycloneIcon(col), { pixelRatio: 2 });
         M().addLayer({ id: "storm-now", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "icon-image": ["concat", "cyc-", ["coalesce", ["get", "category_color"], "#ef786f"]], "icon-size": 0.68, "icon-allow-overlap": true, "icon-ignore-placement": true } });
+          layout: { "icon-image": ["concat", "cyc-", ["coalesce", ["get", "category_color"], "#ef786f"]], "icon-size": 1, "icon-allow-overlap": true, "icon-ignore-placement": true } });
         // the category lives INSIDE the eye — "2" in the dark centre, "TD"
         // in the blue one — and the sub-label carries the motion instead
         M().addLayer({ id: "storm-eye", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 6.5, "text-letter-spacing": -0.04, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true, "text-ignore-placement": true },
+          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 7.5, "text-letter-spacing": -0.04, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true, "text-ignore-placement": true },
           paint: { "text-color": "#fff" } });
         M().addLayer({ id: "storm-lbl", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "text-field": ["concat", ["get", "class"], " ", ["get", "name"], "\n", ["coalesce", ["get", "moving_short"], ""]], "text-size": 11.5, "text-offset": [0, 1.4], "text-anchor": "top", "text-font": ["Noto Sans Bold"] },
+          // name in bold, motion a notch smaller in regular — two rows, two
+          // weights. (The tile server only serves Noto Sans glyphs; the
+          // app's Urbanist cannot reach map labels without its own PBFs.)
+          layout: { "text-field": ["format", ["concat", ["get", "class"], " ", ["get", "name"]], { "font-scale": 1 }, "\n", {},
+                                   ["coalesce", ["get", "moving_short"], ""], { "font-scale": 0.84, "text-font": ["literal", ["Noto Sans Regular"]] }],
+                    "text-size": 12, "text-offset": [0, 1.5], "text-anchor": "top", "text-font": ["Noto Sans Bold"], "text-line-height": 1.15 },
           paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.4 } });
         M().on("click", "storm-now", (e) => openStormCard(e.features[0]));
         M().on("click", "storm-eye", (e) => openStormCard(e.features[0]));
@@ -333,20 +338,26 @@
     const agency = p.agency || (/^cp/i.test(p.id || "") ? "CPHC · Honolulu" : "NHC · Miami");
     const esc_ = (x) => String(x == null ? "" : x).replace(/</g, "&lt;");
     if (stormPopup) stormPopup.remove();
-    stormPopup = new maplibregl.Popup({ className: "quake-pop storm-pop", closeButton: true, maxWidth: "300px", offset: 12 })
+    // No × in the corner: a tap elsewhere closes it, and a small "close"
+    // sits bottom-right for the deliberate (Jeff 2026-08-22).
+    stormPopup = new maplibregl.Popup({ className: "quake-pop storm-pop", closeButton: false, maxWidth: "300px", offset: 12 })
       .setLngLat([slon, slat])
-      .setHTML(`<div class="qp-head"><i class="sp-ico" style="color:${p.category_color || "#ef786f"}">${WX.CYCLONE_SVG || ""}</i><b>${esc_(p.class)} ${esc_(p.name)}</b><span>${ago}</span></div>
+      .setHTML(`<div class="sp-head"><i class="sp-ico" style="color:${p.category_color || "#ef786f"}">${WX.CYCLONE_SVG || ""}</i>
+          <div class="sp-title"><b>${esc_(p.class)} ${esc_(p.name)}</b>
+          <div class="sp-sub">${p.category ? `<span class="sp-cat" style="--cat:${p.category_color}">${esc_(p.category)}</span>` : ""}${p.category_label ? `<span>${esc_(p.category_label)}</span>` : ""}${ago ? `<span class="sp-ago">${ago}</span>` : ""}</div></div></div>
+        <div class="sp-hero">
+          ${p.intensity_kt ? `<div><small>Winds</small><b>${esc_(p.intensity_kt)}<i>kt</i></b><em>${kmh} km/h</em></div>` : ""}
+          ${p.gusts ? `<div><small>Gusts</small><b>${esc_(p.gusts)}<i>kt</i></b><em>${Math.round(p.gusts * 1.852)} km/h</em></div>` : ""}
+          ${p.pressure_mb ? `<div><small>Pressure</small><b>${esc_(p.pressure_mb)}<i>mb</i></b></div>` : ""}
+        </div>
         <dl>
-        ${p.category_label ? `<dt>Type</dt><dd><span class="sp-cat" style="--cat:${p.category_color}">${esc_(p.category)}</span> ${esc_(p.category_label)}</dd>` : ""}
-        ${p.intensity_kt ? `<dt>Winds</dt><dd>${esc_(p.intensity_kt)} kt · ${kmh} km/h</dd>` : ""}
-        ${p.gusts ? `<dt>Gusts</dt><dd>${esc_(p.gusts)} kt · ${Math.round(p.gusts * 1.852)} km/h</dd>` : ""}
-        ${p.pressure_mb ? `<dt>Pressure</dt><dd>${esc_(p.pressure_mb)} mb</dd>` : ""}
         ${p.movement && !/null/.test(p.movement) ? `<dt>Moving</dt><dd>${esc_(p.movement)}</dd>` : ""}
         <dt>Position</dt><dd>${WX.fmtCoords ? WX.fmtCoords(slat, slon, 1) : `${slat.toFixed(1)}, ${slon.toFixed(1)}`}</dd>
         <dt>Agency</dt><dd>${agency}</dd>
         ${p.advisory ? `<dt>Advisory</dt><dd>#${esc_(p.advisory)}</dd>` : ""}</dl>
-        ${p.url ? `<a class="qp-link" href="${p.url}" target="_blank" rel="noopener">Public advisory ↗</a>` : ""}`)
+        <div class="sp-foot">${p.url ? `<a class="qp-link" href="${p.url}" target="_blank" rel="noopener">Public advisory ↗</a>` : "<span></span>"}<button class="sp-close" type="button">close</button></div>`)
       .addTo(M());
+    stormPopup.getElement().querySelector(".sp-close").addEventListener("click", () => { if (stormPopup) { stormPopup.remove(); stormPopup = null; } });
   }
   WX.openStormCard = openStormCard;
   function clearStorms() {
@@ -630,7 +641,7 @@
     x.translate(S / 2, S / 2); x.scale(S / 24, S / 24); x.rotate(55 * Math.PI / 180); x.scale(-1, 1); x.translate(-12, -12);
     x.lineJoin = "round"; x.lineWidth = 1.6; x.strokeStyle = "rgba(0,0,0,.7)"; x.stroke(P);
     x.fillStyle = color; x.fill(P);
-    x.beginPath(); x.arc(12, 12, 3.8, 0, Math.PI * 2); x.fillStyle = "#10131a"; x.fill();
+    x.beginPath(); x.arc(12, 12, 4.3, 0, Math.PI * 2); x.fillStyle = "#10131a"; x.fill();
     return x.getImageData(0, 0, S, S);
   }
   function boltIcon() {

@@ -1119,13 +1119,27 @@ body:has(#point[hidden]) #centre-mark { display: block; }
 .wind-readout .wind-storm b { font: 700 13.5px var(--font-display); color: var(--fg); }
 .wind-readout .wind-storm em { font: 600 9.5px var(--font-num); font-style: normal; color: var(--dim); }
 /* storm card: the category pill and the head icon */
-.storm-pop .qp-head { gap: 7px; }
-.storm-pop .sp-ico { display: inline-flex; align-self: center; }
-.storm-pop .sp-ico svg { width: 17px; height: 17px; }
+.storm-pop .sp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.storm-pop .sp-ico { display: inline-flex; flex: 0 0 auto; }
+.storm-pop .sp-ico svg { width: 30px; height: 30px; }
+.storm-pop .sp-title { min-width: 0; }
+.storm-pop .sp-title b { display: block; font: 800 19px/1.1 var(--font-display); letter-spacing: -.01em; }
+.storm-pop .sp-sub { display: flex; align-items: center; gap: 6px; margin-top: 3px; font: 600 11px var(--font-display); color: var(--fg-2); }
+.storm-pop .sp-ago { color: var(--dim); }
+.storm-pop .sp-ago::before { content: "·"; margin-right: 6px; }
 .storm-pop .sp-cat { display: inline-block; font: 800 9px var(--font-display); letter-spacing: .05em;
-  color: var(--cat, var(--warm)); background: color-mix(in srgb, var(--cat, var(--warm)) 16%, transparent);
-  border-radius: 5px; padding: 1.5px 6px; margin-right: 4px; vertical-align: 1px; }
+  padding: 2px 6px; border-radius: 6px; color: var(--cat); background: color-mix(in srgb, var(--cat) 18%, transparent); }
+.storm-pop .sp-hero { display: flex; gap: 14px; padding: 8px 0 9px; margin-bottom: 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.storm-pop .sp-hero > div { display: flex; flex-direction: column; gap: 1px; }
+.storm-pop .sp-hero small { font: 600 9px var(--font-display); text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+.storm-pop .sp-hero b { font: 800 20px/1.05 var(--font-num); color: var(--fg); }
+.storm-pop .sp-hero b i { font: 700 10px var(--font-display); font-style: normal; margin-left: 3px; color: var(--fg-2); }
+.storm-pop .sp-hero em { font: 600 10.5px var(--font-num); font-style: normal; color: var(--dim); }
 .storm-pop dl { row-gap: 3px; }
+.storm-pop .sp-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 7px; }
+.storm-pop .sp-foot .qp-link { margin-top: 0; }
+.storm-pop .sp-close { border: 0; background: none; padding: 2px 4px; cursor: pointer; font: 600 10.5px var(--font-display); color: var(--dim); letter-spacing: .02em; }
+.storm-pop .sp-close:hover { color: var(--fg); }
 
 /* ── alert cards, expanded: the CAP payload worn properly ─────────────── */
 /* the note and the warnings each own a full row of the card (they used to

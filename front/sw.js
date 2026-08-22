@@ -19,7 +19,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v9";   // v6: the tape grip fixes must reach every device
+const VERSION = "wxgrid-v10";   // v6: the tape grip fixes must reach every device
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
