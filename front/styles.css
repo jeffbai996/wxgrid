@@ -1123,8 +1123,8 @@ body:has(#point[hidden]) #centre-mark { display: block; }
 .wind-readout .wind-storm b { font: 700 13.5px var(--font-display); color: var(--fg); }
 .wind-readout .wind-storm em { font: 600 9.5px var(--font-num); font-style: normal; color: var(--dim); }
 /* storm card: the category pill and the head icon */
-.storm-pop .sp-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 9px; }
-.storm-pop .sp-ico { display: inline-flex; flex: 0 0 auto; margin-top: -4px; }   /* centred on the name line, not the block */
+.storm-pop .sp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.storm-pop .sp-ico { display: inline-flex; flex: 0 0 auto; }   /* centred on the head block (Jeff 2026-08-22) */
 .storm-pop .sp-ico svg { width: 30px; height: 30px; }
 .storm-pop .sp-title { min-width: 0; }
 .storm-pop .sp-title b { display: block; font: 800 19px/1.1 var(--font-display); letter-spacing: -.01em; }
