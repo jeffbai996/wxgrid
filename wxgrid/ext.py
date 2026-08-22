@@ -1278,7 +1278,8 @@ def storm_category(kt, lat, lon) -> dict:
     The scale a storm is graded on depends on whose ocean it is in: NHC's
     Saffir-Simpson in the Atlantic/EPac, typhoon classes in the WPac, IMD's
     ladder in the North Indian, the Australian scale south of the equator.
-    Returns {badge, label, color} — badge is what fits on a map pill."""
+    Returns {badge, label, color} — badge is what fits on a map pill.
+    Labels are Title Case: they sit in the TYPE row of the storm card."""
     try:
         kt = float(kt)
     except (TypeError, ValueError):
@@ -1286,38 +1287,38 @@ def storm_category(kt, lat, lon) -> dict:
     lon = ((lon + 180) % 360) - 180
     sh = lat < 0
     if sh:                                  # Australian region / SW Pacific / SIO
-        for lo, badge, label, col in ((108, "CAT 5", "Category 5 severe tropical cyclone", "#ff5b45"),
-                                      (86, "CAT 4", "Category 4 severe tropical cyclone", "#ff7a3d"),
-                                      (64, "CAT 3", "Category 3 severe tropical cyclone", "#ffa23c"),
-                                      (48, "CAT 2", "Category 2 tropical cyclone", "#ffc94d"),
-                                      (34, "CAT 1", "Category 1 tropical cyclone", "#ffe873")):
+        for lo, badge, label, col in ((108, "CAT 5", "Category 5 Severe Tropical Cyclone", "#ff5b45"),
+                                      (86, "CAT 4", "Category 4 Severe Tropical Cyclone", "#ff7a3d"),
+                                      (64, "CAT 3", "Category 3 Severe Tropical Cyclone", "#ffa23c"),
+                                      (48, "CAT 2", "Category 2 Tropical Cyclone", "#ffc94d"),
+                                      (34, "CAT 1", "Category 1 Tropical Cyclone", "#ffe873")):
             if kt >= lo:
                 return {"badge": badge, "label": label, "color": col}
-        return {"badge": "TL", "label": "Tropical low", "color": "#9fd0ff"}
+        return {"badge": "TL", "label": "Tropical Low", "color": "#9fd0ff"}
     if 40 <= lon < 100:                     # North Indian (IMD)
-        for lo, badge, label, col in ((120, "SuCS", "Super cyclonic storm", "#ff5b45"),
-                                      (90, "ESCS", "Extremely severe cyclonic storm", "#ff7a3d"),
-                                      (64, "VSCS", "Very severe cyclonic storm", "#ffa23c"),
-                                      (48, "SCS", "Severe cyclonic storm", "#ffc94d"),
-                                      (34, "CS", "Cyclonic storm", "#ffe873")):
+        for lo, badge, label, col in ((120, "SuCS", "Super Cyclonic Storm", "#ff5b45"),
+                                      (90, "ESCS", "Extremely Severe Cyclonic Storm", "#ff7a3d"),
+                                      (64, "VSCS", "Very Severe Cyclonic Storm", "#ffa23c"),
+                                      (48, "SCS", "Severe Cyclonic Storm", "#ffc94d"),
+                                      (34, "CS", "Cyclonic Storm", "#ffe873")):
             if kt >= lo:
                 return {"badge": badge, "label": label, "color": col}
         return {"badge": "D", "label": "Depression", "color": "#9fd0ff"}
     if 100 <= lon <= 180:                   # Western Pacific (JTWC convention)
-        if kt >= 130: return {"badge": "STY", "label": "Super typhoon", "color": "#ff5b45"}
+        if kt >= 130: return {"badge": "STY", "label": "Super Typhoon", "color": "#ff5b45"}
         if kt >= 64: return {"badge": "TY", "label": "Typhoon", "color": "#ffa23c"}
-        if kt >= 34: return {"badge": "TS", "label": "Tropical storm", "color": "#ffe873"}
-        return {"badge": "TD", "label": "Tropical depression", "color": "#9fd0ff"}
+        if kt >= 34: return {"badge": "TS", "label": "Tropical Storm", "color": "#ffe873"}
+        return {"badge": "TD", "label": "Tropical Depression", "color": "#9fd0ff"}
     # Atlantic / Eastern & Central Pacific: Saffir-Simpson
-    for lo, badge, label, col in ((137, "CAT 5", "Category 5 hurricane", "#ff5b45"),
-                                  (113, "CAT 4", "Category 4 hurricane", "#ff7a3d"),
-                                  (96, "CAT 3", "Category 3 major hurricane", "#ffa23c"),
-                                  (83, "CAT 2", "Category 2 hurricane", "#ffc94d"),
-                                  (64, "CAT 1", "Category 1 hurricane", "#ffe873")):
+    for lo, badge, label, col in ((137, "CAT 5", "Category 5 Hurricane", "#ff5b45"),
+                                  (113, "CAT 4", "Category 4 Hurricane", "#ff7a3d"),
+                                  (96, "CAT 3", "Category 3 Major Hurricane", "#ffa23c"),
+                                  (83, "CAT 2", "Category 2 Hurricane", "#ffc94d"),
+                                  (64, "CAT 1", "Category 1 Hurricane", "#ffe873")):
         if kt >= lo:
             return {"badge": badge, "label": label, "color": col}
-    if kt >= 34: return {"badge": "TS", "label": "Tropical storm", "color": "#9fd0ff"}
-    return {"badge": "TD", "label": "Tropical depression", "color": "#8fb4d9"}
+    if kt >= 34: return {"badge": "TS", "label": "Tropical Storm", "color": "#9fd0ff"}
+    return {"badge": "TD", "label": "Tropical Depression", "color": "#8fb4d9"}
 
 
 def _storm_class(code) -> str:
@@ -1360,7 +1361,7 @@ def storms() -> dict:
                 except Exception as exc:
                     log.info("nhc %s %s: %s", s.get("id"), kind, exc)
         return {"type": "FeatureCollection", "features": feats, "storms": meta}
-    return cache.get("storms-v4", 900, fetch)
+    return cache.get("storms-v5", 900, fetch)
 
 
 # ── air quality / UV (Open-Meteo) ────────────────────────────────────────

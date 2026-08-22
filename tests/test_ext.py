@@ -415,3 +415,14 @@ def test_health_marks_a_failing_upstream_down(monkeypatch):
     # recovery clears it
     ext._mark("https://dead.example.com/y", True)
     assert api_health()["down"] == []
+
+
+def test_storm_category_labels_are_title_case():
+    # the label is the TYPE row of the storm card: "Category 1 Hurricane",
+    # "Tropical Storm" (Jeff 2026-08-22)
+    assert ext.storm_category(70, 30.5, -172.4)["label"] == "Category 1 Hurricane"
+    assert ext.storm_category(45, 30.5, -172.4)["label"] == "Tropical Storm"
+    assert ext.storm_category(140, 20, 140)["label"] == "Super Typhoon"
+    for kt, lat, lon in ((30, 10, -40), (50, -15, 150), (70, 15, 88), (100, 20, 130)):
+        lab = ext.storm_category(kt, lat, lon)["label"]
+        assert lab == " ".join(w.capitalize() for w in lab.split()), lab

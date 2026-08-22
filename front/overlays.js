@@ -300,13 +300,16 @@
         M().addLayer({ id: "storm-track", type: "line", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "LineString"]], paint: { "line-color": "rgba(255,255,255,.72)", "line-width": 1.6, "line-dasharray": [1.6, 1.8] } });
         M().addLayer({ id: "storm-pts", type: "circle", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "Point"]], paint: { "circle-radius": 2.8, "circle-color": "rgba(255,255,255,.85)", "circle-stroke-color": "rgba(0,0,0,.6)", "circle-stroke-width": 1 } });
         // The eye wears its category colour — red deepens with the scale.
-        M().addLayer({ id: "storm-now", type: "circle", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          paint: { "circle-radius": 9.5, "circle-color": ["coalesce", ["get", "category_color"], "#ef786f"], "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
-        // the category lives INSIDE the eye — "2" in the yellow disc, "TD"
+        // The eye is the hurricane symbol itself, one image per category
+        // colour (Jeff 2026-08-22: the yellow circle was a placeholder).
+        for (const col of STORM_COLORS) if (!M().hasImage(`cyc-${col}`)) M().addImage(`cyc-${col}`, cycloneIcon(col), { pixelRatio: 2 });
+        M().addLayer({ id: "storm-now", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
+          layout: { "icon-image": ["concat", "cyc-", ["coalesce", ["get", "category_color"], "#ef786f"]], "icon-size": 1.2, "icon-allow-overlap": true, "icon-ignore-placement": true } });
+        // the category lives INSIDE the eye — "2" in the dark centre, "TD"
         // in the blue one — and the sub-label carries the motion instead
         M().addLayer({ id: "storm-eye", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 9, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true },
-          paint: { "text-color": "#10131a" } });
+          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 11, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true, "text-ignore-placement": true },
+          paint: { "text-color": "#fff" } });
         M().addLayer({ id: "storm-lbl", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
           layout: { "text-field": ["concat", ["get", "class"], " ", ["get", "name"], "\n", ["coalesce", ["get", "moving_short"], ""]], "text-size": 11.5, "text-offset": [0, 1.4], "text-anchor": "top", "text-font": ["Noto Sans Bold"] },
           paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.4 } });
@@ -617,6 +620,20 @@
     } catch (e) { if (my === thunderReq) toast("No thunder marks for this model.", 4000, "error"); }
   }
   // A yellow lightning bolt with a dark outline, drawn once into a canvas.
+  // The hurricane symbol, tinted, with a dark eye the category text sits in.
+  // Same path as CYCLONE_SVG in panes.js. Known category colours get an
+  // image each at load; an unknown colour falls back to the red.
+  const CYCLONE_PATH = "M12.50 2.16A7.9 7.9 0 1 1 4.57 13.80A7.1 7.1 0 1 0 12.50 2.16ZM11.50 21.84A7.9 7.9 0 1 1 19.43 10.20A7.1 7.1 0 1 0 11.50 21.84ZM17.8 12A5.8 5.8 0 1 1 6.2 12A5.8 5.8 0 1 1 17.8 12ZM14.9 12A2.9 2.9 0 1 0 9.1 12A2.9 2.9 0 1 0 14.9 12Z";
+  const STORM_COLORS = ["#ff5b45", "#ff7a3d", "#ffa23c", "#ffc94d", "#ffe873", "#9fd0ff", "#8fb4d9", "#9aa4b2", "#ef786f"];
+  function cycloneIcon(color) {
+    const S = 80, c = document.createElement("canvas"); c.width = S; c.height = S; const x = c.getContext("2d");
+    const P = new Path2D(CYCLONE_PATH);
+    x.translate(S / 2, S / 2); x.scale(S / 24, S / 24); x.translate(-12, -12);
+    x.lineJoin = "round"; x.lineWidth = 1.6; x.strokeStyle = "rgba(0,0,0,.7)"; x.stroke(P);
+    x.fillStyle = color; x.fill(P);
+    x.beginPath(); x.arc(12, 12, 3.2, 0, Math.PI * 2); x.fillStyle = "#10131a"; x.fill();
+    return x.getImageData(0, 0, S, S);
+  }
   function boltIcon() {
     const c = document.createElement("canvas"); c.width = 44; c.height = 44; const x = c.getContext("2d");
     const P = new Path2D("M25 3 L9 25 L21 25 L17 41 L35 17 L23 17 Z");
