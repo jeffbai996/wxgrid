@@ -722,8 +722,10 @@
   // The NHC symbol proper: a solid ring and two tapered spiral arms, generated
   // as filled polygons (a stroked sketch read as a ring with stubs).
   // The NWS hurricane symbol: a disc with two sickle arms, hollow eye.
-  // Same path as the map icon in overlays.js (CYCLONE_PATH).
-  const CYCLONE_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12.50 2.16A7.9 7.9 0 1 1 4.57 13.80A7.1 7.1 0 1 0 12.50 2.16ZM11.50 21.84A7.9 7.9 0 1 1 19.43 10.20A7.1 7.1 0 1 0 11.50 21.84ZM17.8 12A5.8 5.8 0 1 1 6.2 12A5.8 5.8 0 1 1 17.8 12ZM14.9 12A2.9 2.9 0 1 0 9.1 12A2.9 2.9 0 1 0 14.9 12Z"/></svg>`;
+  // Same path as the map icon in overlays.js (CYCLONE_PATH); mirrored and
+  // tilted so the arms trail anticlockwise like a northern-hemisphere storm
+  // (Jeff 2026-08-22: "you drew it backwards").
+  const CYCLONE_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path transform="translate(12 12) rotate(-35) scale(-1 1) translate(-12 -12)" d="M12.50 2.16A7.9 7.9 0 1 1 4.57 13.80A7.1 7.1 0 1 0 12.50 2.16ZM11.50 21.84A7.9 7.9 0 1 1 19.43 10.20A7.1 7.1 0 1 0 11.50 21.84ZM17.8 12A5.8 5.8 0 1 1 6.2 12A5.8 5.8 0 1 1 17.8 12ZM14.9 12A2.9 2.9 0 1 0 9.1 12A2.9 2.9 0 1 0 14.9 12Z"/></svg>`;
   W().CYCLONE_SVG = CYCLONE_SVG;
   function fetchNearStorm(pt) {
     const my = ++stormFetch;

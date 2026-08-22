@@ -304,11 +304,11 @@
         // colour (Jeff 2026-08-22: the yellow circle was a placeholder).
         for (const col of STORM_COLORS) if (!M().hasImage(`cyc-${col}`)) M().addImage(`cyc-${col}`, cycloneIcon(col), { pixelRatio: 2 });
         M().addLayer({ id: "storm-now", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "icon-image": ["concat", "cyc-", ["coalesce", ["get", "category_color"], "#ef786f"]], "icon-size": 1.2, "icon-allow-overlap": true, "icon-ignore-placement": true } });
+          layout: { "icon-image": ["concat", "cyc-", ["coalesce", ["get", "category_color"], "#ef786f"]], "icon-size": 0.6, "icon-allow-overlap": true, "icon-ignore-placement": true } });
         // the category lives INSIDE the eye — "2" in the dark centre, "TD"
         // in the blue one — and the sub-label carries the motion instead
         M().addLayer({ id: "storm-eye", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
-          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 11, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true, "text-ignore-placement": true },
+          layout: { "text-field": ["coalesce", ["get", "eye"], ""], "text-size": 8, "text-font": ["Noto Sans Bold"], "text-allow-overlap": true, "text-ignore-placement": true },
           paint: { "text-color": "#fff" } });
         M().addLayer({ id: "storm-lbl", type: "symbol", source: "storms", filter: ["==", ["get", "kind"], "current"],
           layout: { "text-field": ["concat", ["get", "class"], " ", ["get", "name"], "\n", ["coalesce", ["get", "moving_short"], ""]], "text-size": 11.5, "text-offset": [0, 1.4], "text-anchor": "top", "text-font": ["Noto Sans Bold"] },
@@ -628,7 +628,8 @@
   function cycloneIcon(color) {
     const S = 80, c = document.createElement("canvas"); c.width = S; c.height = S; const x = c.getContext("2d");
     const P = new Path2D(CYCLONE_PATH);
-    x.translate(S / 2, S / 2); x.scale(S / 24, S / 24); x.translate(-12, -12);
+    // same mirror + tilt as CYCLONE_SVG in panes.js
+    x.translate(S / 2, S / 2); x.scale(S / 24, S / 24); x.rotate(-35 * Math.PI / 180); x.scale(-1, 1); x.translate(-12, -12);
     x.lineJoin = "round"; x.lineWidth = 1.6; x.strokeStyle = "rgba(0,0,0,.7)"; x.stroke(P);
     x.fillStyle = color; x.fill(P);
     x.beginPath(); x.arc(12, 12, 3.2, 0, Math.PI * 2); x.fillStyle = "#10131a"; x.fill();
