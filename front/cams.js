@@ -20,7 +20,7 @@
   // Its own <style> element so this file drops in without touching styles.css.
   const CSS = `
   .cams-legend{position:absolute;left:62px;z-index:5;padding:8px 10px 7px;
-  bottom:calc(var(--tb-h) + 22px + env(safe-area-inset-bottom));
+  bottom:calc(var(--tb-h) + 10px + env(safe-area-inset-bottom));
     border-radius:8px;background:rgba(18,20,26,.82);color:#e8ecf3;
     font:11px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;
     box-shadow:0 2px 10px rgba(0,0,0,.35);backdrop-filter:blur(6px);pointer-events:none;

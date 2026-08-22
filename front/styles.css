@@ -928,8 +928,13 @@ details.alert[open] { padding-bottom: 9px; }
 .tide.H b { color: var(--rain); }
 
 /* ── met-service badge for the country under the cursor ─────────────── */
-body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 116px + env(safe-area-inset-bottom)); }
-.provider { position: absolute; z-index: 13; left: 62px; bottom: calc(var(--tb-h) + 22px + env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 8px;
+/* The chip sits just above the tape. With the aerosol legend in its column it
+   climbs over the legend; with the card open it lives on the RIGHT, where the
+   legend isn't, so it must not climb — that lift left it floating mid-map
+   (Jeff 2026-08-22, "jank ass spacing"). */
+body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 104px + env(safe-area-inset-bottom)); }
+body.has-aq-legend #point:not([hidden]) ~ .provider { bottom: calc(var(--tb-h) + 12px + env(safe-area-inset-bottom)); }
+.provider { position: absolute; z-index: 13; left: 62px; bottom: calc(var(--tb-h) + 12px + env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 11px 6px 9px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px);
   font: 700 11.5px var(--font-display); color: var(--fg-2); letter-spacing: .01em; opacity: 0; transform: translateY(6px); transition: opacity .35s ease, transform .35s ease; pointer-events: none; }
 .provider.show { opacity: 1; transform: translateY(0); }
