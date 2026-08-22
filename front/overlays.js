@@ -319,7 +319,7 @@
         M().on("mouseleave", "storm-now", () => { M().getCanvas().style.cursor = ""; });
       }
       const names = (gj.storms || []).map((x) => `${x.class} ${x.name}`).join(", ");
-      WX.fn.toast(names ? `Tropical systems: ${names}` : "No tropical systems in the NHC and CPHC feeds.", 5000);
+      WX.fn.toast(names ? `Tropical systems: ${names}` : "No tropical systems in the NHC, CPHC and JTWC feeds.", 5000);
       if (gj.storms && gj.storms.length && !state.point) { const st = gj.storms[0]; const f = gj.features.find((x) => x.properties.kind === "current" && x.properties.id === st.id); if (f) M().flyTo({ center: f.geometry.coordinates, zoom: Math.max(3.5, Math.min(M().getZoom(), 5)), duration: 1200 }); }
     } catch (e) { WX.fn.toast("Storm feed unavailable", 4000, "error"); state.storms = false; $("#storms-toggle").classList.remove("on"); }
   }
@@ -329,10 +329,8 @@
     const ago = p.updated ? (ms => ms < 3600e3 ? `${Math.round(ms / 60e3)} min ago` : `${Math.round(ms / 3600e3)} h ago`)(Date.now() - new Date(p.updated)) : "";
     const kmh = p.intensity_kt ? Math.round(p.intensity_kt * 1.852) : null;
     const [slon, slat] = f.geometry.coordinates;
-    // Which desk is tracking it. The NHC feed carries Atlantic (al), East
-    // Pacific (ep) and Central Pacific (cp) ids; other agencies join when
-    // their feeds do.
-    const agency = /^cp/i.test(p.id || "") ? "CPHC · Honolulu" : "NHC · Miami";
+    // Which desk is tracking it: the feed says (NHC, CPHC, JTWC).
+    const agency = p.agency || (/^cp/i.test(p.id || "") ? "CPHC · Honolulu" : "NHC · Miami");
     const esc_ = (x) => String(x == null ? "" : x).replace(/</g, "&lt;");
     if (stormPopup) stormPopup.remove();
     stormPopup = new maplibregl.Popup({ className: "quake-pop storm-pop", closeButton: true, maxWidth: "300px", offset: 12 })

@@ -426,3 +426,68 @@ def test_storm_category_labels_are_title_case():
     for kt, lat, lon in ((30, 10, -40), (50, -15, 150), (70, 15, 88), (100, 20, 130)):
         lab = ext.storm_category(kt, lat, lon)["label"]
         assert lab == " ".join(w.capitalize() for w in lab.split()), lab
+
+
+_JTWC_RSS = """<rss><channel><item><title>Current Northwest Pacific/North Indian Ocean* Tropical Systems</title>
+<description><![CDATA[<p><b>Typhoon  17W (Saudel) Warning #18 </b><br>
+<b>Issued at 22/2100Z<b>
+<ul><li><a href='https://www.metoc.navy.mil/jtwc/products/wp1726web.txt' target='newwin'>TC Warning Text </a></li>
+<li><a href='https://www.metoc.navy.mil/jtwc/products/wp1726.kmz' target='newwin'>Google Earth Overlay</a></li></ul>
+<p><b>Tropical Depression  19W (Nineteen) Warning #01 </b><br>
+<ul><li><a href='https://www.metoc.navy.mil/jtwc/products/wp1926web.txt' target='newwin'>TC Warning Text </a></li></ul>
+<a href='https://www.metoc.navy.mil/jtwc/products/abpwweb.txt'>ABPW10</a> ]]></description></item>
+<item><title>Current Central/Eastern Pacific Tropical Systems</title>
+<description><![CDATA[ <b>Hurricane 01C (Lala)</b> Warning #41 <a href="https://www.metoc.navy.mil/jtwc/products/cp0126web.txt">TC Warning Text</a> ]]></description></item>
+<item><title>Current Southern Hemisphere Tropical Systems</title><description><![CDATA[ No Current Tropical Cyclone Warnings. ]]></description></item>
+</channel></rss>"""
+
+_JTWC_WARN = """WTPN31 PGTW 222100
+SUBJ/TYPHOON 17W (SAUDEL) WARNING NR 018//
+   WARNING POSITION:
+   221800Z --- NEAR 20.4N 143.6E
+     MOVEMENT PAST SIX HOURS - 305 DEGREES AT 15 KTS
+   PRESENT WIND DISTRIBUTION:
+   MAX SUSTAINED WINDS - 115 KT, GUSTS 140 KT
+   REPEAT POSIT: 20.4N 143.6E
+   FORECASTS:
+   12 HRS, VALID AT:
+   230600Z --- 21.8N 141.1E
+   MAX SUSTAINED WINDS - 115 KT, GUSTS 140 KT
+   24 HRS, VALID AT:
+   231800Z --- 23.0N 138.3E
+   MAX SUSTAINED WINDS - 125 KT, GUSTS 150 KT
+   EXTENDED OUTLOOK:
+   120 HRS, VALID AT:
+   271800Z --- 33.0S 130.0W
+   MAX SUSTAINED WINDS - 45 KT, GUSTS 55 KT
+"""
+
+
+def test_jtwc_active_lists_wpac_and_skips_nhc_basins():
+    got = ext._jtwc_active(_JTWC_RSS)
+    assert [s["id"] for s in got] == ["17W", "19W"]          # 01C is NHC/CPHC's storm
+    assert got[0]["name"] == "Saudel" and got[0]["class"] == "Typhoon"
+    assert got[0]["url"].endswith("wp1726web.txt")
+
+
+def test_jtwc_warning_parses_position_winds_and_track():
+    w = ext._parse_jtwc_warning(_JTWC_WARN)
+    assert w["lat"] == 20.4 and w["lon"] == 143.6
+    assert w["intensity_kt"] == 115 and w["gusts"] == 140
+    assert w["movement_dir"] == 305 and w["movement_kt"] == 15
+    assert w["updated"].endswith("T18:00:00Z") and w["advisory"] == 18
+    assert [p[:2] for p in w["track"]] == [[143.6, 20.4], [141.1, 21.8], [138.3, 23.0], [-130.0, -33.0]]
+
+
+def test_storms_merges_jtwc_into_nhc_feed(monkeypatch):
+    monkeypatch.setattr(ext, "_get_json", lambda *a, **k: {"activeStorms": []})
+    monkeypatch.setattr(ext, "_get_text", lambda url, **k: _JTWC_RSS if url.endswith(".rss") else _JTWC_WARN)
+    monkeypatch.setattr(ext.cache, "get", lambda key, ttl, fn: fn())
+    out = ext.storms()
+    cur = [f for f in out["features"] if f["properties"]["kind"] == "current"]
+    assert len(cur) == 2 and cur[0]["properties"]["category"] == "TY"
+    assert cur[0]["properties"]["agency"] == "JTWC · Pearl Harbor"
+    assert cur[0]["properties"]["class"] == "Typhoon" and cur[0]["properties"]["eye"] == "TY"
+    track = [f for f in out["features"] if f["properties"].get("layer") == "track" and f["geometry"]["type"] == "LineString"]
+    assert track and track[0]["properties"]["id"] == "17W"
+    assert [s["id"] for s in out["storms"]] == ["17W", "19W"]

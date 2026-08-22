@@ -114,6 +114,17 @@ def _get_json(url: str, params: dict | None = None, timeout: int = 20) -> Any:
     return r.json()
 
 
+def _get_text(url: str, timeout: int = 20) -> str:
+    try:
+        r = _session.get(url, timeout=timeout)
+        r.raise_for_status()
+    except Exception as exc:
+        _mark(url, False, str(exc))
+        raise
+    _mark(url, True)
+    return r.text
+
+
 # ── geocoding ─────────────────────────────────────────────────────────────
 
 def _nominatim(path: str, params: dict) -> Any:
@@ -1325,9 +1336,122 @@ def _storm_class(code) -> str:
     return _STORM_CLASSES.get((code or "").strip().upper(), code or "")
 
 
+# ── JTWC: the other two-thirds of the planet ──────────────────────────────
+# NHC/CPHC only know the Atlantic and the Pacific east of the dateline. The
+# Joint Typhoon Warning Center covers the West Pacific, North Indian and the
+# Southern Hemisphere, and publishes its warnings as fixed-format text — no
+# JSON, so we read the text (Jeff 2026-08-22: "are there really only 2
+# hurricanes anywhere rn on earth?").
+JTWC_RSS = "https://www.metoc.navy.mil/jtwc/rss/jtwc.rss"
+# one storm per heading; its warning-text link is the first web.txt href
+# before the next heading
+_JTWC_HEAD = re.compile(r"(Super Typhoon|Typhoon|Tropical Storm|Tropical Depression|Tropical Cyclone|Hurricane)\s+(\d\d[A-Z])\s+\(([^)]+)\)")
+_JTWC_LINK = re.compile(r"href=['\"]([^'\"]+web\.txt)['\"]")
+_JTWC_POSIT = re.compile(r"(\d{2})(\d{2})(\d{2})Z\s+---\s+(?:NEAR\s+)?(\d+\.\d)([NS])\s+(\d+\.\d)([EW])")
+_JTWC_WIND = re.compile(r"MAX SUSTAINED WINDS\s*-\s*(\d+)\s*KT(?:,\s*GUSTS\s*(\d+)\s*KT)?")
+
+
+def _jtwc_active(rss: str) -> list[dict]:
+    """Storms JTWC is warning on, minus the C/E/L basins NHC already feeds us."""
+    import html
+    out = []
+    text = html.unescape(rss)
+    heads = list(_JTWC_HEAD.finditer(text))
+    for i, m in enumerate(heads):
+        cls, sid, name = m.groups()
+        if sid[-1] in "CEL":
+            continue
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+        link = _JTWC_LINK.search(text, m.end(), end)
+        if link:
+            out.append({"id": sid, "name": name.strip().title(), "class": cls, "url": link.group(1)})
+    return out
+
+
+def _parse_jtwc_warning(text: str) -> dict | None:
+    """Position, intensity, motion and the forecast track from one JTWC
+    warning text (WTPN31-style). Positions are 'DDHHMMZ --- lat lon'; the
+    first is the warning position, the rest the forecast."""
+    from datetime import datetime, timezone
+    posits = []
+    for m in _JTWC_POSIT.finditer(text):
+        lat = float(m.group(4)) * (1 if m.group(5) == "N" else -1)
+        lon = float(m.group(6)) * (1 if m.group(7) == "E" else -1)
+        posits.append((m.start(), int(m.group(1)), int(m.group(2)), int(m.group(3)), lat, lon))
+    if not posits:
+        return None
+    winds = [(m.start(), int(m.group(1)), int(m.group(2)) if m.group(2) else None) for m in _JTWC_WIND.finditer(text)]
+    def wind_after(pos):
+        for at, kt, g in winds:
+            if at > pos:
+                return kt, g
+        return None, None
+    _, day, hh, mm, lat, lon = posits[0]
+    now = datetime.now(timezone.utc)
+    # the warning carries day-of-month only; the month is this one unless the
+    # day is ahead of today (a warning from the end of last month)
+    month, year = now.month, now.year
+    if day > now.day + 1:
+        month, year = (12, year - 1) if month == 1 else (month - 1, year)
+    try:
+        updated = datetime(year, month, day, hh, mm, tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        updated = None
+    kt, gusts = wind_after(posits[0][0])
+    mv = re.search(r"MOVEMENT PAST SIX HOURS\s*-\s*(\d+)\s*DEGREES AT\s*(\d+)\s*KTS", text)
+    adv = re.search(r"WARNING NR\s*(\d+)", text)
+    track = [[lon, lat, kt]]
+    for at, _d, _h, _m, la, lo in posits[1:]:
+        track.append([lo, la, wind_after(at)[0]])
+    return {"lat": lat, "lon": lon, "intensity_kt": kt, "gusts": gusts, "updated": updated,
+            "movement_dir": int(mv.group(1)) if mv else None, "movement_kt": int(mv.group(2)) if mv else None,
+            "advisory": int(adv.group(1)) if adv else None, "track": track}
+
+
+def _jtwc_storms() -> tuple[list[dict], list[dict]]:
+    feats, meta = [], []
+    try:
+        active = _jtwc_active(_get_text(JTWC_RSS, timeout=20))
+    except Exception as exc:
+        log.warning("jtwc failed: %s", exc)
+        return feats, meta
+    for st in active:
+        try:
+            w = _parse_jtwc_warning(_get_text(st["url"], timeout=20))
+        except Exception as exc:
+            log.info("jtwc %s: %s", st["id"], exc)
+            continue
+        if not w:
+            continue
+        cat = storm_category(w["intensity_kt"], w["lat"], w["lon"])
+        eye = cat["badge"].replace("CAT ", "") if cat["badge"].startswith("CAT") else cat["badge"]
+        cls = st["class"]
+        if cls == "Typhoon" and (w["intensity_kt"] or 0) >= 130:
+            cls = "Super Typhoon"
+        mv = f"{_compass16(w['movement_dir'])} at {w['movement_kt']} kt" if w["movement_kt"] is not None else ""
+        base = {"id": st["id"], "name": st["name"], "class": cls, "intensity_kt": w["intensity_kt"],
+                "category": cat["badge"], "category_label": cat["label"], "category_color": cat["color"], "gusts": w["gusts"],
+                "eye": eye, "moving_short": mv, "pressure_mb": None,
+                "movement": f"{w['movement_dir']}° at {w['movement_kt']} kt" if w["movement_kt"] is not None else "",
+                "updated": w["updated"], "advisory": w["advisory"], "url": st["url"], "agency": "JTWC · Pearl Harbor"}
+        meta.append(base)
+        feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [w["lon"], w["lat"]]},
+                      "properties": {**base, "kind": "current"}})
+        if len(w["track"]) > 1:
+            line = [p[:2] for p in w["track"]]
+            feats.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": line},
+                          "properties": {"storm": st["name"], "id": st["id"], "layer": "track", "kind": "linestring", "name": st["name"], "desc": ""}})
+            for lo, la, kt in w["track"][1:]:
+                feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [lo, la]},
+                              "properties": {"storm": st["name"], "id": st["id"], "layer": "track", "kind": "point", "name": f"{kt} kt" if kt else "", "desc": ""}})
+    return feats, meta
+
+
 def storms() -> dict:
-    """Active tropical cyclones (NHC/CPHC): current position + intensity from
-    CurrentStorms.json, forecast track and cone from the advisory KMZs."""
+    """Active tropical cyclones: NHC/CPHC (current position + intensity from
+    CurrentStorms.json, track and cone from the advisory KMZs) plus JTWC for
+    the rest of the world (position, intensity, track from the warning text;
+    JTWC issues no cone)."""
     def fetch():
         try:
             j = _get_json(NHC, timeout=20)
@@ -1346,7 +1470,8 @@ def storms() -> dict:
                     "eye": eye, "moving_short": mv,
                     "pressure_mb": s.get("pressure"), "movement": f"{s.get('movementDir')}° at {s.get('movementSpeed')} kt",
                     "updated": s.get("lastUpdate"), "advisory": (s.get("publicAdvisory") or {}).get("advNum"),
-                    "url": (s.get("publicAdvisory") or {}).get("url")}
+                    "url": (s.get("publicAdvisory") or {}).get("url"),
+                    "agency": "CPHC · Honolulu" if str(s.get("id") or "").lower().startswith("cp") else "NHC · Miami"}
             meta.append(base)
             feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [s.get("longitudeNumeric"), s.get("latitudeNumeric")]},
                           "properties": {**base, "kind": "current"}})
@@ -1360,8 +1485,9 @@ def storms() -> dict:
                         feats.append(f)
                 except Exception as exc:
                     log.info("nhc %s %s: %s", s.get("id"), kind, exc)
-        return {"type": "FeatureCollection", "features": feats, "storms": meta}
-    return cache.get("storms-v5", 900, fetch)
+        jf, jm = _jtwc_storms()
+        return {"type": "FeatureCollection", "features": feats + jf, "storms": meta + jm}
+    return cache.get("storms-v6", 900, fetch)
 
 
 # ── air quality / UV (Open-Meteo) ────────────────────────────────────────
