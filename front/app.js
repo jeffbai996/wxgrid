@@ -544,7 +544,7 @@
     rail.innerHTML = FAMILIES.map((f) => {
       const ok = f.layers.some((l) => avail.includes(l));
       const on = f.key === fam.key;
-      return `${f.section ? `<div class="rail-sec">${f.section}</div>` : ""}<button class="${on ? "on" : ""}" data-family="${f.key}" ${ok ? "" : "disabled"} title="${f.label}${ok ? "" : " (not in this model)"}">${LAYER_ICON[FAMILY_ICON[f.key]]}<span>${f.label}</span>${f.variants ? `<i class="var">${f.variants[on ? state.layer : f.layers.find((l) => avail.includes(l)) || f.layers[0]] || ""}</i>` : ""}</button>`;
+      return `${f.section ? `<div class="rail-sec">${f.section}</div>` : ""}<button class="${on ? "on" : ""}" data-family="${f.key}" ${ok ? "" : "disabled"} title="${f.label}${ok ? "" : " (not in this model)"}">${LAYER_ICON[FAMILY_ICON[f.key]]}<span>${f.label}</span>${f.variants ? `<i class="var">${f.variants[on ? state.layer : f.layers.find((l) => avail.includes(l)) || f.layers[0]] || ""}</i>` : ""}</button>${on && f.variants ? `<div class="rail-vars seg small" role="group" aria-label="${f.label} options">${f.layers.map((l) => `<button data-layer="${l}" class="${l === state.layer ? "on" : ""}" ${avail.includes(l) ? "" : "disabled"}>${f.variants[l]}</button>`).join("")}</div>` : ""}`;
     }).join("") + `<div class="rail-sec">Field</div>
       <div class="rail-seg" role="group" aria-label="Wind animation">
         <span>Motion</span>
@@ -584,6 +584,10 @@
       localStorage.setItem("wxgrid.layer", state.layer);
       if (!hasLevel()) state.level = 0;
       renderControls(); applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); });
+    // The same options under the active family in the rail: Rain's 24 h and
+    // 72 h windows were only in the time bar, where nobody looked for them
+    // (Jeff 2026-08-23).
+    rail.querySelectorAll(".rail-vars button").forEach((b) => b.onclick = () => { state.layer = b.dataset.layer; localStorage.setItem("wxgrid.layer", state.layer); localStorage.setItem("wxgrid.variant." + fam.key, state.layer); renderControls(); applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); });
     // variant picker (rain 6h/24h/72h …) sits in the time bar next to the legend
     const vp = $("#variant");
     if (fam.variants) {
