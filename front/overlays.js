@@ -297,6 +297,10 @@
         // dashed edge. The track reads as forecast (dashed) with waypoints.
         M().addLayer({ id: "storm-cone", type: "fill", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "fill-color": "#ffb454", "fill-opacity": 0.10 } }, WX.fn.firstSymbolId());
         M().addLayer({ id: "storm-cone-line", type: "line", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "line-color": "rgba(255,180,84,.55)", "line-width": 1, "line-dasharray": [3, 2.5] } }, WX.fn.firstSymbolId());
+        // Where it has been: solid and quiet, per storm, shown when its card
+        // is open. Forecast stays dashed; history is fact, so it is solid.
+        M().addLayer({ id: "storm-past", type: "line", source: "storms", filter: ["all", ["==", ["get", "layer"], "past"], ["==", ["get", "id"], ""]], paint: { "line-color": "rgba(255,255,255,.45)", "line-width": 1.4 } });
+        M().addLayer({ id: "storm-past-pts", type: "circle", source: "storms", filter: ["all", ["==", ["get", "layer"], "past"], ["==", ["get", "id"], ""], ["==", ["geometry-type"], "Point"]], paint: { "circle-radius": 3.2, "circle-color": ["coalesce", ["get", "color"], "#9aa4b2"], "circle-stroke-color": "rgba(0,0,0,.6)", "circle-stroke-width": 1 } });
         M().addLayer({ id: "storm-track", type: "line", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "LineString"]], paint: { "line-color": "rgba(255,255,255,.72)", "line-width": 1.6, "line-dasharray": [1.6, 1.8] } });
         M().addLayer({ id: "storm-pts", type: "circle", source: "storms", filter: ["all", ["==", ["get", "layer"], "track"], ["==", ["geometry-type"], "Point"]], paint: { "circle-radius": 2.8, "circle-color": "rgba(255,255,255,.85)", "circle-stroke-color": "rgba(0,0,0,.6)", "circle-stroke-width": 1 } });
         // The eye wears its category colour — red deepens with the scale.
@@ -363,6 +367,9 @@
     // Which desk is tracking it: the feed says (NHC, CPHC, JTWC).
     const agency = p.agency || (/^cp/i.test(p.id || "") ? "CPHC · Honolulu" : "NHC · Miami");
     if (stormPopup) stormPopup.remove();
+    // the card brings the storm's past with it
+    const showPast = (id) => ["storm-past", "storm-past-pts"].forEach((l) => M().getLayer(l) && M().setFilter(l, ["all", ["==", ["get", "layer"], "past"], ["==", ["get", "id"], id || ""]].concat(l.endsWith("pts") ? [["==", ["geometry-type"], "Point"]] : [])));
+    showPast(p.id);
     stormPopup = mapCard([slon, slat], "storm-pop", {
       icon: WX.CYCLONE_SVG || "", color: p.category_color || "#ef786f",
       title: `${p.class} ${p.name}`, pill: p.category, sub: p.category_label, ago,
@@ -373,10 +380,11 @@
              ["Position", WX.fmtCoords ? WX.fmtCoords(slat, slon, 1) : `${slat.toFixed(1)}, ${slon.toFixed(1)}`],
              ["Agency", agency], ["Advisory", p.advisory ? `#${p.advisory}` : ""]],
       link: p.url ? { href: p.url, text: "Public advisory" } : null });
+    stormPopup.on("close", () => showPast(""));
   }
   WX.openStormCard = openStormCard;
   function clearStorms() {
-    if (stormPopup) { stormPopup.remove(); stormPopup = null; } ["storm-lbl", "storm-eye", "storm-now", "storm-pts", "storm-track", "storm-cone-line", "storm-cone"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("storms")) M().removeSource("storms"); }
+    if (stormPopup) { stormPopup.remove(); stormPopup = null; } ["storm-lbl", "storm-eye", "storm-now", "storm-pts", "storm-past-pts", "storm-past", "storm-track", "storm-cone-line", "storm-cone"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("storms")) M().removeSource("storms"); }
 
   // ── satellite: GOES GeoColor via NASA GIBS (timeless URL = latest) ────
   function loadSat() {

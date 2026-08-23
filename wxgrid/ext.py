@@ -1473,6 +1473,11 @@ def _jtwc_storms() -> tuple[list[dict], list[dict]]:
         meta.append(base)
         feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [w["lon"], w["lat"]]},
                       "properties": {**base, "kind": "current"}})
+        try:
+            yr = int((w["updated"] or "2026")[:4])
+            feats.extend(_history_features(st["id"], st["name"], year=yr))
+        except Exception as exc:
+            log.info("history %s: %s", st["id"], exc)
         if len(w["track"]) > 1:
             line = [p[:2] for p in w["track"]]
             feats.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": line},
@@ -1481,6 +1486,93 @@ def _jtwc_storms() -> tuple[list[dict], list[dict]]:
                 feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [lo, la]},
                               "properties": {"storm": st["name"], "id": st["id"], "layer": "track", "kind": "point", "name": f"{kt} kt" if kt else "", "desc": ""}})
     return feats, meta
+
+
+# ── where the storm has BEEN: the best track ─────────────────────────────
+# NHC basins come from the ATCF b-deck on NOAA's FTP; JTWC's basins have no
+# public live b-deck, so those come from CIRA/RAMMB's track-history table.
+ATCF_BTK = "https://ftp.nhc.noaa.gov/atcf/btk/b{sid}.dat"
+RAMMB_STORM = "https://rammb-data.cira.colostate.edu/tc_realtime/storm.asp?storm_identifier={sid}"
+_JTWC_BASIN = {"W": "wp", "S": "sh", "P": "sh", "A": "io", "B": "io", "E": "ep", "C": "cp", "L": "al"}
+
+
+def _parse_bdeck(text: str) -> list[dict]:
+    """One fix per synoptic time from an ATCF b-deck (radii rows repeat the
+    fix; the first row of each time wins). Oldest first."""
+    from datetime import datetime, timezone
+    out, seen = [], set()
+    for line in text.splitlines():
+        f = [x.strip() for x in line.split(",")]
+        if len(f) < 9 or f[4] != "BEST":
+            continue
+        t = f[2]
+        if t in seen:
+            continue
+        seen.add(t)
+        try:
+            when = datetime.strptime(t, "%Y%m%d%H").replace(tzinfo=timezone.utc)
+            lat = int(f[6][:-1]) / 10 * (1 if f[6].endswith("N") else -1)
+            lon = int(f[7][:-1]) / 10 * (1 if f[7].endswith("E") else -1)
+            kt = int(f[8])
+        except (ValueError, IndexError):
+            continue
+        out.append({"t": when.strftime("%Y-%m-%dT%H:%M:%SZ"), "lat": lat, "lon": lon, "kt": kt})
+    return out
+
+
+def _parse_rammb_history(html: str) -> list[dict]:
+    """Fixes from RAMMB's Track History table (newest first there; oldest
+    first here). Longitude is degrees east."""
+    m = re.search(r"Track History.*?<table>(.*?)</table>", html, re.S | re.I)
+    if not m:
+        return []
+    out = []
+    for row in re.findall(r"<tr>(.*?)</tr>", m.group(1), re.S):
+        cells = [re.sub(r"\s+", " ", c).strip() for c in re.findall(r"<td>(.*?)</td>", row, re.S)]
+        if len(cells) < 4 or not re.match(r"\d{4}-", cells[0]):
+            continue
+        try:
+            lon = round(((float(cells[2]) + 180) % 360) - 180, 1)
+            out.append({"t": cells[0].replace(" ", "T") + ":00Z", "lat": float(cells[1]), "lon": lon, "kt": int(float(cells[3]))})
+        except ValueError:
+            continue
+    return list(reversed(out))
+
+
+def storm_history(sid: str, year: int | None = None) -> list[dict]:
+    """Best-track fixes for a storm id — 'cp012026' (NHC style) or '17W'
+    (JTWC style, with the season year)."""
+    sid = (sid or "").strip()
+    key = f"storm-hist:{sid.lower()}:{year or ''}"
+    def fetch():
+        try:
+            if re.fullmatch(r"[a-zA-Z]{2}\d{6}", sid):
+                return _parse_bdeck(_get_text(ATCF_BTK.format(sid=sid.lower()), timeout=20))
+            m = re.fullmatch(r"(\d\d)([A-Z])", sid.upper())
+            if m and year:
+                basin = _JTWC_BASIN.get(m.group(2))
+                if basin:
+                    return _parse_rammb_history(_get_text(RAMMB_STORM.format(sid=f"{basin}{m.group(1)}{year}"), timeout=25))
+        except Exception as exc:
+            log.info("storm history %s: %s", sid, exc)
+        return []
+    return cache.get(key, 3600, fetch)
+
+
+def _history_features(sid: str, name: str, year: int | None = None) -> list[dict]:
+    """The storm's past as GeoJSON: a line through the best-track fixes and a
+    point per fix, coloured by what the storm was at that moment."""
+    fixes = storm_history(sid, year=year)[-40:]
+    if len(fixes) < 2:
+        return []
+    feats = [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[f["lon"], f["lat"]] for f in fixes]},
+              "properties": {"id": sid, "storm": name, "layer": "past"}}]
+    for f in fixes:
+        cat = storm_category(f["kt"], f["lat"], f["lon"])
+        feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [f["lon"], f["lat"]]},
+                      "properties": {"id": sid, "storm": name, "layer": "past", "kt": f["kt"], "t": f["t"],
+                                     "badge": cat["badge"].replace("CAT ", ""), "color": cat["color"]}})
+    return feats
 
 
 def storms() -> dict:
@@ -1511,6 +1603,10 @@ def storms() -> dict:
             meta.append(base)
             feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [s.get("longitudeNumeric"), s.get("latitudeNumeric")]},
                           "properties": {**base, "kind": "current"}})
+            try:
+                feats.extend(_history_features(s.get("id") or "", s.get("name") or ""))
+            except Exception as exc:
+                log.info("history %s: %s", s.get("id"), exc)
             for key, kind in (("trackCone", "cone"), ("forecastTrack", "track")):
                 url = (s.get(key) or {}).get("kmzFile") if isinstance(s.get(key), dict) else None
                 if not url:
@@ -1523,7 +1619,7 @@ def storms() -> dict:
                     log.info("nhc %s %s: %s", s.get("id"), kind, exc)
         jf, jm = _jtwc_storms()
         return {"type": "FeatureCollection", "features": feats + jf, "storms": meta + jm}
-    return cache.get("storms-v8", 900, fetch)
+    return cache.get("storms-v9", 900, fetch)
 
 
 # ── air quality / UV (Open-Meteo) ────────────────────────────────────────

@@ -502,3 +502,58 @@ def test_caspian_is_named_even_when_overpass_answers_thin(monkeypatch):
     assert sum(1 for n in nodes if n["name"] == "Black Sea") == 1        # fetched name wins, not doubled
     assert ext.nearest_water(41.5, 50.5, nodes) == "Caspian Sea"
     assert ext.nearest_water(47.5, -87.0, nodes) == "Lake Superior"
+
+
+_BDECK = """CP, 01, 2026082212,   , BEST,   0, 305N, 1724W,  70,  979, HU,  34, NEQ,  150,  130,  100,  150,
+CP, 01, 2026082218,   , BEST,   0, 310N, 1727W,  65,  981, HU,  34, NEQ,  150,  130,  100,  150,
+CP, 01, 2026082300,   , BEST,   0, 314N, 1731W,  60,  984, TS,  34, NEQ,  150,  130,  100,  150,
+CP, 01, 2026082300,   , BEST,   0, 314N, 1731W,  60,  984, TS,  50, NEQ,   60,   40,   30,   60,
+"""
+
+_RAMMB = """<h3>Track History</h3><table>
+<tr><td>Synoptic Time</td><td>Latitude</td><td>Longitude</td><td>Intensity</td></tr>
+<tr><td>2026-08-23 18:00</td><td>23.2</td><td>137.9</td><td>110</td></tr>
+<tr><td>2026-08-23 12:00</td><td>22.6</td><td>139.4</td><td>110</td></tr>
+<tr><td>2026-08-22 18:00</td><td>20.4</td><td>143.6</td><td>115</td></tr>
+</table>"""
+
+
+def test_bdeck_parses_one_fix_per_time_oldest_first():
+    fixes = ext._parse_bdeck(_BDECK)
+    assert [f["kt"] for f in fixes] == [70, 65, 60]           # duplicate radii rows collapse
+    assert fixes[0]["lat"] == 30.5 and fixes[0]["lon"] == -172.4
+    assert fixes[0]["t"] == "2026-08-22T12:00:00Z"
+
+
+def test_rammb_history_parses_oldest_first():
+    fixes = ext._parse_rammb_history(_RAMMB)
+    assert [f["kt"] for f in fixes] == [115, 110, 110]
+    assert fixes[0]["lat"] == 20.4 and fixes[0]["lon"] == 143.6
+    assert fixes[-1]["t"] == "2026-08-23T18:00:00Z"
+
+
+def test_storm_history_routes_by_basin(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ext, "_get_text", lambda url, **k: calls.append(url) or (_BDECK if "nhc" in url else _RAMMB))
+    monkeypatch.setattr(ext.cache, "get", lambda key, ttl, fn: fn())
+    assert ext.storm_history("cp012026")[0]["kt"] == 70
+    assert "ftp.nhc.noaa.gov/atcf/btk/bcp012026.dat" in calls[0]
+    assert ext.storm_history("17W", year=2026)[0]["kt"] == 115
+    assert "storm_identifier=wp172026" in calls[1]
+
+
+def test_history_features_line_plus_coloured_points(monkeypatch):
+    monkeypatch.setattr(ext, "storm_history", lambda sid, year=None: [
+        {"t": "2026-08-22T12:00:00Z", "lat": 30.5, "lon": -172.4, "kt": 70},
+        {"t": "2026-08-22T18:00:00Z", "lat": 31.0, "lon": -172.7, "kt": 65},
+        {"t": "2026-08-23T00:00:00Z", "lat": 31.4, "lon": -173.1, "kt": 55}])
+    feats = ext._history_features("cp012026", "Lala")
+    assert feats[0]["geometry"]["type"] == "LineString" and len(feats[0]["geometry"]["coordinates"]) == 3
+    pts = [f for f in feats if f["geometry"]["type"] == "Point"]
+    assert len(pts) == 3 and pts[0]["properties"]["badge"] == "1" and pts[2]["properties"]["badge"] == "TS"
+    assert all(f["properties"]["layer"] == "past" and f["properties"]["id"] == "cp012026" for f in feats)
+
+
+def test_history_features_need_two_fixes(monkeypatch):
+    monkeypatch.setattr(ext, "storm_history", lambda sid, year=None: [{"t": "x", "lat": 1, "lon": 2, "kt": 30}])
+    assert ext._history_features("cp012026", "Lala") == []

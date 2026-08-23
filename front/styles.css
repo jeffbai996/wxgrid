@@ -951,9 +951,8 @@ details.alert[open] { padding-bottom: 9px; }
    climbs over the legend; with the card open it lives on the RIGHT, where the
    legend isn't, so it must not climb — that lift left it floating mid-map
    (Jeff 2026-08-22, "jank ass spacing"). */
-body.has-aq-legend .provider { bottom: calc(var(--tb-h) + 104px); }
-body.has-aq-legend #point:not([hidden]) ~ .provider { bottom: calc(var(--tb-h) + 16px); }
-.provider { position: absolute; z-index: 13; left: 62px; bottom: calc(var(--tb-h) + 16px); display: inline-flex; align-items: center; gap: 8px;
+/* tucked under the right sidebar menu, sharing its right edge */
+.provider { position: absolute; z-index: 4; right: 12px; bottom: calc(var(--tb-h) + 16px); display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 11px 6px 9px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px);
   font: 700 11.5px var(--font-display); color: var(--fg-2); letter-spacing: .01em; opacity: 0; transform: translateY(6px); transition: opacity .35s ease, transform .35s ease; pointer-events: none; }
 .provider.show { opacity: 1; transform: translateY(0); }
@@ -966,7 +965,6 @@ body.has-aq-legend #point:not([hidden]) ~ .provider { bottom: calc(var(--tb-h) +
 .provider .dot.logo svg.mono { height: 26px; width: auto; display: block; }
 .provider .dot.logo img.chip { background: #fff; border-radius: 4px; padding: 2px 5px; height: 26px; box-sizing: border-box; }
 .provider .dot.logo img.chip.chip-dark { background: #10131a; }
-#point:not([hidden]) ~ .provider { left: auto; right: 12px; }
 @media (max-width: 820px) { .provider { display: none; } }
 
 /* cursor value chip */
