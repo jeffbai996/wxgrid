@@ -15,44 +15,9 @@
   // ── styling ───────────────────────────────────────────────────────────
   // Injected rather than added to styles.css so the module carries its own
   // presentation; the values are the app's tokens, so it follows the theme.
-  const CSS = `
-  .sig-pop .maplibregl-popup-content {
-    background: var(--panel-solid, #0a0b0d); color: var(--fg, #eef1f5);
-    border: 1px solid var(--line-strong, rgba(255,255,255,.18)); border-radius: var(--radius, 14px);
-    padding: 12px 14px 11px; min-width: 220px; max-width: 300px;
-    font-family: var(--font-body, system-ui, sans-serif); font-size: 12px; line-height: 1.45;
-    box-shadow: 0 10px 30px rgba(0,0,0,.45);
-  }
-  .sig-pop .maplibregl-popup-tip { border-top-color: var(--line-strong, rgba(255,255,255,.18)); border-bottom-color: var(--line-strong, rgba(255,255,255,.18)); }
-  .sig-pop .maplibregl-popup-close-button { color: var(--dim, #7c8492); font-size: 17px; padding: 2px 7px 4px; background: none; }
-  .sig-pop .maplibregl-popup-close-button:hover { color: var(--fg, #eef1f5); background: none; }
-  .sig-pop h4 {
-    margin: 0 16px 2px 0; font-family: var(--font-display, system-ui, sans-serif);
-    font-size: 15px; font-weight: 700; letter-spacing: .1px; line-height: 1.2;
-  }
-  .sig-pop .sg-kind { color: var(--dim, #7c8492); font-size: 11px; margin-bottom: 9px; }
-  .sig-pop .sg-sev { display: inline-block; margin-bottom: 9px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; letter-spacing: .35px; text-transform: uppercase; }
-  .sig-pop dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; }
-  .sig-pop dt { color: var(--dim, #7c8492); font-size: 11px; }
-  .sig-pop dd { margin: 0; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px; text-align: right; }
-  .sig-pop .sg-raw {
-    margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line, rgba(255,255,255,.09));
-    font-family: var(--font-mono, ui-monospace, monospace); font-size: 10.5px; line-height: 1.35;
-    color: var(--fg-2, #b4bbc6); white-space: pre-wrap; max-height: 132px; overflow: auto;
-  }
-  .sig-pop .sg-src { color: var(--dim, #7c8492); font-size: 10px; margin-top: 7px; }
-  `;
-  let styled = false;
-  function injectCss() {
-    if (styled) return;
-    const el = document.createElement("style");
-    el.id = "sigmet-pop-css";
-    el.textContent = CSS;
-    document.head.appendChild(el);
-    styled = true;
-  }
+  // Presentation is the shared map card in styles.css (`.mapcard`).
+  function injectCss() {}
 
-  // ── vocabulary ────────────────────────────────────────────────────────
   // Same colours the server sends on every feature; kept here as the fallback
   // and for the labels, which are drawn from the hazard word, not the feature.
   const COLOR = { CONVECTIVE: "#ff3a1d", TS: "#ff6b35", TURB: "#c77dff", ICE: "#5bc8ff",
@@ -76,21 +41,17 @@
   }
 
   // ── popup ─────────────────────────────────────────────────────────────
-  function card(p) {
+  const HAZ_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19L12 3z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>`;
+  function cardSpec(p) {
     const colour = p.color || COLOR[p.hazard] || COLOR.OTHER;
-    const rows = [];
-    const b = band(p.base_ft, p.top_ft);
-    if (b) rows.push(["Altitude", b]);
     const from = when(p.valid_from), to = when(p.valid_to);
-    if (from || to) rows.push(["Valid", `${from || "—"}<br><span style="opacity:.6">to ${to || "—"}</span>`]);
-    if (p.movement) rows.push(["Moving", esc(p.movement)]);
-    if (p.area) rows.push(["Area", esc(String(p.area).slice(0, 60))]);
-    return `<h4>${esc(TITLE[p.hazard] || p.hazard || "Hazard")}</h4>
-      <div class="sg-kind">${esc(p.kind || "")}${p.hazard_raw && p.hazard_raw !== p.hazard ? ` · ${esc(p.hazard_raw)}` : ""}</div>
-      ${p.severity ? `<span class="sg-sev" style="background:${colour}22;color:${colour};border:1px solid ${colour}55">${esc(p.severity)}</span>` : ""}
-      <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
-      ${p.raw ? `<div class="sg-raw">${esc(p.raw)}</div>` : ""}
-      <div class="sg-src">${esc(p.source || "")}</div>`;
+    return {
+      icon: HAZ_SVG, color: colour, title: TITLE[p.hazard] || p.hazard || "Hazard", pill: p.severity || "",
+      sub: `${p.kind || ""}${p.hazard_raw && p.hazard_raw !== p.hazard ? ` · ${p.hazard_raw}` : ""}`, ago: to ? `until ${to}` : "",
+      hero: [(p.base_ft != null || p.top_ft != null) && { k: "Base", v: alt(p.base_ft) || "SFC" },
+             (p.base_ft != null || p.top_ft != null) && { k: "Top", v: alt(p.top_ft) || "unspecified" }],
+      rows: [["Valid", from || to ? `${from || "—"} → ${to || "—"}` : ""], ["Moving", p.movement], ["Area", p.area ? String(p.area).slice(0, 60) : ""]],
+      raw: p.raw || "", src: p.source || "", maxWidth: "320px" };
   }
 
   // One line for the toast fallback, so a tap still says something useful on a
@@ -107,10 +68,7 @@
       return;
     }
     if (popup) popup.remove();
-    popup = new maplibregl.Popup({ className: "sig-pop", closeButton: true, maxWidth: "310px", offset: 12 })
-      .setLngLat(e.lngLat)
-      .setHTML(card(f.properties))
-      .addTo(M());
+    popup = WX.mapCard(e.lngLat, "sig-pop", cardSpec(f.properties));
   }
 
   // ── layer ─────────────────────────────────────────────────────────────

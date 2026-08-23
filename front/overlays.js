@@ -12,7 +12,7 @@
   const RAINVIEWER = "https://api.rainviewer.com/public/weather-maps.json";
   // ── isolines overlay ──────────────────────────────────────────────────
   let isoReq = 0;
-  let quakePopup = null;
+  let quakePopup = null, quakeDepth = {};
 
   // ── polar caps ──────────────────────────────────────────────────────────
   // The basemap's tiles end at 85.05° (mercator's edge), and on the globe
@@ -328,6 +328,32 @@
       if (gj.storms && gj.storms.length && !state.point) { const st = gj.storms[0]; const f = gj.features.find((x) => x.properties.kind === "current" && x.properties.id === st.id); if (f) M().flyTo({ center: f.geometry.coordinates, zoom: Math.max(3.5, Math.min(M().getZoom(), 5)), duration: 1200 }); }
     } catch (e) { WX.fn.toast("Storm feed unavailable", 4000, "error"); state.storms = false; $("#storms-toggle").classList.remove("on"); }
   }
+  // ── the map card ──────────────────────────────────────────────────────
+  // One builder for every popup on the map. `o`: icon (svg string), color,
+  // title, pill, sub, ago, hero [{k, v, unit, note}], rows [[k, v]], raw,
+  // src, link {href, text}. Returns the popup; a small "close" bottom-right
+  // and a tap anywhere else both close it.
+  const escH = (x) => String(x == null ? "" : x).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  function mapCard(lngLat, cls, o) {
+    const hero = (o.hero || []).filter((h) => h && h.v != null && h.v !== "").map((h) =>
+      `<div><small>${escH(h.k)}</small><b>${escH(h.v)}${h.unit ? `<i>${escH(h.unit)}</i>` : ""}</b>${h.note ? `<em>${escH(h.note)}</em>` : ""}</div>`).join("");
+    const rows = (o.rows || []).filter((r) => r && r[1] != null && r[1] !== "").map(([k, v, rawHtml]) => `<dt>${escH(k)}</dt><dd>${rawHtml ? v : escH(v)}</dd>`).join("");
+    const html = `<div class="mc-head">${o.icon ? `<i class="mc-ico" style="color:${o.color || "var(--accent)"}">${o.icon}</i>` : ""}
+        <div class="mc-title"><b${o.titleColor ? ` style="color:${o.titleColor}"` : ""}>${escH(o.title)}</b>
+        <div class="mc-sub">${o.pill ? `<span class="mc-pill" style="--cat:${o.color || "var(--accent)"}">${escH(o.pill)}</span>` : ""}${o.sub ? `<span>${escH(o.sub)}</span>` : ""}${o.ago ? `<span class="mc-ago">${escH(o.ago)}</span>` : ""}</div></div></div>
+      <div class="mc-hero">${hero}</div>
+      <dl>${rows}</dl>
+      ${o.raw ? `<div class="mc-raw">${escH(o.raw)}</div>` : ""}
+      ${o.src ? `<div class="mc-src">${escH(o.src)}</div>` : ""}
+      <div class="mc-foot">${o.link ? `<a class="qp-link" href="${escH(o.link.href)}" target="_blank" rel="noopener">${escH(o.link.text)} ↗</a>` : "<span></span>"}<button class="mc-close" type="button">close</button></div>`;
+    const pop = new maplibregl.Popup({ className: `quake-pop mapcard ${cls}`, closeButton: false, focusAfterOpen: false, maxWidth: o.maxWidth || "320px", offset: 12 })
+      .setLngLat(lngLat).setHTML(html).addTo(M());
+    pop.getElement().querySelector(".mc-close").addEventListener("click", () => pop.remove());
+    return pop;
+  }
+  WX.mapCard = mapCard;
+
+  const QUAKE_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l2.5-6 3 12 3-9 2.5 6 1.5-3H22"/></svg>`;
   let stormPopup = null;
   function openStormCard(f) {
     const p = f.properties;
@@ -336,30 +362,17 @@
     const [slon, slat] = f.geometry.coordinates;
     // Which desk is tracking it: the feed says (NHC, CPHC, JTWC).
     const agency = p.agency || (/^cp/i.test(p.id || "") ? "CPHC · Honolulu" : "NHC · Miami");
-    const esc_ = (x) => String(x == null ? "" : x).replace(/</g, "&lt;");
     if (stormPopup) stormPopup.remove();
-    // No × in the corner: a tap elsewhere closes it, and a small "close"
-    // sits bottom-right for the deliberate (Jeff 2026-08-22). focusAfterOpen
-    // off: MapLibre would focus the advisory link and its focus ring read as
-    // a pill around the link.
-    stormPopup = new maplibregl.Popup({ className: "quake-pop storm-pop", closeButton: false, focusAfterOpen: false, maxWidth: "320px", offset: 12 })
-      .setLngLat([slon, slat])
-      .setHTML(`<div class="sp-head"><i class="sp-ico" style="color:${p.category_color || "#ef786f"}">${WX.CYCLONE_SVG || ""}</i>
-          <div class="sp-title"><b>${esc_(p.class)} ${esc_(p.name)}</b>
-          <div class="sp-sub">${p.category ? `<span class="sp-cat" style="--cat:${p.category_color}">${esc_(p.category)}</span>` : ""}${p.category_label ? `<span>${esc_(p.category_label)}</span>` : ""}${ago ? `<span class="sp-ago">${ago}</span>` : ""}</div></div></div>
-        <div class="sp-hero">
-          ${p.intensity_kt ? `<div><small>Winds</small><b>${esc_(p.intensity_kt)}<i>kt</i></b><em>${kmh} km/h</em></div>` : ""}
-          ${p.gusts ? `<div><small>Gusts</small><b>${esc_(p.gusts)}<i>kt</i></b><em>${Math.round(p.gusts * 1.852)} km/h</em></div>` : ""}
-          ${p.pressure_mb ? `<div><small>Pressure</small><b>${esc_(p.pressure_mb)}<i>mb</i></b></div>` : ""}
-        </div>
-        <dl>
-        ${p.movement && !/null/.test(p.movement) ? `<dt>Moving</dt><dd>${esc_(p.movement)}</dd>` : ""}
-        <dt>Position</dt><dd>${WX.fmtCoords ? WX.fmtCoords(slat, slon, 1) : `${slat.toFixed(1)}, ${slon.toFixed(1)}`}</dd>
-        <dt>Agency</dt><dd>${agency}</dd>
-        ${p.advisory ? `<dt>Advisory</dt><dd>#${esc_(p.advisory)}</dd>` : ""}</dl>
-        <div class="sp-foot">${p.url ? `<a class="qp-link" href="${p.url}" target="_blank" rel="noopener">Public advisory ↗</a>` : "<span></span>"}<button class="sp-close" type="button">close</button></div>`)
-      .addTo(M());
-    stormPopup.getElement().querySelector(".sp-close").addEventListener("click", () => { if (stormPopup) { stormPopup.remove(); stormPopup = null; } });
+    stormPopup = mapCard([slon, slat], "storm-pop", {
+      icon: WX.CYCLONE_SVG || "", color: p.category_color || "#ef786f",
+      title: `${p.class} ${p.name}`, pill: p.category, sub: p.category_label, ago,
+      hero: [p.intensity_kt && { k: "Winds", v: p.intensity_kt, unit: "kt", note: `${kmh} km/h` },
+             p.gusts && { k: "Gusts", v: p.gusts, unit: "kt", note: `${Math.round(p.gusts * 1.852)} km/h` },
+             p.pressure_mb && { k: "Pressure", v: p.pressure_mb, unit: "mb" }],
+      rows: [["Moving", p.movement && !/null/.test(p.movement) ? p.movement : ""],
+             ["Position", WX.fmtCoords ? WX.fmtCoords(slat, slon, 1) : `${slat.toFixed(1)}, ${slon.toFixed(1)}`],
+             ["Agency", agency], ["Advisory", p.advisory ? `#${p.advisory}` : ""]],
+      link: p.url ? { href: p.url, text: "Public advisory" } : null });
   }
   WX.openStormCard = openStormCard;
   function clearStorms() {
@@ -575,6 +588,9 @@
     try {
       const gj = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson").then((r) => r.json());
       if (!state.quakes) return;
+      // tiles keep only lon/lat — the depth in the third coordinate is gone
+      // by the time a click hands the feature back, so remember it by id
+      quakeDepth = Object.fromEntries(gj.features.map((q) => [q.id || q.properties.ids, q.geometry.coordinates[2]]));
       if (M().getSource("quakes")) M().getSource("quakes").setData(gj);
       else {
         M().addSource("quakes", { type: "geojson", data: gj });
@@ -584,18 +600,16 @@
           const mag = Number(p.mag);
           const col = mag >= 7 ? "#ff6a5e" : mag >= 5 ? "#e8590c" : "#e3c53c";
           const ago = (ms => ms < 3600e3 ? `${Math.round(ms / 60e3)} min ago` : ms < 86400e3 ? `${Math.round(ms / 3600e3)} h ago` : `${Math.round(ms / 86400e3)} d ago`)(Date.now() - p.time);
-          const depth = f.geometry.coordinates[2];
+          const depth = quakeDepth[f.id || p.ids] ?? f.geometry.coordinates[2] ?? null;
           if (quakePopup) quakePopup.remove();
-          quakePopup = new maplibregl.Popup({ className: "quake-pop", closeButton: true, maxWidth: "270px", offset: 10 })
-            .setLngLat(f.geometry.coordinates.slice(0, 2))
-            .setHTML(`<div class="qp-head"><b style="color:${col}">M${mag.toFixed(1)}</b><span>${ago}</span></div>
-              <div class="qp-place">${String(p.place || "").replace(/</g, "&lt;")}</div>
-              <dl><dt>Time</dt><dd>${new Date(p.time).toLocaleString()}</dd>
-              ${depth != null ? `<dt>Depth</dt><dd>${Math.round(depth)} km</dd>` : ""}
-              ${Number(p.felt) > 0 ? `<dt>Felt reports</dt><dd>${p.felt}</dd>` : ""}
-              ${Number(p.tsunami) === 1 ? `<dt>Tsunami</dt><dd>advisory issued</dd>` : ""}</dl>
-              ${p.url ? `<a class="qp-link" href="${p.url}" target="_blank" rel="noopener">USGS event page ↗</a>` : ""}`)
-            .addTo(M());
+          quakePopup = mapCard(f.geometry.coordinates.slice(0, 2), "eq-pop", {
+            icon: QUAKE_SVG, color: col, title: `M${mag.toFixed(1)}`, titleColor: col,
+            pill: mag >= 7 ? "major" : mag >= 5 ? "moderate" : "light", sub: p.place || "", ago,
+            hero: [depth != null && { k: "Depth", v: Math.round(depth), unit: "km" },
+                   Number(p.felt) > 0 && { k: "Felt", v: p.felt, unit: "reports" },
+                   Number(p.tsunami) === 1 && { k: "Tsunami", v: "advisory" }],
+            rows: [["Time", new Date(p.time).toLocaleString()], ["Source", "USGS"]],
+            link: p.url ? { href: p.url, text: "USGS event page" } : null, maxWidth: "290px" });
         });
         M().on("mouseenter", "quakes", () => { M().getCanvas().style.cursor = "pointer"; });
         M().on("mouseleave", "quakes", () => { M().getCanvas().style.cursor = ""; });
