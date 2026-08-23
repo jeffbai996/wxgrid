@@ -492,3 +492,13 @@ def test_storms_merges_jtwc_into_nhc_feed(monkeypatch):
     track = [f for f in out["features"] if f["properties"].get("layer") == "track" and f["geometry"]["type"] == "LineString"]
     assert track and track[0]["properties"]["id"] == "17W"
     assert [s["id"] for s in out["storms"]] == ["17W", "19W"]
+
+
+def test_caspian_is_named_even_when_overpass_answers_thin(monkeypatch):
+    # 85 nodes and no Caspian is what a hurried Overpass gave us; the seeds
+    # cover the landlocked seas regardless
+    monkeypatch.setattr(ext, "_water_nodes_fetched", lambda: [{"name": "Black Sea", "lat": 43.5, "lon": 34.0, "kind": "sea"}])
+    nodes = ext.water_nodes()
+    assert sum(1 for n in nodes if n["name"] == "Black Sea") == 1        # fetched name wins, not doubled
+    assert ext.nearest_water(41.5, 50.5, nodes) == "Caspian Sea"
+    assert ext.nearest_water(47.5, -87.0, nodes) == "Lake Superior"

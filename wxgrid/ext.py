@@ -217,7 +217,38 @@ def _reverse_place_name(address: dict, fallback: str = "") -> str:
 _WATER_QL = '[out:json][timeout:90];node["place"~"^(ocean|sea)$"]["name"];out qt;'
 
 
+# Seas OSM does not label with a `place=sea` node, or that Overpass leaves
+# out when it answers in a hurry: the landlocked ones first (the Caspian came
+# back as "the open sea", Jeff 2026-08-22), then the marginal seas a pin
+# lands in most. Merged under the fetched nodes; a fetched name wins.
+_SEED_SEAS = [
+    ("Caspian Sea", 42.0, 51.0), ("Black Sea", 43.5, 34.0), ("Sea of Azov", 46.0, 36.5),
+    ("Aral Sea", 45.0, 59.5), ("Mediterranean Sea", 35.0, 18.0), ("Red Sea", 20.0, 38.0),
+    ("Persian Gulf", 26.5, 52.0), ("Baltic Sea", 58.0, 20.0), ("North Sea", 56.0, 3.0),
+    ("Hudson Bay", 60.0, -85.0), ("Lake Superior", 47.7, -87.5), ("Lake Michigan", 44.0, -87.0),
+    ("Lake Huron", 44.8, -82.3), ("Lake Erie", 42.2, -81.2), ("Lake Ontario", 43.7, -77.8),
+    ("Lake Baikal", 53.5, 108.0), ("Lake Victoria", -1.0, 33.0), ("Caribbean Sea", 15.0, -75.0),
+    ("Gulf of Mexico", 25.0, -90.0), ("Sea of Japan", 40.0, 135.0), ("East China Sea", 29.0, 125.0),
+    ("South China Sea", 13.0, 114.0), ("Bering Sea", 58.0, -175.0), ("Sea of Okhotsk", 55.0, 150.0),
+    ("Gulf of Alaska", 56.0, -145.0), ("Tasman Sea", -40.0, 160.0), ("Coral Sea", -16.0, 152.0),
+    ("Arabian Sea", 15.0, 63.0), ("Bay of Bengal", 15.0, 88.0), ("Philippine Sea", 18.0, 133.0),
+    ("Labrador Sea", 58.0, -55.0), ("Norwegian Sea", 68.0, 3.0), ("Barents Sea", 74.0, 40.0),
+    ("Greenland Sea", 76.0, -5.0), ("Gulf of St. Lawrence", 48.0, -62.0), ("Salish Sea", 48.5, -123.0),
+]
+_WATER_MIN_NODES = 300      # fewer than this and Overpass answered in a hurry
+
+
+def _with_seeds(nodes: list[dict]) -> list[dict]:
+    have = {n["name"] for n in nodes}
+    return nodes + [{"name": n, "lat": la, "lon": lo, "kind": "sea"} for n, la, lo in _SEED_SEAS if n not in have]
+
+
 def water_nodes() -> list[dict]:
+    fetched = _water_nodes_fetched()
+    return _with_seeds(fetched)
+
+
+def _water_nodes_fetched() -> list[dict]:
     def fetch():
         try:
             r = requests.post("https://overpass-api.de/api/interpreter", data={"data": _WATER_QL},
@@ -235,7 +266,11 @@ def water_nodes() -> list[dict]:
                 continue
             out.append({"name": name, "lat": float(e["lat"]), "lon": float(e["lon"]), "kind": tags.get("place")})
         return out
-    return cache.get("water-nodes-v1", 30 * 24 * 3600, fetch)
+    got = cache.get("water-nodes-v2", 30 * 24 * 3600, fetch)
+    if len(got) < _WATER_MIN_NODES:
+        # a short answer is a busy server, not the planet: keep it an hour
+        got = cache.get("water-nodes-v2-thin", 3600, lambda: got)
+    return got
 
 
 # OSM maps named seas as nodes but not the oceans themselves, so open water
