@@ -1094,7 +1094,8 @@ table.wtape.agg tr.r-temp td, table.wtape.agg tr.r-feels td { letter-spacing: -.
    a stacking context, so this one rule settles the order. */
 .maplibregl-popup { z-index: 5; }
 #centre-mark { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px;
-  margin: -6px 0 0 -6px; z-index: 4; pointer-events: none; opacity: .5; display: none; }
+  margin: -6px 0 0 -6px; z-index: 4; pointer-events: none; opacity: .8; display: none;
+  filter: drop-shadow(0 0 1.5px rgba(0,0,0,.8)); }
 #centre-mark::before, #centre-mark::after { content: ""; position: absolute; background: var(--fg);
   box-shadow: 0 0 3px rgba(0,0,0,.85); }
 #centre-mark::before { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-.5px); }
