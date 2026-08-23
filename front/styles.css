@@ -651,6 +651,10 @@ table.bandtape .nil { color: var(--line-strong); }
   .rail button svg { display: none; }
   .rail .rail-sec { display: none; }
   .rail button .var { display: none; }
+  /* inline in the chip row: symmetric margins, so the options sit on the
+     row's centre line like every other chip (Jeff 2026-08-23) */
+  .rail .rail-vars { margin: 0 4px; padding: 2px; align-self: center; }
+  .rail .rail-vars button { padding: 3px 7px; }
   /* On a phone the card is a bottom sheet: it sits above the time bar at
      rest, drags up over it, and drags down to close. Two snap points, so a
      thumb never has to be precise. */
