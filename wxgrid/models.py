@@ -55,7 +55,10 @@ LEVELS = (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200)
 # GRIB typeOfLevel values that mean "a surface-ish single layer" for our purposes.
 SURFACE_LEVEL_TYPES = {"surface", "heightAboveGround", "meanSea", "atmosphere",
                        "entireAtmosphere", "atmosphereSingleLayer", "lowCloudLayer",
-                       "mediumCloudLayer", "highCloudLayer", "unknown"}
+                       "mediumCloudLayer", "highCloudLayer", "unknown",
+                       # IFS mucape decodes at this level type; without it the
+                       # field was silently dropped and IFS never had CAPE.
+                       "mostUnstableParcel"}
 
 
 @dataclass(frozen=True)

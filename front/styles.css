@@ -30,7 +30,7 @@
   --good: #78d39a;
   --tape-night: rgba(255,255,255,.035);
   --radius: 14px;
-  --font-body: "DM Sans", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Urbanist", "DM Sans", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: "Urbanist", "Inter", system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-num: "DM Sans", "Urbanist", system-ui, sans-serif;
@@ -646,7 +646,8 @@ table.bandtape .nil { color: var(--line-strong); }
      picker are desktop furniture (the tools menu has them), and the chips
      sit on their own height instead of stretching to the tallest neighbour */
   .rail { align-items: center; }
-  .rail .rail-seg, .rail .rail-opacity, .rail .rail-flat { display: none; }
+  .rail .rail-seg, .rail .rail-opacity { display: none; }
+  .rail .rail-flat { width: auto; flex: 0 0 auto; gap: 6px; }
   .rail button { padding: 4px 9px; border-radius: 999px; box-shadow: none; font-size: 12px; line-height: 1.2; }
   .rail button svg { display: none; }
   .rail .rail-sec { display: none; }
@@ -857,7 +858,7 @@ table.wtape tr.r-hour td.sun-set::after { opacity: .5; }
 table.wtape tr.r-rain td .snow { color: #cfe8ff; }
 table.wtape tr.r-prob td { color: #71b8ff; font-weight: 600; font-size: 11px; }
 table.wtape tr.r-wind td span { display: inline-flex; align-items: center; justify-content: center; min-width: 26px;
-  padding: 1px 4px; border-radius: 5px; color: var(--fg); font-weight: 700; font-size: 12px; line-height: 1.35; }
+  padding: 1px 4px; border-radius: 5px; color: var(--fg); font: 700 12px/1.35 var(--font-display); }
 table.wtape tr.r-dir td { height: 20px; }
 /* a real arrow, not a corner of a box: readable at 11 px and unambiguous
    about which way the wind is going */

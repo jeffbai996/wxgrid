@@ -165,9 +165,17 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         GEM parameters decode as "unknown" against the stock eccodes tables."""
         for p in paths:
             short, _ = fetch.grib_override(p)
-            yield from iter_fields(p, short_name=short,
-                                   units=model.unit_override.get(short) if short else None,
-                                   target_model=model if model.regional else None)
+            try:
+                yield from iter_fields(p, short_name=short,
+                                       units=model.unit_override.get(short) if short else None,
+                                       target_model=model if model.regional else None)
+            except Exception:
+                # A truncated download poisons every retry: _have() sees a
+                # non-empty file and skips the re-fetch, then decoding dies at
+                # the torn message and used to abort the whole run. Keep what
+                # decoded, drop the file so the next cycle re-fetches it.
+                log.warning("unreadable GRIB %s, dropping it", p.name, exc_info=True)
+                p.unlink(missing_ok=True)
 
     def on_step(step: int, paths: list[Path]) -> None:
         # The ensemble-spread GRIB decodes to the same shortNames as the mean,
