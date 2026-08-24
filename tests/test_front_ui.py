@@ -27,7 +27,7 @@ def test_particles_settle_on_real_cold_boot_lifecycle_and_bound_polar_steps():
                   'map.on("load", this._settle)'):
         assert event in source
     assert "new ResizeObserver(this._settle)" in source
-    assert "MAX_STEP_PX" in source and "screenStep > MAX_STEP_PX" in source
+    assert "MAX_STEP_PX" in source and "screenStep > stepCap" in source
     assert "this.map.unproject([x, y])" in source
     assert "nlat > 89.99 || nlat < -89.99" in source
     # polarQuiet (0.4 density above 65N) was removed 2026-08-21 on Jeff's

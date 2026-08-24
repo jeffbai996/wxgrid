@@ -246,7 +246,10 @@
       // the cap into a black starburst.
       // No polar thinning: the 0.4 factor read as the wind dying at 65°N
       // (Jeff 2026-08-21). The px-per-frame governor handles the pole now.
-      const n = Math.max(0, Math.min(9800, Math.round(base * this.density * 0.014)));
+      // World zooms pack the same particle count onto smaller features and
+      // the field reads denser than it is — thin the deal below z5.
+      const zc = this.map ? Math.max(0.7, Math.min(1, this.map.getZoom() / 5)) : 1;
+      const n = Math.max(0, Math.min(9800, Math.round(base * zc * this.density * 0.014)));
       this.particles = new Array(n);
       for (let i = 0; i < n; i++) this.particles[i] = this.spawn(b, true);
       this.wipe();
@@ -413,7 +416,13 @@
       // the animation reads the same whether you look at a hemisphere or a
       // bay. px/deg at the equator = 512·2^z / 360 for MapLibre's 512 tiles.
       const pxPerDeg = 512 * Math.pow(2, zoom) / 360;
-      const speed = 9.0 / pxPerDeg;              // deg/s per m/s (before the cos-lat correction)
+      // Constant px/s reads frantic at world zoom: the features shrink but
+      // the pixels per second don't, and half a hemisphere is jet stream, so
+      // most particles ride the step cap. Ease the rate down below z5 and the
+      // cap with it — a hemisphere breathes, a bay keeps its full speed.
+      const zf = Math.max(0.35, Math.min(1, Math.pow(2, (zoom - 5) / 2)));
+      const stepCap = MAX_STEP_PX * Math.max(0.5, zf);
+      const speed = 9.0 * zf / pxPerDeg;         // deg/s per m/s (before the cos-lat correction)
       const buckets = new Map();     // colour → path, batched draw calls
       for (const p of this.particles) {
         p.age += 1;
@@ -433,8 +442,8 @@
         let q = this.map.project([nlon, nlat]);
         const screenStep = Math.hypot(q.x - a.x, q.y - a.y);
         if (!isFinite(screenStep)) { Object.assign(p, respawn()); continue; }
-        if (screenStep > MAX_STEP_PX) {
-          const scale = MAX_STEP_PX / screenStep;
+        if (screenStep > stepCap) {
+          const scale = stepCap / screenStep;
           nlon = p.lon + dlon * scale; nlat = p.lat + dlat * scale;
           q = this.map.project([nlon, nlat]);
         }

@@ -1304,7 +1304,7 @@
     const ticks = [0, 0.25, 0.5, 0.75, 1].map((q) => lg.lo + (lg.hi - lg.lo) * q);
     // The layer's name belongs over the bar, not wedged into the middle tick
     // where it collided with the value under it. Ticks are numbers only.
-    const name = LAYER_LABEL[state.layer] + (state.level && hasLevel() ? ` ${state.level}` : "");
+    const name = LAYER_LABEL[state.layer] + (state.level && hasLevel() ? ` ${state.level}${/^\d+$/.test(String(state.level)) ? " hPa" : ""}` : "");
     $("#legend .legend-head b").textContent = name;
     // "mm/6h": the window rides smaller and faded, set apart from the unit
     const um = /^([^/]+)(\/.+)$/.exec(unit || "");
