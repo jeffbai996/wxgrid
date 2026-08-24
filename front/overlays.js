@@ -408,7 +408,7 @@
   // than added to styles.css so each module carries its own presentation;
   // the values are the app's own tokens, so it follows the theme.
   const BADGE_CSS = `
-  #wx-badges { position: absolute; z-index: 5; left: 62px; bottom: calc(var(--tb-h, 150px) + 58px + env(safe-area-inset-bottom));
+  #wx-badges { position: absolute; z-index: 5; left: 62px; bottom: calc(var(--tb-h, 150px) + 14px + env(safe-area-inset-bottom));
     display: flex; flex-direction: column; align-items: flex-start; gap: 5px; pointer-events: none; }
   .wx-badge { display: inline-flex; align-items: baseline; gap: 7px; max-width: min(46vw, 420px);
     padding: 5px 11px; border-radius: 999px; background: var(--panel, rgba(12,14,18,.72)); border: 1px solid var(--line, rgba(255,255,255,.09));

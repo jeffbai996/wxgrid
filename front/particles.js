@@ -371,6 +371,12 @@
       }
       const ctx = this.ctx, w = this.canvas.clientWidth, h = this.canvas.clientHeight;
       const zoom = this.map.getZoom();
+      // A fast, chained scroll-zoom never reaches moveend while it runs, so
+      // the moveend reseed can't fire and the old particles stay packed in
+      // the OLD viewport — the bright rectangle mid-ocean. Re-deal mid-flight
+      // whenever the view has left the seeded zoom behind; reseed() records
+      // the new zoom, so this self-throttles to once per 0.7 levels.
+      if (this._seedZoom != null && Math.abs(zoom - this._seedZoom) > 0.7) this.reseed();
       const polarView = zoom < 3.5 && Math.abs(this.map.getCenter().lat) > 65;
       this._drawn = 0;
       this.warpTrails();

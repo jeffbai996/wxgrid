@@ -42,7 +42,7 @@
   const LAYER_LABEL = { wind: "Wind", gust: "Gusts", temp: "Temp", feels: "Feels like", prob_rain: "Rain chance", prob_gust: "Gale chance", gfactor: "Gust factor", vis: "Visibility", sst: "Sea temp", ptype: "Precip type", vort500: "Vorticity 500", ptend: "Pressure change", cbase: "Cloud base", wbt: "Wet-bulb", dt24: "Temp Δ 24h", msl: "Pressure", tp6: "Rain 6h", tp24: "Rain 24h", tp72: "Rain 72h", sf6: "New snow 6h", sf24: "New snow 24h", sf72: "New snow 72h", sd_cm: "Snow depth", tcc: "Total cloud", cloudlow: "Low cloud", cloudmid: "Mid cloud", cloudhigh: "High cloud", fog: "Fog potential", solar: "Solar power", cape: "CAPE", d2m: "Dew point", rh: "Humidity", frz: "Freezing lvl", waves: "Waves", wperiod: "Wave period", wavepower: "Wave power", uvi: "UV index" };
   const LAYER_ALPHA = { wind: 0.62, gust: 0.62, temp: 0.78, msl: 0.72, tp6: 0.9, tp24: 0.9, tp72: 0.9, sf6: 0.9, sf24: 0.9, sf72: 0.9, sd_cm: 0.85, tcc: 0.9, cloudlow: 0.85, cloudmid: 0.85, cloudhigh: 0.85, fog: 0.85, solar: 0.82, cape: 0.85, d2m: 0.75, rh: 0.75, frz: 0.7, waves: 0.8, wperiod: 0.8, wavepower: 0.82, uvi: 0.8, feels: 0.78, prob_rain: 0.82, prob_gust: 0.82, vis: 0.85, sst: 0.8, ptype: 0.85, gfactor: 0.78, vort500: 0.75, ptend: 0.8, cbase: 0.75, wbt: 0.78, dt24: 0.8 };
   const LAYER_ICON = {
-    iso: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15c3-4 6-4 9 0s6 4 9 0"/><path d="M3 9c3-4 6-4 9 0s6 4 9 0"/></svg>',
+    iso: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c5.5 0 8.9 3.5 8.4 8.5-.5 5-3.9 8.5-8.9 8.5S3.1 17 3.6 12 6.5 3.5 12 3.5z"/><path d="M12 8c3 0 5 1.5 4.7 4-.3 2.5-2.2 4-4.7 4s-4.7-1.5-4.4-4C7.9 9.5 9.5 8 12 8z"/><path d="M12 11.3a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>',
     wind: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 19.6A2 2 0 1 0 14 16H2"/><path d="M17.5 8a2.5 2.5 0 1 1 2 4H2"/><path d="M9.8 4.4A2 2 0 1 1 11 8H2"/></svg>',
     temp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>',
     gust: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v8"/><path d="M12.8 21.6A2 2 0 1 0 14 18H2"/><path d="M17.5 10a2.5 2.5 0 1 1 2 4H2"/><path d="m6 6 4 4 4-4"/></svg>',
@@ -558,7 +558,13 @@
       <label class="rail-opacity" title="Layer opacity">
         <span>Opacity</span><input type="range" min="20" max="100" step="5" value="${state.opacity}"><i>${state.opacity}%</i></label>
       <label class="rail-opacity rail-density" title="Particle density">
-        <span>Density</span><input type="range" min="0" max="100" step="5" value="${state.particleDensity}"><i>${state.particleDensity}%</i></label>`;
+        <span>Density</span><input type="range" min="0" max="100" step="5" value="${state.particleDensity}"><i>${state.particleDensity}%</i></label>
+      <div class="rail-seg rail-run" title="Forecast run (UTC)">
+        <span>Run</span>
+        <select id="rail-run">${modelEntry().runs.map((r) => `<option value="${r.run}"${r.run === state.run ? " selected" : ""}>${r.run.slice(5, 10)} · ${r.run.slice(11)}Z</option>`).join("")}</select>
+      </div>`;
+    const railRun = rail.querySelector("#rail-run");
+    railRun.onchange = () => switchRun(railRun.value);
     const railOp = rail.querySelector(".rail-opacity input");
     railOp.oninput = () => { setOpacity(Number(railOp.value)); };
     const density = rail.querySelector(".rail-density input");
@@ -1155,8 +1161,12 @@
     const tb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tb-h")) || 150;
     const btns = all.filter((el) => el.tagName === "BUTTON").length;
     const seps = all.length - btns;
-    const avail = window.innerHeight - top - tb - 46;
-    st.style.setProperty("--strip-btn", Math.max(26, Math.min(34, Math.floor((avail - 14 - seps * 7 - (all.length - 1) * 3) / Math.max(1, btns)))) + "px");
+    // Bottom margin 16px, the same air the point card keeps above the tape
+    // (its max-height is 100dvh - top - tb - 24 with 8px above). Buttons grow
+    // to 44px on a tall screen so the strip actually reaches down there,
+    // instead of stopping mid-map with a fixed cap (Jeff 2026-08-24).
+    const avail = window.innerHeight - top - 6 - tb - 16;
+    st.style.setProperty("--strip-btn", Math.max(26, Math.min(44, Math.floor((avail - 14 - seps * 7 - (all.length - 1) * 3) / Math.max(1, btns)))) + "px");
     // Then MEASURE and trim: arithmetic on gaps, borders and margins gets this
     // wrong every time, and being wrong here means a toolbar under the tape.
     const limit = st.getBoundingClientRect().top + avail;
@@ -1194,6 +1204,19 @@
     if (WX.tape) WX.tape.clearFineSelection();
     state.model = key; localStorage.setItem("wxgrid.model", key);
     state.run = modelEntry().runs[0].run;
+    if (!runEntry().layers.includes(state.layer)) state.layer = runEntry().layers[0];
+    const base = runDate().getTime();
+    let best = 0, bestErr = Infinity;
+    steps().forEach((h, i) => { const err = Math.abs(base + h * 3600e3 - target); if (err < bestErr) { bestErr = err; best = i; } });
+    state.stepIdx = best;
+    renderControls(); applyStep(); loadWind(); refreshPoint(); WX.tape.refreshTapePoint(); if (state.iso) WX.ov.loadIso();
+  }
+
+  // Same job as switchModel, one model: hold the valid time, swap the run.
+  function switchRun(runId, target = validDate().getTime()) {
+    if (!modelEntry().runs.some((r) => r.run === runId) || runId === state.run) return;
+    if (WX.tape) WX.tape.clearFineSelection();
+    state.run = runId;
     if (!runEntry().layers.includes(state.layer)) state.layer = runEntry().layers[0];
     const base = runDate().getTime();
     let best = 0, bestErr = Infinity;

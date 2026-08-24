@@ -288,6 +288,9 @@ body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 70
 .rail-opacity span { font: 600 12px var(--font-display); color: var(--fg-2); }
 .rail-opacity input { flex: 1; min-width: 0; accent-color: var(--accent); height: 14px; }
 .rail-opacity i { font: 600 10.5px var(--font-mono); font-style: normal; color: var(--dim); min-width: 30px; text-align: right; }
+.rail-run select { flex: 1; min-width: 0; appearance: none; background: rgba(255,255,255,.05); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font: 600 11.5px var(--font-display); cursor: pointer; }
+:root[data-theme="light"] .rail-run select { background: rgba(0,0,0,.04); }
 .seg.variant { margin-left: 8px; }
 .seg.variant button { white-space: nowrap; }
 /* Keep all ten pressure levels on screen without shrinking the type. */
