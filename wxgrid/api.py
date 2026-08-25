@@ -29,7 +29,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from wxgrid import render
+from wxgrid import coast, render
 from wxgrid.config import CACHE_DIR, FRONT_DIR, PUBLIC
 from wxgrid.models import LEVEL_EVERY, LEVELS, MODELS
 from wxgrid.store import RunReader, list_runs, parse_run_id, run_path, store_summary
@@ -579,6 +579,49 @@ def point_series(lat: float, lon: float, model: str = "aifs", run: str = "latest
     return _point_body(r, model, lat, lon)
 
 
+# Which runs know where the water is. Only the ECMWF wave stream carries
+# swh/mwp/mwd, and only GFS carries a sea-surface temperature, so a card on
+# any other model borrows both.
+WAVE_MODEL = "ifs"
+SST_MODEL = "gfs"
+
+
+def _sea_readers(r, model: str) -> list:
+    """Runs that can see the sea, best first.
+
+    The wave model leads even when the card's own run has a marine field:
+    its mask is open water, where an SST mask counts any wet gridpoint, and
+    at Biarritz that difference is the estuary five kilometres inland versus
+    the Atlantic fifteen kilometres west. The waves are what the beach block
+    is for, so the waves choose the spot."""
+    out = []
+    if model == WAVE_MODEL:
+        out.append(r)
+    else:
+        try:
+            out.append(_reader(WAVE_MODEL, "latest"))
+        except Exception:                      # noqa: BLE001 - not in the store
+            pass
+        if coast.sea_var(r):
+            out.append(r)
+    if model != SST_MODEL:
+        try:
+            out.append(_reader(SST_MODEL, "latest"))
+        except Exception:                      # noqa: BLE001
+            pass
+    return out
+
+
+def _coast(r, model: str, lat: float, lon: float, valid: list) -> dict | None:
+    """Nearest open water and the sea state there. A failure here costs the
+    beach block, never the forecast the card is actually for."""
+    try:
+        return coast.probe(r, lat, lon, valid, _sea_readers(r, model))
+    except Exception as exc:                   # noqa: BLE001
+        log.warning("coast probe at %.2f,%.2f: %s", lat, lon, exc)
+        return None
+
+
 def _point_body(r, model: str, lat: float, lon: float) -> dict:
     if not r.contains(lat, lon):
         return {"available": False, "model": model, "run": r.rid, "lat": lat, "lon": lon,
@@ -607,9 +650,16 @@ def _point_body(r, model: str, lat: float, lon: float) -> dict:
         spd, dr = _wind_pair(series[f"u_{lvl}"], series[f"v_{lvl}"])
         aloft[str(lvl)] = {"wind": spd, "wdir": dr, "temp": series[f"t_{lvl}"], "gh": series.get(f"gh_{lvl}")}
     derived = {"freezing_level_m": _freezing_level(series, levels, n) if levels else None}
+    valid = [t0 + timedelta(hours=h) for h in r.steps]
+    # Where the sea is, and what it is doing there. The card's beach and surf
+    # blocks used to need the wave field to land on the pin's own gridpoint,
+    # which on a 0.25° grid means the pin has to be up to 28 km offshore.
+    sea = _coast(r, model, lat, lon, valid)
+    if sea:
+        derived["coast"] = sea
     return {"available": True, "model": model, "run": r.rid, "lat": lat, "lon": lon,
             "steps": r.steps,
-            "valid": [(t0 + timedelta(hours=h)).isoformat() for h in r.steps],
+            "valid": [v.isoformat() for v in valid],
             "series": series, "aloft": aloft, "derived": derived, "levels": levels,
             "units": {"t2m": "K", "msl": "Pa", "tp6": "mm", "wind": "m/s", "gust": "m/s",
                       "u10": "m/s", "v10": "m/s", "wdir": "deg", "tcc": "fraction", "cape": "J/kg",

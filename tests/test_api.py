@@ -167,3 +167,40 @@ def test_alerts_ec_route_hands_back_what_geomet_painted(monkeypatch):
     c = TestClient(api.app)
     r = c.get("/api/alerts/ec", params={"lat": 49.3, "lon": -123.1})
     assert r.status_code == 200 and r.json()["alerts"][0]["event"] == "Snowfall warning"
+
+
+def _seed_waves():
+    """An IFS run whose wave field is water only west of 123.5 W. That NaN
+    edge is the coastline the coast probe has to walk out to."""
+    edge = int((-123.5 + 180) / 0.25) + 1
+    w = RunWriter("ifs", "2026-03-03T00", [0, 6], ["swh", "mwp", "mwd", "t2m"], root=STORE_DIR)
+    for s in (0, 6):
+        for var, val in (("swh", 1.5), ("mwp", 9.0), ("mwd", 270.0)):
+            f = np.full((GRID_LAT_N, GRID_LON_N), np.nan, np.float32)
+            f[:, :edge] = val
+            w.write(var, s, f)
+        w.write("t2m", s, _full(285.0))
+    w.finish()
+
+
+def test_a_point_on_land_still_gets_the_sea_state_off_its_own_coast():
+    _seed_waves()
+    from wxgrid import coast
+    coast._masks.clear()
+    c = TestClient(api.app)
+    p = c.get("/api/point", params={"lat": 49.28, "lon": -123.12, "model": "ifs"}).json()
+    sea = p["derived"]["coast"]
+    # the gridpoint under the pin is land: the waves come from two cells west
+    assert p["series"]["swh"] == [None, None]
+    assert 25 < sea["distance_km"] < 50 and sea["compass"] == "W"
+    assert sea["swh"] == [1.5, 1.5] and sea["mwp"] == [9.0, 9.0] and sea["mwd"] == [270.0, 270.0]
+    assert sea["model"] == "ifs"
+
+
+def test_a_point_with_no_sea_within_reach_gets_no_coast_block():
+    _seed_waves()
+    from wxgrid import coast
+    coast._masks.clear()
+    c = TestClient(api.app)
+    p = c.get("/api/point", params={"lat": 49.28, "lon": -110.0, "model": "ifs"}).json()
+    assert "coast" not in p["derived"]

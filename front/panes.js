@@ -573,8 +573,34 @@
   // grid misses and no gauge watches simply gets no module, which is the right
   // way to be wrong here.
   const marineHere = (s, i) => (!!(s.swh && s.swh[i] != null)) || (!!(s.sst && s.sst[i] != null));
-  const nearCoast = (pt, s, i) => marineHere(s, i) || !!(pt.tides && pt.tides.distance_km != null && pt.tides.distance_km <= 40);
+  // The server's nearest-water probe (derived.coast) is the answer where the
+  // gridpoint is not: it walks out over the model's own land/sea mask and
+  // brings the sea state back, so a promenade three kilometres inland reads
+  // as coastal instead of as farmland. 40 km is the same reach the tide
+  // station uses, and about a cell and a half of the grid it came off.
+  const COAST_KM = 40;
+  const coastOf = (d) => (d && d.derived && d.derived.coast) || null;
+  const coastNear = (d) => { const c = coastOf(d); return c && c.distance_km != null && c.distance_km <= COAST_KM ? c : null; };
+  const nearCoast = (pt, d, i) => marineHere(d.series, i) || !!coastNear(d)
+    || !!(pt.tides && pt.tides.distance_km != null && pt.tides.distance_km <= 40);
   const onLand = (pt) => !(pt.local && pt.local.place && pt.local.place.water);
+
+  // A marine value at this step: the pin's own gridpoint first, the water the
+  // probe found second. `here` says which, so the card can admit it.
+  function seaVal(d, i, key) {
+    const s = d.series;
+    if (s[key] && s[key][i] != null) return { v: s[key][i], here: true };
+    const c = coastNear(d);
+    if (c && c[key] && c[key][i] != null) return { v: c[key][i], here: false, at: c };
+    return null;
+  }
+
+  // Next turn of the tide after the time the card is showing.
+  function nextTide(pt) {
+    if (!pt || !pt.tides || !pt.tides.events) return null;
+    const t = W().validDate.getTime();
+    return pt.tides.events.find((e) => new Date(e.time).getTime() > t) || null;
+  }
 
   // Can it snow here at all? The model's own snow answers first; failing that,
   // a run that reaches freezing does; failing that, latitude or altitude in
@@ -613,24 +639,35 @@
   // stands in, which is what you feel on the sand anyway.
   function beachModule(pt, d, i) {
     const s = d.series;
-    if (!nearCoast(pt, s, i) || !onLand(pt)) return "";
+    if (!nearCoast(pt, d, i) || !onLand(pt)) return "";
     if (Math.abs(pt.lat) >= HIGH_LAT && isWinterHalf(pt.lat, W().validDate)) return "";
-    const sst = s.sst && s.sst[i] != null ? s.sst[i] - K : null;
+    const sea = seaVal(d, i, "sst");
+    const sst = sea ? sea.v - K : null;
     const air = s.t2m && s.t2m[i] != null ? s.t2m[i] - K : null;
     if (sst != null ? sst < 16 : !(air != null && air >= 18)) return "";
     const U = W().units;
     const stats = [];
     if (sst != null) stats.push(`<div><small>Water</small><b>${U.tempC(sst).v}<i>${esc(U.tempUnit)}</i></b></div>`);
-    if (s.swh && s.swh[i] != null) {
-      const wv = U.alt(s.swh[i], 1);
-      stats.push(`<div><small>Waves</small><b>${wv.v}<i>${esc(U.altUnit)}</i></b>${s.mwp && s.mwp[i] != null ? `<em>${s.mwp[i].toFixed(0)} s period</em>` : ""}</div>`);
+    const swh = seaVal(d, i, "swh"), mwp = seaVal(d, i, "mwp"), mwd = seaVal(d, i, "mwd");
+    if (swh) {
+      const wv = U.alt(swh.v, 1);
+      // mwd is the direction the swell comes FROM, the way wind is quoted
+      const note = [mwd ? `from ${compass(mwd.v)}` : "", mwp ? `${mwp.v.toFixed(0)} s` : ""].filter(Boolean).join(" · ");
+      stats.push(`<div><small>Waves</small><b>${wv.v}<i>${esc(U.altUnit)}</i></b>${note ? `<em>${esc(note)}</em>` : ""}</div>`);
     }
+    const tide = nextTide(pt);
+    if (tide) stats.push(`<div><small>Next ${tide.type === "H" ? "high" : "low"}</small><b>${esc(U.time(tide.time))}</b><em>${esc(U.alt(tide.height_m, 1).txt)}</em></div>`);
     const uv = uvNow(d, i);
     if (uv) stats.push(`<div><small>UV${uv.peak ? " peak" : ""}</small><b>${uv.uvi.toFixed(0)}</b><em>burn in ~${burnMinutes(uv.uvi)} min</em></div>`);
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
     if (sun) stats.push(`<div><small>Sunset</small><b>${esc(sun.set)}</b></div>`);
     if (stats.length < 2) return "";
-    return `<div class="modcard beach"><div class="mod-head"><span>Beach</span>${sst == null ? `<span class="dim">no sea temperature here</span>` : ""}</div>
+    // Where the sea state came from, when it did not come from here: the
+    // numbers are the water's, not the sand's, and the card says so.
+    const off = [sea, swh, mwp, mwd].find((x) => x && x.here === false);
+    const note = off ? `sea ${esc(U.dist(off.at.distance_km).txt)} ${esc(off.at.compass || "")}`.trim()
+      : sst == null ? "no sea temperature here" : "";
+    return `<div class="modcard beach"><div class="mod-head"><span>Beach</span>${note ? `<span class="dim">${note}</span>` : ""}</div>
       <div class="mod-stats">${stats.join("")}</div></div>`;
   }
 
@@ -656,13 +693,18 @@
   // fun.
   function surfCue(pt, d, i) {
     const s = d.series;
-    if (!s.swh || s.swh[i] == null || s.swh[i] < 1) return "";
+    const swh = seaVal(d, i, "swh");
+    if (!swh || swh.v < 1) return "";
     const w = s.wind ? s.wind[i] : null;
     if (w == null || w < 7.72 || w > 15.43) return "";
     const U = W().units, { speed, speedUnit } = W();
-    const wv = U.alt(s.swh[i], 1);
-    const per = s.mwp && s.mwp[i] != null ? ` @ ${s.mwp[i].toFixed(0)} s` : "";
-    return `<span class="cue" style="--cue:#4fc3d9"><b>Surf and kite window</b><span>${wv.v} ${esc(U.altUnit)}${per} · ${speed(w).toFixed(0)} ${esc(speedUnit())}</span></span>`;
+    const wv = U.alt(swh.v, 1);
+    const mwp = seaVal(d, i, "mwp"), mwd = seaVal(d, i, "mwd");
+    const per = mwp ? ` @ ${mwp.v.toFixed(0)} s` : "";
+    // swell direction is the direction it comes FROM: onshore or off is the
+    // whole question, and a bare 290° does not answer it
+    const from = mwd ? `${compass(mwd.v)} swell · ` : "";
+    return `<span class="cue" style="--cue:#4fc3d9"><b>Surf and kite window</b><span>${from}${wv.v} ${esc(U.altUnit)}${per} · ${speed(w).toFixed(0)} ${esc(speedUnit())}</span></span>`;
   }
 
   // What the point card shows beyond the standard blocks: cue pills first,

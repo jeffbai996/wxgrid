@@ -84,3 +84,18 @@ def test_environment_canada_alerts_use_the_layer_geomet_still_serves():
     assert "LAYERS=Current-Alerts&" in ov
     # the raster has no feature to click, so a tap asks GeoMet what is there
     assert "/alerts/ec?lat=" in ov
+
+
+def test_the_beach_block_leans_on_the_servers_nearest_water_probe():
+    panes = _read("panes.js")
+    # the old test was "does this exact gridpoint have a wave height", which
+    # on a 0.25° grid asks whether the pin landed up to 28 km offshore
+    assert "d.derived.coast" in panes
+    assert "const nearCoast = (pt, d, i) => marineHere(d.series, i) || !!coastNear(d)" in panes
+    assert 'seaVal(d, i, "swh")' in panes and 'seaVal(d, i, "sst")' in panes
+
+
+def test_surf_and_beach_read_the_swell_direction_and_the_tide():
+    panes = _read("panes.js")
+    assert "compass(mwd.v)" in panes                 # met convention: where it comes FROM
+    assert "function nextTide(pt)" in panes and "nextTide(pt)" in panes
