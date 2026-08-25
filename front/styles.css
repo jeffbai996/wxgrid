@@ -412,7 +412,7 @@ button:focus:not(:focus-visible) { outline: none; }
 #valid-utc { white-space: nowrap; }
 #valid-utc { font-size: 10.5px; }
 #lead { font-size: 11.5px; min-width: 46px; }
-#tape-where { font: 600 11px var(--font-display); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30%; }
+#tape-where { font: 650 11.5px var(--font-display); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30%; }
 .tape-min { width: 26px; height: 26px; flex: 0 0 auto; margin-left: 6px; }
 .tape-min svg { width: 15px; height: 15px; transition: transform .2s cubic-bezier(.4,0,.2,1); }
 #timebar.mini .tape-min svg { transform: rotate(180deg); }

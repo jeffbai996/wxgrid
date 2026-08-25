@@ -898,8 +898,12 @@
     // resolves the menu button at click time after wiring has completed.
     $("#strip-settings").onclick = () => $("#settings-btn").click();
     // the crosshair is part of the strip on desktop, so the two can never
-    // collide the way a floating button did
-    st.insertAdjacentHTML("beforeend", `<button class="strip-locate" data-tip="My location" aria-label="My location">${$("#locate-btn").innerHTML}</button>`);
+    // collide the way a floating button did. It goes at the HEAD of the strip
+    // and is exempt from fitStrip's trim: appended last it was the first thing
+    // the overflow exiled, so "my location" lived in the ⋮ flyout on every
+    // screen where the strip did not fit (Jeff 2026-08-25: "pin to my location
+    // should be on the outside rather than hiding in the three-dot menu").
+    st.insertAdjacentHTML("afterbegin", `<button class="strip-locate" data-tip="My location" aria-label="My location">${$("#locate-btn").innerHTML}</button>`);
     st.querySelector(".strip-locate").onclick = () => $("#locate-btn").click();
     // overflow flyout: the strip stays fixed, the extras animate out beside it
     st.insertAdjacentHTML("beforeend", `<button id="strip-more" data-tip="More layers and tools" aria-label="More" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>`);
@@ -1195,6 +1199,9 @@
     if (!items.length || !more) return;
     // put everything back in the strip, then move the tail into the flyout
     Array.from(pop.children).forEach((el) => st.insertBefore(el, more));
+    // .strip-locate is a primary control, not an overlay toggle: it is sized
+    // with the rest but never trimmed into the flyout.
+    const trimmable = (el) => el !== more && !el.classList.contains("strip-locate");
     const all = Array.from(st.querySelectorAll("button, .sep")).filter((el) => el !== more);
     const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
     const tb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tb-h")) || 150;
@@ -1212,7 +1219,7 @@
     more.hidden = false;
     let guard = all.length;
     while (guard-- > 0 && st.getBoundingClientRect().bottom > limit) {
-      const last = Array.from(st.querySelectorAll("button, .sep")).filter((el) => el !== more).pop();
+      const last = Array.from(st.querySelectorAll("button, .sep")).filter(trimmable).pop();
       if (!last) break;
       pop.insertBefore(last, pop.firstChild);
     }
