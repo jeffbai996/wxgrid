@@ -19,7 +19,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v26";   // v26: route strip, point-card modules, height layer
+const VERSION = "wxgrid-v27";   // v26: route strip, point-card modules, height layer
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

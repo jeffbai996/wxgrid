@@ -328,7 +328,7 @@
     if (loc.place && loc.place.name && loc.place.name !== pt.name) where.push(`<b>${esc(loc.place.name)}</b>${loc.place.region ? ", " + esc(loc.place.region) : ""}`);
     else if (loc.place && loc.place.region) where.push(esc(loc.place.region));
     if (loc.place && loc.place.country) where.push(esc(loc.place.country));
-    if (where.length) bits.push(`<span>${where.join(" · ")}</span>`);
+    if (where.length) bits.push(`<span class="loc">${where.join(" · ")}</span>`);
     if (loc.elevation_m != null) bits.push(`<span>elev <b>${W().units.alt(loc.elevation_m).txt}</b></span>`);
     if (W().units.followsPoint && loc.timezone && loc.timezone.abbr) bits.push(`<span>${esc(loc.timezone.abbr)}</span>`);
     // the title already carries the coordinates when there is no place name —

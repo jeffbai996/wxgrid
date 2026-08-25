@@ -46,7 +46,10 @@ STEPS_GFS = STEPS_3H + list(range(246, 385, 6))
 # long range we have anywhere, so it keeps them.
 STEPS_AI = list(range(0, 385, 6))
 LEVEL_EVERY = 6                                                  # pressure levels are fetched on 6 h steps only
-LEVELS = (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200)
+# 150/100 hPa (≈FL450/FL530) ride along for IFS, AIFS, GFS and GEM — all four
+# sources publish them. GEFS keeps its own trimmed tuple; HRDPS/HRRR store no
+# pressure levels at all.
+LEVELS = (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100)
 # ≈ surface, 2.5k ft, 5k ft, 10k ft, 14k ft, FL180, FL240, FL300, FL340, FL390.
 # A model that does not publish one of these simply never writes it; the API's
 # _levels_for() advertises only the levels a run actually contains, so runs

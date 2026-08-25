@@ -412,7 +412,7 @@ button:focus:not(:focus-visible) { outline: none; }
 #valid-utc { white-space: nowrap; }
 #valid-utc { font-size: 10.5px; }
 #lead { font-size: 11.5px; min-width: 46px; }
-#tape-where { font-size: 11px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30%; }
+#tape-where { font: 600 11px var(--font-display); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30%; }
 .tape-min { width: 26px; height: 26px; flex: 0 0 auto; margin-left: 6px; }
 .tape-min svg { width: 15px; height: 15px; transition: transform .2s cubic-bezier(.4,0,.2,1); }
 #timebar.mini .tape-min svg { transform: rotate(180deg); }
@@ -775,6 +775,7 @@ table.bandtape .nil { color: var(--line-strong); }
 
 #point-local { font: 500 13px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #point-local b { color: var(--fg-2); font-weight: 600; }
+#point-local .loc { font-family: var(--font-display); }
 #point-local .sep { margin: 0 6px; opacity: .5; }
 #point-local > span { white-space: nowrap; }
 .obs { margin: 8px 0 2px; padding: 10px 12px 11px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.035); }
@@ -1192,6 +1193,10 @@ body:has(#point[hidden]) #centre-mark { display: block; }
 .mapcard .mc-src { color: var(--dim); font: 500 10px var(--font-body); margin-top: 6px; }
 .mapcard .mc-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 7px; }
 .mapcard .mc-foot .qp-link { margin-top: 0; }
+/* the button makes its row taller than the text rows: centre the pair,
+   or the SPREAD label hangs off the button's first baseline */
+.mapcard dd:has(.mc-ens) { align-self: center; }
+.mapcard dt:has(+ dd .mc-ens) { align-self: center; }
 .mapcard .mc-ens { border: 1px solid var(--line-strong); background: transparent; color: var(--fg-2); border-radius: 8px;
   padding: 3px 9px; font: 700 10.5px var(--font-display); letter-spacing: .02em; cursor: pointer; }
 .mapcard .mc-ens:hover { color: var(--fg); }

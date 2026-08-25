@@ -9,7 +9,7 @@ RUN = datetime(2026, 8, 18, 12, tzinfo=timezone.utc)
 
 
 def test_levels_cover_the_advertised_set():
-    assert LEVELS == (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200)
+    assert LEVELS == (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100)
     assert set(get_model("gefs").levels) <= set(LEVELS)   # the mean has fewer
 
 
