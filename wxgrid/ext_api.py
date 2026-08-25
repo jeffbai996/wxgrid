@@ -132,6 +132,23 @@ def api_alerts_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(
     return {"alerts": ext.alerts_point(lat, lon)}
 
 
+@router.get("/alerts/detail")
+def api_alert_detail(id: str = Query(..., min_length=3, max_length=200), source: str = ""):
+    """The prose behind one polygon on the alerts layer. The layer ships
+    shapes and labels; the card asks for this when a reader opens one."""
+    d = ext.alert_detail(id, source)
+    if d is None:
+        raise HTTPException(404, "no detail for this alert")
+    return d
+
+
+@router.get("/alerts/ec")
+def api_alerts_ec(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
+    """Environment Canada alerts under a point. The EC layer is a raster, so a
+    tap on it has no feature to read: this asks GeoMet what it painted there."""
+    return {"alerts": ext.ec_alerts_point(lat, lon)}
+
+
 @router.get("/storms")
 def api_storms():
     return ext.storms()

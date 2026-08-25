@@ -8,6 +8,7 @@ rules, and so a hundred taps become one upstream request:
   Avalanche Canada + avalanche.org  danger ratings, problems, regions (public JSON)
   MeteoAlarm                     European warnings (Atom/CAP per country, EMMA_ID regions)
   Bureau of Meteorology (AU)     Australian warnings (CAP-AU + AMOC district shapefiles)
+  Environment Canada GeoMet      Canadian alerts (WMS raster + GetFeatureInfo text)
 
 Every call is cached in memory with a TTL. Nothing here touches the store.
 """
@@ -1200,6 +1201,82 @@ def _bom_warnings() -> list[dict]:
     return cache.get("alerts:bom", 600, fetch)
 
 
+# ── alerts (Environment Canada, GeoMet) ──────────────────────────────────
+
+GEOMET = "https://geo.weather.gc.ca/geomet"
+# The map paints this layer as a raster, because EC publishes no national
+# polygon feed we could merge into alerts_layer(). The layer is queryable
+# though, so the same service will say what is behind a pixel — name, area,
+# validity and the full English text — which is how a Canadian alert becomes
+# a card instead of a coloured smear. (The old "ALERTS" name 404s with
+# "Couche non disponible"; the layer is "Current-Alerts" now.)
+EC_ALERTS_LAYER = "Current-Alerts"
+EC_BBOX = (-141.0, 41.0, -52.0, 84.0)
+# EC's risk colour is the scale their own map uses; CAP severity is not in
+# this feed at all.
+_EC_SEV = {"red": 4, "orange": 3, "yellow": 2, "grey": 1, "gray": 1}
+
+
+def _webmerc(lat: float, lon: float) -> tuple[float, float]:
+    """lat/lon → EPSG:3857 metres."""
+    x = math.radians(lon) * 6378137.0
+    y = math.log(math.tan(math.pi / 4 + math.radians(max(-85.0, min(85.0, lat))) / 2)) * 6378137.0
+    return x, y
+
+
+def _ec_text(raw: str) -> str:
+    """EC ships plain text with blank lines between paragraphs. Keep the
+    paragraphs (the card renders pre-wrap); drop the runs of three or more."""
+    return re.sub(r"\n{3,}", "\n\n", (raw or "").replace("\r", "")).strip()
+
+
+def ec_alerts_point(lat: float, lon: float) -> list[dict]:
+    """Environment Canada alerts under a point, via GeoMet's WMS
+    GetFeatureInfo. GetFeatureInfo answers about a pixel of a map, so we build
+    a 2 km map around the point and ask about its middle. Cached 5 min per
+    ~1 km cell; outside Canada it never leaves the process."""
+    if not (EC_BBOX[0] <= lon <= EC_BBOX[2] and EC_BBOX[1] <= lat <= EC_BBOX[3]):
+        return []
+    key = f"alerts:ec:{lat:.2f}:{lon:.2f}"
+
+    def fetch():
+        x, y = _webmerc(lat, lon)
+        half = 1000.0
+        try:
+            j = _get_json(GEOMET, {
+                "SERVICE": "WMS", "VERSION": "1.3.0", "REQUEST": "GetFeatureInfo",
+                "LAYERS": EC_ALERTS_LAYER, "QUERY_LAYERS": EC_ALERTS_LAYER, "CRS": "EPSG:3857",
+                "BBOX": f"{x - half},{y - half},{x + half},{y + half}",
+                "WIDTH": 3, "HEIGHT": 3, "I": 1, "J": 1, "STYLES": "",
+                "INFO_FORMAT": "application/json", "FEATURE_COUNT": 5}, timeout=20)
+        except Exception as exc:                                   # noqa: BLE001
+            log.info("geomet alerts %.2f,%.2f: %s", lat, lon, exc)
+            return []
+        out = []
+        for f in (j or {}).get("features", []):
+            p = f.get("properties") or {}
+            if p.get("display_status") not in (None, "", "visible"):
+                continue
+            sev = _EC_SEV.get(str(p.get("risk_colour_en") or "").lower(), 2)
+            name = str(p.get("alert_name_en") or p.get("alert_short_name_en") or "alert").strip()
+            name = name[:1].upper() + name[1:]
+            where = p.get("feature_name_en") or ""
+            out.append({
+                "id": str(p.get("id") or ""), "event": name,
+                "severity": _SEV_NAME.get(sev, "Unknown"), "sev": sev, "color": _SEV_COLOR[sev],
+                "headline": f"{name} for {where}" if where else name,
+                "area": ", ".join(s for s in (where, p.get("province")) if s),
+                "onset": p.get("validity_datetime"),
+                "ends": p.get("expiration_datetime") or p.get("event_end_datetime"),
+                "sender": "Environment Canada", "source": "Environment Canada",
+                "description": _ec_text(p.get("alert_text_en"))[:900], "instruction": "",
+                "confidence": p.get("confidence_en") or None, "impact": p.get("impact_en") or None,
+                "url": "https://weather.gc.ca/warnings/index_e.html"})
+        out.sort(key=lambda a: -a["sev"])
+        return out
+    return cache.get(key, 300, fetch)
+
+
 # ── alerts (merged) ──────────────────────────────────────────────────────
 
 _LAYER_KEYS = ("id", "event", "severity", "sev", "color", "headline", "area", "onset", "ends", "sender", "source")
@@ -1234,13 +1311,14 @@ def _bbox_hit(lon: float, lat: float, geom: dict) -> bool:
 
 
 def alerts_point(lat: float, lon: float) -> list[dict]:
-    """Alerts in force at a point. The NWS answers point queries itself; for
-    MeteoAlarm and BoM we test the point against the polygons we already hold,
-    which costs nothing extra upstream. A MeteoAlarm hit then pulls its CAP
-    message for the text the Atom summary doesn't carry."""
-    key = f"alerts:pt-v2:{lat:.2f}:{lon:.2f}"
+    """Alerts in force at a point. The NWS and GeoMet answer point queries
+    themselves; for MeteoAlarm and BoM we test the point against the polygons
+    we already hold, which costs nothing extra upstream. A MeteoAlarm hit then
+    pulls its CAP message for the text the Atom summary doesn't carry."""
+    key = f"alerts:pt-v3:{lat:.2f}:{lon:.2f}"
     def fetch():
         out = _nws_point(lat, lon)
+        out.extend(ec_alerts_point(lat, lon))
         for name, source in (("meteoalarm", _ma_warnings), ("bom", _bom_warnings)):
             try:
                 for w in source():
@@ -1258,6 +1336,63 @@ def alerts_point(lat: float, lon: float) -> list[dict]:
         out.sort(key=lambda a: -(a["sev"] or 0))
         return out
     return cache.get(key, 300, fetch)
+
+
+def alert_detail(aid: str, source: str = "") -> dict | None:
+    """The text behind one alert on the map.
+
+    The layer carries shapes and labels and nothing else on purpose: three
+    hundred warnings' worth of prose would triple it, and a MeteoAlarm
+    description costs one CAP fetch each, which is three hundred requests for
+    the one card a reader actually opens. So the card opens on what the layer
+    already gave it and asks here for the rest.
+
+    MeteoAlarm and BoM come out of the warning lists the layer was built from,
+    at no upstream cost. An NWS alert's id IS its document on their API, so
+    that one is a fetch, cached 15 min."""
+    if not aid:
+        return None
+    src = (source or "").upper()
+    if src in ("", "METEOALARM", "BOM"):
+        for name, warnings in (("meteoalarm", _ma_warnings), ("bom", _bom_warnings)):
+            if src and src != name.upper():
+                continue
+            try:
+                for w in warnings():
+                    if w.get("id") != aid:
+                        continue
+                    hit = {k: w.get(k) for k in (*_LAYER_KEYS, "description", "instruction", "url")}
+                    if w["source"] == "MeteoAlarm" and w.get("url"):
+                        detail = _ma_detail(w["url"])
+                        hit.update({k: v for k, v in detail.items() if k != "web"})
+                        hit["url"] = detail.get("web") or w["url"]
+                    return hit
+            except Exception as exc:                               # noqa: BLE001
+                log.warning("%s alert detail failed: %s", name, exc)
+    if src in ("", "NWS"):
+        def fetch():
+            try:
+                j = _get_json(f"{NWS}/alerts/{aid}", timeout=20)
+            except Exception as exc:                               # noqa: BLE001
+                log.info("nws alert detail %s: %s", aid, exc)
+                return None
+            p = (j or {}).get("properties") or {}
+            if not p:
+                return None
+            sev = _SEV.get(p.get("severity"), 0)
+            return {"id": aid, "event": p.get("event"), "severity": p.get("severity"), "sev": sev,
+                    "color": _SEV_COLOR[sev], "headline": p.get("headline"), "area": p.get("areaDesc"),
+                    "onset": p.get("onset"), "ends": p.get("ends") or p.get("expires"),
+                    "urgency": p.get("urgency"), "certainty": p.get("certainty"),
+                    "description": (p.get("description") or "")[:900],
+                    "instruction": (p.get("instruction") or "")[:400],
+                    # No link: the id resolves to raw CAP JSON, and handing a
+                    # reader that on a phone is worse than the text we already
+                    # have (see _nws_point).
+                    "sender": p.get("senderName"), "url": None, "source": "NWS"}
+        return cache.get(f"alerts:detail:{aid}", 900, fetch)
+    return None
+
 
 # ── tropical systems (NHC) ────────────────────────────────────────────────
 

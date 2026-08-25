@@ -150,3 +150,20 @@ def test_geopotential_height_is_a_level_aware_layer():
     assert c.get("/api/layer/gfs/2026-02-02T00/6/gh.png?level=850").status_code == 200
     # 300 hPa is a real level, just not one this run stored
     assert c.get("/api/layer/gfs/2026-02-02T00/6/gh.png?level=300").status_code == 404
+
+
+def test_alert_detail_route_404s_when_nothing_answers_for_that_id(monkeypatch):
+    from wxgrid import ext
+    monkeypatch.setattr(ext, "alert_detail", lambda aid, source="": None if aid == "gone" else {"id": aid, "description": "x"})
+    c = TestClient(api.app)
+    assert c.get("/api/alerts/detail", params={"id": "gone"}).status_code == 404
+    r = c.get("/api/alerts/detail", params={"id": "here", "source": "NWS"})
+    assert r.status_code == 200 and r.json()["description"] == "x"
+
+
+def test_alerts_ec_route_hands_back_what_geomet_painted(monkeypatch):
+    from wxgrid import ext
+    monkeypatch.setattr(ext, "ec_alerts_point", lambda lat, lon: [{"event": "Snowfall warning", "sev": 3}])
+    c = TestClient(api.app)
+    r = c.get("/api/alerts/ec", params={"lat": 49.3, "lon": -123.1})
+    assert r.status_code == 200 and r.json()["alerts"][0]["event"] == "Snowfall warning"

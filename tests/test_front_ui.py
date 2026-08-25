@@ -62,3 +62,25 @@ def test_next_48_hour_blurb_vertical_space_is_compact():
     rule = css.split(".summary {", 1)[1].split("}", 1)[0]
     assert "margin: 1px 0 3px" in rule
     assert "padding: 0 0 0 11px" in rule
+
+
+def test_alert_polygons_open_a_map_card_and_highlight_themselves():
+    ov = _read("overlays.js")
+    # the toast clipped every long area name at 160 characters
+    assert 'WX.fn.toast(`${p.event} · ${p.area}`' not in ov
+    assert 'openAlertCard(e.lngLat, f.properties)' in ov
+    assert 'mapCard(lngLat, "alert-pop"' in ov
+    # the clicked shape wears a heavier outline while its card is open
+    assert 'id: "alerts-hi"' in ov and 'M().setFilter("alerts-hi", ["==", ["get", "id"]' in ov
+    # and the card asks for the prose the layer deliberately does not carry
+    assert "/alerts/detail?id=" in ov
+
+
+def test_environment_canada_alerts_use_the_layer_geomet_still_serves():
+    ov = _read("overlays.js")
+    # "ALERTS" was retired: GeoMet answers "Couche non disponible" for it, so
+    # the Canadian layer was painting nothing at all
+    assert "LAYERS=ALERTS&" not in ov
+    assert "LAYERS=Current-Alerts&" in ov
+    # the raster has no feature to click, so a tap asks GeoMet what is there
+    assert "/alerts/ec?lat=" in ov

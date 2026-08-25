@@ -615,3 +615,80 @@ def test_ensemble_features_are_one_line_per_member(monkeypatch):
     assert feats[0]["properties"]["mean"] is True and feats[1]["properties"]["mean"] is False
     assert all(f["properties"]["layer"] == "ens" and f["properties"]["id"] == "ep092026" for f in feats)
     assert feats[0]["geometry"]["type"] == "LineString"
+
+
+def test_ec_alerts_point_asks_geomet_about_one_pixel_and_normalises_it(monkeypatch):
+    seen = {}
+    payload = {"features": [{"properties": {
+        "id": "622294761785688038202608250501", "alert_name_en": "air quality warning",
+        "alert_short_name_en": "Air quality", "risk_colour_en": "yellow",
+        "validity_datetime": "2026-08-25T10:47:00.000Z", "expiration_datetime": "2026-08-26T02:51:34.559Z",
+        "alert_text_en": "Wildfire smoke.\n\n\n\nStay indoors.", "feature_name_en": "Mackenzie Co.",
+        "province": "AB", "confidence_en": "High", "impact_en": "Moderate", "display_status": "visible"}}]}
+
+    def fake(url, params=None, timeout=20):
+        seen.update({"url": url, **(params or {})})
+        return payload
+    monkeypatch.setattr(ext, "_get_json", fake)
+    ext.cache._d.clear()
+    got = ext.ec_alerts_point(58.7, -118.0)
+    assert seen["REQUEST"] == "GetFeatureInfo" and seen["QUERY_LAYERS"] == "Current-Alerts"
+    assert seen["INFO_FORMAT"] == "application/json" and (seen["I"], seen["J"]) == (1, 1)
+    a = got[0]
+    assert a["event"] == "Air quality warning" and a["sev"] == 2 and a["source"] == "Environment Canada"
+    assert a["area"] == "Mackenzie Co., AB" and a["impact"] == "Moderate"
+    # paragraphs survive, the run of blank lines does not
+    assert a["description"] == "Wildfire smoke.\n\nStay indoors."
+
+
+def test_ec_alerts_point_never_leaves_the_process_outside_canada(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("GeoMet asked about a point it does not cover")
+    monkeypatch.setattr(ext, "_get_json", boom)
+    ext.cache._d.clear()
+    assert ext.ec_alerts_point(48.8, 2.3) == []          # Paris
+
+
+def test_alerts_point_carries_environment_canada(monkeypatch):
+    monkeypatch.setattr(ext, "_nws_point", lambda lat, lon: [])
+    monkeypatch.setattr(ext, "_ma_warnings", lambda: [])
+    monkeypatch.setattr(ext, "_bom_warnings", lambda: [])
+    monkeypatch.setattr(ext, "ec_alerts_point", lambda lat, lon: [
+        {"id": "x", "event": "Snowfall warning", "severity": "Severe", "sev": 3, "color": "#e8590c",
+         "headline": "h", "area": "Vancouver", "onset": None, "ends": None, "sender": "Environment Canada",
+         "source": "Environment Canada", "description": "d", "instruction": "", "url": "u"}])
+    ext.cache._d.clear()
+    assert [a["source"] for a in ext.alerts_point(49.3, -123.1)] == ["Environment Canada"]
+
+
+def test_alert_detail_reads_meteoalarm_cap_without_touching_the_layer(monkeypatch):
+    ring = [[13.0, 47.0], [14.0, 47.0], [14.0, 48.0], [13.0, 48.0], [13.0, 47.0]]
+    w = _fake_warning("MeteoAlarm", 3, ring, url="https://feeds.example/cap/a")
+    monkeypatch.setattr(ext, "_ma_warnings", lambda: [w])
+    monkeypatch.setattr(ext, "_bom_warnings", lambda: [])
+    monkeypatch.setattr(ext, "_ma_detail", lambda url: {"sender": "GeoSphere Austria", "description": "Thunderstorms.",
+                                                        "instruction": "Take care.", "web": "http://x/en"})
+    ext.cache._d.clear()
+    d = ext.alert_detail(w["id"], "MeteoAlarm")
+    assert d["description"] == "Thunderstorms." and d["sender"] == "GeoSphere Austria" and d["url"] == "http://x/en"
+    assert ext.alert_detail("no-such-id", "MeteoAlarm") is None
+
+
+def test_alert_detail_resolves_an_nws_id_to_its_own_document(monkeypatch):
+    seen = {}
+
+    def fake(url, params=None, timeout=20):
+        seen["url"] = url
+        return {"properties": {"event": "Flood Warning", "severity": "Severe", "urgency": "Expected",
+                               "certainty": "Likely", "areaDesc": "Union, NM", "senderName": "NWS Albuquerque NM",
+                               "description": "The river is up.", "instruction": "Move to higher ground.",
+                               "expires": "2026-08-26T02:00:00+00:00"}}
+    monkeypatch.setattr(ext, "_get_json", fake)
+    monkeypatch.setattr(ext, "_ma_warnings", lambda: [])
+    monkeypatch.setattr(ext, "_bom_warnings", lambda: [])
+    ext.cache._d.clear()
+    d = ext.alert_detail("urn:oid:2.49.0.1.840.0.abc.001.1", "NWS")
+    assert seen["url"].endswith("/alerts/urn:oid:2.49.0.1.840.0.abc.001.1")
+    assert d["sev"] == 3 and d["urgency"] == "Expected" and d["description"] == "The river is up."
+    # the id resolves to raw CAP JSON, which is not a page to send a reader to
+    assert d["url"] is None

@@ -1203,6 +1203,14 @@ body:has(#point[hidden]) #centre-mark { display: block; }
 .mapcard .mc-ens[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-glow); color: var(--accent); }
 .mapcard .mc-close { border: 0; background: none; padding: 2px 4px; cursor: pointer; font: 600 10.5px var(--font-display); color: var(--dim); letter-spacing: .02em; }
 .mapcard .mc-close:hover { color: var(--fg); }
+/* the weather-alert card: the body is prose, not a bulletin, so it reads in
+   the body face; the area line is the thing the toast this replaced always
+   cut, so it wraps instead of clipping however many regions a warning names */
+/* the weather text scrolls inside the card rather than growing it: the tape
+   owns the bottom of the screen, and a warning runs to a thousand words */
+.alert-pop .mc-raw { font: 500 11.5px/1.45 var(--font-body); max-height: 150px; }
+.alert-pop dd { font: 600 11.5px var(--font-display); overflow-wrap: anywhere; }
+.alert-pop .mc-hero b { font-size: 17px; }
 
 /* ── alert cards, expanded: the CAP payload worn properly ─────────────── */
 /* the note and the warnings each own a full row of the card (they used to

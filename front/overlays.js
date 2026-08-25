@@ -263,7 +263,109 @@
   }
   WX.selectResort = selectResort;
 
-  // ── alerts: NWS polygons (GeoJSON) + Environment Canada (GeoMet WMS) ─
+  // ── alerts: warning polygons (GeoJSON) + Environment Canada (GeoMet WMS) ─
+  // A tap opens the shared map card. It used to open a toast clipped at 160
+  // characters, which is shorter than the area list on a single British
+  // thunderstorm warning, so the one thing a reader needed — where is this —
+  // was the thing that got cut.
+  const ALERT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19L12 3z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>`;
+  // MeteoAlarm ships its awareness type as a slug; every other source ships a
+  // sentence. Spell the slugs out, title-case whatever else arrives.
+  const ALERT_WORD = { "high-temp": "High temperature", "low-temp": "Low temperature",
+    "snow-ice": "Snow and ice", thunderstorm: "Thunderstorm", forestfire: "Forest fire",
+    coastal: "Coastal event", avalanche: "Avalanche", rain: "Rain", flood: "Flood",
+    wind: "Wind", fog: "Fog", warning: "Weather warning" };
+  const alertTitle = (ev) => ALERT_WORD[ev] || (ev ? String(ev).charAt(0).toUpperCase() + String(ev).slice(1) : "Weather alert");
+  const alertWhen = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : WX.units.dateTime(iso, { weekday: "short", hour: "numeric", minute: "2-digit" }); };
+  // "3h 20m" / "2 days" / "" once it is past. The feeds give an absolute
+  // expiry in UTC; what a reader wants is how long they have.
+  function alertLeft(iso) {
+    const t = new Date(iso).getTime();
+    if (isNaN(t)) return "";
+    const ms = t - Date.now();
+    if (ms <= 0) return "";
+    const m = Math.round(ms / 60e3);
+    if (m < 60) return `${m}m`;
+    if (m < 48 * 60) return `${Math.floor(m / 60)}h ${m % 60}m`;
+    return `${Math.round(m / 1440)} days`;
+  }
+
+  let alertPopup = null, alertTick = null, alertReq = 0, alertsBound = false;
+  // The polygon under the open card wears a heavier outline, so a card that
+  // covers half the screen still says which shape it belongs to.
+  const highlightAlert = (id) => M().getLayer("alerts-hi") &&
+    M().setFilter("alerts-hi", ["==", ["get", "id"], id == null ? "" : id]);
+
+  function closeAlertCard() {
+    if (alertTick) { clearInterval(alertTick); alertTick = null; }
+    if (alertPopup) { alertPopup.remove(); alertPopup = null; }
+    highlightAlert("");
+  }
+
+  // p is the layer's properties (or an alert from /api/alerts/ec, same shape);
+  // `detail` is the prose the layer does not carry, once it lands.
+  function openAlertCard(lngLat, p, detail) {
+    const d = detail || {};
+    const ends = p.ends || d.ends, onset = p.onset || d.onset;
+    const left = alertLeft(ends);
+    const startsIn = alertLeft(onset);
+    const text = [d.description || p.description || "", d.instruction || p.instruction || ""].filter(Boolean).join("\n\n");
+    const urgency = d.urgency || p.urgency || "";
+    const sender = d.sender || p.sender || "";
+    const link = d.url || p.url || "";
+    const my = ++alertReq;
+    closeAlertCard();
+    alertPopup = mapCard(lngLat, "alert-pop", {
+      icon: ALERT_SVG, color: p.color || "#f0a020", title: alertTitle(p.event),
+      pill: p.severity || "", sub: p.source || "", ago: left ? `expires in ${left}` : "expired",
+      hero: [{ k: left ? "Expires in" : "Expires", v: left || "now" },
+             startsIn ? { k: "Starts in", v: startsIn } : null,
+             urgency ? { k: "Urgency", v: urgency } : null].filter(Boolean),
+      // no headline row: every source writes it as the event plus the area plus
+      // the issuing office, all three of which are already on this card
+      rows: [["Area", p.area], ["Effective", alertWhen(onset)], ["Expires", alertWhen(ends)],
+             ["Certainty", d.certainty || p.certainty || ""],
+             ["Confidence", d.confidence || p.confidence || ""], ["Impact", d.impact || p.impact || ""],
+             ["Issued by", sender]],
+      raw: text || (detail ? "" : "loading the full text…"),
+      src: p.source ? `Source: ${p.source}` : "",
+      link: link ? { href: link, text: "Official bulletin" } : null,
+      maxWidth: "min(360px, 88vw)" });
+    highlightAlert(p.id);
+    alertPopup.on("close", () => { if (alertTick) { clearInterval(alertTick); alertTick = null; } highlightAlert(""); });
+    // the countdown is the one number on this card that goes stale while you
+    // read it
+    if (left) alertTick = setInterval(() => {
+      const el = alertPopup && alertPopup.getElement();
+      const box = el && [...el.querySelectorAll(".mc-hero > div")].find((x) => x.querySelector("small") && /Expires/.test(x.querySelector("small").textContent));
+      if (!box) return;
+      const now = alertLeft(ends);
+      box.querySelector("b").textContent = now || "now";
+    }, 30000);
+    if (!detail && p.id) {
+      WX.api(U(`${API}/alerts/detail?id=${encodeURIComponent(p.id)}&source=${encodeURIComponent(p.source || "")}`))
+        .then((got) => { if (my === alertReq && alertPopup && got) openAlertCard(lngLat, p, got); })
+        .catch(() => { if (my === alertReq && alertPopup) openAlertCard(lngLat, p, { description: "" }); });
+    }
+  }
+  WX.openAlertCard = openAlertCard;
+
+  // The EC layer is a raster: a tap on it has no feature to read, so ask
+  // GeoMet what it painted at that point. Only inside its own bounding box,
+  // only when a vector alert has not already answered the same tap.
+  const EC_BOX = [-141, 41, -52, 84];
+  async function ecAlertAt(e) {
+    if (!state.alerts || !M().getLayer("ec-alerts")) return;
+    const lon = WX.wlon(e.lngLat.lng), lat = e.lngLat.lat;
+    if (lon < EC_BOX[0] || lon > EC_BOX[2] || lat < EC_BOX[1] || lat > EC_BOX[3]) return;
+    if (M().getLayer("alerts-fill") && M().queryRenderedFeatures(e.point, { layers: ["alerts-fill"] }).length) return;
+    try {
+      const r = await WX.api(U(`${API}/alerts/ec?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`));
+      const hit = (r.alerts || [])[0];
+      if (hit) openAlertCard(e.lngLat, hit, hit);
+    } catch (err) { /* nothing painted there, or GeoMet is having a day */ }
+  }
+
   async function loadAlerts() {
     try {
       const gj = await WX.api(`${API}/alerts/layer`);
@@ -273,17 +375,27 @@
         M().addSource("alerts", { type: "geojson", data: gj });
         M().addLayer({ id: "alerts-fill", type: "fill", source: "alerts", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.28 } }, WX.fn.firstSymbolId());
         M().addLayer({ id: "alerts-line", type: "line", source: "alerts", paint: { "line-color": ["get", "color"], "line-width": 1.6 } }, WX.fn.firstSymbolId());
-        M().on("click", "alerts-fill", (e) => { const p = e.features[0].properties; WX.fn.toast(`${p.event} · ${p.area}`.slice(0, 160), 6000); });
+        M().addLayer({ id: "alerts-hi", type: "line", source: "alerts", filter: ["==", ["get", "id"], ""],
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "#ffffff", "line-width": 3.2, "line-opacity": 0.9 } }, WX.fn.firstSymbolId());
+        M().on("click", "alerts-fill", (e) => { const f = e.features[0]; if (f) openAlertCard(e.lngLat, f.properties); });
+        M().on("mouseenter", "alerts-fill", () => { M().getCanvas().style.cursor = "pointer"; });
+        M().on("mouseleave", "alerts-fill", () => { M().getCanvas().style.cursor = ""; });
+        if (!alertsBound) { M().on("click", ecAlertAt); alertsBound = true; }
       }
       if (!M().getSource("ec-alerts")) {
+        // "ALERTS" was GeoMet's old name for this and now answers
+        // "Couche non disponible" — the Canadian layer had been painting
+        // nothing at all. The current name is Current-Alerts, and it is
+        // queryable, which is what makes the card above possible.
         M().addSource("ec-alerts", { type: "raster", tileSize: 256, attribution: "Alerts © Environment Canada",
-          tiles: ["https://geo.weather.gc.ca/geomet?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=ALERTS&CRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=true&STYLES="] });
+          tiles: ["https://geo.weather.gc.ca/geomet?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=Current-Alerts&CRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=true&STYLES="] });
         M().addLayer({ id: "ec-alerts", type: "raster", source: "ec-alerts", paint: { "raster-opacity": 0.55, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
       }
-      WX.fn.toast(`${gj.features.length} NWS alerts + Environment Canada`, 4000);
+      WX.fn.toast(`${gj.features.length} warning areas plus Environment Canada · tap one for the detail`, 4500);
     } catch (e) { WX.fn.toast("Alerts unavailable", 4000, "error"); state.alerts = false; $("#alerts-toggle").classList.remove("on"); }
   }
-  function clearAlerts() { ["alerts-line", "alerts-fill", "ec-alerts"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); ["alerts", "ec-alerts"].forEach((sname) => M().getSource(sname) && M().removeSource(sname)); }
+  function clearAlerts() { closeAlertCard(); ["alerts-hi", "alerts-line", "alerts-fill", "ec-alerts"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); ["alerts", "ec-alerts"].forEach((sname) => M().getSource(sname) && M().removeSource(sname)); }
 
   // ── tropical systems (NHC): cone, track, current position ─────────────
   async function loadStorms() {
