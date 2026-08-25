@@ -28,10 +28,15 @@
       y: Math.max(0, Math.min(data.h - 1, Math.floor(y))) };
   }
 
-  function ramp(layer) {
-    const lg = WX.catalog && WX.catalog.layers.find((l) => l.layer === layer);
-    if (!lg) return null;
-    if (lutLayer === layer && lut) return lut;
+  // Keyed by layer AND level: geopotential height uses a different ramp at
+  // every pressure level, so a lookup cached by name alone read 850 hPa
+  // heights off the 500 hPa scale.
+  function ramp(layer, level) {
+    const cat = WX.catalog && WX.catalog.layers.find((l) => l.layer === layer);
+    if (!cat) return null;
+    const lg = (level && cat.levels && cat.levels[level]) || cat;
+    const key = `${layer}/${level || 0}`;
+    if (lutLayer === key && lut) return lut;
     const cols = new Array(256);
     for (let i = 0; i < 256; i++) {
       const v = lg.lo + (lg.hi - lg.lo) * i / 255;
@@ -40,7 +45,7 @@
       const q = b.v === a.v ? 0 : Math.max(0, Math.min(1, (v - a.v) / (b.v - a.v)));
       cols[i] = { v, rgb: a.rgb.map((x, j) => x + (b.rgb[j] - x) * q) };
     }
-    lut = { lg, cols }; lutLayer = layer;
+    lut = { lg, cols }; lutLayer = key;
     return lut;
   }
 
@@ -73,7 +78,7 @@
       return { text: `${Math.round(WX.speed(spd))} ${WX.speedUnit()}`, sub: `${WX.arrow(dir)} ${Math.round(dir)}°` };
     }
     if (!data) return null;
-    const r = ramp(layer); if (!r) return null;
+    const r = ramp(layer, WX.state.level); if (!r) return null;
     const pixel = imagePixel(lng, lat); if (!pixel) return null;
     const { x, y } = pixel;
     const i = (y * data.w + x) * 4;
@@ -90,13 +95,13 @@
                    wbt: () => U.tempC(v), sst: () => U.tempC(v),
                    dt24: () => ({ txt: U.tempUnit === "°F" ? `${Math.round(v * 1.8)} °F/24h` : `${Math.round(v)} °C/24h` }),
                    vis: () => ({ txt: U.altUnit === "ft" ? `${Math.round(v * 0.621371)} mi` : `${Math.round(v)} km` }),
-                   msl: () => U.press(v * 100), frz: () => U.alt(v), cbase: () => U.alt(v),
+                   msl: () => U.press(v * 100), frz: () => U.alt(v), cbase: () => U.alt(v), gh: () => U.alt(v),
                    tp6: () => U.precip(v), tp24: () => U.precip(v), tp72: () => U.precip(v),
                    sf6: () => U.snow(v), sf24: () => U.snow(v), sf72: () => U.snow(v), sd_cm: () => U.snow(v),
                    waves: () => U.alt(v, 1) }[layer];
-    if (conv) { const c = conv(); return { text: c.txt, sub: WX.state.level && layer === "temp" ? `${WX.state.level} hPa` : "" }; }
+    if (conv) { const c = conv(); return { text: c.txt, sub: WX.state.level && ["temp", "gh"].includes(layer) ? `${WX.state.level} hPa` : "" }; }
     const nd = ["tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "wavepower", "cape", "rh", "wperiod", "uvi"].includes(layer) ? 0 : 1;
-    return { text: `${v.toFixed(nd)} ${r.lg.units}`, sub: WX.state.level && ["temp"].includes(layer) ? `${WX.state.level} hPa` : "" };
+    return { text: `${v.toFixed(nd)} ${r.lg.units}`, sub: WX.state.level && ["temp", "gh"].includes(layer) ? `${WX.state.level} hPa` : "" };
   }
 
   function show(ll) {

@@ -121,3 +121,32 @@ def test_freezing_level_layer_profile_and_isolines():
     assert "features" in iso                                        # a flat field has no lines; shape only
     frz_iso = c.get("/api/isolines/aifs/latest/6/frz.json")
     assert frz_iso.status_code == 200
+
+
+def _seed_heights():
+    variables = ["u_500", "v_500", "t_500", "gh_500", "u_850", "v_850", "t_850", "gh_850"]
+    w = RunWriter("gfs", "2026-02-02T00", [0, 6], variables, root=STORE_DIR)
+    for s in (0, 6):
+        w.write("u_500", s, _full(10.0)); w.write("v_500", s, _full(0.0))
+        w.write("t_500", s, _full(253.15)); w.write("gh_500", s, _full(5500.0))
+        w.write("u_850", s, _full(5.0)); w.write("v_850", s, _full(0.0))
+        w.write("t_850", s, _full(278.15)); w.write("gh_850", s, _full(1400.0))
+    w.finish()
+
+
+def test_geopotential_height_is_a_level_aware_layer():
+    _seed_heights()
+    c = TestClient(api.app)
+    # with no level asked for, height is the 500 hPa chart
+    assert api._vars_for("gh", None) == ("gh_500",)
+    assert api._vars_for("gh", 850) == ("gh_850",)
+    m = c.get("/api/models").json()
+    gfs = next(x for x in m["models"] if x["key"] == "gfs")
+    assert "gh" in gfs["runs"][0]["layers"]
+    gh = next(l for l in m["layers"] if l["layer"] == "gh")
+    assert gh["units"] == "m" and (gh["lo"], gh["hi"]) == (4900, 6000)
+    assert (gh["levels"]["850"]["lo"], gh["levels"]["850"]["hi"]) == (1150, 1650)
+    assert c.get("/api/layer/gfs/2026-02-02T00/6/gh.png").status_code == 200
+    assert c.get("/api/layer/gfs/2026-02-02T00/6/gh.png?level=850").status_code == 200
+    # 300 hPa is a real level, just not one this run stored
+    assert c.get("/api/layer/gfs/2026-02-02T00/6/gh.png?level=300").status_code == 404

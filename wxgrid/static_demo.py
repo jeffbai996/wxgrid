@@ -141,11 +141,15 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
                 variants += [l for l in WIND_LEVELS if l in levels]
             if layer == "temp":
                 variants += [l for l in TEMP_LEVELS if l in levels]
+            # Height has no surface: the bare file is the 500 hPa chart, and
+            # every stored level gets its own, ramp included.
+            if layer == "gh":
+                variants += [l for l in TEMP_LEVELS if l in levels]
             for lvl in variants:
                 vars_ = _vars_for(layer, lvl)
                 field = field_for(r, layer, lvl, h)
                 disp = render.DISPLAY[layer](render.to_mercator(field))
-                png = _shrink_png(render.colorize(disp, layer), scale)
+                png = _shrink_png(render.colorize(disp, layer, level=lvl), scale)
                 (ldir / f"{layer}{'' if lvl is None else '-' + str(lvl)}.png").write_bytes(png)
                 n_png += 1
                 if layer == "wind":

@@ -195,7 +195,43 @@ RAMPS: dict[str, dict] = {
     "prob_gust": {"units": "%", "lo": 0, "hi": 100, "stops": [
         (0, (40, 35, 60)), (20, (120, 80, 170)), (40, (190, 80, 170)), (60, (240, 100, 110)),
         (80, (250, 150, 60)), (100, (250, 220, 60))]},
+    # Geopotential height, written for 500 hPa: the chart every synoptician
+    # reads first. Cold troughs at the low end, warm ridges at the high end.
+    # Every other level slides this same shape onto its own window — see
+    # GH_WINDOW and ramp_for().
+    "gh": {"units": "m", "lo": 4900, "hi": 6000, "stops": [
+        (4900, (60, 20, 110)), (5030, (45, 60, 175)), (5175, (35, 120, 210)), (5320, (40, 175, 195)),
+        (5450, (70, 200, 130)), (5580, (170, 215, 70)), (5725, (245, 210, 55)), (5870, (245, 130, 45)),
+        (6000, (205, 40, 55))]},
 }
+
+# The height band each pressure level actually occupies, in metres. A single
+# fixed ramp would put 850 hPa (~1.5 km) and 200 hPa (~12 km) in one colour
+# each; these windows are the standard-atmosphere height with room either side
+# for the ridges and troughs a synoptic chart is drawn to show.
+GH_DEFAULT_LEVEL = 500
+GH_WINDOW: dict[int, tuple[float, float]] = {
+    1000: (-150, 350), 925: (500, 1000), 850: (1150, 1650), 700: (2650, 3250),
+    600: (3800, 4500), 500: (4900, 6000), 400: (6300, 7700), 300: (8200, 9800),
+    250: (9300, 11000), 200: (10600, 12500),
+}
+
+
+def ramp_for(layer: str, level: int | None = None) -> dict:
+    """The ramp a layer uses at a pressure level.
+
+    Only geopotential height moves: its 500 hPa stops are slid and stretched
+    onto the level's own window, so the ramp keeps its shape and every level
+    spends the whole 256-entry scale on the heights it actually reaches.
+    """
+    ramp = RAMPS[layer]
+    if layer != "gh" or level in (None, 0, GH_DEFAULT_LEVEL) or level not in GH_WINDOW:
+        return ramp
+    lo, hi = GH_WINDOW[level]
+    blo, bhi = ramp["lo"], ramp["hi"]
+    span = float(bhi - blo)
+    return {**ramp, "lo": lo, "hi": hi,
+            "stops": [(round(lo + (hi - lo) * (v - blo) / span), rgb) for v, rgb in ramp["stops"]]}
 
 # canonical store variable → display transform (store units → ramp units)
 DISPLAY = {
@@ -236,6 +272,7 @@ DISPLAY = {
     "cbase": lambda m: m,
     "wbt": lambda k: k - 273.15,
     "dt24": lambda dk: dk,
+    "gh": lambda m: m,
 }
 
 
@@ -334,6 +371,18 @@ def _lut(ramp: dict) -> np.ndarray:
 
 
 _LUTS = {k: _lut(v) for k, v in RAMPS.items()}
+# Per-level lookups, built once each. Only geopotential height needs them.
+_LEVEL_LUTS: dict[tuple[str, int], np.ndarray] = {}
+
+
+def _lut_for(layer: str, level: int | None) -> np.ndarray:
+    ramp = ramp_for(layer, level)
+    if ramp is RAMPS[layer]:
+        return _LUTS[layer]
+    key = (layer, int(level))
+    if key not in _LEVEL_LUTS:
+        _LEVEL_LUTS[key] = _lut(ramp)
+    return _LEVEL_LUTS[key]
 
 
 IMAGE_FORMATS = {"png": "image/png", "webp": "image/webp"}
@@ -415,7 +464,8 @@ def _webp(rgba: np.ndarray, buf: io.BytesIO) -> bytes:
     return buf.getvalue()
 
 
-def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: str = "png") -> bytes:
+def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: str = "png",
+             level: int | None = None) -> bytes:
     """PNG (or WebP) for a Mercator-projected field already in display units.
 
     Constant-alpha layers go out as 8-bit palette PNGs (256 colours is exactly
@@ -430,7 +480,7 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: st
     image is byte-identical either way, only the container differs."""
     if fmt not in IMAGE_FORMATS:
         raise ValueError(f"unknown image format {fmt}")
-    ramp, lut = RAMPS[layer], _LUTS[layer]
+    ramp, lut = ramp_for(layer, level), _lut_for(layer, level)
     lo, hi = ramp["lo"], ramp["hi"]
     buf = io.BytesIO()
     if np.all(np.isnan(field_display)):
@@ -498,10 +548,15 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: st
     return buf.getvalue()
 
 
-def legend(layer: str) -> dict:
-    ramp = RAMPS[layer]
-    return {"layer": layer, "units": ramp["units"], "lo": ramp["lo"], "hi": ramp["hi"],
-            "stops": [{"v": v, "rgb": list(rgb)} for v, rgb in ramp["stops"]]}
+def legend(layer: str, level: int | None = None) -> dict:
+    ramp = ramp_for(layer, level)
+    out = {"layer": layer, "units": ramp["units"], "lo": ramp["lo"], "hi": ramp["hi"],
+           "stops": [{"v": v, "rgb": list(rgb)} for v, rgb in ramp["stops"]]}
+    # Height reads on a different scale at every level, so the catalog carries
+    # all of them and the legend bar picks the one the map is showing.
+    if layer == "gh" and level is None:
+        out["levels"] = {str(l): legend(layer, l) for l in GH_WINDOW}
+    return out
 
 
 # ── wind vectors for particles ────────────────────────────────────────────

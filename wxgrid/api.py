@@ -38,8 +38,8 @@ log = logging.getLogger("wxgrid.api")
 app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=2048)   # wind JSON shrinks ~5x
 
-LAYERS = ("wind", "temp", "feels", "wbt", "dt24", "gust", "msl", "ptend", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "wavepower", "prob_rain", "prob_gust", "gfactor", "vis", "sst", "ptype", "vort500")
-LEVEL_LAYERS = ("wind", "temp")
+LAYERS = ("wind", "temp", "feels", "wbt", "dt24", "gust", "msl", "ptend", "gh", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "wavepower", "prob_rain", "prob_gust", "gfactor", "vis", "sst", "ptype", "vort500")
+LEVEL_LAYERS = ("wind", "temp", "gh")
 _ALIAS = {"t2m": "temp", "snow": "sf6", "snowdepth": "sd_cm", "dewpt": "d2m", "swh": "waves", "mwp": "wperiod"}
 # Layers computed from several store variables at request time.
 _DERIVED = {"frz": tuple(f"{p}_{l}" for l in LEVELS for p in ("t", "gh")),
@@ -56,7 +56,7 @@ _CLOUD_BANDS = {"cloudlow": ("lcc", (1000, 925, 850)),
 # Accumulation windows (hours) for the derived precip/snow layers.
 _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72": ("sf6", 72)}
 # Layers that live only on LEVEL_EVERY steps (like the pressure levels).
-_SIX_HOURLY = ("frz", "waves", "wperiod", "prob_rain", "prob_gust", "vort500")
+_SIX_HOURLY = ("frz", "waves", "wperiod", "prob_rain", "prob_gust", "vort500", "gh")
 _readers: dict[tuple[str, str], RunReader] = {}
 _pool = ThreadPoolExecutor(max_workers=8)
 _cache_locks: dict[str, threading.Lock] = {}
@@ -116,6 +116,10 @@ def _vars_for(layer: str, level: int | None) -> tuple[str, ...]:
         return ("u10", "v10") if level is None else (f"u_{level}", f"v_{level}")
     if layer == "temp":
         return ("t2m",) if level is None else (f"t_{level}",)
+    if layer == "gh":
+        # Height has no surface value; with no level asked for it is the
+        # 500 hPa chart, which is what "one more pressure" means to a forecaster.
+        return (f"gh_{level or render.GH_DEFAULT_LEVEL}",)
     if layer in _CLOUD_BANDS:
         return (_CLOUD_BANDS[layer][0],)
     if layer in _DERIVED:
@@ -395,7 +399,7 @@ def api_layer(request: Request, model: str, run: str, step: int, layer: str, lev
                     field, lat0=r.lat0, lon0=r.lon0, dlat=r.dlat, dlon=r.dlon)),
                     layer, factor=scale)
                 tmp = _tmp_for(path)
-                tmp.write_bytes(render.colorize(disp, layer, fmt=fmt))
+                tmp.write_bytes(render.colorize(disp, layer, fmt=fmt, level=level))
                 tmp.replace(path)
     return FileResponse(path, media_type=media,
                         headers={"Cache-Control": "public, max-age=31536000, immutable", "Vary": "Accept"})

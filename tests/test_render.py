@@ -133,3 +133,38 @@ def test_wind_json_optional_mask_coarsens_and_wraps():
     assert d["mask"][0] == 1
     assert d["mask"][360] == 1
     assert d["mask"][1] == 0
+
+
+def test_height_ramp_slides_onto_each_pressure_level():
+    base = render.RAMPS["gh"]
+    assert (base["lo"], base["hi"]) == (4900, 6000)          # the 500 hPa chart
+    assert render.ramp_for("gh", None) is base and render.ramp_for("gh", 500) is base
+    at850 = render.ramp_for("gh", 850)
+    assert (at850["lo"], at850["hi"]) == render.GH_WINDOW[850]
+    # same colours in the same places: only the values move
+    assert [rgb for _, rgb in at850["stops"]] == [rgb for _, rgb in base["stops"]]
+    frac = lambda r: [(v - r["lo"]) / (r["hi"] - r["lo"]) for v, _ in r["stops"]]
+    np.testing.assert_allclose(frac(at850), frac(base), atol=0.002)
+    # every other layer reads the same at every level
+    assert render.ramp_for("temp", 850) is render.RAMPS["temp"]
+
+
+def test_height_colours_are_relative_to_the_level():
+    def rgb(level, value):
+        field = np.full((4, 4), value, dtype=np.float32)
+        img = Image.open(io.BytesIO(render.colorize(field, "gh", level=level))).convert("RGBA")
+        return tuple(int(x) for x in np.asarray(img)[0, 0, :3])
+
+    mid = {lvl: sum(win) / 2 for lvl, win in render.GH_WINDOW.items()}
+    assert rgb(850, mid[850]) == rgb(500, mid[500]) == rgb(200, mid[200])
+    # a normal 500 hPa height is off the top of the 850 hPa scale
+    assert rgb(850, 5500) == tuple(render.RAMPS["gh"]["stops"][-1][1])
+
+
+def test_height_legend_carries_a_ramp_for_every_level():
+    lg = render.legend("gh")
+    assert set(lg["levels"]) == {str(l) for l in render.GH_WINDOW}
+    assert lg["levels"]["200"]["lo"] == render.GH_WINDOW[200][0]
+    # only the catalog entry carries the table; a level's own legend is flat
+    assert "levels" not in render.legend("gh", 850)
+    assert "levels" not in render.legend("temp")
