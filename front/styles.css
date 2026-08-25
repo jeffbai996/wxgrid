@@ -1192,6 +1192,10 @@ body:has(#point[hidden]) #centre-mark { display: block; }
 .mapcard .mc-src { color: var(--dim); font: 500 10px var(--font-body); margin-top: 6px; }
 .mapcard .mc-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 7px; }
 .mapcard .mc-foot .qp-link { margin-top: 0; }
+.mapcard .mc-ens { border: 1px solid var(--line-strong); background: transparent; color: var(--fg-2); border-radius: 8px;
+  padding: 3px 9px; font: 700 10.5px var(--font-display); letter-spacing: .02em; cursor: pointer; }
+.mapcard .mc-ens:hover { color: var(--fg); }
+.mapcard .mc-ens[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-glow); color: var(--accent); }
 .mapcard .mc-close { border: 0; background: none; padding: 2px 4px; cursor: pointer; font: 600 10.5px var(--font-display); color: var(--dim); letter-spacing: .02em; }
 .mapcard .mc-close:hover { color: var(--fg); }
 

@@ -13,6 +13,7 @@ Every call is cached in memory with a TTL. Nothing here touches the store.
 """
 from __future__ import annotations
 
+import gzip
 import logging
 import math
 import re
@@ -1575,6 +1576,80 @@ def _history_features(sid: str, name: str, year: int | None = None) -> list[dict
     return feats
 
 
+# ── where the storm MIGHT go: the GEFS spaghetti ─────────────────────────
+# The public a-deck carries every aid the forecaster saw, one line per
+# (technique, forecast hour, wind radius). AP01..AP30 are the perturbed GEFS
+# members and AEMN is their mean — the spread between them is the honest width
+# of the forecast, and it is the thing the cone is a smoothed summary of.
+# Only the NHC basins (AL, EP, CP) publish here; JTWC storms get nothing, and
+# the layer is simply absent for them.
+ATCF_ADECK = "https://ftp.nhc.noaa.gov/atcf/aid_public/a{sid}.dat.gz"
+ENS_TECHS = tuple(f"AP{n:02d}" for n in range(1, 31)) + ("AEMN",)
+ENS_MAX_TAU = 168          # 7 days; past that the members are noise with a line through them
+
+
+def _parse_adeck_members(raw: bytes) -> dict[str, list[list[float]]]:
+    """GEFS member tracks from an ATCF a-deck: technique → [[lon, lat], …].
+
+    Only the newest cycle in the file is kept — an a-deck accumulates every
+    run of the storm's life, and the older cycles are history, not forecast.
+    A forecast hour repeats once per wind radius (34/50/64 kt); the first row
+    of each (technique, hour) wins, exactly as _parse_bdeck does for the past.
+    """
+    try:
+        text = gzip.decompress(raw).decode("utf-8", "replace")
+    except (OSError, EOFError):
+        text = raw.decode("utf-8", "replace")     # already decompressed by the transport
+    rows: dict[str, dict[int, list[float]]] = {}
+    cycle = ""
+    for line in text.splitlines():
+        f = [x.strip() for x in line.split(",")]
+        if len(f) < 8 or f[4] not in ENS_TECHS:
+            continue
+        if f[2] > cycle:                          # YYYYMMDDHH sorts as text
+            cycle, rows = f[2], {}
+        elif f[2] < cycle:
+            continue
+        try:
+            tau = int(f[5])
+            lat = int(f[6][:-1]) / 10 * (1 if f[6].endswith("N") else -1)
+            lon = int(f[7][:-1]) / 10 * (1 if f[7].endswith("E") else -1)
+        except (ValueError, IndexError):
+            continue
+        if tau > ENS_MAX_TAU:
+            continue
+        rows.setdefault(f[4], {}).setdefault(tau, [round(lon, 2), round(lat, 2)])
+    return {tech: [taus[t] for t in sorted(taus)] for tech, taus in rows.items() if len(taus) > 1}
+
+
+def storm_ensemble(sid: str) -> dict[str, list[list[float]]]:
+    """GEFS member tracks for an NHC-style storm id ('ep092026'). Empty for
+    anything the public a-deck does not cover."""
+    sid = (sid or "").strip().lower()
+    if not re.fullmatch(r"[a-z]{2}\d{6}", sid):
+        return {}
+    def fetch():
+        try:
+            r = _session.get(ATCF_ADECK.format(sid=sid), timeout=30)
+            r.raise_for_status()
+            _mark(ATCF_ADECK, True)
+            return _parse_adeck_members(r.content)
+        except Exception as exc:
+            log.info("storm ensemble %s: %s", sid, exc)
+            return {}
+    return cache.get(f"storm-ens:{sid}", 1800, fetch)
+
+
+def _ensemble_features(sid: str, name: str) -> list[dict]:
+    """One thin line per member, and the ensemble mean flagged so the front
+    end can draw it a shade brighter than its thirty children."""
+    members = storm_ensemble(sid)
+    return [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": pts},
+             "properties": {"id": sid, "storm": name, "layer": "ens",
+                            "member": tech, "mean": tech == "AEMN"}}
+            for tech, pts in sorted(members.items()) if len(pts) > 1]
+
+
 def storms() -> dict:
     """Active tropical cyclones: NHC/CPHC (current position + intensity from
     CurrentStorms.json, track and cone from the advisory KMZs) plus JTWC for
@@ -1600,9 +1675,18 @@ def storms() -> dict:
                     "updated": s.get("lastUpdate"), "advisory": (s.get("publicAdvisory") or {}).get("advNum"),
                     "url": (s.get("publicAdvisory") or {}).get("url"),
                     "agency": "CPHC · Honolulu" if str(s.get("id") or "").lower().startswith("cp") else "NHC · Miami"}
+            # The spaghetti is counted before the card is built, so the card can
+            # offer the toggle only for a storm that actually has members.
+            try:
+                ens = _ensemble_features(s.get("id") or "", s.get("name") or "")
+            except Exception as exc:
+                log.info("ensemble %s: %s", s.get("id"), exc)
+                ens = []
+            base["ens_members"] = len(ens)
             meta.append(base)
             feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [s.get("longitudeNumeric"), s.get("latitudeNumeric")]},
                           "properties": {**base, "kind": "current"}})
+            feats.extend(ens)
             try:
                 feats.extend(_history_features(s.get("id") or "", s.get("name") or ""))
             except Exception as exc:
@@ -1619,7 +1703,7 @@ def storms() -> dict:
                     log.info("nhc %s %s: %s", s.get("id"), kind, exc)
         jf, jm = _jtwc_storms()
         return {"type": "FeatureCollection", "features": feats + jf, "storms": meta + jm}
-    return cache.get("storms-v9", 900, fetch)
+    return cache.get("storms-v10", 900, fetch)
 
 
 # ── air quality / UV (Open-Meteo) ────────────────────────────────────────

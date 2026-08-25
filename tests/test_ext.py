@@ -557,3 +557,61 @@ def test_history_features_line_plus_coloured_points(monkeypatch):
 def test_history_features_need_two_fixes(monkeypatch):
     monkeypatch.setattr(ext, "storm_history", lambda sid, year=None: [{"t": "x", "lat": 1, "lon": 2, "kt": 30}])
     assert ext._history_features("cp012026", "Lala") == []
+
+
+# Two cycles, three techniques, the radii rows repeated the way a real a-deck
+# repeats them: 34/50/64 kt rows for the same forecast hour.
+_ADECK = """\
+EP, 09, 2026082412, 03, AP01,   0, 200N, 1100W,  35, 1005, XX,  34, NEQ,    0,    0,    0,    0,
+EP, 09, 2026082418, 03, AP01,   0, 191N, 1173W,  35, 1005, XX,  34, NEQ,    0,    0,    0,    0,
+EP, 09, 2026082418, 03, AP01,   0, 191N, 1173W,  35, 1005, XX,  50, NEQ,    0,    0,    0,    0,
+EP, 09, 2026082418, 03, AP01,  12, 206N, 1184W,  38, 1003, XX,  34, NEQ,    0,    0,    0,    0,
+EP, 09, 2026082418, 03, AP01, 240, 300N, 1400W,  20, 1010, XX,  34, NEQ,    0,    0,    0,    0,
+EP, 09, 2026082418, 03, AEMN,   0, 190N, 1170W,  36, 1004, XX,  34, NEQ,    0,    0,    0,    0,
+EP, 09, 2026082418, 03, AEMN,  12, 204N, 1181W,  37, 1003, XX,  34, NEQ,    0,    0,    0,    0,
+EP, 09, 2026082418, 03, AVNO,   0, 191N, 1173W,  35, 1005, XX,  34, NEQ,    0,    0,    0,    0,
+EP, 09, 2026082418, 03, AP02,  12, 210S, 1190E,  30, 1006, XX,  34, NEQ,    0,    0,    0,    0,
+"""
+
+
+def test_adeck_keeps_the_newest_cycle_and_one_row_per_hour():
+    m = ext._parse_adeck_members(_ADECK.encode())
+    # AVNO is the deterministic GFS, not a member; AP02 has one hour, so no line
+    assert sorted(m) == ["AEMN", "AP01"]
+    # the 2026082412 cycle is history, and the repeated 50 kt row collapses
+    assert m["AP01"] == [[-117.3, 19.1], [-118.4, 20.6]]
+    assert m["AEMN"] == [[-117.0, 19.0], [-118.1, 20.4]]
+
+
+def test_adeck_drops_forecast_hours_past_the_useful_window():
+    m = ext._parse_adeck_members(_ADECK.encode())
+    assert all(lon > -140 for lon, _ in m["AP01"])          # the tau 240 row is gone
+
+
+def test_adeck_reads_gzip_and_hemispheres():
+    import gzip as _gz
+    m = ext._parse_adeck_members(_gz.compress(_ADECK.encode()))
+    assert m["AP01"][0] == [-117.3, 19.1]                    # W is negative
+    # a southern/eastern member is signed the other way; it needs two hours to
+    # become a line, so check the parser on its own row
+    one = ext._parse_adeck_members(
+        (_ADECK + "EP, 09, 2026082418, 03, AP02,  24, 215S, 1195E,  30, 1006, XX,  34, NEQ,\n").encode())
+    assert one["AP02"] == [[119.0, -21.0], [119.5, -21.5]]
+
+
+def test_storm_ensemble_ignores_ids_the_public_adeck_does_not_carry():
+    assert ext.storm_ensemble("17W") == {}
+    assert ext.storm_ensemble("") == {}
+
+
+def test_ensemble_features_are_one_line_per_member(monkeypatch):
+    monkeypatch.setattr(ext, "storm_ensemble", lambda sid: {
+        "AEMN": [[-100.0, 20.0], [-101.0, 21.0]],
+        "AP01": [[-100.2, 20.1], [-101.4, 21.2]],
+        "AP02": [[-100.4, 20.2]],                            # one fix is not a track
+    })
+    feats = ext._ensemble_features("ep092026", "Iselle")
+    assert [f["properties"]["member"] for f in feats] == ["AEMN", "AP01"]
+    assert feats[0]["properties"]["mean"] is True and feats[1]["properties"]["mean"] is False
+    assert all(f["properties"]["layer"] == "ens" and f["properties"]["id"] == "ep092026" for f in feats)
+    assert feats[0]["geometry"]["type"] == "LineString"

@@ -297,6 +297,14 @@
         // dashed edge. The track reads as forecast (dashed) with waypoints.
         M().addLayer({ id: "storm-cone", type: "fill", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "fill-color": "#ffb454", "fill-opacity": 0.10 } }, WX.fn.firstSymbolId());
         M().addLayer({ id: "storm-cone-line", type: "line", source: "storms", filter: ["==", ["get", "layer"], "cone"], paint: { "line-color": "rgba(255,180,84,.55)", "line-width": 1, "line-dasharray": [3, 2.5] } }, WX.fn.firstSymbolId());
+        // The GEFS members: thirty thin lines under the official track, the
+        // width of the forecast before the cone smooths it. Off until the
+        // card asks for them, and only ever for the storm whose card is open.
+        M().addLayer({ id: "storm-ens", type: "line", source: "storms",
+          filter: ["all", ["==", ["get", "layer"], "ens"], ["==", ["get", "id"], ""]],
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": ["case", ["get", "mean"], "rgba(255,255,255,.62)", "rgba(255,255,255,.26)"],
+                   "line-width": ["case", ["get", "mean"], 1.7, 0.9] } });
         // Where it has been: solid and quiet, per storm, shown when its card
         // is open. Forecast stays dashed; history is fact, so it is solid.
         M().addLayer({ id: "storm-past", type: "line", source: "storms", filter: ["all", ["==", ["get", "layer"], "past"], ["==", ["get", "id"], ""]], paint: { "line-color": "rgba(255,255,255,.45)", "line-width": 1.4 } });
@@ -369,6 +377,10 @@
     const mv = p.movement && !/null/.test(p.movement) ? p.movement : "";
     let mvShown = false;
     if (stormPopup) stormPopup.remove();
+    // the spaghetti follows the open card, the same way the past track does
+    const showEns = (id) => M().getLayer("storm-ens") &&
+      M().setFilter("storm-ens", ["all", ["==", ["get", "layer"], "ens"], ["==", ["get", "id"], id || ""]]);
+    showEns("");
     // the card brings the storm's past with it
     const showPast = (id) => ["storm-past", "storm-past-pts"].forEach((l) => M().getLayer(l) && M().setFilter(l, ["all", ["==", ["get", "layer"], "past"], ["==", ["get", "id"], id || ""]].concat(l.endsWith("pts") ? [["==", ["geometry-type"], "Point"]] : [])));
     showPast(p.id);
@@ -390,14 +402,21 @@
         return hero;
       })(),
       rows: [mvShown ? null : ["Moving", mv],
+             p.ens_members ? ["Spread", `<button type="button" class="mc-ens" aria-pressed="false">${escH(p.ens_members)} GEFS tracks</button>`, true] : null,
              ["Position", WX.fmtCoords ? WX.fmtCoords(slat, slon, 1) : `${slat.toFixed(1)}, ${slon.toFixed(1)}`],
              ["Agency", agency], ["Advisory", p.advisory ? `#${p.advisory}` : ""]].filter(Boolean),
       link: p.url ? { href: p.url, text: "Public advisory" } : null });
-    stormPopup.on("close", () => showPast(""));
+    const ensBtn = stormPopup.getElement().querySelector(".mc-ens");
+    if (ensBtn) ensBtn.addEventListener("click", () => {
+      const on = ensBtn.getAttribute("aria-pressed") !== "true";
+      ensBtn.setAttribute("aria-pressed", String(on));
+      showEns(on ? p.id : "");
+    });
+    stormPopup.on("close", () => { showPast(""); showEns(""); });
   }
   WX.openStormCard = openStormCard;
   function clearStorms() {
-    if (stormPopup) { stormPopup.remove(); stormPopup = null; } ["storm-lbl", "storm-eye", "storm-now", "storm-pts", "storm-past-pts", "storm-past", "storm-track", "storm-cone-line", "storm-cone"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("storms")) M().removeSource("storms"); }
+    if (stormPopup) { stormPopup.remove(); stormPopup = null; } ["storm-lbl", "storm-eye", "storm-now", "storm-pts", "storm-past-pts", "storm-past", "storm-track", "storm-ens", "storm-cone-line", "storm-cone"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("storms")) M().removeSource("storms"); }
 
   // ── satellite: GOES GeoColor via NASA GIBS (timeless URL = latest) ────
   function loadSat() {
