@@ -59,38 +59,83 @@
   let styleWatch = null;
 
   // ── styles ─────────────────────────────────────────────────────────────
+  // The strip reuses the forecast tape's own table classes (`wtape`, `r-hour`,
+  // `r-wind`, …) so a colour in the route means the colour in the tape and on
+  // the map. Only the route-specific parts — the head, the controls, the
+  // hazard ribbon, the waypoint pips — are defined here.
   const style = document.createElement("style");
   style.textContent = `
-  #wxr { position: absolute; left: 12px; right: 12px; bottom: calc(var(--tb-h) + 22px + env(safe-area-inset-bottom)); z-index: 7;
+  /* The panel is as wide as the strip needs and no wider: a six-stop walk in a
+     full-width slab is mostly empty slab. It still caps at the viewport, and
+     the strip scrolls inside it once the route is long. */
+  #wxr { position: absolute; left: 12px; bottom: calc(var(--tb-h) + 22px + env(safe-area-inset-bottom)); z-index: 7;
+         width: fit-content; min-width: min(520px, calc(100vw - 24px)); max-width: calc(100vw - 24px);
          background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); backdrop-filter: blur(10px);
-         padding: 8px 10px 6px; box-shadow: 0 20px 60px rgba(0,0,0,.45); color: var(--fg); }
+         padding: 10px 12px 7px; box-shadow: 0 20px 60px rgba(0,0,0,.45); color: var(--fg); }
   #wxr[hidden] { display: none; }
-  #wxr .wxr-head { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; margin-bottom: 4px; padding-right: 26px; }
-  #wxr .wxr-title { font: 800 13px var(--font-display); letter-spacing: -.01em; }
-  #wxr .wxr-sub { font: 500 11px var(--font-mono); color: var(--dim); }
-  #wxr .wxr-ctl { display: inline-flex; align-items: center; gap: 5px; font: 600 11px var(--font-body); color: var(--fg-2);
-                  background: var(--accent-soft); border: 1px solid var(--line); border-radius: 9px; padding: 2px 7px; }
-  #wxr .wxr-ctl input, #wxr .wxr-ctl select { background: transparent; border: 0; color: var(--fg); font: 600 11.5px var(--font-mono); outline: none; }
-  #wxr .wxr-ctl input[type=number] { width: 3.6em; text-align: right; }
+  #wxr .wxr-head { display: flex; align-items: center; gap: 8px 18px; flex-wrap: wrap; padding-right: 28px; }
+  #wxr .wxr-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  #wxr .wxr-title { font: 800 17px/1.1 var(--font-display); letter-spacing: -.01em; }
+  #wxr .wxr-run { font: 700 9px var(--font-display); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+  #wxr .wxr-hero { display: flex; gap: 4px 18px; flex-wrap: wrap; }
+  #wxr .wxr-hero div { display: flex; flex-direction: column; gap: 1px; }
+  #wxr .wxr-hero small { font: 600 9px var(--font-display); text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+  #wxr .wxr-hero b { font: 800 19px/1.05 var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; }
+  #wxr .wxr-hero b i { font: 700 10px var(--font-display); font-style: normal; margin-left: 2px; color: var(--fg-2); }
+  #wxr .wxr-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; justify-content: flex-end; }
+  #wxr .wxr-chip { display: inline-flex; align-items: center; font: 700 10.5px var(--font-display); letter-spacing: .02em;
+                   color: var(--fg-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; white-space: nowrap; }
+  #wxr .wxr-chip.warn { color: var(--warm); border-color: color-mix(in srgb, var(--warm) 45%, transparent); background: color-mix(in srgb, var(--warm) 10%, transparent); }
+  #wxr .wxr-chip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, transparent); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+
+  #wxr .wxr-ctls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  #wxr .wxr-ctl { display: inline-flex; align-items: center; gap: 6px; font: 700 9px var(--font-display); letter-spacing: .06em;
+                  text-transform: uppercase; color: var(--dim); background: rgba(127,127,127,.12);
+                  border: 1px solid var(--line); border-radius: 9px; padding: 3px 8px; }
+  #wxr .wxr-ctl input, #wxr .wxr-ctl select { background: transparent; border: 0; color: var(--fg); outline: none;
+                  font: 600 12px var(--font-num); letter-spacing: 0; text-transform: none; }
+  #wxr .wxr-ctl input[type=number] { width: 3.4em; text-align: right; }
   #wxr .wxr-ctl input[type=datetime-local] { color-scheme: dark; }
   :root[data-theme=light] #wxr .wxr-ctl input[type=datetime-local] { color-scheme: light; }
   #wxr .wxr-ctl select { cursor: pointer; }
   #wxr .wxr-ctl select option { background: var(--panel-solid); color: var(--fg); }
-  #wxr .wxr-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
-  #wxr .wxr-chip { font: 600 10.5px var(--font-mono); color: var(--fg-2); border: 1px solid var(--line);
-                   border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
-  #wxr .wxr-chip.warn { color: var(--warm); border-color: color-mix(in srgb, var(--warm) 40%, transparent); }
-  #wxr .wxr-chip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
-  #wxr canvas { width: 100%; height: 214px; display: block; cursor: crosshair; touch-action: pan-y; }
-  #wxr .wxr-readout { font: 500 11px var(--font-mono); color: var(--dim); min-height: 15px; padding-top: 2px;
-                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #wxr .wxr-readout b { color: var(--fg); font-weight: 700; }
-  #wxr .wxr-readout .f { color: var(--bad); }
-  #wxr .wxr-hint { font: 500 11.5px var(--font-body); color: var(--dim); padding: 20px 4px; text-align: center; }
-  #wxr .wxr-x { position: absolute; top: 5px; right: 7px; width: 24px; height: 24px; font-size: 13px; }
-  #wxr button.wxr-mini { font: 600 11px var(--font-body); color: var(--fg-2); background: transparent; border: 1px solid var(--line);
-                         border-radius: 9px; padding: 3px 8px; cursor: pointer; }
+  #wxr .wxr-ctl b { font: 600 11px var(--font-display); color: var(--fg-2); text-transform: none; letter-spacing: 0; }
+  #wxr button.wxr-mini { font: 700 10px var(--font-display); letter-spacing: .06em; text-transform: uppercase; color: var(--dim);
+                         background: transparent; border: 1px solid var(--line); border-radius: 9px; padding: 5px 10px; cursor: pointer; }
   #wxr button.wxr-mini:hover { color: var(--fg); border-color: var(--line-strong); }
+  #wxr .wxr-x { position: absolute; top: 6px; right: 8px; width: 24px; height: 24px; font-size: 13px; }
+
+  #wxr .wxr-strip { overflow-x: auto; overflow-y: hidden; margin-top: 7px; }
+  #wxr table.wtape th.lab { background: transparent; }
+  #wxr table.wtape td.past { opacity: .38; }
+  #wxr table.wtape td.haz1 { background: color-mix(in srgb, var(--warm) 13%, transparent); }
+  #wxr table.wtape td.haz2 { background: color-mix(in srgb, var(--bad) 15%, transparent); }
+  #wxr table.wtape td.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-glow); }
+  /* the hazard ribbon: one flat bar over the columns a warning covers */
+  #wxr table.wtape tr.r-haz td { height: 6px; padding: 0 0 3px; background: transparent; cursor: default; }
+  #wxr table.wtape tr.r-haz i { display: block; height: 3px; border-radius: 2px; background: transparent; }
+  #wxr table.wtape tr.r-haz td.haz1 i { background: var(--warm); }
+  #wxr table.wtape tr.r-haz td.haz2 i { background: var(--bad); }
+  /* a waypoint you dropped, marked in the column nearest it */
+  #wxr table.wtape tr.r-hour td.wpt::before { content: ""; position: absolute; left: 50%; top: 0; width: 5px; height: 5px;
+    margin-left: -2.5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+  #wxr table.wtape tr.r-hour td { position: relative; }
+  #wxr table.wtape tr.r-dist td { font: 500 10.5px var(--font-num); color: var(--dim); height: 17px; }
+  #wxr table.wtape tr.r-cloud td { font: 600 11px var(--font-num); color: #9fb0c8; }
+  #wxr table.wtape tr.r-vis td { font: 600 11px var(--font-num); color: var(--fg-2); }
+  #wxr table.wtape tr.r-frz td { font: 600 11px var(--font-num); color: #7fd8e8; }
+
+  #wxr .wxr-readout { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; min-height: 17px;
+                      margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line);
+                      font: 500 11px var(--font-num); color: var(--fg-2); }
+  #wxr .wxr-readout span { display: inline-flex; align-items: baseline; gap: 4px; }
+  #wxr .wxr-readout i { font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .08em;
+                        text-transform: uppercase; color: var(--dim); }
+  #wxr .wxr-readout b { font-weight: 700; color: var(--fg); }
+  #wxr .wxr-readout .f { color: var(--bad); font-weight: 700; }
+  #wxr .wxr-readout .idle { color: var(--dim); font-weight: 500; }
+  #wxr .wxr-hint { font: 600 12px var(--font-display); color: var(--dim); padding: 22px 4px; text-align: center; }
+
   .wxr-vertex { width: 15px; height: 15px; border-radius: 50%; background: var(--accent); border: 2.5px solid var(--panel-solid);
                 box-shadow: 0 2px 8px rgba(0,0,0,.5); cursor: grab; }
   .wxr-vertex.end { background: var(--fg); }
@@ -98,18 +143,22 @@
                opacity: .55; cursor: cell; }
   .wxr-ghost:hover { opacity: 1; }
   @media (max-width: 820px) {
-    #wxr { left: 6px; right: 6px; padding: 6px 8px 4px; }
-    #wxr canvas { height: 132px; }
-    #wxr .wxr-sub, #wxr .wxr-chips .opt { display: none; }
-    #wxr .wxr-head { gap: 5px 6px; padding-right: 24px; }
-    #wxr .wxr-ctl { padding: 1px 6px; font-size: 10.5px; }
-    #wxr .wxr-ctl input, #wxr .wxr-ctl select { font-size: 10.5px; }
+    #wxr { left: 6px; min-width: calc(100vw - 12px); max-width: calc(100vw - 12px); padding: 8px 8px 5px; }
+    #wxr .wxr-head { gap: 6px 12px; padding-right: 24px; }
+    #wxr .wxr-title { font-size: 15px; }
+    #wxr .wxr-hero { gap: 4px 12px; }
+    #wxr .wxr-hero b { font-size: 16px; }
+    #wxr .wxr-chips .opt { display: none; }
+    #wxr .wxr-ctls { margin-top: 6px; padding-top: 6px; }
+    #wxr .wxr-ctl { padding: 2px 6px; }
+    #wxr .wxr-ctl input, #wxr .wxr-ctl select { font-size: 11px; }
     /* The native datetime field wants a whole row to itself; it does not get one. */
     #wxr .wxr-ctl input[type=datetime-local] { width: 8.8em; }
     #wxr .wxr-ctl input[type=number] { width: 2.8em; }
-    #wxr .wxr-chip { font-size: 10px; padding: 1px 7px; }
-    #wxr .wxr-readout { font-size: 10px; }
-    #wxr .wxr-hint { padding: 12px 4px; font-size: 11px; }
+    #wxr .wxr-chip { font-size: 10px; padding: 2px 7px; }
+    #wxr table.wtape tr.r-dir, #wxr table.wtape tr.r-cloud, #wxr table.wtape tr.r-vis { display: none; }
+    #wxr .wxr-readout { font-size: 10.5px; gap: 2px 9px; }
+    #wxr .wxr-hint { padding: 14px 4px; font-size: 11px; }
   }
   `;
   document.head.appendChild(style);
@@ -122,15 +171,17 @@
     el.id = "wxr"; el.hidden = true;
     el.innerHTML = `
       <div class="wxr-head">
-        <span class="wxr-title">Route</span>
-        <span class="wxr-sub"></span>
-        <label class="wxr-ctl" title="Departure (local time)">leave<input type="datetime-local" class="wxr-depart"></label>
-        <label class="wxr-ctl" title="Travel speed"><select class="wxr-mode"><option value="">Speed</option>${MODES.map((m) => `<option value="${m.key}">${m.label}</option>`).join("")}</select><input type="number" class="wxr-speed" min="1" step="1"><b class="wxr-unit"></b></label>
-        <button class="wxr-mini wxr-clear" title="Remove all points">clear</button>
-        <span class="wxr-chips"></span>
+        <div class="wxr-id"><span class="wxr-title">Route</span><span class="wxr-run"></span></div>
+        <div class="wxr-hero"></div>
+        <div class="wxr-chips"></div>
       </div>
-      <button class="icon wxr-x" title="Close">×</button>
-      <canvas></canvas>
+      <button class="icon wxr-x" type="button" title="Close route" aria-label="Close route">×</button>
+      <div class="wxr-ctls">
+        <label class="wxr-ctl" title="Departure (local time)">Leave<input type="datetime-local" class="wxr-depart" aria-label="Departure time"></label>
+        <label class="wxr-ctl" title="Travel speed"><select class="wxr-mode" aria-label="Travel mode"><option value="">Mode</option>${MODES.map((m) => `<option value="${m.key}">${m.label}</option>`).join("")}</select><input type="number" class="wxr-speed" min="1" step="1" aria-label="Travel speed"><b class="wxr-unit"></b></label>
+        <button class="wxr-mini wxr-clear" type="button" title="Remove all points">Clear</button>
+      </div>
+      <div class="wxr-strip"></div>
       <div class="wxr-readout"></div>`;
     document.body.appendChild(el);
     el.querySelector(".wxr-x").onclick = stop;
@@ -146,6 +197,7 @@
       localStorage.setItem("wxgrid.routeSpeed", String(speedKmh));
       syncMode(); load();
     };
+    el.querySelector(".wxr-strip").addEventListener("mouseleave", () => setHover(null));
     const mode = el.querySelector(".wxr-mode");
     mode.onchange = () => {
       const m = MODES.find((x) => x.key === mode.value);
@@ -154,12 +206,6 @@
       localStorage.setItem("wxgrid.routeSpeed", String(speedKmh));
       load();
     };
-    const c = el.querySelector("canvas");
-    c.addEventListener("mousemove", (e) => setHover(pick(c, e.clientX)));
-    c.addEventListener("mouseleave", () => setHover(null));
-    c.addEventListener("click", (e) => { const i = pick(c, e.clientX); if (i != null) flyTo(i); });
-    c.addEventListener("touchstart", (e) => setHover(pick(c, e.touches[0].clientX)), { passive: true });
-    c.addEventListener("touchmove", (e) => setHover(pick(c, e.touches[0].clientX)), { passive: true });
     return el;
   }
 
@@ -169,14 +215,7 @@
     const m = MODES.find((x) => Math.abs(x.kmh - speedKmh) < 0.6);
     el.querySelector(".wxr-mode").value = m ? m.key : "";
   }
-  function pick(c, clientX) {
-    if (!data || !data.samples.length) return null;
-    const r = c.getBoundingClientRect();
-    const g = geom(c.clientWidth, c.clientHeight);
-    const f = (clientX - r.left - g.padL) / g.gw;
-    return Math.max(0, Math.min(data.samples.length - 1, Math.round(f * (data.samples.length - 1))));
-  }
-  function setHover(i) { if (i === hoverI) return; hoverI = i; draw(); paintCursor(); readout(); }
+  function setHover(i) { if (i === hoverI) return; hoverI = i; markSelection(); paintCursor(); readout(); }
   function flyTo(i) {
     selI = i;
     const s = data.samples[i];
@@ -270,7 +309,7 @@
   async function load() {
     paintPath();
     if (pts.length < 2) { data = null; render(); return; }
-    if (window.WXStatic) { data = null; render("The static demo has no route API — run wxgrid locally for route forecasts."); return; }
+    if (window.WXStatic) { data = null; render("The static demo has no route API. Run wxgrid locally for route forecasts."); return; }
     const my = ++req;
     loading = true; render();
     try {
@@ -290,27 +329,38 @@
     } catch (e) {
       if (my !== req) return;
       loading = false; data = null;
-      render(navigator.onLine ? "Route forecast unavailable for this model." : "Offline — route forecasts need the server.");
+      render(navigator.onLine ? "Route forecast unavailable for this model." : "Offline. Route forecasts need the server.");
     }
   }
 
-  // ── render (chips, canvas, readout) ────────────────────────────────────
+  // ── render (head, strip, readout) ──────────────────────────────────────
+  const esc = (s) => String(s == null ? "" : s).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+  // The same duration split into its own markup, so the hero can size the
+  // numbers and the units differently.
+  function heroDur(h) {
+    const m = Math.round(h * 60);
+    return m < 60 ? `${m}<i>min</i>` : `${Math.floor(m / 60)}<i>h</i> ${String(m % 60).padStart(2, "0")}<i>m</i>`;
+  }
+
   function render(msg) {
     const el = box(); el.hidden = !active;
-    const sub = el.querySelector(".wxr-sub"), chips = el.querySelector(".wxr-chips");
+    const runEl = el.querySelector(".wxr-run"), hero = el.querySelector(".wxr-hero"), chips = el.querySelector(".wxr-chips");
     el.querySelector(".wxr-unit").textContent = spdUnit();
     if (!data) {
-      sub.textContent = loading ? "loading…" : "";
-      chips.innerHTML = "";
-      const c = el.querySelector("canvas");
-      c.getContext("2d").clearRect(0, 0, c.width, c.height);
+      runEl.textContent = loading ? "loading" : "";
+      hero.innerHTML = ""; chips.innerHTML = "";
       note(msg || (pts.length < 2 ? "Tap the map to drop points. Drag a dot to move it, drag a dashed handle to bend the leg." : ""));
       readout();
       return;
     }
     note("");
-    const km = uDist(data.length_km), h = data.duration_h;
-    sub.textContent = `${n1(km.v)} ${km.unit} · ${fmtDur(h)} · ${data.model.toUpperCase()} ${data.run.slice(5).replace("T", " ")}Z`;
+    const km = uDist(data.length_km);
+    runEl.textContent = `${data.model.toUpperCase()} · ${data.run.slice(5).replace("T", " ")}Z`;
+    hero.innerHTML = [
+      `<div><small>Distance</small><b>${n1(km.v)}<i>${esc(km.unit)}</i></b></div>`,
+      `<div><small>Travel</small><b>${heroDur(data.duration_h)}</b></div>`,
+      data.arrive ? `<div><small>Arrive</small><b>${esc(uWhen(data.arrive))}</b></div>` : "",
+    ].join("");
     const s = data.summary;
     const out = [];
     const gust = s.worst_gust && s.worst_gust.value != null ? `${Math.round(spd(s.worst_gust.value))} ${spdUnit()}` : null;
@@ -322,220 +372,152 @@
     (s.alerts || []).slice(0, 2).forEach((a) => out.push([`⚠ ${a.event}`, (a.sev || 0) >= 3 ? "bad" : "warn"]));
     if (s.outside_run) out.push([`${s.outside_run} past the run`, "warn"]);
     chips.innerHTML = out.map(([t, k], i) => `<span class="wxr-chip ${k}${i > 1 ? " opt" : ""}">${esc(t)}</span>`).join("");
-    draw(); readout();
+    drawStrip(); readout();
   }
-  const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
-  function fmtDur(h) { const m = Math.round(h * 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`; }
   function note(msg) {
-    const el = box();
-    let n = el.querySelector(".wxr-hint");
-    if (!msg) { if (n) n.remove(); el.querySelector("canvas").style.display = ""; return; }
-    if (!n) { n = document.createElement("div"); n.className = "wxr-hint"; el.querySelector("canvas").after(n); }
-    n.textContent = msg;
-    el.querySelector("canvas").style.display = "none";
+    const el = box(), strip = el.querySelector(".wxr-strip");
+    if (!msg) return;
+    strip.innerHTML = `<div class="wxr-hint">${esc(msg)}</div>`;
   }
 
-  const css = (n, fb) => (getComputedStyle(document.documentElement).getPropertyValue(n).trim() || fb);
-  function geom(w, h) {
-    const compact = w < 620 || h < 170;
-    const padL = compact ? 32 : 42, padR = compact ? 36 : 44, padT = 5, padB = compact ? 13 : 17;
-    const gw = w - padL - padR, avail = h - padT - padB;
-    const ribbon = 7, cloud = compact ? 7 : 9, gap = 3;
-    const rest = avail - ribbon - cloud - gap * 2;
-    const hMain = Math.round(rest * (compact ? 0.60 : 0.46));
-    const hRain = Math.round(rest * (compact ? 0.40 : 0.24));
-    const hTerr = compact ? 0 : rest - hMain - hRain;
-    const yRib = padT, yCloud = yRib + ribbon + 1;
-    const yMain = yCloud + cloud + gap, yRain = yMain + hMain + gap, yTerr = yRain + hRain + gap;
-    return { compact, padL, padR, padT, padB, gw, ribbon, cloud, hMain, hRain, hTerr, yRib, yCloud, yMain, yRain, yTerr };
+  // ── the strip ──────────────────────────────────────────────────────────
+  // Cumulative distance at each vertex you dropped, so the strip can mark the
+  // column where one leg hands over to the next. Great-circle, like the server.
+  function vertexKm() {
+    const rad = (x) => x * Math.PI / 180, R = 6371.0088;
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      const dLat = rad(b[1] - a[1]), dLon = rad(b[0] - a[0]);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[1])) * Math.cos(rad(b[1])) * Math.sin(dLon / 2) ** 2;
+      cum.push(cum[i - 1] + 2 * R * Math.asin(Math.min(1, Math.sqrt(h))));
+    }
+    return cum;
   }
+  const dayOpts = () => (U() && U().timeOpts ? U().timeOpts({ weekday: "short", month: "short", day: "numeric" })
+                                             : { weekday: "short", month: "short", day: "numeric" });
+  const nightAt = (iso) => { const h = new Date(iso).getHours(); return h < 6 || h >= 21; };
+  const glyphFor = (s) => (WX.tape && WX.tape.glyph
+    ? WX.tape.glyph(s.cloud, (s.precip_mm_h || 0) + (s.snow_mm_h || 0), s.t2m, nightAt(s.eta)) : "");
+  // The tape's own wind colouring: dark ink once the cell is bright enough.
+  const windCell = (v) => `background:${WX.rampColor("wind", v, 0.92)};color:${v * 3.6 > 45 ? "#160b03" : "var(--fg)"}`;
 
-  function draw() {
-    const el = box(), c = el.querySelector("canvas");
-    if (!data || !data.samples.length) return;
-    const dpr = Math.min(2, devicePixelRatio || 1), w = c.clientWidth, h = c.clientHeight;
-    if (!w) return;
-    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
-    const x = c.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0);
-    x.clearRect(0, 0, w, h);
-    const g = geom(w, h), ss = data.samples, n = ss.length;
-    const xOf = (i) => g.padL + (n === 1 ? g.gw / 2 : g.gw * i / (n - 1));
-    const step = n > 1 ? g.gw / (n - 1) : g.gw;
-    const dim = css("--dim", "#7c8492"), line = css("--line", "rgba(255,255,255,.1)");
-    const accent = css("--accent", "#ff8a3d"), fg = css("--fg", "#eef1f5");
-    const bad = css("--bad", "#ef786f"), warm = css("--warm", "#ffb454"), rain = css("--rain", "#6cb6ff");
-    x.font = `500 9.5px ${css("--font-mono", "monospace")}`;
-
-    // hazard segments: a ribbon on top, a wash down the whole chart
-    (data.summary.segments || []).forEach((seg) => {
-      const x0 = xOf(seg.from_i) - step / 2, x1 = xOf(seg.to_i) + step / 2;
-      x.fillStyle = seg.level >= 2 ? bad : warm;
-      x.globalAlpha = 0.85; x.fillRect(x0, g.yRib, x1 - x0, g.ribbon);
-      x.globalAlpha = 0.10; x.fillRect(x0, g.yCloud, x1 - x0, h - g.padB - g.yCloud);
-      x.globalAlpha = 1;
+  function drawStrip() {
+    const el = box(), strip = el.querySelector(".wxr-strip");
+    const ss = data.samples, n = ss.length;
+    if (!n) { strip.innerHTML = ""; return; }
+    // A waypoint lands between samples; mark the column nearest to it.
+    const wpt = new Set();
+    const cum = vertexKm();
+    cum.slice(1, -1).forEach((km) => {
+      let best = 0;
+      ss.forEach((s, k) => { if (Math.abs(s.dist_km - km) < Math.abs(ss[best].dist_km - km)) best = k; });
+      wpt.add(best);
     });
-    // samples outside the run get hatched out — the run cannot answer for them
+    // day headers, grouped in the zone the times are shown in
+    const days = [];
     ss.forEach((s, i) => {
-      if (!s.outside_run) return;
-      x.fillStyle = dim; x.globalAlpha = 0.16;
-      x.fillRect(xOf(i) - step / 2, g.yCloud, step, h - g.padB - g.yCloud);
-      x.globalAlpha = 1;
+      const k = new Date(s.eta).toLocaleDateString(undefined, dayOpts());
+      if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, first: i, span: 0 });
+      days[days.length - 1].span++;
     });
-    // cloud strip
-    ss.forEach((s, i) => {
-      if (s.cloud == null) return;
-      x.fillStyle = fg; x.globalAlpha = 0.10 + 0.6 * s.cloud;
-      x.fillRect(xOf(i) - step / 2, g.yCloud, step + 0.6, g.cloud);
-      x.globalAlpha = 1;
-    });
+    const hazOf = (s) => (s.hazard >= 2 ? " haz2" : s.hazard >= 1 ? " haz1" : "");
+    const cell = (i, inner, cls = "") =>
+      `<td class="${cls}${nightAt(ss[i].eta) ? " night" : ""}${ss[i].outside_run ? " past" : ""}${hazOf(ss[i])}" data-i="${i}">${inner}</td>`;
+    const lab = (t, u) => `<th class="lab">${esc(t)}${u ? `<small>${esc(u)}</small>` : ""}</th>`;
 
-    // ── main band: temperature line (left axis) + gust area (right axis)
-    const temps = ss.map((s) => (s.t2m == null ? null : uTemp(s.t2m).v));
+    const anyHaz = ss.some((s) => s.hazard > 0);
+    const hazRow = anyHaz ? `<tr class="r-haz"><th class="lab"></th>${ss.map((s) => `<td class="${hazOf(s).trim()}"><i></i></td>`).join("")}</tr>` : "";
+    // "7:15 PM" with the meridiem set small, the way the tape sets its hours
+    const hourLab = (iso) => { const t = uTime(iso); const m = /^(.*?)\s*([AP]M)$/i.exec(t);
+      return m ? `${esc(m[1])}<small>${esc(m[2])}</small>` : esc(t); };
+    const hourRow = ss.map((s, i) => cell(i, `<span class="hr">${hourLab(s.eta)}</span>`, "hour" + (wpt.has(i) ? " wpt" : ""))).join("");
+    const dKm = uDist(1);
+    // Whole units once you are past the first ten: "89.9 km along" is a
+    // precision the route does not have and a digit the column cannot spare.
+    const alongTxt = (v) => (v >= 10 ? Math.round(v) : n1(v));
+    const distRow = ss.map((s, i) => cell(i, alongTxt(uDist(s.dist_km).v))).join("");
+    const iconRow = ss.map((s, i) => cell(i, glyphFor(s))).join("");
     const tUnit = (uTemp(273.15) || {}).unit || "°C";
-    const have = temps.filter((t) => t != null);
-    if (have.length) {
-      let lo = Math.min(...have), hi = Math.max(...have);
-      if (hi - lo < 4) { const mid = (hi + lo) / 2; lo = mid - 2; hi = mid + 2; }
-      const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
-      const yT = (t) => g.yMain + g.hMain * (1 - (t - lo) / (hi - lo));
-      // gust area behind, on its own 0..max scale
-      const gusts = ss.map((s) => (s.gust != null ? s.gust : s.wind));
-      const gmax = Math.max(1, ...gusts.filter((v) => v != null));
-      x.beginPath(); x.moveTo(xOf(0), g.yMain + g.hMain);
-      ss.forEach((s, i) => { const v = gusts[i]; x.lineTo(xOf(i), v == null ? g.yMain + g.hMain : g.yMain + g.hMain * (1 - v / gmax)); });
-      x.lineTo(xOf(n - 1), g.yMain + g.hMain); x.closePath();
-      x.fillStyle = accent; x.globalAlpha = 0.13; x.fill(); x.globalAlpha = 1;
-      x.strokeStyle = accent; x.globalAlpha = 0.5; x.lineWidth = 1; x.setLineDash([3, 2.5]);
-      x.beginPath(); ss.forEach((s, i) => { const v = gusts[i]; if (v == null) return; const yy = g.yMain + g.hMain * (1 - v / gmax); i ? x.lineTo(xOf(i), yy) : x.moveTo(xOf(i), yy); });
-      x.stroke(); x.setLineDash([]); x.globalAlpha = 1;
-      // temperature
-      x.strokeStyle = fg; x.lineWidth = 1.9; x.beginPath();
-      let started = false;
-      temps.forEach((t, i) => { if (t == null) { started = false; return; } const yy = yT(t); if (!started) { x.moveTo(xOf(i), yy); started = true; } else x.lineTo(xOf(i), yy); });
-      x.stroke();
-      // 0 °C reference, when it is in view
-      const zero = uTemp(273.15).v;
-      if (zero > lo && zero < hi) {
-        x.strokeStyle = rain; x.globalAlpha = 0.55; x.lineWidth = 1; x.setLineDash([4, 4]);
-        x.beginPath(); x.moveTo(g.padL, yT(zero)); x.lineTo(w - g.padR, yT(zero)); x.stroke();
-        x.setLineDash([]); x.globalAlpha = 1;
-      }
-      x.fillStyle = dim; x.textAlign = "right"; x.textBaseline = "middle";
-      x.fillText(`${Math.round(hi)}${tUnit}`, g.padL - 4, g.yMain + 5);
-      x.fillText(`${Math.round(lo)}`, g.padL - 4, g.yMain + g.hMain - 4);
-      x.textAlign = "left";
-      x.fillStyle = accent;
-      x.fillText(`${Math.round(spd(gmax))}`, w - g.padR + 4, g.yMain + 5);
-      x.fillText(spdUnit(), w - g.padR + 4, g.yMain + 16);
-      // wind direction chevrons along the top of the band
-      const every = Math.max(1, Math.round(n / (g.compact ? 6 : 12)));
-      x.fillStyle = dim;
-      for (let i = 0; i < n; i += every) {
-        const d = ss[i].wdir; if (d == null) continue;
-        arrowAt(x, xOf(i), g.yMain + 8, d);
-      }
-    }
+    const tempRow = ss.map((s, i) => cell(i, s.t2m == null ? "—" : `${n1(uTemp(s.t2m).v)}°`)).join("");
+    const anyWet = ss.some((s) => (s.precip_mm_h || 0) >= 0.05 || (s.snow_mm_h || 0) >= 0.05);
+    const precipRow = !anyWet ? "" : ss.map((s, i) => {
+      const snow = s.ptype === "snow" || s.ptype === "mixed";
+      if (snow && (s.snow_mm_h || 0) >= 0.05) return cell(i, `<span class="snow">${n1(uSnow(s.snow_mm_h).v)}</span>`);
+      if ((s.precip_mm_h || 0) >= 0.05) return cell(i, `<span>${n1(uPrecip(s.precip_mm_h).v)}</span>`);
+      return cell(i, "");
+    }).join("");
+    const windRow = ss.map((s, i) => cell(i, s.wind == null ? "—" : `<span style="${windCell(s.wind)}">${Math.round(spd(s.wind))}</span>`)).join("");
+    const anyGust = ss.some((s) => s.gust != null);
+    const gustRow = anyGust ? ss.map((s, i) => cell(i, s.gust == null ? "—" : `<span style="${windCell(s.gust)}">${Math.round(spd(s.gust))}</span>`)).join("") : "";
+    const dirRow = ss.map((s, i) => cell(i, s.wdir == null ? "" : `<i class="dirarrow" style="${WX.arrowRot(s.wdir)}"></i>`)).join("");
+    // Rows that only earn their height sometimes: a flat cloud deck, a
+    // visibility that never drops and a freezing level miles overhead say
+    // nothing, so they are not drawn.
+    const anyCloud = ss.some((s) => s.cloud != null);
+    const cloudRow = anyCloud ? ss.map((s, i) => cell(i, s.cloud == null ? "" : `<span style="opacity:${(0.4 + 0.6 * s.cloud).toFixed(2)}">${Math.round(s.cloud * 100)}</span>`)).join("") : "";
+    const lowVis = ss.some((s) => s.vis_km != null && s.vis_km < 10);
+    const visRow = lowVis ? ss.map((s, i) => cell(i, s.vis_km == null ? "" : n1(uDist(s.vis_km).v))).join("") : "";
+    // The freezing level matters when it is near the ground you are on.
+    const nearFrz = ss.some((s) => s.freezing_level_m != null && s.elev_m != null && s.freezing_level_m - s.elev_m < 900);
+    const frzRow = nearFrz ? ss.map((s, i) => cell(i, s.freezing_level_m == null ? "" : Math.round(uAlt(s.freezing_level_m).v))).join("") : "";
+    const altUnit = (uAlt(0) || {}).unit || "m";
 
-    // ── precip band: bars, coloured by type
-    const rates = ss.map((s) => s.precip_mm_h || 0);
-    const rmax = Math.max(0.6, ...rates);
-    ss.forEach((s, i) => {
-      const r = rates[i]; if (r <= 0.005) return;
-      const hh = g.hRain * Math.min(1, Math.log10(1 + 9 * r / rmax));
-      x.fillStyle = s.ptype === "snow" ? "#dbe8ff" : s.ptype === "mixed" ? "#a8c9f0" : rain;
-      x.globalAlpha = 0.9;
-      x.fillRect(xOf(i) - step * 0.36, g.yRain + g.hRain - hh, Math.max(1.5, step * 0.72), hh);
-      x.globalAlpha = 1;
+    strip.innerHTML = `<table class="wtape"><thead><tr><th class="lab corner"></th>${
+      days.map((dy) => `<th colspan="${dy.span}" class="day" data-first="${dy.first}" title="Fly to this day">${esc(dy.key)}</th>`).join("")
+    }</tr></thead><tbody>
+      ${hazRow}
+      <tr class="r-hour">${lab("Arrive")}${hourRow}</tr>
+      <tr class="r-dist">${lab("Along", dKm.unit)}${distRow}</tr>
+      <tr class="r-icon">${lab("")}${iconRow}</tr>
+      <tr class="r-temp">${lab("Temp", tUnit)}${tempRow}</tr>
+      ${precipRow ? `<tr class="r-rain">${lab("Precip", `${uPrecip(1).unit} · ${uSnow(1).unit}/h`)}${precipRow}</tr>` : ""}
+      <tr class="r-wind">${lab("Wind", spdUnit())}${windRow}</tr>
+      ${gustRow ? `<tr class="r-wind">${lab("Gusts", spdUnit())}${gustRow}</tr>` : ""}
+      <tr class="r-dir">${lab("Direction")}${dirRow}</tr>
+      ${cloudRow ? `<tr class="r-cloud">${lab("Cloud", "%")}${cloudRow}</tr>` : ""}
+      ${visRow ? `<tr class="r-vis">${lab("Visibility", dKm.unit)}${visRow}</tr>` : ""}
+      ${frzRow ? `<tr class="r-frz">${lab("Freezing lvl", altUnit)}${frzRow}</tr>` : ""}
+    </tbody></table>`;
+    strip.querySelectorAll("td[data-i]").forEach((c) => {
+      const i = Number(c.dataset.i);
+      c.addEventListener("mouseenter", () => setHover(i));
+      c.addEventListener("click", () => flyTo(i));
     });
-    x.strokeStyle = line; x.lineWidth = 1;
-    x.beginPath(); x.moveTo(g.padL, g.yRain + g.hRain + 0.5); x.lineTo(w - g.padR, g.yRain + g.hRain + 0.5); x.stroke();
-    if (rmax > 0.6) {
-      const p = uPrecip(rmax);
-      // Right-aligned to the canvas edge, not left-aligned off the plot: the
-      // gutter is 36-44 px and "2.2 mm/h" is wider than that.
-      x.fillStyle = rain; x.textAlign = "right"; x.textBaseline = "top";
-      x.fillText(g.compact ? `${n1(p.v)}` : `${n1(p.v)} ${p.unit}/h`, w - 2, g.yRain);
-    }
-
-    // ── terrain band: the ground you drive over, and the freezing level over it
-    if (g.hTerr > 6) {
-      const elevs = ss.map((s) => s.elev_m), frz = ss.map((s) => s.freezing_level_m);
-      const all = elevs.concat(frz).filter((v) => v != null);
-      if (all.length) {
-        const hiZ = Math.max(300, ...all) * 1.05, loZ = Math.min(0, ...all);
-        const yZ = (z) => g.yTerr + g.hTerr * (1 - (z - loZ) / (hiZ - loZ));
-        if (elevs.some((v) => v != null)) {
-          x.beginPath(); x.moveTo(g.padL, g.yTerr + g.hTerr);
-          ss.forEach((s, i) => x.lineTo(xOf(i), s.elev_m == null ? g.yTerr + g.hTerr : yZ(s.elev_m)));
-          x.lineTo(w - g.padR, g.yTerr + g.hTerr); x.closePath();
-          x.fillStyle = dim; x.globalAlpha = 0.45; x.fill(); x.globalAlpha = 1;
-        }
-        if (frz.some((v) => v != null)) {
-          x.strokeStyle = rain; x.lineWidth = 1.5; x.setLineDash([5, 3]); x.beginPath();
-          let st = false;
-          frz.forEach((z, i) => { if (z == null) { st = false; return; } const yy = yZ(z); if (!st) { x.moveTo(xOf(i), yy); st = true; } else x.lineTo(xOf(i), yy); });
-          x.stroke(); x.setLineDash([]);
-          x.fillStyle = rain; x.textAlign = "left"; x.textBaseline = "top";
-          x.fillText("0°", w - g.padR + 4, g.yTerr);
-        }
-        const top = uAlt(hiZ);
-        x.fillStyle = dim; x.textAlign = "right"; x.textBaseline = "top";
-        x.fillText(`${Math.round(top.v)}${g.compact ? "" : " " + top.unit}`, g.padL - 4, g.yTerr);
-      }
-    }
-
-    // ── x axis: distance and clock
-    x.fillStyle = dim; x.textAlign = "center"; x.textBaseline = "top";
-    const ticks = g.compact ? 3 : 5;
-    for (let k = 0; k <= ticks; k++) {
-      const i = Math.round((n - 1) * k / ticks), s = ss[i];
-      const lab = uTime(s.eta);
-      const d = uDist(s.dist_km);
-      x.fillText(g.compact ? lab : `${lab}  ${n1(d.v)}${d.unit}`, Math.min(w - g.padR, Math.max(g.padL, xOf(i))), h - g.padB + 2);
-    }
-
-    // ── cursor
-    const ci = hoverI != null ? hoverI : selI;
-    if (ci != null && ss[ci]) {
-      x.strokeStyle = accent; x.lineWidth = 1.2;
-      x.beginPath(); x.moveTo(xOf(ci), g.yCloud); x.lineTo(xOf(ci), h - g.padB); x.stroke();
-      x.fillStyle = accent; x.beginPath(); x.arc(xOf(ci), g.yCloud - 3, 2.6, 0, Math.PI * 2); x.fill();
-    }
+    strip.querySelectorAll("th.day[data-first]").forEach((c) => c.onclick = () => flyTo(Number(c.dataset.first)));
+    markSelection();
   }
 
-  function arrowAt(x, cx, cy, dirFrom) {
-    // Chevron points where the wind is GOING, like the rest of the app.
-    const a = (dirFrom + 180) * Math.PI / 180, r = 4;
-    const dx = Math.sin(a), dy = -Math.cos(a);
-    x.save(); x.translate(cx, cy);
-    x.beginPath(); x.moveTo(dx * r, dy * r);
-    x.lineTo(-dy * r * 0.7 - dx * r * 0.5, dx * r * 0.7 - dy * r * 0.5);
-    x.lineTo(dy * r * 0.7 - dx * r * 0.5, -dx * r * 0.7 - dy * r * 0.5);
-    x.closePath(); x.globalAlpha = 0.75; x.fill(); x.globalAlpha = 1; x.restore();
+  // Hover moves a class, not the whole strip: rebuilding the table on every
+  // mouse move threw away the scroll position mid-drag.
+  function markSelection() {
+    const el = $("#wxr"); if (!el) return;
+    const i = hoverI != null ? hoverI : selI;
+    el.querySelectorAll(".wxr-strip td[data-i]").forEach((c) => c.classList.toggle("on", Number(c.dataset.i) === i));
   }
 
   function readout() {
     const el = box(), out = el.querySelector(".wxr-readout");
     const i = hoverI != null ? hoverI : selI;
     if (!data || i == null || !data.samples[i]) {
-      out.innerHTML = data ? `<span>${data.samples.length} samples · hover the chart, tap to fly there</span>` : "";
+      out.innerHTML = data ? `<span class="idle">${data.samples.length} stops · tap a column to fly there</span>` : "";
       return;
     }
     const s = data.samples[i];
-    if (s.outside_run) { out.innerHTML = `<b>${esc(uWhen(s.eta))}</b> · past the end of this run`; return; }
-    const t = uTemp(s.t2m), d = uDist(s.dist_km), bits = [];
-    bits.push(`<b>${esc(uWhen(s.eta))}</b>`);
-    bits.push(`${n1(d.v)} ${d.unit}`);
-    if (t) bits.push(`<b>${n1(t.v)}${t.unit}</b>`);
-    if (s.wind != null) bits.push(`${WX.arrow(s.wdir)} ${Math.round(spd(s.wind))}${s.gust != null ? `/${Math.round(spd(s.gust))}` : ""} ${spdUnit()}`);
-    if (s.precip_mm_h) { const p = uPrecip(s.precip_mm_h); bits.push(`${s.ptype || "precip"} ${n1(p.v)} ${p.unit}/h`); }
-    if (s.cloud != null) bits.push(`cloud ${Math.round(s.cloud * 100)}%`);
-    if (s.vis_km != null) { const v = uDist(s.vis_km); bits.push(`vis ${n1(v.v)} ${v.unit}`); }
-    if (s.freezing_level_m != null) { const z = uAlt(s.freezing_level_m); bits.push(`0° ${Math.round(z.v)} ${z.unit}`); }
-    if (s.elev_m != null) { const z = uAlt(s.elev_m); bits.push(`ground ${Math.round(z.v)} ${z.unit}`); }
-    if (s.msl != null) { const p = uPress(s.msl); bits.push(`${n1(p.v)} ${p.unit}`); }
-    if (s.flags.length) bits.push(`<span class="f">${s.flags.map((f) => HAZ_LABEL[f] || f).join(" · ")}</span>`);
-    out.innerHTML = bits.join(" · ");
+    if (s.outside_run) { out.innerHTML = `<span><b>${esc(uWhen(s.eta))}</b></span><span class="idle">past the end of this run</span>`; return; }
+    const bits = [`<span><b>${esc(uWhen(s.eta))}</b></span>`];
+    const kv = (k, v) => bits.push(`<span><i>${esc(k)}</i><b>${v}</b></span>`);
+    const d = uDist(s.dist_km); kv("at", `${n1(d.v)} ${esc(d.unit)}`);
+    const t = uTemp(s.t2m); if (t) kv("temp", `${n1(t.v)}${esc(t.unit)}`);
+    if (s.wind != null) kv("wind", `${WX.arrow(s.wdir)} ${Math.round(spd(s.wind))}${s.gust != null ? `/${Math.round(spd(s.gust))}` : ""} ${esc(spdUnit())}`);
+    if (s.precip_mm_h) { const p = uPrecip(s.precip_mm_h); kv(s.ptype || "precip", `${n1(p.v)} ${esc(p.unit)}/h`); }
+    if (s.cloud != null) kv("cloud", `${Math.round(s.cloud * 100)}%`);
+    if (s.vis_km != null) { const v = uDist(s.vis_km); kv("vis", `${n1(v.v)} ${esc(v.unit)}`); }
+    if (s.freezing_level_m != null) { const z = uAlt(s.freezing_level_m); kv("freezing", `${Math.round(z.v)} ${esc(z.unit)}`); }
+    if (s.elev_m != null) { const z = uAlt(s.elev_m); kv("ground", `${Math.round(z.v)} ${esc(z.unit)}`); }
+    if (s.msl != null) { const p = uPress(s.msl); kv("pressure", `${n1(p.v)} ${esc(p.unit)}`); }
+    if (s.flags.length) bits.push(`<span class="f">${esc(s.flags.map((f) => HAZ_LABEL[f] || f).join(" · "))}</span>`);
+    out.innerHTML = bits.join("");
   }
 
   // ── map click capture ──────────────────────────────────────────────────
@@ -609,7 +591,6 @@
     get data() { return data; },
   };
 
-  window.addEventListener("resize", () => { if (window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.02) return; if (active && data) draw(); });
   // units.js announces a preference change; every number on the strip is
   // rendered through it, so the whole panel just redraws.
   document.addEventListener("wx-units", () => { if (active) { const el = $("#wxr"); if (el) el.querySelector(".wxr-speed").value = Math.round(fromKmh(speedKmh)); render(); } });
