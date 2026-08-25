@@ -615,6 +615,18 @@
     // 72 h windows were only in the time bar, where nobody looked for them
     // (Jeff 2026-08-23).
     rail.querySelectorAll(".rail-vars button").forEach((b) => b.onclick = () => { state.layer = b.dataset.layer; localStorage.setItem("wxgrid.layer", state.layer); localStorage.setItem("wxgrid.variant." + fam.key, state.layer); renderControls(); applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); });
+    // On a phone the rail is a sideways strip and re-rendering it resets the
+    // scroll: pick Waves, and the rail snaps back to Wind with the chip you
+    // just chose — and its variants — a thousand pixels off screen. Scroll the
+    // rail itself, never scrollIntoView: that walks every scrollable ancestor
+    // and drags the page sideways under an overflow:hidden body.
+    const railOn = rail.querySelector("button[data-family].on");
+    if (railOn && rail.scrollWidth > rail.clientWidth + 1) {
+      const r = railOn.getBoundingClientRect(), rr = rail.getBoundingClientRect();
+      if (r.left < rr.left + 8 || r.right > rr.right - 8) {
+        rail.scrollLeft += (r.left + r.width / 2) - (rr.left + rr.width / 2);
+      }
+    }
     // variant picker (rain 6h/24h/72h …) sits in the time bar next to the legend
     const vp = $("#variant");
     if (fam.variants) {
