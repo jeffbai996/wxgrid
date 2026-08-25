@@ -315,7 +315,16 @@
     const link = d.url || p.url || "";
     const my = ++alertReq;
     closeAlertCard();
-    alertPopup = mapCard(lngLat, "alert-pop", {
+    // On a phone the tape owns the bottom half of the screen. Anchor the card
+    // near the top of the map there and let it open downward; anchored at the
+    // tap it lands under the timebar, where nobody can read or close it.
+    const narrow = window.matchMedia && window.matchMedia("(max-width: 560px)").matches;
+    let at = lngLat;
+    if (narrow) {
+      const q = M().project(lngLat), h = M().getCanvas().clientHeight || 800;
+      at = M().unproject([q.x, Math.round(h * 0.22)]);   // clear of the layer rails on top
+    }
+    alertPopup = mapCard(at, "alert-pop", {
       icon: ALERT_SVG, color: p.color || "#f0a020", title: alertTitle(p.event),
       pill: p.severity || "", sub: p.source || "", ago: left ? `expires in ${left}` : "expired",
       hero: [{ k: left ? "Expires in" : "Expires", v: left || "now" },
@@ -330,7 +339,7 @@
       raw: text || (detail ? "" : "loading the full text…"),
       src: p.source ? `Source: ${p.source}` : "",
       link: link ? { href: link, text: "Official bulletin" } : null,
-      maxWidth: "min(360px, 88vw)" });
+      anchor: narrow ? "top" : undefined, maxWidth: "min(360px, 88vw)" });
     highlightAlert(p.id);
     alertPopup.on("close", () => { if (alertTick) { clearInterval(alertTick); alertTick = null; } highlightAlert(""); });
     // the countdown is the one number on this card that goes stale while you
@@ -392,7 +401,7 @@
           tiles: ["https://geo.weather.gc.ca/geomet?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=Current-Alerts&CRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=true&STYLES="] });
         M().addLayer({ id: "ec-alerts", type: "raster", source: "ec-alerts", paint: { "raster-opacity": 0.55, "raster-fade-duration": 0 } }, WX.fn.firstSymbolId());
       }
-      WX.fn.toast(`${gj.features.length} warning areas plus Environment Canada · tap one for the detail`, 4500);
+      WX.fn.toast(`${gj.features.length} warning areas plus Environment Canada · tap one to read it`, 4500);
     } catch (e) { WX.fn.toast("Alerts unavailable", 4000, "error"); state.alerts = false; $("#alerts-toggle").classList.remove("on"); }
   }
   function clearAlerts() { closeAlertCard(); ["alerts-hi", "alerts-line", "alerts-fill", "ec-alerts"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); ["alerts", "ec-alerts"].forEach((sname) => M().getSource(sname) && M().removeSource(sname)); }
@@ -470,7 +479,7 @@
       ${o.raw ? `<div class="mc-raw">${escH(o.raw)}</div>` : ""}
       ${o.src ? `<div class="mc-src">${escH(o.src)}</div>` : ""}
       <div class="mc-foot">${o.link ? `<a class="qp-link" href="${escH(o.link.href)}" target="_blank" rel="noopener">${escH(o.link.text)} ↗</a>` : "<span></span>"}<button class="mc-close" type="button">close</button></div>`;
-    const pop = new maplibregl.Popup({ className: `quake-pop mapcard ${cls}`, closeButton: false, focusAfterOpen: false, maxWidth: o.maxWidth || "320px", offset: 12 })
+    const pop = new maplibregl.Popup({ className: `quake-pop mapcard ${cls}`, closeButton: false, focusAfterOpen: false, maxWidth: o.maxWidth || "320px", offset: 12, anchor: o.anchor })
       .setLngLat(lngLat).setHTML(html).addTo(M());
     pop.getElement().querySelector(".mc-close").addEventListener("click", () => pop.remove());
     return pop;

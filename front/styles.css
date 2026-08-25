@@ -1211,6 +1211,8 @@ body:has(#point[hidden]) #centre-mark { display: block; }
 .alert-pop .mc-raw { font: 500 11.5px/1.45 var(--font-body); max-height: 150px; }
 .alert-pop dd { font: 600 11.5px var(--font-display); overflow-wrap: anywhere; }
 .alert-pop .mc-hero b { font-size: 17px; }
+/* a phone has the tape under the card and no room to spare above it */
+@media (max-width: 560px) { .alert-pop .mc-raw { max-height: 76px; } }
 
 /* ── alert cards, expanded: the CAP payload worn properly ─────────────── */
 /* the note and the warnings each own a full row of the card (they used to

@@ -69,7 +69,7 @@ def test_alert_polygons_open_a_map_card_and_highlight_themselves():
     # the toast clipped every long area name at 160 characters
     assert 'WX.fn.toast(`${p.event} · ${p.area}`' not in ov
     assert 'openAlertCard(e.lngLat, f.properties)' in ov
-    assert 'mapCard(lngLat, "alert-pop"' in ov
+    assert "function openAlertCard(" in ov and 'mapCard(at, "alert-pop"' in ov
     # the clicked shape wears a heavier outline while its card is open
     assert 'id: "alerts-hi"' in ov and 'M().setFilter("alerts-hi", ["==", ["get", "id"]' in ov
     # and the card asks for the prose the layer deliberately does not carry
