@@ -85,7 +85,7 @@
     if ($("#settings")) return;
     const scrim = document.createElement("div"); scrim.id = "settings-scrim"; scrim.hidden = true;
     const el = document.createElement("aside"); el.id = "settings"; el.hidden = true;
-    el.innerHTML = `<div class="sh"><div><b>Settings</b></div><button class="icon" id="settings-close" title="Close">×</button></div>
+    el.innerHTML = `<div class="sh"><div><b>Settings</b></div><button class="icon" id="settings-close" type="button" title="Close" aria-label="Close settings">×</button></div>
       <div class="sbody">
         <div class="grp"><h4>Measurement system</h4><div class="presets">
           ${Object.entries(PRESETS).map(([key, p]) => `<button class="preset" data-preset="${key}"><b>${p.label}</b><small>${p.note}</small></button>`).join("")}

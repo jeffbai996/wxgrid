@@ -35,7 +35,7 @@
       el = document.createElement("div"); el.id = "xs"; el.hidden = true;
       el.innerHTML = `<div class="xs-head"><span class="xs-title">Cross section</span><span class="xs-sub"></span>
         <span class="xs-legend"><span><i></i>temperature</span><span>— height</span></span></div>
-        <button class="icon xs-close" title="Close">×</button><canvas></canvas>`;
+        <button class="icon xs-close" type="button" title="Close" aria-label="Close the cross section">×</button><canvas></canvas>`;
       document.body.appendChild(el);
       el.querySelector(".xs-close").onclick = stop;
       const c = el.querySelector("canvas");

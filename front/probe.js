@@ -142,7 +142,7 @@
     if (!pinMarker) {
       const el = document.createElement("div");
       el.className = "wx-pin";
-      el.innerHTML = `<div class="flag"><span class="val">…</span><button class="x" title="Remove">×</button></div><i class="stem"></i><i class="dot"></i>`;
+      el.innerHTML = `<div class="flag"><span class="val">…</span><button class="x" type="button" title="Remove" aria-label="Remove this pin">×</button></div><i class="stem"></i><i class="dot"></i>`;
       pinMarker = new maplibregl.Marker({ element: el, draggable: true, anchor: "bottom" });
       pinMarker.setLngLat(ll).addTo(WX.map);
       pinMarker.on("drag", pinUpdate);
