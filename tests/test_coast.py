@@ -51,6 +51,7 @@ def _valid(rid, steps):
 
 def setup_function():
     coast._masks.clear()
+    coast._series_cache.clear()      # the fakes reuse run ids; the cache keys on them
 
 
 def test_nearest_water_walks_out_to_the_sea_and_names_the_direction():

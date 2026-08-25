@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import math
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -37,8 +38,17 @@ MATCH_HOURS = 3.0
 COMPASS = ("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
            "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
 
+VARS = (("swh", 2), ("mwp", 1), ("mwd", 0), ("sst", 2))
+
 _masks: dict[tuple[str, str], np.ndarray | None] = {}
 _masks_lock = threading.Lock()
+_series_cache: dict[tuple, list | None] = {}
+_series_lock = threading.Lock()
+# The four field reads are four chunk decompressions, and blosc drops the GIL,
+# so they go out together rather than one after another. Its own pool: this
+# runs inside a task on the API's pool, and a pool that waits on itself is a
+# deadlock looking for a busy afternoon.
+_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="coast")
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -155,14 +165,30 @@ def align(src_valid: list, vals: list, dst_valid: list, tol_h: float = MATCH_HOU
 
 
 def _series(r, var: str, lat: float, lon: float, nd: int = 2) -> list | None:
+    """One field's series at one water cell, remembered.
+
+    A point read decompresses a chunk, and this asks for four fields off a run
+    the card is not otherwise touching — enough to double the cost of opening
+    a card if every open pays it. The answer depends only on (run, field,
+    cell), and a whole coastline shares one cell, so the second card anyone
+    opens near the first is free."""
     if var not in r.variables:
         return None
+    key = (r.model, r.rid, var, round(lat, 3), round(lon, 3), nd)
+    with _series_lock:
+        if key in _series_cache:
+            return _series_cache[key]
     try:
-        vals = r.point(var, lat, lon)
+        raw = r.point(var, lat, lon)
+        vals = [None if np.isnan(x) else round(float(x), nd) for x in raw]
     except Exception as exc:                                       # noqa: BLE001
         log.info("coast series %s: %s", var, exc)
-        return None
-    return [None if np.isnan(x) else round(float(x), nd) for x in vals]
+        vals = None
+    with _series_lock:
+        if len(_series_cache) > 512:                               # crude bound
+            _series_cache.clear()
+        _series_cache[key] = vals
+    return vals
 
 
 def run_valid(r) -> list:
@@ -208,37 +234,42 @@ def probe(r, lat: float, lon: float, valid: list, seas: list | None = None) -> d
            "lat": round(cell_lat, 3), "lon": round(cell_lon, 3),
            "grid_km": round(abs(sea.dlat) * 111.2, 1),
            "model": sea.model, "run": sea.rid}
-    times: dict[int, list] = {}
-    sites: dict[int, tuple | None] = {id(sea): site[1]}
-
-    def site_for(src):
-        """Where this particular run thinks the water is. The wave grid and
-        the SST mask disagree by a cell all along a coast, so a field read at
-        another run's cell can come back empty even though the run has the
-        field a gridpoint over."""
-        key = id(src)
-        if key not in sites:
-            m = sea_mask(src)
-            sites[key] = nearest_water(src, m, lat, lon) if (m is not None and src.contains(lat, lon)) else None
-        return sites[key]
 
     def filled(vals) -> bool:
         return bool(vals) and any(v is not None for v in vals)
 
-    for var, nd in (("swh", 2), ("mwp", 1), ("mwd", 0), ("sst", 2)):
-        for src in seas:
-            if var not in src.variables:
-                continue
-            vals = _series(src, var, cell_lat, cell_lon, nd) if src.contains(cell_lat, cell_lon) else None
-            if not filled(vals):
-                own = site_for(src)
-                vals = _series(src, var, own[3], own[4], nd) if own else None
-            if not filled(vals):
-                continue
-            # Even the card's own run goes through align: the wave fields are
-            # stored on 6 h steps under a surface tier that can be 3-hourly,
-            # so the holes are there whether or not the run is borrowed.
-            src_valid = times.setdefault(id(src), run_valid(src))
-            out[var] = align(src_valid, vals, valid)
-            break
+    # One run per field: the first in the list that carries it.
+    plan = []
+    for var, nd in VARS:
+        src = next((x for x in seas if var in x.variables), None)
+        if src is not None:
+            plan.append((var, nd, src))
+    # Where each of those runs thinks the water is. The wave grid and the SST
+    # mask part company by a cell all along a coast, so a field read at
+    # another run's cell can come back empty even though that run has the
+    # field a gridpoint over.
+    sites: dict[int, tuple | None] = {id(sea): site[1]}
+    for _var, _nd, src in plan:
+        if id(src) in sites:
+            continue
+        m = sea_mask(src)
+        sites[id(src)] = nearest_water(src, m, lat, lon) if (m is not None and src.contains(lat, lon)) else None
+
+    def read(job):
+        var, nd, src = job
+        vals = _series(src, var, cell_lat, cell_lon, nd) if src.contains(cell_lat, cell_lon) else None
+        if not filled(vals):
+            own = sites.get(id(src))
+            vals = _series(src, var, own[3], own[4], nd) if own else None
+        return var, src, vals
+
+    times: dict[int, list] = {}
+    for var, src, vals in _pool.map(read, plan):
+        if not filled(vals):
+            continue
+        # Even the card's own run goes through align: the wave fields are
+        # stored on 6 h steps under a surface tier that can be 3-hourly, so
+        # the holes are there whether or not the run is borrowed.
+        src_valid = times.setdefault(id(src), run_valid(src))
+        out[var] = align(src_valid, vals, valid)
     return out
