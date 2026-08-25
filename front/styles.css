@@ -289,8 +289,10 @@ body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 70
 .rail-opacity input { flex: 1; min-width: 0; accent-color: var(--accent); height: 14px; }
 .rail-opacity i { font: 600 10.5px var(--font-mono); font-style: normal; color: var(--dim); min-width: 30px; text-align: right; }
 .rail-run select { flex: 1; min-width: 0; appearance: none; background: rgba(255,255,255,.05); color: var(--fg);
-  border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font: 600 11.5px var(--font-display); cursor: pointer; }
-:root[data-theme="light"] .rail-run select { background: rgba(0,0,0,.04); }
+  border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font: 600 11.5px var(--font-display); cursor: pointer;
+  color-scheme: dark; }
+.rail-run select option { background: var(--panel-solid); color: var(--fg); }
+:root[data-theme="light"] .rail-run select { background: rgba(0,0,0,.04); color-scheme: light; }
 .seg.variant { margin-left: 8px; }
 .seg.variant button { white-space: nowrap; }
 /* Keep all ten pressure levels on screen without shrinking the type. */
@@ -861,7 +863,7 @@ table.wtape tr.r-hour td.sun-set::after { opacity: .5; }
 table.wtape tr.r-rain td .snow { color: #cfe8ff; }
 table.wtape tr.r-prob td { color: #71b8ff; font-weight: 600; font-size: 11px; }
 table.wtape tr.r-wind td span { display: inline-flex; align-items: center; justify-content: center; min-width: 26px;
-  padding: 1px 4px; border-radius: 5px; color: var(--fg); font-weight: 700; font-size: 12px; line-height: 1.35; }
+  padding: 1px 4px; border-radius: 5px; color: var(--fg); font: 700 12px/1.35 var(--font-display); }
 table.wtape tr.r-dir td { height: 20px; }
 /* a real arrow, not a corner of a box: readable at 11 px and unambiguous
    about which way the wind is going */
@@ -1098,11 +1100,12 @@ table.wtape.agg tr.r-temp td, table.wtape.agg tr.r-feels td { letter-spacing: -.
    a stacking context, so this one rule settles the order. */
 .maplibregl-popup { z-index: 5; }
 #centre-mark { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px;
-  margin: -6px 0 0 -6px; z-index: 4; pointer-events: none; opacity: .95; display: none; }
+  margin: -6px 0 0 -6px; z-index: 4; pointer-events: none; opacity: .8; display: none;
+  filter: drop-shadow(0 0 1.5px rgba(0,0,0,.8)); }
 #centre-mark::before, #centre-mark::after { content: ""; position: absolute; background: var(--fg);
-  box-shadow: 0 0 0 1px rgba(0,0,0,.65); }
-#centre-mark::before { left: 50%; top: 0; width: 1.5px; height: 100%; transform: translateX(-.75px); }
-#centre-mark::after  { top: 50%; left: 0; height: 1.5px; width: 100%; transform: translateY(-.75px); }
+  box-shadow: 0 0 3px rgba(0,0,0,.85); }
+#centre-mark::before { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-.5px); }
+#centre-mark::after  { top: 50%; left: 0; height: 1px; width: 100%; transform: translateY(-.5px); }
 body:has(#point[hidden]) #centre-mark { display: block; }
 
 /* earthquake card (was a toast banner; Jeff 2026-08-20) */

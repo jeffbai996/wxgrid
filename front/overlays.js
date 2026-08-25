@@ -366,6 +366,8 @@
     const [slon, slat] = f.geometry.coordinates;
     // Which desk is tracking it: the feed says (NHC, CPHC, JTWC).
     const agency = p.agency || (/^cp/i.test(p.id || "") ? "CPHC · Honolulu" : "NHC · Miami");
+    const mv = p.movement && !/null/.test(p.movement) ? p.movement : "";
+    let mvShown = false;
     if (stormPopup) stormPopup.remove();
     // the card brings the storm's past with it
     const showPast = (id) => ["storm-past", "storm-past-pts"].forEach((l) => M().getLayer(l) && M().setFilter(l, ["all", ["==", ["get", "layer"], "past"], ["==", ["get", "id"], id || ""]].concat(l.endsWith("pts") ? [["==", ["geometry-type"], "Point"]] : [])));
@@ -373,12 +375,23 @@
     stormPopup = mapCard([slon, slat], "storm-pop", {
       icon: WX.CYCLONE_SVG || "", color: p.category_color || "#ef786f",
       title: `${p.class} ${p.name}`, pill: p.category, sub: p.category_label, ago,
-      hero: [p.intensity_kt && { k: "Winds", v: p.intensity_kt, unit: "kt", note: `${kmh} km/h` },
-             p.gusts && { k: "Gusts", v: p.gusts, unit: "kt", note: `${Math.round(p.gusts * 1.852)} km/h` },
-             p.pressure_mb && { k: "Pressure", v: p.pressure_mb, unit: "mb" }],
-      rows: [["Moving", p.movement && !/null/.test(p.movement) ? p.movement : ""],
+      hero: (() => {
+        const hero = [p.intensity_kt && { k: "Winds", v: p.intensity_kt, unit: "kt", note: `${kmh} km/h` },
+                      p.gusts && { k: "Gusts", v: p.gusts, unit: "kt", note: `${Math.round(p.gusts * 1.852)} km/h` },
+                      p.pressure_mb && { k: "Pressure", v: p.pressure_mb, unit: "mb" }].filter(Boolean);
+        // A third stat fills the NHC card's empty right slot: heading as a
+        // compass point, speed as the note. JTWC cards are already full.
+        if (hero.length < 3 && mv) {
+          const deg = /(\d+)\s*°/.exec(mv), kt = /at\s+(\d+)/.exec(mv);
+          const dir = deg ? ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(+deg[1] / 22.5) % 16] : mv.split(" ")[0];
+          hero.push({ k: "Moving", v: dir, unit: "", note: kt ? `at ${kt[1]} kt` : "" });
+          mvShown = true;
+        }
+        return hero;
+      })(),
+      rows: [mvShown ? null : ["Moving", mv],
              ["Position", WX.fmtCoords ? WX.fmtCoords(slat, slon, 1) : `${slat.toFixed(1)}, ${slon.toFixed(1)}`],
-             ["Agency", agency], ["Advisory", p.advisory ? `#${p.advisory}` : ""]],
+             ["Agency", agency], ["Advisory", p.advisory ? `#${p.advisory}` : ""]].filter(Boolean),
       link: p.url ? { href: p.url, text: "Public advisory" } : null });
     stormPopup.on("close", () => showPast(""));
   }

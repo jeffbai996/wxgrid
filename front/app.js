@@ -78,6 +78,7 @@
     iso: false, avy: false, resorts: false, resort: null, measure: false,
     alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false,
     sigmet: false, aurora: false, lightning: false, aq: false, route: false,
+    probeChip: localStorage.getItem("wxgrid.probe") === "1",
     base: localStorage.getItem("wxgrid.base") || "", night: false,
     terrain: localStorage.getItem("wxgrid.terrain") === "1", aqVar: localStorage.getItem("wxgrid.aqVar") || "pm2_5",
     opacity: Number(localStorage.getItem("wxgrid.opacity") || 100),
@@ -243,7 +244,7 @@
       const avy = feats.find((x) => x.layer.id === "avy-fill");
       if (avy) { state.tab = "winter"; }
     });
-    map.on("mousemove", (e) => { if (WX.probe) WX.probe.hover(e.lngLat); });
+    map.on("mousemove", (e) => { if (WX.probe && state.probeChip) WX.probe.hover(e.lngLat); });
     map.on("mouseout", () => { if (WX.probe) WX.probe.hover(null); });
     map.on("moveend", () => { if (WX.provider) WX.provider.refresh(); });
     map.on("mouseenter", "resort-pts", () => map.getCanvas().style.cursor = "pointer");
@@ -560,7 +561,7 @@
       <label class="rail-opacity rail-density" title="Particle density">
         <span>Density</span><input type="range" min="0" max="100" step="5" value="${state.particleDensity}"><i>${state.particleDensity}%</i></label>
       <div class="rail-seg rail-run" title="Forecast run (UTC)">
-        <span>Run</span>
+        <span>Model run</span>
         <select id="rail-run">${modelEntry().runs.map((r) => `<option value="${r.run}"${r.run === state.run ? " selected" : ""}>${r.run.slice(5, 10)} · ${r.run.slice(11)}Z</option>`).join("")}</select>
       </div>`;
     const railRun = rail.querySelector("#rail-run");
@@ -761,6 +762,11 @@
     $("#terrain-toggle").onclick = () => { state.terrain = !state.terrain; localStorage.setItem("wxgrid.terrain", state.terrain ? "1" : "0"); $("#terrain-toggle").classList.toggle("on", state.terrain); if (state.terrain) WX.ov.loadTerrain(); else WX.ov.clearTerrain(); };
     $("#terrain-toggle").classList.toggle("on", state.terrain); if (state.terrain) WX.ov.loadTerrain();
     $("#night-toggle").onclick = () => { state.night = !state.night; $("#night-toggle").classList.toggle("on", state.night); if (state.night) WX.ov.updateNight(); else WX.ov.clearNight(); };
+    const pt = $("#probe-toggle");
+    if (pt) {
+      pt.classList.toggle("on", state.probeChip);
+      pt.onclick = () => { state.probeChip = !state.probeChip; localStorage.setItem("wxgrid.probe", state.probeChip ? "1" : "0"); pt.classList.toggle("on", state.probeChip); if (!state.probeChip && WX.probe) WX.probe.hover(null); };
+    }
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
     $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms);
       // storm positions are "now"; the particles must be too, or the wind

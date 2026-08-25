@@ -132,8 +132,11 @@
 
     const c = gj.counts || {};
     const total = (gj.features || []).length;
-    const parts = ["CONVECTIVE", "TS", "TURB", "ICE", "IFR", "MTW", "ASH", "TC"].filter((h) => c[h]).map((h) => `${c[h]} ${h}`);
-    toast(total ? `${total} SIGMET/AIRMET areas in force: ${parts.join(", ")}. Tap for details.`
+    // Top two hazard kinds only: the full census overflows the pill and the
+    // map already shows every area anyway.
+    const parts = ["CONVECTIVE", "TS", "TURB", "ICE", "IFR", "MTW", "ASH", "TC"].filter((h) => c[h])
+      .sort((a, b) => c[b] - c[a]).slice(0, 2).map((h) => `${c[h]} ${h}`);
+    toast(total ? `${total} SIGMET/AIRMET areas · mostly ${parts.join(", ")} · tap one for detail`
                 : "No SIGMETs or AIRMETs in force right now.", 6500);
   }
 
