@@ -6,6 +6,10 @@
 - `colorize`      : fixed per-variable colour ramps → RGBA PNG bytes. Fixed
                     ranges, not per-frame min/max, so colours mean the same
                     thing at every step and across models.
+- `encode_field`  : the same Mercator field as DATA — a lossless 16-bit PNG
+                    the browser colourises on the GPU (front/field.js). The
+                    ramps, the alpha rules and the encoding range are
+                    published in the catalog so the two paths agree.
 - `wind_json`     : coarse u/v grid for the particle layer.
 
 Pure functions; the API layer caches their output on disk.
@@ -385,15 +389,70 @@ def _lut_for(layer: str, level: int | None) -> np.ndarray:
     return _LEVEL_LUTS[key]
 
 
+# ── alpha rules ───────────────────────────────────────────────────────────
+# How see-through a pixel is as a function of its DISPLAY-unit value. One
+# table, used by `colorize` here and published in the catalog for the GPU
+# path, so the browser cannot drift from the server's picture:
+#   ramp  clip((x - x0) / k) ** p     rain fades in over the first millimetre
+#   abs   clip(|x| / k)               diverging fields: nothing at zero
+#   fall  clip((x0 - x) / k)          visibility: good visibility is the map
+#   step  1 where x >= x0             precip type: any kind, or nothing
+#   mask  1                           land is NaN: sea temp, waves
+# Layers not listed here have constant alpha (the palette PNGs).
+# Missing data is transparent under every rule.
+ALPHA_RULES: dict[str, dict] = {
+    "tp6": {"kind": "ramp", "k": 1.0}, "tp24": {"kind": "ramp", "k": 2.0}, "tp72": {"kind": "ramp", "k": 4.0},
+    "sf6": {"kind": "ramp", "k": 0.5}, "sf24": {"kind": "ramp", "k": 1.0}, "sf72": {"kind": "ramp", "k": 2.0},
+    "waves": {"kind": "mask"}, "wperiod": {"kind": "mask"}, "wavepower": {"kind": "mask"}, "sst": {"kind": "mask"},
+    "solar": {"kind": "ramp", "k": 120.0},        # night is the bare map
+    "uvi": {"kind": "ramp", "k": 1.0},            # night is transparent
+    "sd_cm": {"kind": "ramp", "k": 2.0},
+    "cape": {"kind": "ramp", "k": 300.0},         # nothing to see under ~300 J/kg
+    "prob_rain": {"kind": "ramp", "k": 30.0},     # a 5 % chance is the map, not a colour
+    "prob_gust": {"kind": "ramp", "k": 30.0},
+    "gfactor": {"kind": "ramp", "k": 3.0, "x0": 1.5},    # steady flow is the map
+    "vis": {"kind": "fall", "k": 8.0, "x0": 12.0},       # good visibility is the map itself
+    "ptype": {"kind": "step", "x0": 0.99},
+    "vort500": {"kind": "abs", "k": 4.0},         # quiescent air is transparent
+    "ptend": {"kind": "abs", "k": 1.2},           # a steady glass is the map
+    "dt24": {"kind": "abs", "k": 2.5},            # same-as-yesterday is the map
+    # clear sky shows the map through
+    "tcc": {"kind": "ramp", "k": 100.0, "p": 0.7}, "cloudlow": {"kind": "ramp", "k": 100.0, "p": 0.7},
+    "cloudmid": {"kind": "ramp", "k": 100.0, "p": 0.7}, "cloudhigh": {"kind": "ramp", "k": 100.0, "p": 0.7},
+    "fog": {"kind": "ramp", "k": 100.0, "p": 0.7},
+}
+# The alpha every rendered pixel is scaled by before the front end applies
+# its own per-layer opacity (LAYER_ALPHA in app.js). Both paths multiply it in.
+BASE_ALPHA = 0.78
+
+
+def alpha_for(layer: str, x: np.ndarray) -> np.ndarray:
+    """Per-pixel alpha in 0..1 from a DISPLAY-unit field (NaN already
+    substituted; the caller zeroes missing pixels afterwards)."""
+    rule = ALPHA_RULES.get(layer)
+    if rule is None or rule["kind"] == "mask":
+        return np.ones(x.shape, dtype=np.float32)
+    kind = rule["kind"]
+    if kind == "ramp":
+        a = np.clip((x - rule.get("x0", 0.0)) / rule["k"], 0, 1)
+        p = rule.get("p", 1.0)
+        return a ** p if p != 1.0 else a
+    if kind == "abs":
+        return np.clip(np.abs(x) / rule["k"], 0, 1)
+    if kind == "fall":
+        return np.clip((rule["x0"] - x) / rule["k"], 0, 1)
+    if kind == "step":
+        return np.where(x >= rule["x0"], 1.0, 0.0)
+    raise ValueError(f"unknown alpha rule {kind}")
+
+
 IMAGE_FORMATS = {"png": "image/png", "webp": "image/webp"}
 # The rendered pixels changed from native-size linear sampling to 2x
 # value-space interpolation. Keep that fact in the immutable cache key so an
 # old frame can never masquerade as the new output after deploy.
 LAYER_CACHE_VERSION = "r2x-v4"   # v4: warmed frames are real PNGs; v3 held WebP bytes under .png names
 # Layers whose alpha varies with the value, so they cannot be palette images.
-_RGBA_LAYERS = ("tp6", "tp24", "tp72", "cape", "tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar",
-                "sf6", "sf24", "sf72", "sd_cm", "waves", "wperiod", "wavepower", "uvi", "prob_rain", "prob_gust",
-                "vis", "sst", "ptype", "vort500", "ptend", "dt24", "gfactor")
+_RGBA_LAYERS = tuple(ALPHA_RULES)
 
 
 def pick_format(accept: str | None) -> str:
@@ -464,7 +523,7 @@ def _webp(rgba: np.ndarray, buf: io.BytesIO) -> bytes:
     return buf.getvalue()
 
 
-def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: str = "png",
+def colorize(field_display: np.ndarray, layer: str, alpha: float = BASE_ALPHA, fmt: str = "png",
              level: int | None = None) -> bytes:
     """PNG (or WebP) for a Mercator-projected field already in display units.
 
@@ -494,39 +553,11 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: st
     idx = np.clip((x - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
     if layer in _RGBA_LAYERS:
         rgba = lut[idx].copy()
-        if layer in ("tp6", "tp24", "tp72"):
-            # Rain: transparent where dry, ramping in over the first millimetre(s).
-            a = np.clip(x / {"tp6": 1.0, "tp24": 2.0, "tp72": 4.0}[layer], 0, 1)
-        elif layer in ("sf6", "sf24", "sf72"):
-            a = np.clip(x / {"sf6": 0.5, "sf24": 1.0, "sf72": 2.0}[layer], 0, 1)
-        elif layer in ("waves", "wperiod", "wavepower"):
-            a = np.where(np.isnan(field_display), 0.0, 1.0)      # land is NaN: show the map
-        elif layer == "solar":
-            a = np.clip(x / 120.0, 0, 1)                         # night is the bare map
-        elif layer == "uvi":
-            a = np.clip(x / 1.0, 0, 1)                            # night is transparent
-        elif layer == "sd_cm":
-            a = np.clip(x / 2.0, 0, 1)
-        elif layer == "cape":
-            a = np.clip(x / 300.0, 0, 1)            # nothing to see under ~300 J/kg
-        elif layer in ("prob_rain", "prob_gust"):
-            a = np.clip(x / 30.0, 0, 1)             # a 5 % chance is the map, not a colour
-        elif layer == "gfactor":
-            a = np.clip((x - 1.5) / 3.0, 0, 1)      # steady flow is the map
-        elif layer == "vis":
-            a = np.clip((12.0 - x) / 8.0, 0, 1)     # good visibility is the map itself
-        elif layer == "sst":
-            a = np.where(np.isnan(field_display), 0.0, 1.0)      # land is NaN: show the map
-        elif layer == "ptype":
-            a = np.where(x >= 0.99, 1.0, 0.0)
-        elif layer == "vort500":
-            a = np.clip(np.abs(x) / 4.0, 0, 1)      # quiescent air is transparent
-        elif layer == "ptend":
-            a = np.clip(np.abs(x) / 1.2, 0, 1)      # a steady glass is the map
-        elif layer == "dt24":
-            a = np.clip(np.abs(x) / 2.5, 0, 1)      # same-as-yesterday is the map
-        else:
-            a = np.clip(x / 100.0, 0, 1) ** 0.7     # clear sky shows the map through
+        a = alpha_for(layer, x)
+        # Missing data is transparent under every rule. It used to inherit
+        # the lo colour where a rule reads high at lo (the poles of the
+        # vorticity chart came out solid blue).
+        a = np.where(np.isnan(field_display), 0.0, a)
         rgba[..., 3] = (a * alpha * 255).astype(np.uint8)
         if fmt == "webp":
             return _webp(rgba, buf)
@@ -548,10 +579,114 @@ def colorize(field_display: np.ndarray, layer: str, alpha: float = 0.78, fmt: st
     return buf.getvalue()
 
 
+# ── the field itself ──────────────────────────────────────────────────────
+# The GPU path ships the model grid as data and colourises in the browser.
+# Each value is a 16-bit integer over a fixed per-layer range, split across
+# the red (high byte) and green (low byte) channels of an ordinary RGB PNG:
+# every browser decodes that natively and losslessly, and hi*256+lo is
+# linear in the channels, so the shader's own bilinear taps reconstruct
+# exactly. Blue is the mask: 255 where the model has a value, 0 where it
+# does not (land under a wave field, a step the model did not publish). A
+# 16-bit grey PNG would carry the same bits, but the canvas and texture
+# paths in browsers quietly flatten it to 8.
+#
+# The grid goes out as stored (721x1440 for the global models, the native
+# subgrid for a regional one), not reprojected: the shader turns each
+# screen pixel into a latitude and samples the row, which is the same
+# interpolation `to_mercator` does for the PNG path with half the pixels
+# and no second resampling.
+#
+# The range is wider than the ramp on purpose: the ramp is what the map
+# colours, the range is what the probe can read back. Values are rounded
+# to FIELD_BITS of the 16-bit slot (4096 steps over 160 °C is 0.04 °C,
+# finer than the store's own float16 and 16 times the LUT's resolution);
+# the zeroed low bits are what let deflate work, measured 2026-08-25 at
+# 15-45 % fewer bytes than the full 16 bits. The decoder never needs to
+# know: it always reads hi*256+lo over lo..hi.
+# Changing a range or the depth changes the bytes, so bump FIELD_VERSION
+# with it — the version rides in the URL, which is what the service worker
+# caches on.
+FIELD_VERSION = 1
+FIELD_BITS = 12
+_FIELD_BITS = {"ptype": 16}         # categorical: the four codes stay exact
+FIELD_RANGE: dict[str, tuple[float, float]] = {
+    "temp": (-100.0, 60.0), "feels": (-100.0, 60.0), "d2m": (-100.0, 60.0), "wbt": (-100.0, 60.0),
+    "sst": (-5.0, 45.0), "dt24": (-50.0, 50.0),
+    "wind": (0.0, 120.0), "gust": (0.0, 120.0), "gfactor": (0.0, 60.0),
+    "msl": (850.0, 1100.0), "ptend": (-30.0, 30.0),
+    "tp6": (0.0, 300.0), "tp24": (0.0, 600.0), "tp72": (0.0, 1500.0),
+    "sf6": (0.0, 150.0), "sf24": (0.0, 400.0), "sf72": (0.0, 1000.0), "sd_cm": (0.0, 3000.0),
+    "tcc": (0.0, 100.0), "cloudlow": (0.0, 100.0), "cloudmid": (0.0, 100.0), "cloudhigh": (0.0, 100.0),
+    "fog": (0.0, 100.0), "rh": (0.0, 100.0), "prob_rain": (0.0, 100.0), "prob_gust": (0.0, 100.0),
+    "solar": (0.0, 1400.0), "uvi": (0.0, 20.0), "cape": (0.0, 10000.0),
+    "frz": (-500.0, 8000.0), "cbase": (0.0, 20000.0), "vis": (0.0, 100.0),
+    "waves": (0.0, 30.0), "wperiod": (0.0, 40.0), "wavepower": (0.0, 2000.0),
+    "ptype": (0.0, 3.0), "vort500": (-100.0, 100.0),
+}
+
+
+def field_range(layer: str, level: int | None = None) -> tuple[float, float]:
+    """Encoding range in display units. Height follows its level window with
+    half a window of room either side; anything unlisted gets its ramp with
+    the same margin."""
+    if layer in FIELD_RANGE and layer != "gh":
+        return FIELD_RANGE[layer]
+    ramp = ramp_for(layer, level)
+    lo, hi = float(ramp["lo"]), float(ramp["hi"])
+    span = hi - lo
+    return (lo - 0.5 * span, hi + 0.5 * span)
+
+
+def field_cache_name(step: int, tag: str) -> str:
+    return f"{step:03d}-field-v{FIELD_VERSION}-{tag}.png"
+
+
+def encode_field(field_display: np.ndarray, layer: str, level: int | None = None) -> bytes:
+    """RGB PNG of a grid in display units: R/G the 16-bit value over
+    field_range(), B the validity mask. Missing pixels are (0, 0, 0)."""
+    lo, hi = field_range(layer, level)
+    step = 1 << (16 - _FIELD_BITS.get(layer, FIELD_BITS))
+    x = np.asarray(field_display, dtype=np.float32)
+    good = np.isfinite(x)
+    # nearest multiple of `step` on the full 16-bit scale, so the decoder's
+    # q/65535 stays exact and the dropped bits are zero
+    q = np.rint((np.where(good, x, lo) - lo) / (hi - lo) * (65535.0 / step)) * step
+    q = np.clip(np.nan_to_num(q), 0, 65535 - 65535 % step).astype(np.uint16)
+    q[~good] = 0
+    rgb = np.empty(x.shape + (3,), dtype=np.uint8)
+    rgb[..., 0] = q >> 8
+    rgb[..., 1] = q & 255
+    rgb[..., 2] = np.where(good, 255, 0).astype(np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(rgb, "RGB").save(buf, format="PNG", optimize=False, compress_level=6)
+    return buf.getvalue()
+
+
+def field_resolution(layer: str, level: int | None = None) -> float:
+    """The value step one code represents: the most a probe reading can be
+    off by, and the honest precision to quote for the field files."""
+    lo, hi = field_range(layer, level)
+    return (hi - lo) * (1 << (16 - _FIELD_BITS.get(layer, FIELD_BITS))) / 65535.0
+
+
+def decode_field(png: bytes, layer: str, level: int | None = None) -> np.ndarray:
+    """The inverse of encode_field: what the browser reconstructs. For
+    tests and Python consumers."""
+    lo, hi = field_range(layer, level)
+    rgb = np.asarray(Image.open(io.BytesIO(png)).convert("RGB"))
+    q = rgb[..., 0].astype(np.float32) * 256.0 + rgb[..., 1].astype(np.float32)
+    out = (lo + q / 65535.0 * (hi - lo)).astype(np.float32)
+    out[rgb[..., 2] == 0] = np.nan
+    return out
+
 def legend(layer: str, level: int | None = None) -> dict:
     ramp = ramp_for(layer, level)
+    lo, hi = field_range(layer, level)
     out = {"layer": layer, "units": ramp["units"], "lo": ramp["lo"], "hi": ramp["hi"],
-           "stops": [{"v": v, "rgb": list(rgb)} for v, rgb in ramp["stops"]]}
+           "stops": [{"v": v, "rgb": list(rgb)} for v, rgb in ramp["stops"]],
+           # what the field PNG encodes, and how the browser fades it
+           "enc": {"lo": lo, "hi": hi},
+           "alpha": {"base": BASE_ALPHA, **ALPHA_RULES.get(layer, {"kind": "const"})}}
     # Height reads on a different scale at every level, so the catalog carries
     # all of them and the legend bar picks the one the map is showing.
     if layer == "gh" and level is None:

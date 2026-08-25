@@ -6,6 +6,7 @@ What Pages gets (no server, no query strings):
   index.html + front assets (front/private/ excluded, a <meta wxgrid-mode=static> injected)
   api/models.json                              catalog for the one model/run
   api/layer/M/R/S/<layer>[-<level>].png        Mercator PNGs, downsampled 2×
+  api/field/M/R/S/<layer>[-<level>].png        with --fields: the 16-bit field files the GPU path draws
   api/wind/M/R/S[-<level>].json                coarse u/v for particles
   api/isolines/M/R/S/<var>.json                isobars etc.
   api/pt/M/R/<ty>_<tx>.json                    point tiles: 10°×10° blocks of a 2° point grid,
@@ -84,7 +85,7 @@ def _rewrite_index(html: str) -> str:
             raise RuntimeError(f"static build could not patch index.html: {pattern!r} matched {n} times")
     return html
 
-def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
+def build(out: Path, model_key: str, hours: list[int], scale: int = 2, fields: bool = False) -> dict:
     model = MODELS[model_key]
     runs = list_runs(model_key)
     if not runs:
@@ -121,11 +122,18 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
     STATIC_SKIP = {"tp72", "sf72", "rh", "wperiod"}
     layers = [l for l in LAYERS if _available(r, l) and l not in STATIC_SKIP]
     catalog = {"models": [{"key": model_key, "label": model.label, "short": model.short, "attribution": model.attribution,
+                           "domain": list(model.domain), "regional": model.regional,
+                           "grid_spec": {"lat0": model.lat0, "lon0": model.lon0, "dlat": model.dlat, "dlon": model.dlon,
+                                         "ny": model.grid_shape[0], "nx": model.grid_shape[1]},
                            "runs": [{"run": rid, "steps": steps, "layers": layers,
                                      "levels": [l for l in levels if l in set(WIND_LEVELS) | set(TEMP_LEVELS)],
                                      "valid_from": parse_run_id(rid).isoformat()}]}],
                "layers": [render.legend(l) for l in LAYERS], "levels": list(WIND_LEVELS),
                "static": {"built": rid, "point_deg": POINT_DEG, "note": "static demo: one model, 12-hourly, 2° point grid"}}
+    # Without the field files the front end takes the PNG path on its own:
+    # it only tries /api/field when the catalog advertises it.
+    if fields:
+        catalog["field"] = {"v": render.FIELD_VERSION}
     api.mkdir(parents=True)
     (api / "models.json").write_text(json.dumps(catalog))
 
@@ -133,6 +141,9 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
     n_png = 0
     for h in steps:
         ldir = api / "layer" / model_key / rid / str(h); ldir.mkdir(parents=True, exist_ok=True)
+        fdir = api / "field" / model_key / rid / str(h)
+        if fields:
+            fdir.mkdir(parents=True, exist_ok=True)
         wdir = api / "wind" / model_key / rid; wdir.mkdir(parents=True, exist_ok=True)
         idir = api / "isolines" / model_key / rid / str(h); idir.mkdir(parents=True, exist_ok=True)
         for layer in layers:
@@ -150,8 +161,11 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2) -> dict:
                 field = field_for(r, layer, lvl, h)
                 disp = render.DISPLAY[layer](render.to_mercator(field))
                 png = _shrink_png(render.colorize(disp, layer, level=lvl), scale)
-                (ldir / f"{layer}{'' if lvl is None else '-' + str(lvl)}.png").write_bytes(png)
+                name = f"{layer}{'' if lvl is None else '-' + str(lvl)}.png"
+                (ldir / name).write_bytes(png)
                 n_png += 1
+                if fields:
+                    (fdir / name).write_bytes(render.encode_field(render.DISPLAY[layer](field), layer, level=lvl))
                 if layer == "wind":
                     (wdir / f"{h}{'' if lvl is None else '-' + str(lvl)}.json").write_bytes(render.wind_json(r.slab(vars_[0], h), r.slab(vars_[1], h), factor=6, decimals=0))
         # isolines: msl + frz (+ temp) at this step
@@ -221,10 +235,11 @@ def main(argv=None) -> int:
     ap.add_argument("--model", default="aifs", choices=sorted(MODELS))
     ap.add_argument("--hours", default="0:96:12", help="start:stop:step forecast hours")
     ap.add_argument("--scale", type=int, default=2, help="downsample layers by this factor")
+    ap.add_argument("--fields", action="store_true", help="also write the 16-bit field files (GPU shading in the demo; doubles the payload)")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     a, b, c = (int(x) for x in args.hours.split(":"))
-    print(json.dumps(build(Path(args.out), args.model, list(range(a, b + 1, c)), args.scale)))
+    print(json.dumps(build(Path(args.out), args.model, list(range(a, b + 1, c)), args.scale, fields=args.fields)))
     return 0
 
 

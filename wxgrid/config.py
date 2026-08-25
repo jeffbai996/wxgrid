@@ -12,7 +12,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("WXGRID_DATA_DIR", BASE_DIR / "data"))
 STORE_DIR = DATA_DIR / "store"          # Zarr, one group per model run
 GRIB_DIR = DATA_DIR / "grib"            # transient downloads, wiped after ingest
-CACHE_DIR = DATA_DIR / "cache"          # rendered PNG/JSON, keyed by (model, run, step, var)
+# Rendered PNG/JSON, keyed by (model, run, step, var). Separately overridable
+# so a second instance can read a live store without writing into its cache.
+CACHE_DIR = Path(os.environ.get("WXGRID_CACHE_DIR", DATA_DIR / "cache"))
 FRONT_DIR = BASE_DIR / "front"
 
 HOST = os.environ.get("WXGRID_HOST", "127.0.0.1")   # loopback; tailscale serve fronts it

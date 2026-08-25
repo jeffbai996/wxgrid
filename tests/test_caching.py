@@ -73,3 +73,26 @@ def test_card_stream_still_carries_the_point(client):
     assert first["kind"] == "point" and "error" not in first, first
     assert first["data"]["available"] and first["data"]["series"]["t2m"]
     assert api.point_series(lat=49.2, lon=-123.1, model="gfs", run=RID)["available"]
+
+
+def test_field_files_are_immutable_data_images(client):
+    r = client.get(f"/api/field/gfs/{RID}/0/temp.png")
+    assert r.status_code == 200 and "immutable" in r.headers["cache-control"]
+    assert r.headers["content-type"] == "image/png" and r.content[:8] == b"\x89PNG\r\n\x1a\n"
+    from wxgrid import render
+    from wxgrid.config import GRID_LAT_N, GRID_LON_N
+    back = render.decode_field(r.content, "temp")
+    assert back.shape == (GRID_LAT_N, GRID_LON_N)          # the store grid, not a Mercator image
+    assert abs(float(back[100, 100]) - (290.0 - 273.15)) <= render.field_resolution("temp")
+    assert client.get(f"/api/field/gfs/{RID}/0/nosuch.png").status_code == 404
+    assert client.get(f"/api/field/gfs/{RID}/0/temp.png", params={"level": 850}).status_code == 404
+
+
+def test_catalog_advertises_the_field_path(client):
+    cat = client.get("/api/models").json()
+    from wxgrid import render
+    assert cat["field"] == {"v": render.FIELD_VERSION}
+    gfs = next(m for m in cat["models"] if m["key"] == "gfs")
+    assert gfs["grid_spec"] == {"lat0": 90.0, "lon0": -180.0, "dlat": -0.25, "dlon": 0.25, "ny": 721, "nx": 1440}
+    temp = next(l for l in cat["layers"] if l["layer"] == "temp")
+    assert temp["enc"] == {"lo": -100.0, "hi": 60.0} and temp["alpha"]["kind"] == "const"

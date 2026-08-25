@@ -168,3 +168,105 @@ def test_height_legend_carries_a_ramp_for_every_level():
     # only the catalog entry carries the table; a level's own legend is flat
     assert "levels" not in render.legend("gh", 850)
     assert "levels" not in render.legend("temp")
+
+
+# ── the field path ────────────────────────────────────────────────────────
+
+def test_field_roundtrip_is_within_one_code_and_keeps_the_mask():
+    field = np.linspace(-60, 50, 64, dtype=np.float32)[None, :].repeat(3, axis=0)
+    field[1, 10:20] = np.nan
+    png = render.encode_field(field, "temp")
+    img = Image.open(io.BytesIO(png))
+    assert img.mode == "RGB" and img.size == (64, 3)
+    back = render.decode_field(png, "temp")
+    assert np.array_equal(np.isnan(back), np.isnan(field))
+    assert np.nanmax(np.abs(back - field)) <= render.field_resolution("temp")
+    assert render.field_resolution("temp") < 0.05                 # 12 bits over 160 °C
+    # missing pixels are all-zero so the mask channel is the only signal
+    px = np.asarray(img)
+    assert px[1, 15].tolist() == [0, 0, 0] and px[0, 15, 2] == 255
+
+
+def test_field_categories_survive_the_encoding_exactly():
+    field = np.array([[0.0, 1.0, 2.0, 3.0]], dtype=np.float32)
+    back = render.decode_field(render.encode_field(field, "ptype"), "ptype")
+    np.testing.assert_allclose(back, field, atol=1e-4)
+
+
+def test_field_values_are_clamped_to_the_published_range():
+    lo, hi = render.field_range("tp6")
+    back = render.decode_field(render.encode_field(np.array([[-5.0, hi + 100.0]], dtype=np.float32), "tp6"), "tp6")
+    assert back[0, 0] == lo and abs(back[0, 1] - hi) <= render.field_resolution("tp6")
+
+
+def test_field_range_covers_every_ramp_at_every_level():
+    for layer, ramp in render.RAMPS.items():
+        lo, hi = render.field_range(layer)
+        assert lo <= ramp["lo"] and hi >= ramp["hi"], layer
+    for level, (wlo, whi) in render.GH_WINDOW.items():
+        lo, hi = render.field_range("gh", level)
+        assert lo < wlo and hi > whi
+
+
+def test_legend_carries_the_encoding_and_the_alpha_rule():
+    lg = render.legend("tp6")
+    assert lg["enc"] == {"lo": 0.0, "hi": 300.0}
+    assert lg["alpha"] == {"base": render.BASE_ALPHA, "kind": "ramp", "k": 1.0}
+    assert render.legend("temp")["alpha"] == {"base": render.BASE_ALPHA, "kind": "const"}
+    gh = render.legend("gh")
+    assert gh["levels"]["850"]["enc"]["lo"] < render.GH_WINDOW[850][0]
+
+
+def _reference_alpha(layer, x, nan):
+    """The alpha chain colorize carried before the rules became a table."""
+    if layer in ("tp6", "tp24", "tp72"):
+        a = np.clip(x / {"tp6": 1.0, "tp24": 2.0, "tp72": 4.0}[layer], 0, 1)
+    elif layer in ("sf6", "sf24", "sf72"):
+        a = np.clip(x / {"sf6": 0.5, "sf24": 1.0, "sf72": 2.0}[layer], 0, 1)
+    elif layer in ("waves", "wperiod", "wavepower", "sst"):
+        a = np.where(nan, 0.0, 1.0)
+    elif layer == "solar":
+        a = np.clip(x / 120.0, 0, 1)
+    elif layer == "uvi":
+        a = np.clip(x / 1.0, 0, 1)
+    elif layer == "sd_cm":
+        a = np.clip(x / 2.0, 0, 1)
+    elif layer == "cape":
+        a = np.clip(x / 300.0, 0, 1)
+    elif layer in ("prob_rain", "prob_gust"):
+        a = np.clip(x / 30.0, 0, 1)
+    elif layer == "gfactor":
+        a = np.clip((x - 1.5) / 3.0, 0, 1)
+    elif layer == "vis":
+        a = np.clip((12.0 - x) / 8.0, 0, 1)
+    elif layer == "ptype":
+        a = np.where(x >= 0.99, 1.0, 0.0)
+    elif layer == "vort500":
+        a = np.clip(np.abs(x) / 4.0, 0, 1)
+    elif layer == "ptend":
+        a = np.clip(np.abs(x) / 1.2, 0, 1)
+    elif layer == "dt24":
+        a = np.clip(np.abs(x) / 2.5, 0, 1)
+    else:
+        a = np.clip(x / 100.0, 0, 1) ** 0.7
+    return a
+
+
+def test_alpha_rule_table_reproduces_the_old_alpha_chain():
+    for layer in render._RGBA_LAYERS:
+        ramp = render.RAMPS[layer]
+        lo, hi = ramp["lo"], ramp["hi"]
+        field = np.linspace(lo - 0.2 * (hi - lo), hi + 0.2 * (hi - lo), 300, dtype=np.float32)[None, :]
+        x = np.nan_to_num(field, nan=lo)
+        np.testing.assert_allclose(render.alpha_for(layer, x), _reference_alpha(layer, x, np.isnan(field)), atol=1e-6, err_msg=layer)
+        img = Image.open(io.BytesIO(render.colorize(field, layer))).convert("RGBA")
+        want = (_reference_alpha(layer, x, np.isnan(field)) * render.BASE_ALPHA * 255).astype(np.uint8)
+        assert np.array_equal(np.asarray(img)[0, :, 3], want[0]), layer
+
+
+def test_missing_data_is_transparent_under_every_alpha_rule():
+    for layer in ("vort500", "vis", "ptend", "tp6", "sst"):
+        field = np.full((2, 3), np.nan, dtype=np.float32)
+        field[0, 0] = 0.0
+        a = np.asarray(Image.open(io.BytesIO(render.colorize(field, layer))).convert("RGBA"))[..., 3]
+        assert a[1].max() == 0 and a[0, 1:].max() == 0, layer

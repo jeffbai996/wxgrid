@@ -277,8 +277,12 @@ WARM_LAYERS = ("wind", "temp", "gust", "tp6", "tcc", "msl")
 
 
 def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
+    """Pre-encode the field files the browser asks for (/api/field). The
+    coloured PNGs of /api/layer are the fallback for clients without WebGL
+    and render on first request; warming both would double the warm time
+    for a path almost nobody takes."""
     from wxgrid import render
-    from wxgrid.api import _SIX_HOURLY, _available, _level_step, _render_plan, field_for
+    from wxgrid.api import _SIX_HOURLY, _available, _level_step, field_for
     from wxgrid.config import CACHE_DIR
     from wxgrid.store import RunReader
 
@@ -287,28 +291,19 @@ def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
     for layer in WARM_LAYERS:
         if not _available(r, layer, None):
             continue
-        # the same step mapping and the same name/format decision as the
-        # request path, so the names collide (that is the point) and a
-        # six-hourly layer is not rendered twice. The format comes from the
-        # name function: for a while this wrote WebP bytes into .png names
-        # (and paid WebP's 3-5 s encode per frame) after the request path
-        # had moved to PNG (2026-08-22).
+        # the same step mapping and the same name as the request path, so the
+        # names collide (that is the point) and a six-hourly layer is not
+        # encoded twice
         for step in sorted({_level_step(r, st, layer in _SIX_HOURLY) for st in r.steps}):
-            cache_tag, scale = _render_plan(model_key, layer)
-            name, fmt, _ = render.layer_cache_name(step, cache_tag, None)
-            path = CACHE_DIR / model_key / rid / name
+            path = CACHE_DIR / model_key / rid / render.field_cache_name(step, layer)
             if path.exists():
                 continue
             path.parent.mkdir(parents=True, exist_ok=True)
-            disp = render.upscale_values(
-                render.DISPLAY[layer](render.to_mercator(
-                    field_for(r, layer, None, step), lat0=r.lat0, lon0=r.lon0,
-                    dlat=r.dlat, dlon=r.dlon)), layer, factor=scale)
             tmp = path.with_suffix(path.suffix + ".tmp")
-            tmp.write_bytes(render.colorize(disp, layer, fmt=fmt))
+            tmp.write_bytes(render.encode_field(render.DISPLAY[layer](field_for(r, layer, None, step)), layer))
             tmp.replace(path)
             done += 1
-    log.info("%s %s warmed %d frames", model_key, rid, done)
+    log.info("%s %s warmed %d fields", model_key, rid, done)
     return done
 
 

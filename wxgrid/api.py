@@ -2,6 +2,7 @@
 
 GET /api/models                                   models, runs, steps, layers, levels
 GET /api/layer/{model}/{run}/{step}/{layer}.png   Mercator PNG; ?level=850 for wind/temp aloft
+GET /api/field/{model}/{run}/{step}/{layer}.png   the same field as 16-bit data, coloured in the browser
 GET /api/wind/{model}/{run}/{step}.json           coarse u/v for particles; ?level=850
 GET /api/point?lat=&lon=&model=&run=              every variable at every step + derived products
 GET /api/legend/{layer}
@@ -360,7 +361,11 @@ def api_models() -> dict:
     for key, m in MODELS.items():
         entry = {"key": key, "label": m.label, "short": m.short, "grid": m.grid,
                  "attribution": m.attribution, "domain": list(m.domain),
-                 "grid_shape": list(m.grid_shape), "regional": m.regional, "runs": []}
+                 "grid_shape": list(m.grid_shape), "regional": m.regional,
+                 # the store grid the field files are on: row 0 is lat0, column 0 is lon0
+                 "grid_spec": {"lat0": m.lat0, "lon0": m.lon0, "dlat": m.dlat, "dlon": m.dlon,
+                               "ny": m.grid_shape[0], "nx": m.grid_shape[1]},
+                 "runs": []}
         for rid in summary.get(key, []):
             r = _reader(key, rid)
             entry["runs"].append({
@@ -370,7 +375,10 @@ def api_models() -> dict:
                 "valid_from": parse_run_id(rid).isoformat(),
             })
         out.append(entry)
-    return {"models": out, "layers": [render.legend(l) for l in LAYERS], "levels": list(LEVELS)}
+    return {"models": out, "layers": [render.legend(l) for l in LAYERS], "levels": list(LEVELS),
+            # the front end colours fields on the GPU when this is present;
+            # the version rides in every field URL so a re-encode is a new key
+            "field": {"v": render.FIELD_VERSION}}
 
 
 @app.get("/api/layer/{model}/{run}/{step}/{layer}.png")
@@ -403,6 +411,37 @@ def api_layer(request: Request, model: str, run: str, step: int, layer: str, lev
                 tmp.replace(path)
     return FileResponse(path, media_type=media,
                         headers={"Cache-Control": "public, max-age=31536000, immutable", "Vary": "Accept"})
+
+
+@app.get("/api/field/{model}/{run}/{step}/{layer}.png")
+def api_field(request: Request, model: str, run: str, step: int, layer: str, level: int | None = None):
+    """The field the layer draws, as data: one Mercator image per
+    (model, run, step, layer, level), 16 bits per pixel over the range the
+    catalog publishes (render.encode_field). The browser colourises it on the
+    GPU, mixes neighbouring steps, and reads the probe value from the same
+    bytes. The grid goes out as stored, not reprojected: the shader projects
+    every screen pixel back onto it and interpolates there, which is what
+    the Mercator resample and the 2x value-space upscale did for the PNG."""
+    layer = _norm_layer(layer)
+    level = _norm_level(level, layer)
+    r = _reader(model, run)
+    if step not in r.steps or not _available(r, layer, level):
+        raise HTTPException(404, "step, layer or level not in run")
+    cloud_from_levels = layer in _CLOUD_BANDS and _CLOUD_BANDS[layer][0] not in r.variables
+    step = _level_step(r, step, level is not None or layer in _SIX_HOURLY or cloud_from_levels)
+    tag = f"{layer}{'' if level is None else '-' + str(level)}"
+    path = CACHE_DIR / model / r.rid / render.field_cache_name(step, tag)
+    request.state.cache = "hit" if path.exists() else "miss"
+    if not path.exists():
+        with _cache_lock(path), _render_slots:
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = _tmp_for(path)
+                tmp.write_bytes(render.encode_field(
+                    render.DISPLAY[layer](field_for(r, layer, level, step)), layer, level=level))
+                tmp.replace(path)
+    return FileResponse(path, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @app.get("/api/wind/{model}/{run}/{step}.json")

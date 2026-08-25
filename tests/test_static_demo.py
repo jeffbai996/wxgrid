@@ -31,6 +31,22 @@ def test_static_build_writes_catalog_layers_and_point_tiles(tmp_path):
     # the static host has no live /bundle.js route, so the file must exist
     assert "// \u2500\u2500 app.js" in (out / "bundle.js").read_text()
     assert not (out / "private").exists()
+    # no field files unless asked: the front end then takes the PNG path
+    assert "field" not in cat and not (out / "api" / "field").exists()
+
+
+def test_static_build_can_carry_the_field_files(tmp_path):
+    variables = ["u10", "v10", "t2m"]
+    w = RunWriter("aifs", "2026-01-01T00", [0], variables, root=STORE_DIR)
+    for v in variables:
+        w.write(v, 0, np.full((GRID_LAT_N, GRID_LON_N), 1.0 if v.startswith(("u", "v")) else 280.0, np.float32))
+    w.finish()
+    out = tmp_path / "pages"
+    static_demo.build(out, "aifs", [0], scale=4, fields=True)
+    cat = json.loads((out / "api" / "models.json").read_text())
+    assert cat["field"]["v"] >= 1 and cat["models"][0]["grid_spec"]["ny"] == GRID_LAT_N
+    field = out / "api" / "field" / "aifs" / "2026-01-01T00" / "0" / "temp.png"
+    assert field.exists() and field.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_rewrite_index_injects_the_shim_ahead_of_the_app():
