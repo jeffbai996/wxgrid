@@ -1384,6 +1384,10 @@
   }
 
   // ── point card ────────────────────────────────────────────────────────
+  // The failure the card shows, in the same styled note the outside-domain
+  // path uses. It was a bare text node in a flex row, which read as a layout
+  // accident rather than an answer.
+  const POINT_FAILED = "The forecast for this point did not load. The server may be restarting.";
   let pointReq = 0;
   async function openPoint(lat, lon, name) {
     const my = ++pointReq;
@@ -1468,7 +1472,7 @@
             const row = buf.slice(0, nl); buf = buf.slice(nl + 1);
             if (!row.trim()) continue;
             const msg = JSON.parse(row);
-            if (msg.kind === "point" && msg.error) $("#point-now").textContent = "point forecast unavailable";
+            if (msg.kind === "point" && msg.error) $("#point-now").innerHTML = `<div class="note">${POINT_FAILED}</div>`;
             if (msg.error || msg.pending) continue;         // fetched alone below
             if (got[msg.kind]) { seen.add(msg.kind); gotAny = true; got[msg.kind](msg.data); }
           }
@@ -1496,7 +1500,7 @@
       const d = await WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}&model=${state.model}&run=${state.run}`);
       if (my !== pointReq) return;
       gotPoint(d);
-    } catch (e) { $("#point-now").textContent = "point forecast unavailable"; }
+    } catch (e) { $("#point-now").innerHTML = `<div class="note">${POINT_FAILED}</div>`; }
     // local context arrives lazily and re-renders as it lands
     WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) gotLocal(r); }).catch(() => {});
     WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.obs(r); }).catch(() => {});
