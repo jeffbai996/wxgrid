@@ -1056,6 +1056,27 @@ table.wtape.agg tr.r-temp td, table.wtape.agg tr.r-feels td { letter-spacing: -.
 .summary i { display: block; font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; }
 .uvstrip { display: flex; gap: 2px; margin: 2px 0 8px; }
 .uvstrip i { flex: 1; height: 9px; border-radius: 2.5px; }
+/* ── context modules on the point card ───────────────────────────────────
+   Cue pills and module cards appear only when the point earned them, so they
+   read as news rather than as furniture. Each carries its own --cue hue. */
+.cues { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.cue { display: inline-flex; align-items: baseline; gap: 8px; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--cue, var(--accent)) 40%, transparent);
+  background: color-mix(in srgb, var(--cue, var(--accent)) 12%, transparent); }
+.cue b { font: 700 11.5px var(--font-display) !important; letter-spacing: .01em; color: var(--cue, var(--accent)) !important; }
+.cue span { font: 500 11px var(--font-num); color: var(--fg-2); }
+.modcard { flex: 1 0 100%; margin: 4px 0 8px; padding: 9px 12px 10px; border-radius: 12px;
+  background: rgba(127,127,127,.06); border: 1px solid var(--line); }
+.modcard .mod-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 9px; margin-bottom: 8px; }
+.modcard .mod-head > span:first-child { font: 800 12px var(--font-display); letter-spacing: .02em;
+  text-transform: uppercase; color: var(--fg); }
+.modcard .mod-head .dim { font: 500 10.5px var(--font-body); }
+.modcard .mod-stats { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.modcard .mod-stats > div { display: flex; flex-direction: column; gap: 1px; }
+.modcard .mod-stats small { font: 600 9px var(--font-display); text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+.modcard .mod-stats b { font: 800 19px/1.05 var(--font-num) !important; color: var(--fg); font-variant-numeric: tabular-nums; }
+.modcard .mod-stats b i { font: 700 10px var(--font-display); font-style: normal; margin-left: 2px; color: var(--fg-2); }
+.modcard .mod-stats em { font: 600 10.5px var(--font-num); font-style: normal; color: var(--dim); }
 /* the kicker: a slim uppercase label that names a section without a box */
 .kicker { display: block; font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em;
   text-transform: uppercase; color: var(--dim); margin: 4px 0 2px; }

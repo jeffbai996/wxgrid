@@ -1495,6 +1495,11 @@
   }
   function renderPoint() {
     const d = state.point && state.point.data; if (!d || !window.WXPanes) return;
+    // Winter has nothing to say where it cannot snow: a tab that answers
+    // "n/a" nine rows deep is worse than no tab (see WXPanes.canSnow).
+    const snow = !window.WXPanes.canSnow || window.WXPanes.canSnow(state.point, d);
+    $$(".point-tabs button[data-tab=winter]").forEach((b) => b.hidden = !snow);
+    if (!snow && state.tab === "winter") state.tab = "now";
     $$(".point-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === state.tab));
     $$("#point-body section").forEach((s) => s.hidden = s.dataset.pane !== state.tab);
     window.WXPanes.render(state.tab, state.point, Math.min(state.stepIdx, d.steps.length - 1));

@@ -314,7 +314,9 @@
       </div>
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
       <div class="meta">${chips.join("")}</div>
+      ${contextCues(pt, d, i)}
       ${daysStrip(pt, d, i)}
+      ${contextCards(pt, d, i)}
       ${alertsHtml(pt)}${airHtml(pt)}`;
     fetchNearStorm(pt);
     // local context
@@ -549,6 +551,128 @@
     const len = ((s - r + 24) % 24);
     return { rise: fmt(r), set: fmt(s), riseUtc: r, setUtc: s,
              len: `${Math.floor(len)}h${String(Math.round((len % 1) * 60)).padStart(2, "0")}` };
+  }
+
+  // ── context modules ───────────────────────────────────────────────────
+  // The card used to show the same blocks in Reykjavík in February and on a
+  // Queensland beach in January. These decide from geography, season and the
+  // data actually present whether a block has anything to say; one that does
+  // not apply renders nothing at all, which is the whole contract.
+  //
+  // The local winter half-year: November to March north of the equator, May to
+  // September south of it. Blunt on purpose — it gates whole modules, and a
+  // fortnight either way changes nothing.
+  const isWinterHalf = (lat, date) => { const m = date.getMonth(); return lat >= 0 ? (m >= 10 || m <= 2) : (m >= 4 && m <= 8); };
+  const HIGH_LAT = 55;
+
+  // Near the coast? Two cheap signals, both already on the card. Marine fields
+  // are NaN over land, so a wave height or a sea-surface temperature at this
+  // gridpoint puts the sea within a cell — about 28 km at 0.25°. A tide
+  // station within 40 km says the same thing where the model's marine mask is
+  // too coarse to reach the shore. Neither is a coastline: a beach the wave
+  // grid misses and no gauge watches simply gets no module, which is the right
+  // way to be wrong here.
+  const marineHere = (s, i) => (!!(s.swh && s.swh[i] != null)) || (!!(s.sst && s.sst[i] != null));
+  const nearCoast = (pt, s, i) => marineHere(s, i) || !!(pt.tides && pt.tides.distance_km != null && pt.tides.distance_km <= 40);
+  const onLand = (pt) => !(pt.local && pt.local.place && pt.local.place.water);
+
+  // Can it snow here at all? The model's own snow answers first; failing that,
+  // a run that reaches freezing does; failing that, latitude or altitude in
+  // the winter half-year. Summer at sea level in Lisbon answers no.
+  function canSnow(pt, d) {
+    const s = (d && d.series) || {};
+    if (s.sf6 && s.sf6.some((v) => v != null && v > 0.5)) return true;
+    if (s.sd_cm && s.sd_cm.some((v) => v != null && v > 1)) return true;
+    if (s.t2m && s.t2m.some((v) => v != null && v < K + 1)) return true;
+    const elev = (pt.local && pt.local.elevation_m) || 0;
+    return (Math.abs(pt.lat) >= HIGH_LAT || elev >= 1200) && isWinterHalf(pt.lat, W().validDate);
+  }
+
+  // Minutes of unprotected sun before a fair skin burns. One UV index unit is
+  // 25 mW/m² of erythemally weighted irradiance and a type-II minimal
+  // erythemal dose is about 250 J/m², so the time is 250/(uvi · 0.025) seconds.
+  const burnMinutes = (uvi) => Math.round(250 / (uvi * 0.025) / 60);
+
+  // The UV worth quoting: what it is now, or — once the sun is down — the peak
+  // the rest of this local day will reach, which is the number you plan around.
+  function uvNow(d, i) {
+    const s = d.series;
+    if (!s.uvi) return null;
+    const v = s.uvi[i];
+    if (v != null && v >= 1) return { uvi: v, peak: false };
+    const day = new Date(d.valid[i]).toDateString();
+    const vals = d.valid.map((iso, k) => (new Date(iso).toDateString() === day && s.uvi[k] != null ? s.uvi[k] : null)).filter((x) => x != null);
+    if (!vals.length) return null;
+    const hi = Math.max(...vals);
+    return hi >= 1 ? { uvi: hi, peak: true } : null;
+  }
+
+  // Beach: a coastal point, warm enough to be in the water, outside a
+  // high-latitude winter. Sea temperature leads when the model carries one
+  // (GFS does, the ECMWF open set does not); otherwise the air temperature
+  // stands in, which is what you feel on the sand anyway.
+  function beachModule(pt, d, i) {
+    const s = d.series;
+    if (!nearCoast(pt, s, i) || !onLand(pt)) return "";
+    if (Math.abs(pt.lat) >= HIGH_LAT && isWinterHalf(pt.lat, W().validDate)) return "";
+    const sst = s.sst && s.sst[i] != null ? s.sst[i] - K : null;
+    const air = s.t2m && s.t2m[i] != null ? s.t2m[i] - K : null;
+    if (sst != null ? sst < 16 : !(air != null && air >= 18)) return "";
+    const U = W().units;
+    const stats = [];
+    if (sst != null) stats.push(`<div><small>Water</small><b>${U.tempC(sst).v}<i>${esc(U.tempUnit)}</i></b></div>`);
+    if (s.swh && s.swh[i] != null) {
+      const wv = U.alt(s.swh[i], 1);
+      stats.push(`<div><small>Waves</small><b>${wv.v}<i>${esc(U.altUnit)}</i></b>${s.mwp && s.mwp[i] != null ? `<em>${s.mwp[i].toFixed(0)} s period</em>` : ""}</div>`);
+    }
+    const uv = uvNow(d, i);
+    if (uv) stats.push(`<div><small>UV${uv.peak ? " peak" : ""}</small><b>${uv.uvi.toFixed(0)}</b><em>burn in ~${burnMinutes(uv.uvi)} min</em></div>`);
+    const sun = sunTimes(pt.lat, pt.lon, W().validDate);
+    if (sun) stats.push(`<div><small>Sunset</small><b>${esc(sun.set)}</b></div>`);
+    if (stats.length < 2) return "";
+    return `<div class="modcard beach"><div class="mod-head"><span>Beach</span>${sst == null ? `<span class="dim">no sea temperature here</span>` : ""}</div>
+      <div class="mod-stats">${stats.join("")}</div></div>`;
+  }
+
+  // Stargazing: the coming night is clear and the moon is out of the way
+  // enough to be worth saying. 21:00 to 05:00 in the clock the card is using.
+  function stargazeCue(pt, d, i) {
+    const s = d.series;
+    if (!s.tcc) return "";
+    const t0 = new Date(d.valid[i]).getTime();
+    const night = [];
+    d.valid.forEach((iso, k) => {
+      const dt = new Date(iso), t = dt.getTime(), h = dt.getHours();
+      if (t < t0 || t > t0 + 24 * 3600e3) return;
+      if ((h >= 21 || h <= 4) && s.tcc[k] != null) night.push(s.tcc[k]);
+    });
+    if (night.length < 2 || Math.max(...night) > 0.2) return "";
+    const moon = moonPhase(W().validDate);
+    return `<span class="cue" style="--cue:#a9b8ff"><b>Good stargazing tonight</b><span>${moon.glyph} moon ${moon.pct}% ${esc(moon.name)}</span></span>`;
+  }
+
+  // Surf and kite: a swell worth riding under a wind steady enough to hold a
+  // kite. 15–30 kt is the window; below it nothing pulls, above it nothing is
+  // fun.
+  function surfCue(pt, d, i) {
+    const s = d.series;
+    if (!s.swh || s.swh[i] == null || s.swh[i] < 1) return "";
+    const w = s.wind ? s.wind[i] : null;
+    if (w == null || w < 7.72 || w > 15.43) return "";
+    const U = W().units, { speed, speedUnit } = W();
+    const wv = U.alt(s.swh[i], 1);
+    const per = s.mwp && s.mwp[i] != null ? ` @ ${s.mwp[i].toFixed(0)} s` : "";
+    return `<span class="cue" style="--cue:#4fc3d9"><b>Surf and kite window</b><span>${wv.v} ${esc(U.altUnit)}${per} · ${speed(w).toFixed(0)} ${esc(speedUnit())}</span></span>`;
+  }
+
+  // What the point card shows beyond the standard blocks: cue pills first,
+  // then the cards. Both are empty strings when nothing applies.
+  function contextCues(pt, d, i) {
+    const cues = [stargazeCue(pt, d, i), surfCue(pt, d, i)].filter(Boolean);
+    return cues.length ? `<div class="cues">${cues.join("")}</div>` : "";
+  }
+  function contextCards(pt, d, i) {
+    return [beachModule(pt, d, i)].filter(Boolean).join("");
   }
 
   // ── Aloft ─────────────────────────────────────────────────────────────
@@ -1137,5 +1261,5 @@
     c.onclick = (ev) => { const rect = c.getBoundingClientRect(); const x = (ev.clientX - rect.left) / rect.width * W_; let best = 0; xs.forEach((xx, k) => { if (Math.abs(xx - x) < Math.abs(xs[best] - x)) best = k; }); W().setStep(best); };
   }
 
-  window.WXPanes = { render, sunTimes };
+  window.WXPanes = { render, sunTimes, canSnow };
 })();
