@@ -739,7 +739,8 @@ table.bandtape .nil { color: var(--line-strong); }
 .results .unfav:hover { color: var(--bad); background: rgba(255,255,255,.06); }
 /* star and × share one grey and one box; both glyphs are centred by the
    flex box, not by glyph metrics (Jeff 2026-08-23) */
-.point-head .icon.fav, .point-head #point-close { color: var(--dim); padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 0; }
+.point-head .icon.fav, .point-head #point-share, .point-head #point-close { color: var(--dim); padding: 0; display: inline-flex; align-items: center; justify-content: center; line-height: 0; }
+.point-head #point-share:hover { color: var(--accent); }
 .point-head .icon svg { width: 15px; height: 15px; display: block; }
 .point-head .icon.fav.on { color: var(--warm); }
 .point-head .icon.fav.on svg { fill: var(--warm); }

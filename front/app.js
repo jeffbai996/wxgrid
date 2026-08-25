@@ -381,6 +381,24 @@
     }, 250);
   }
 
+  // One share action behind both entry points: the tools menu row and the
+  // point card's icon. pushHash debounces by 250 ms, so the URL is given a
+  // moment to become the view before it is read back and copied.
+  async function shareLink() {
+    pushHash();
+    await new Promise((r) => setTimeout(r, 300));
+    const url = location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("Link copied");
+    } catch (e) {
+      // No clipboard: an insecure origin, a permissions policy, or an old
+      // browser. A prompt is the last place the user can still select the
+      // link by hand — a toast this long only overflows the pill.
+      try { window.prompt("Copy this link", url); } catch (e2) { toast("Copy failed", 4000, "error"); }
+    }
+  }
+
   // ── catalog helpers ───────────────────────────────────────────────────
   const modelEntry = () => catalog.models.find((m) => m.key === state.model);
   const runEntry = () => modelEntry().runs.find((r) => r.run === state.run) || modelEntry().runs[0];
@@ -747,7 +765,8 @@
     $("#sigmet-toggle").onclick = () => { if (!WX.sigmet) return; state.sigmet = !state.sigmet; $("#sigmet-toggle").classList.toggle("on", state.sigmet); if (state.sigmet) WX.sigmet.load(); else WX.sigmet.clear(); };
     $("#aq-toggle").onclick = () => { if (!WX.cams) return; state.aq = !state.aq; $("#aq-toggle").classList.toggle("on", state.aq); if (state.aq) { clearOtherCover("aq"); WX.cams.load(state.aqVar); } else WX.cams.clear(); };
     $("#fires-toggle").onclick = () => { if (!WX.fires) { toast("Fire overlay is still loading", 2500); return; } state.fires = !state.fires; $("#fires-toggle").classList.toggle("on", state.fires); if (state.fires) WX.fires.load(); else WX.fires.clear(); };
-    $("#share-btn").onclick = async () => { pushHash(); await new Promise((r) => setTimeout(r, 300)); try { await navigator.clipboard.writeText(location.href); toast("Link copied"); } catch (e) { toast(location.href, 6000); } };
+    $("#share-btn").onclick = shareLink;
+    $("#point-share").onclick = shareLink;
     $("#settings-btn").onclick = () => { $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(); };
     $("#keys-btn").onclick = () => { $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(); };
     // a unit change repaints every number on screen at once
