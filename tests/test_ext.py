@@ -405,16 +405,18 @@ def test_place_names_prefer_a_latin_script():
 
 def test_health_marks_a_failing_upstream_down(monkeypatch):
     import time as _t
+    from wxgrid import ext_api, liveness
+    monkeypatch.setattr(liveness, "ensure_fresh",
+                        lambda: {"sources": {}, "sources_down": [], "checked_at": None})
     ext.upstream_health.clear()
     ext._mark("https://api.example.com/x", True)
     ext._mark("https://dead.example.com/y", False, "boom")
-    from wxgrid.ext_api import api_health
-    h = api_health()
+    h = ext_api.api_health()
     assert h["down"] == ["dead.example.com"]
     assert h["upstreams"]["api.example.com"]["down"] is False
     # recovery clears it
     ext._mark("https://dead.example.com/y", True)
-    assert api_health()["down"] == []
+    assert ext_api.api_health()["down"] == []
 
 
 def test_storm_category_labels_are_title_case():
