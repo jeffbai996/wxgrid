@@ -4,7 +4,7 @@
 // the store grid itself (R high byte, G low byte, B = 1 where the model has
 // a value). This module fetches and decodes those, keeps the last few as
 // textures, and draws them through a MapLibre custom layer: every screen
-// pixel is projected back onto the grid, sampled bilinearly IN VALUE SPACE,
+// pixel is projected back onto the grid, sampled cubically IN VALUE SPACE,
 // mixed with the next step by `t`, faded by the same alpha rule the server
 // publishes for the layer, and looked up in a 256-entry LUT built from the
 // catalog ramp. A layer, level or unit change is therefore a uniform and a
@@ -30,6 +30,11 @@
   // Categorical and accumulated fields hold their step: a 6-hour bucket half
   // mixed with the next is not a quantity anyone measured.
   const SNAP_LAYERS = new Set(["ptype", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72"]);
+  // Drawn as cells, not as a surface. Precipitation type is a code, so a pixel
+  // between a rain cell and a snow cell is one or the other, never the mixed
+  // colour halfway along the ramp. Everything else, accumulations included,
+  // is a continuous field in space and interpolates.
+  const CELL_LAYERS = new Set(["ptype"]);
 
   const mercY = (lat) => 0.5 - Math.log(Math.tan(Math.PI / 4 + Math.max(-89.99, Math.min(89.99, lat)) * Math.PI / 360)) / (2 * Math.PI);
   const mercX = (lng) => (lng + 180) / 360;
@@ -98,7 +103,7 @@
   }
 
   // ── what is on screen ──────────────────────────────────────────────────
-  const shown = { a: null, b: null, t: 0, layer: "", level: 0, model: null, snap: false, ramp: null, rule: null, enc: null };
+  const shown = { a: null, b: null, t: 0, layer: "", level: 0, model: null, snap: false, cells: false, ramp: null, rule: null, enc: null };
   let catalog = null;
   let live = false;
   let gaveUp = false;
@@ -154,6 +159,13 @@
     if (px[i + 2] === 0) return null;
     return (px[i] * 256 + px[i + 1]) / 65535;
   }
+  // Catmull-Rom weights for one axis, the shader's crw() on the CPU.
+  function crw(t) {
+    const t2 = t * t, t3 = t2 * t;
+    return [-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1, -1.5 * t3 + 2 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2];
+  }
+  // The same arithmetic as sampleField in the shader, so the number the probe
+  // reports is the number the pixel under it was coloured from.
   function sampleEntry(e, lng, lat, spec) {
     if (!e || !e.img) return null;
     const g = spec.model.grid_spec, img = e.img;
@@ -164,18 +176,35 @@
     row = Math.max(0, Math.min(g.ny - 1, row));
     col = Math.max(0, Math.min(wrap ? g.nx : g.nx - 1, col));
     const c0 = Math.floor(col), r0 = Math.floor(row), fx = col - c0, fy = row - r0;
-    const c1 = wrap ? (c0 + 1) % g.nx : Math.min(g.nx - 1, c0 + 1), r1 = Math.min(g.ny - 1, r0 + 1);
-    const cc0 = c0 % g.nx;
-    if (spec.snap) {
-      const v = texel(img, fx < 0.5 ? cc0 : c1, fy < 0.5 ? r0 : r1);
+    const wc = (c) => wrap ? ((c % g.nx) + g.nx) % g.nx : Math.max(0, Math.min(g.nx - 1, c));
+    const cx = [wc(c0 - 1), wc(c0), wc(c0 + 1), wc(c0 + 2)];
+    const ry = [0, 1, 2, 3].map((k) => Math.max(0, Math.min(g.ny - 1, r0 + k - 1)));
+    const ni = fx < 0.5 ? 1 : 2, nj = fy < 0.5 ? 1 : 2;
+    if (spec.cells) {
+      const v = texel(img, cx[ni], ry[nj]);
       return v == null ? { valid: false } : { valid: true, q: v };
     }
-    const p = [[texel(img, cc0, r0), (1 - fx) * (1 - fy)], [texel(img, c1, r0), fx * (1 - fy)],
-               [texel(img, cc0, r1), (1 - fx) * fy], [texel(img, c1, r1), fx * fy]];
-    const near = p[(fx < 0.5 ? 0 : 1) + (fy < 0.5 ? 0 : 2)][0];
-    if (near == null) return { valid: false };
+    const p = [];
+    let whole = true;
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
+      const v = texel(img, cx[i], ry[j]);
+      p[j * 4 + i] = v;
+      if (v == null) whole = false;
+    }
+    if (p[nj * 4 + ni] == null) return { valid: false };
+    if (whole) {
+      const wx = crw(fx), wy = crw(fy);
+      let q = 0;
+      for (let j = 0; j < 4; j++) {
+        let rowsum = 0;
+        for (let i = 0; i < 4; i++) rowsum += wx[i] * p[j * 4 + i];
+        q += wy[j] * rowsum;
+      }
+      return { valid: true, q: Math.max(0, Math.min(1, q)) };
+    }
+    const b = [[p[5], (1 - fx) * (1 - fy)], [p[6], fx * (1 - fy)], [p[9], (1 - fx) * fy], [p[10], fx * fy]];
     let ws = 0, vs = 0;
-    for (const [v, w] of p) if (v != null) { ws += w; vs += w * v; }
+    for (const [v, w] of b) if (v != null) { ws += w; vs += w * v; }
     return { valid: true, q: vs / ws };
   }
   // The display-unit value at a point, mixed between the two steps exactly
@@ -216,7 +245,7 @@ uniform float u_t;
 uniform vec4 u_grid;      // lon0, dlon, lat0, dlat
 uniform vec2 u_size;      // nx, ny
 uniform float u_wrap;     // 1: columns wrap around the globe
-uniform float u_snap;     // 1: nearest texel, no mixing
+uniform float u_cells;    // 1: nearest texel, the grid drawn as cells
 uniform vec2 u_enc;       // lo, hi of the encoding
 uniform vec2 u_ramp;      // lo, hi of the ramp
 uniform vec4 u_rule;      // kind, k, x0, p
@@ -233,21 +262,57 @@ vec2 fetch(sampler2D s, vec2 ij) {
 }
 float wrapc(float c) { return u_wrap > 0.5 ? mod(c, u_size.x) : clamp(c, 0.0, u_size.x - 1.0); }
 
-// bilinear in value space over the texels the model has a value for; the
-// nearest texel decides whether there is a value at all
+// Catmull-Rom weights: the cubic the server used when it upsampled the
+// values 2x before colouring. Sampling the grid straight in the shader with
+// the same kernel is what keeps the two pictures the same picture.
+vec4 crw(float t) {
+  float t2 = t * t, t3 = t2 * t;
+  return vec4(-0.5 * t3 + t2 - 0.5 * t,
+               1.5 * t3 - 2.5 * t2 + 1.0,
+              -1.5 * t3 + 2.0 * t2 + 0.5 * t,
+               0.5 * t3 - 0.5 * t2);
+}
+
+// Value in the model's own grid, in value space. Cubic over the 4x4
+// neighbourhood where the model has all sixteen; masked bilinear at the edge
+// of its coverage, which is what the server did after nearest-filling the
+// gaps and masking them back; the nearest texel decides whether there is a
+// value at all.
 vec2 sampleField(sampler2D s, vec2 cr) {
   vec2 i0 = floor(cr);
   vec2 f = cr - i0;
-  float c0 = wrapc(i0.x), c1 = wrapc(i0.x + 1.0);
-  float r0 = clamp(i0.y, 0.0, u_size.y - 1.0), r1 = clamp(i0.y + 1.0, 0.0, u_size.y - 1.0);
-  if (u_snap > 0.5) return fetch(s, vec2(f.x < 0.5 ? c0 : c1, f.y < 0.5 ? r0 : r1));
-  vec2 p00 = fetch(s, vec2(c0, r0)), p10 = fetch(s, vec2(c1, r0));
-  vec2 p01 = fetch(s, vec2(c0, r1)), p11 = fetch(s, vec2(c1, r1));
+  float cx[4], ry[4];
+  for (int k = 0; k < 4; k++) {
+    cx[k] = wrapc(i0.x + float(k) - 1.0);
+    ry[k] = clamp(i0.y + float(k) - 1.0, 0.0, u_size.y - 1.0);
+  }
+  int ni = f.x < 0.5 ? 1 : 2, nj = f.y < 0.5 ? 1 : 2;
+  if (u_cells > 0.5) return fetch(s, vec2(cx[ni], ry[nj]));
+  vec2 p[16];
+  float whole = 1.0;
+  for (int j = 0; j < 4; j++) {
+    for (int i = 0; i < 4; i++) {
+      vec2 q = fetch(s, vec2(cx[i], ry[j]));
+      p[j * 4 + i] = q;
+      whole *= q.y;
+    }
+  }
+  float valid = p[nj * 4 + ni].y;
+  if (whole > 0.5) {
+    vec4 wx = crw(f.x), wy = crw(f.y);
+    float v = 0.0;
+    for (int j = 0; j < 4; j++) {
+      float row = 0.0;
+      for (int i = 0; i < 4; i++) row += wx[i] * p[j * 4 + i].x;
+      v += wy[j] * row;
+    }
+    return vec2(clamp(v, 0.0, 1.0), valid);
+  }
+  vec2 p00 = p[5], p10 = p[6], p01 = p[9], p11 = p[10];
   float w00 = (1.0 - f.x) * (1.0 - f.y) * p00.y, w10 = f.x * (1.0 - f.y) * p10.y;
   float w01 = (1.0 - f.x) * f.y * p01.y, w11 = f.x * f.y * p11.y;
   float ws = w00 + w10 + w01 + w11;
   float v = ws > 0.0 ? (w00 * p00.x + w10 * p10.x + w01 * p01.x + w11 * p11.x) / ws : 0.0;
-  float valid = f.x < 0.5 ? (f.y < 0.5 ? p00.y : p01.y) : (f.y < 0.5 ? p10.y : p11.y);
   return vec2(v, valid);
 }
 
@@ -417,7 +482,7 @@ void main() {
       gl.uniform4f(u.u_grid, g.lon0, g.dlon, g.lat0, g.dlat);
       gl.uniform2f(u.u_size, g.nx, g.ny);
       gl.uniform1f(u.u_wrap, shown.model.regional ? 0 : 1);
-      gl.uniform1f(u.u_snap, shown.snap ? 1 : 0);
+      gl.uniform1f(u.u_cells, shown.cells ? 1 : 0);
       gl.uniform2f(u.u_enc, shown.enc.lo, shown.enc.hi);
       gl.uniform2f(u.u_ramp, shown.ramp.lo, shown.ramp.hi);
       gl.uniform4f(u.u_rule, RULE_KIND[r.kind] || 0, r.k || 1, r.x0 || 0, r.p || 1);
@@ -454,6 +519,7 @@ void main() {
     const lg = rampFor(spec.layer, spec.level);
     shown.layer = spec.layer; shown.level = spec.level; shown.model = spec.model;
     shown.snap = SNAP_LAYERS.has(spec.layer);
+    shown.cells = CELL_LAYERS.has(spec.layer);
     shown.ramp = lg; shown.enc = lg && lg.enc; shown.rule = lg && lg.alpha;
     let t = spec.t || 0;
     // a held field shows whichever step is nearer, so the tape and the map agree

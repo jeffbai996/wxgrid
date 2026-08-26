@@ -125,3 +125,11 @@ def test_the_timeline_mixes_two_steps_and_lands_on_a_real_one():
     assert "WX.field.show(fieldSpec()); renderClock();" in app
     # the clock follows the mix, so the map and the time agree mid-scrub
     assert "runDate().getTime() + shownHours() * 3600e3" in app
+
+
+def test_precipitation_type_is_drawn_as_cells_and_everything_else_smooth():
+    field = _read("field.js")
+    assert 'const CELL_LAYERS = new Set(["ptype"]);' in field
+    # accumulations hold their step in time but stay continuous in space
+    assert '"tp6", "tp24", "tp72"' in field.split("SNAP_LAYERS")[1].split(")")[0]
+    assert "vec4 crw(float t)" in field and "u_cells > 0.5" in field
