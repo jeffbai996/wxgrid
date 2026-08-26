@@ -74,6 +74,9 @@
 
   const state = {
     model: null, run: null, layer: "wind", level: 0, stepIdx: 0,
+    // where the map sits BETWEEN stepIdx and the next step, 0..1. Only the
+    // GPU field path can draw it; the raster path rounds it away.
+    frac: 0,
     playing: false, particles: true, units: localStorage.getItem("wxgrid.units") || "kmh",
     point: null, tapePoint: null, tab: "now",
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
@@ -87,7 +90,7 @@
     particleDensity: Number(localStorage.getItem("wxgrid.particleDensity") || 60), xsection: false,
     playMs: Number(localStorage.getItem("wxgrid.playMs") || 900),
   };
-  let map, wind, catalog, playTimer = null, marker = null;
+  let map, wind, catalog, playTimer = null, playRaf = 0, playFrom = 0, marker = null;
   let restorePointPanelSize = () => {};
   let restoreSheetHeight = () => {};
   let uiWired = false;
@@ -212,6 +215,11 @@
     // A fresh load opens at the current hour, whatever the link said — the
     // map should show now, not the run's first frame (Jeff 2026-08-22).
     state.stepIdx = currentStepIdx();
+    // One decision, before the first frame: colour on the GPU from the field
+    // files, or take the server's coloured PNGs. Everything downstream reads
+    // WX.field.live and nothing asks twice. It runs here, after the model and
+    // run are settled, because giving up has to be able to draw the raster.
+    if (WX.field) { WX.field.onFallback = fieldGaveUp; WX.field.enable(catalog); }
     // The controls and forecast table only need the local catalog. Painting
     // them behind MapLibre's `load` event made a cold start wait for the
     // remote basemap's tiles, glyphs and sprites before showing local data.
@@ -262,8 +270,9 @@
         // The next frame is useful, but only after the current image, wind
         // field and tape have finished. It must not compete with first paint.
         initialDataReady.then(() => {
-          const img = new Image();
-          img.src = layerUrl(steps()[(state.stepIdx + 1) % steps().length]);
+          const h = steps()[(state.stepIdx + 1) % steps().length];
+          if (fieldLive()) WX.field.prefetch(fieldUrl(h));
+          else { const img = new Image(); img.src = layerUrl(h); }
         });
       };
       map.on("sourcedata", prefetchNext);
@@ -280,12 +289,36 @@
   }
   const firstSymbolId = () => { const l = map.getStyle().layers.find((x) => x.type === "symbol"); return l ? l.id : undefined; };
   const mapStyle = () => document.documentElement.dataset.theme === "light" ? "https://tiles.openfreemap.org/styles/positron" : "https://tiles.openfreemap.org/styles/dark";
+  // A 1x1 transparent PNG. On the GPU path the raster layer draws nothing, but
+  // it stays in the style on purpose: it is the layer overlays.js dims for
+  // radar and satellite, and the one the field shader reads its opacity back
+  // from. Pointing its source here means no layer PNG is ever fetched.
+  const BLANK = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNgYGBgAAAABQABeqhXUAAAAABJRU5ErkJggg==";
+  const fieldLive = () => !!(WX.field && WX.field.live);
   function ensureWxLayer() {
     if (!map.getSource("wx")) {
-      map.addSource("wx", { type: "image", url: layerUrl(), coordinates: modelCoords() });
-      map.addLayer({ id: "wx", type: "raster", source: "wx", paint: { "raster-opacity": rasterOpacity(), "raster-fade-duration": 0, "raster-resampling": "linear" } }, firstSymbolId());
+      const gpu = fieldLive();
+      map.addSource("wx", { type: "image", url: gpu ? BLANK : layerUrl(), coordinates: modelCoords() });
+      map.addLayer({ id: "wx", type: "raster", source: "wx",
+                     layout: { visibility: gpu ? "none" : "visible" },
+                     paint: { "raster-opacity": rasterOpacity(), "raster-fade-duration": 0, "raster-resampling": "linear" } }, firstSymbolId());
+      // Directly above the raster, so the coastline trace and everything the
+      // overlays put before the first symbol layer still land on top.
+      if (gpu && !map.getLayer("wx-field")) map.addLayer(WX.field.layer, firstSymbolId());
     }
     ensureCoastLayer();
+  }
+  // The GPU path can give up at any point: no WebGL, a shader that will not
+  // compile, a field the server does not have. Put the raster layer back and
+  // carry on where it left off.
+  function fieldGaveUp() {
+    if (!map || !catalog || !state.model) return;         // gave up before the first frame
+    state.stepIdx = Math.min(steps().length - 1, state.stepIdx + Math.round(state.frac));
+    state.frac = 0;
+    if (map.getLayer("wx-field")) map.removeLayer("wx-field");
+    if (map.getLayer("wx")) map.setLayoutProperty("wx", "visibility", "visible");
+    if (catalog) { renderControls(); applyStep(); }
+    if (WX.probe) WX.probe.refresh();
   }
   // A weather field painted over the whole world hides the one thing you need
   // to read it: where the land stops. The basemap's own coastline is under the
@@ -404,12 +437,32 @@
   const runEntry = () => modelEntry().runs.find((r) => r.run === state.run) || modelEntry().runs[0];
   const steps = () => runEntry().steps;
   const stepHours = () => steps()[state.stepIdx];
+  // The forecast hour the map is actually showing. Whole steps are the only
+  // ones the model published, so they are the only ones a URL names; the
+  // fraction is what the field layer is mixing towards.
+  function shownHours() {
+    const st = steps(), i = Math.min(state.stepIdx, st.length - 1);
+    const next = i + 1 < st.length ? st[i + 1] : st[i];
+    return st[i] + (next - st[i]) * state.frac;
+  }
   const runDate = () => new Date(runEntry().valid_from);
-  const validDate = () => new Date(runDate().getTime() + stepHours() * 3600e3);
+  const validDate = () => new Date(runDate().getTime() + shownHours() * 3600e3);
   const hasLevel = () => ["wind", "temp", "gh"].includes(state.layer);
   const isWaves = () => ["waves", "wperiod", "wavepower"].includes(state.layer);
   const levelQ = () => (state.level && hasLevel()) ? `?level=${state.level}` : "";
   const layerUrl = (h = stepHours()) => U(`${API}/layer/${state.model}/${state.run}/${h}/${state.layer}.png${levelQ()}`);
+  // The same frame as data. Same query, same run, different noun: the browser
+  // colours this one itself (front/field.js).
+  const fieldUrl = (h = stepHours()) => U(`${API}/field/${state.model}/${state.run}/${h}/${state.layer}.png${levelQ()}`);
+  // What the field layer should be drawing right now: this step, the next one,
+  // and how far between them the timeline is sitting.
+  function fieldSpec() {
+    const st = steps(), i = Math.min(state.stepIdx, st.length - 1);
+    const next = i + 1 < st.length ? st[i + 1] : null;
+    return { a: fieldUrl(st[i]), b: next == null ? null : fieldUrl(next),
+             t: next == null ? 0 : state.frac, layer: state.layer,
+             level: hasLevel() ? state.level : 0, model: modelEntry() };
+  }
   const windUrl = (h = stepHours()) => U(`${API}/wind/${state.model}/${state.run}/${h}.json${isWaves() ? "?field=waves" : state.level ? `?level=${state.level}` : ""}`);
   const modelCoords = (m = modelEntry()) => {
     if (!m || !m.regional) return WORLD;
@@ -684,9 +737,19 @@
 
     const slider = $("#step");
     slider.max = String(steps().length - 1);
-    slider.value = String(state.stepIdx);
-    slider.oninput = () => { state.stepIdx = Number(slider.value); applyStep(false); };
-    slider.onchange = () => { applyStep(true); loadWind(); };
+    // Dragging is continuous when the field layer can mix two steps, and the
+    // release lands on a real one: the wind, the isobars and the tape all
+    // belong to a step the model published, and a scrub that stopped between
+    // them would leave the map ahead of everything else.
+    slider.step = fieldLive() ? "0.02" : "1";
+    slider.value = String(state.stepIdx + state.frac);
+    slider.oninput = () => {
+      const v = Number(slider.value), last = steps().length - 1;
+      state.stepIdx = Math.min(last, Math.floor(v));
+      state.frac = fieldLive() ? Math.min(0.999, v - state.stepIdx) : 0;
+      applyStep(false);
+    };
+    slider.onchange = () => { settleStep(); applyStep(true); loadWind(); };
 
     renderLegend();
     if (!uiWired) { uiWired = true; wireOnce(); }
@@ -1291,6 +1354,7 @@
   }
 
   function switchModel(key, target = validDate().getTime()) {
+    state.frac = 0;
     // Keep the VALID time, not the step index: comparing models means the same moment.
     if (WX.tape) WX.tape.clearFineSelection();
     state.model = key; localStorage.setItem("wxgrid.model", key);
@@ -1305,6 +1369,7 @@
 
   // Same job as switchModel, one model: hold the valid time, swap the run.
   function switchRun(runId, target = validDate().getTime()) {
+    state.frac = 0;
     if (!modelEntry().runs.some((r) => r.run === runId) || runId === state.run) return;
     if (WX.tape) WX.tape.clearFineSelection();
     state.run = runId;
@@ -1317,6 +1382,16 @@
   }
 
   function clampStep() { state.stepIdx = Math.min(state.stepIdx, steps().length - 1); }
+  // Round the sub-step position away onto the nearer real step. Everything
+  // except the field layer works in whole steps, so this is what a scrub, a
+  // model change and the end of a playback loop all come back to.
+  function settleStep() {
+    if (!state.frac) return;
+    state.stepIdx = Math.min(steps().length - 1, state.stepIdx + Math.round(state.frac));
+    state.frac = 0;
+    const slider = $("#step");
+    if (slider) slider.value = String(state.stepIdx);
+  }
   function currentStepIdx() {
     const ms = Date.now(), valid = steps().map((h) => runDate().getTime() + h * 3600e3);
     let best = 0;
@@ -1326,29 +1401,41 @@
   function nudge(d) {
     if (state.radar && state.radarFrames.length) { state.radarIdx = (state.radarIdx + d + state.radarFrames.length) % state.radarFrames.length; WX.ov.applyRadarFrame(); return; }
     if (WX.tape) WX.tape.clearFineSelection();
+    state.frac = 0;
     state.stepIdx = (state.stepIdx + d + steps().length) % steps().length; $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) WX.ov.loadIso();
   }
-  function setStep(i) { if (WX.tape) WX.tape.clearFineSelection(); state.stepIdx = Math.max(0, Math.min(steps().length - 1, i)); $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); }
+  function setStep(i) { if (WX.tape) WX.tape.clearFineSelection(); state.frac = 0; state.stepIdx = Math.max(0, Math.min(steps().length - 1, i)); $("#step").value = state.stepIdx; applyStep(); loadWind(); if (state.iso) WX.ov.loadIso(); }
+
+  // Valid time, lead time, and whether the map is sitting on the present.
+  // Split out of applyStep because a glide between two steps redraws this
+  // sixty times a second and nothing else.
+  function renderClock() {
+    const v = validDate();
+    // the phone row has room for the weekday and the hour; the date is the UTC line under it
+    const narrow = matchMedia("(max-width: 820px)").matches;
+    $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts(narrow ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
+    $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
+    const atNow = state.stepIdx === currentStepIdx() && !state.frac;
+    $("#lead").textContent = atNow ? "current" : `+${Math.round(shownHours())}h`;
+    $("#tape-now").classList.toggle("on", atNow);
+    $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
+  }
 
   function applyStep(prefetch = true) {
     pushHash();
-    const src = map.getSource("wx");
-    if (src) { try { src.updateImage({ url: layerUrl(), coordinates: modelCoords() }); } catch (e) { /* superseded */ } }
+    if (fieldLive()) {
+      WX.field.show(fieldSpec());
+    } else {
+      const src = map.getSource("wx");
+      if (src) { try { src.updateImage({ url: layerUrl(), coordinates: modelCoords() }); } catch (e) { /* superseded */ } }
+    }
     if (map.getLayer("wx")) map.setPaintProperty("wx", "raster-opacity", rasterOpacity());
     if (state.thunder && WX.ov) WX.ov.loadThunder();
     if (state.xsection && WX.xs) WX.xs.refresh();
     if (state.aq && WX.cams) WX.cams.refresh();
     if (state.route && WX.route) WX.route.refresh();
     if (WX.probe) WX.probe.refresh();
-    const v = validDate();
-    // the phone row has room for the weekday and the hour; the date is the UTC line under it
-    const narrow = matchMedia("(max-width: 820px)").matches;
-    $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts(narrow ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
-    $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
-    const atNow = state.stepIdx === currentStepIdx();
-    $("#lead").textContent = atNow ? "current" : `+${stepHours()}h`;
-    $("#tape-now").classList.toggle("on", atNow);
-    $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
+    renderClock();
     if (state.night && WX.ov) WX.ov.updateNight();
     if (WX.probe) { WX.probe.pinUpdate(); }
     updateMarkerFlag();
@@ -1357,7 +1444,12 @@
       // scrubbing waits for each one. Fetching +1/+2/-1 in the background
       // makes the scrub read from cache instead (Jeff 2026-08-21).
       const st = steps();
-      for (const d of [1, 2, -1]) { const j = state.stepIdx + d; if (j >= 0 && j < st.length) { const im = new Image(); im.src = layerUrl(st[j]); } }
+      for (const d of [1, 2, -1]) {
+        const j = state.stepIdx + d;
+        if (j < 0 || j >= st.length) continue;
+        if (fieldLive()) WX.field.prefetch(fieldUrl(st[j]));
+        else { const im = new Image(); im.src = layerUrl(st[j]); }
+      }
       if (state.resorts && WX.ov) WX.ov.loadResorts();
     }
     WX.tape.renderTapeSelection();
@@ -1380,7 +1472,39 @@
     state.playing = !state.playing;
     $("#play").textContent = state.playing ? "❚❚" : "▶";
     if (playTimer) { clearInterval(playTimer); playTimer = null; }
-    if (state.playing) playTimer = setInterval(() => nudge(1), state.radar ? Math.min(500, state.playMs) : state.playMs);
+    if (playRaf) { cancelAnimationFrame(playRaf); playRaf = 0; }
+    if (!state.playing) { settleStep(); applyStep(); loadWind(); return; }
+    // The field layer can draw the hours between two model steps, so playback
+    // glides through them. Radar and the raster path swap whole frames.
+    if (fieldLive() && !state.radar && steps().length > 1) {
+      playFrom = performance.now();
+      playRaf = requestAnimationFrame(playFrame);
+      return;
+    }
+    playTimer = setInterval(() => nudge(1), state.radar ? Math.min(500, state.playMs) : state.playMs);
+  }
+  // One step per playMs, in real time. A backgrounded tab comes back with a
+  // huge dt; cap it so the map resumes rather than jumping a day.
+  function playFrame(now) {
+    playRaf = 0;
+    if (!state.playing) return;
+    const last = steps().length - 1;
+    const dt = Math.min(250, Math.max(0, now - playFrom));
+    playFrom = now;
+    let pos = state.stepIdx + state.frac + dt / Math.max(120, state.playMs);
+    if (pos >= last) pos -= last;                        // round the tape and start again
+    const i = Math.min(last, Math.floor(pos));
+    const crossed = i !== state.stepIdx;
+    state.stepIdx = i;
+    state.frac = Math.min(0.999, pos - i);
+    const slider = $("#step");
+    if (slider) slider.value = String(pos);
+    // Crossing into a new step is the moment everything else has to catch up:
+    // the wind field, the isobars, the tape's highlight. Between them only the
+    // mix and the clock move.
+    if (crossed) { applyStep(true); loadWind(); if (state.iso) WX.ov.loadIso(); }
+    else { WX.field.show(fieldSpec()); renderClock(); }
+    playRaf = requestAnimationFrame(playFrame);
   }
 
   // one switch for the wind animation, shared by the menu chips and settings

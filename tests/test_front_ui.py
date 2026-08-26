@@ -99,3 +99,29 @@ def test_surf_and_beach_read_the_swell_direction_and_the_tide():
     panes = _read("panes.js")
     assert "compass(mwd.v)" in panes                 # met convention: where it comes FROM
     assert "function nextTide(pt)" in panes and "nextTide(pt)" in panes
+
+
+def test_the_field_path_hides_the_raster_layer_without_removing_it():
+    # The GPU path draws "wx-field" and leaves "wx" in the style: overlays.js
+    # dims that layer id for radar and satellite, and the shader reads its
+    # opacity back. Hidden, and pointed at a blank image so no PNG is fetched.
+    app = _read("app.js")
+    assert 'const fieldLive = () => !!(WX.field && WX.field.live);' in app
+    assert 'visibility: gpu ? "none" : "visible"' in app
+    assert 'map.addSource("wx", { type: "image", url: gpu ? BLANK : layerUrl()' in app
+    assert 'if (gpu && !map.getLayer("wx-field")) map.addLayer(WX.field.layer, firstSymbolId());' in app
+    # and giving up puts the raster back rather than leaving an empty map
+    assert 'function fieldGaveUp()' in app
+    assert 'map.setLayoutProperty("wx", "visibility", "visible")' in app
+
+
+def test_the_timeline_mixes_two_steps_and_lands_on_a_real_one():
+    app = _read("app.js")
+    # the slider is continuous only where the field layer can mix
+    assert 'slider.step = fieldLive() ? "0.02" : "1";' in app
+    assert "function settleStep()" in app and "slider.onchange = () => { settleStep();" in app
+    # playback glides between steps instead of swapping whole frames
+    assert "playRaf = requestAnimationFrame(playFrame)" in app
+    assert "WX.field.show(fieldSpec()); renderClock();" in app
+    # the clock follows the mix, so the map and the time agree mid-scrub
+    assert "runDate().getTime() + shownHours() * 3600e3" in app

@@ -10,6 +10,8 @@ FRONT = Path(__file__).resolve().parents[1] / "front"
 def test_eager_scripts_come_from_the_page_in_order():
     scripts = bundle.eager_scripts((FRONT / "index.html").read_text())
     assert scripts[0] == "particles.js" and scripts[1] == "app.js"
+    # field.js reads window.WX at load, which app.js defines: after it, always
+    assert scripts.index("field.js") > scripts.index("app.js")
     assert "panes.js" in scripts and "vendor/maplibre-gl.js" not in scripts
     assert not any(s.startswith("private/") for s in scripts)
 

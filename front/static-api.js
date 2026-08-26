@@ -21,7 +21,7 @@
     const q = new URLSearchParams(qs || "");
     if (path === "api/models") return "api/models.json";
     const lvl = q.get("level");
-    if (/^api\/(layer|wind|isolines)\//.test(path)) {
+    if (/^api\/(layer|field|wind|isolines)\//.test(path)) {
       if (!lvl) return path;
       if (path.endsWith(".png")) return path.replace(/\.png$/, `-${lvl}.png`);
       if (path.endsWith(".json")) return path.replace(/\.json$/, `-${lvl}.json`);
