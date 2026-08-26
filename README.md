@@ -1,8 +1,8 @@
 # wxgrid
 
-**A global weather map you host yourself.** Free model data, no API keys, MIT.
+**A global weather map you host yourself.** Free model data, no API keys, AGPL-3.0.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776ab)](https://www.python.org/)
 [![API keys: none](https://img.shields.io/badge/API%20keys-none-brightgreen)](#overlays-and-external-feeds)
 [![Models: IFS · AIFS · GFS · AI-GFS · GEM · GEFS · HRDPS · HRRR](https://img.shields.io/badge/models-IFS%20%C2%B7%20AIFS%20%C2%B7%20GFS%20%C2%B7%20AI--GFS%20%C2%B7%20GEM%20%C2%B7%20GEFS%20%C2%B7%20HRDPS%20%C2%B7%20HRRR-ff8a3d)](#models)
@@ -469,3 +469,24 @@ Short version; the commit log is the long one.
 GRIB grid normalisation, API contract (layers, levels, point, profile,
 isolines), external-feed parsers (METAR pick, avalanche, NWS, KMZ), resorts,
 static builder. Tests use a scratch data dir and stub every network call.
+
+## Licence
+
+Copyright © 2026 Jeff Bai. wxgrid is free software under the **GNU Affero
+General Public License, version 3 or later** — see `LICENSE`.
+
+AGPL rather than a permissive licence for the reason in the first paragraph of
+this README: the point of wxgrid is not being on somebody else's server. If you
+run a modified copy as a network service, the AGPL requires you to offer your
+users its source. Running it unmodified for yourself, your family or your
+employer carries no such obligation.
+
+Bundled third-party work keeps its own licence and its notices must be kept:
+`front/vendor/maplibre-gl.js` (BSD-3-Clause), the four typefaces in
+`front/fonts/` (SIL OFL 1.1, see `front/fonts/LICENSES.md`), and the Natural
+Earth polygons in `data/countries.json` (public domain). Model data belongs to
+the producing agency and is credited per model in the interface.
+
+Releases up to and including `826f5db` were published under the MIT licence and
+remain available under it; the change applies from this commit forward.
+

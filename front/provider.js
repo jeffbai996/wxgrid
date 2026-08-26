@@ -1,6 +1,6 @@
 // National met-service badge for the country under the cursor. Drawn as our
-// own monogram rather than the agency's logo — those are trademarks and this
-// repo is MIT. Country from a Natural Earth 110 m polygon set bundled
+// own monogram rather than the agency's logo — those are trademarks, and a
+// licence does not grant trademark rights. Country from a Natural Earth 110 m polygon set bundled
 // in data/countries.json (public domain), point-in-polygon on a throttled
 // mousemove; the map centre on touch devices. Nothing shown when there is
 // no national service to credit for the spot (open ocean, Antarctica).
