@@ -252,7 +252,9 @@
       if (now >= ev[k].x && now <= ev[k + 1].x) { hNow = between(ev[k], ev[k + 1], now); rising = ev[k + 1].y > ev[k].y; break; }
     const next = ev.find((e) => e.x > now);
     const unit = W().units.altUnit;
-    const labels = ev.map((e) => `<i class="tl ${e.type}" style="left:${X(e.x).toFixed(1)}%">${W().units.alt(e.y, 1).v}</i>`).join("");
+    // a label at either edge would be cut in half by the card: hang it inward
+    const edge = (x) => x < 5 ? " l" : x > 95 ? " r" : "";
+    const labels = ev.map((e) => `<i class="tl ${e.type}${edge(X(e.x))}" style="left:${X(e.x).toFixed(1)}%">${W().units.alt(e.y, 1).v}</i>`).join("");
     const marker = hNow != null ? `<i class="tnow" style="left:${X(now).toFixed(1)}%"></i>` : "";
     const words = next
       ? `<b>${hNow != null ? `${W().units.alt(hNow, 1).v} ${unit} ${rising ? "rising" : "falling"} · ` : ""}${next.type === "H" ? "high" : "low"} ${W().units.alt(next.y, 1).v} ${unit} at ${W().units.time(new Date(next.x))}</b>`

@@ -908,7 +908,7 @@ table.wtape tr.r-dir td { height: 20px; }
 .tide-hero { margin: 2px 0 8px; }
 .tide-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font: 500 11px var(--font-num); color: var(--fg-2); }
 .tide-line b { font: 700 12px var(--font-display); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tide-line .dim { white-space: nowrap; flex: 0 0 auto; }
+.tide-line .dim { white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tide-plot { position: relative; height: 44px; margin-top: 3px; }
 .tide-plot svg { position: absolute; left: 0; right: 0; top: 10px; width: 100%; height: 30px; display: block; overflow: visible; }
 .tide-plot polygon { fill: color-mix(in srgb, var(--rain) 16%, transparent); }
@@ -916,6 +916,8 @@ table.wtape tr.r-dir td { height: 20px; }
 .tide-plot .tl { position: absolute; transform: translateX(-50%); font: 600 9.5px var(--font-mono); font-style: normal; color: var(--fg-2); line-height: 1; }
 .tide-plot .tl.H { top: 0; color: var(--rain); }
 .tide-plot .tl.L { bottom: 0; }
+.tide-plot .tl.l { transform: none; }
+.tide-plot .tl.r { transform: translateX(-100%); }
 .tide-plot .tnow { position: absolute; top: 8px; bottom: 2px; width: 1.5px; background: var(--fg); opacity: .7; transform: translateX(-50%); border-radius: 1px; }
 .meta { display: flex; flex-wrap: wrap; gap: 6px 8px; font: 500 12px var(--font-mono); color: var(--fg-2); margin: 0 0 4px; }
 .meta b { color: var(--fg); font-weight: 700; }
