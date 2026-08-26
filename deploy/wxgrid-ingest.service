@@ -1,17 +1,17 @@
 [Unit]
-Description=wxgrid — fetch the global and ensemble models into the store
+Description=wxgrid — fetch the deterministic global models into the store
 
 [Service]
 Type=oneshot
 WorkingDirectory=%h/local-projects/wxgrid
-# The globals and the ensemble, in that order, as two oneshot steps. The
-# short-range regionals are NOT here: they live in wxgrid-ingest-regional,
-# on their own hourly timer. One pass used to fetch everything, which tied an
-# HOURLY 3 km model to a twice-daily ensemble — a full pass measured 3h55m on
-# 2026-08-25 and the timer cannot fire while one is running, so HRRR could
-# refresh at best once per pass and was found ten hours stale.
+# The deterministic globals only. The regionals are in wxgrid-ingest-regional
+# on an hourly timer, the ensemble in wxgrid-ingest-ensemble on a six-hourly
+# one. One pass used to fetch all three tiers, which tied an HOURLY 3 km model
+# to a twice-daily ensemble: a full pass measured 3h55m on 2026-08-25, a timer
+# will not fire while its own service is running, and HRRR was found ten hours
+# stale as a result. A tier that ages in an hour and a tier that ages in a day
+# do not belong on the same clock.
 ExecStart=%h/local-projects/wxgrid/venv/bin/python -m wxgrid.ingest --group global
-ExecStart=%h/local-projects/wxgrid/venv/bin/python -m wxgrid.ingest --group ensemble
 Nice=10
 IOSchedulingClass=idle
 # Nice alone did not protect the API: during an ingest hour a cold point read
@@ -21,8 +21,10 @@ CPUWeight=20
 IOWeight=20
 MemoryHigh=2G
 MemoryMax=3G
-# Measured: a full eight-model pass ran 3h55m and was still going. Three hours
-# killed five passes between Aug 23 and Aug 25, each one discarding the run it
-# was part way through writing. The timer will not start a second instance over
-# a running one, so a longer ceiling only skips later occurrences.
+# Measured 2026-08-25, per model, first log line to last: aifs 31.8 min,
+# aigfs 38.4, gem 59.1, gfs 44.3, ifs about an hour — call the tier 4h, plus up
+# to 20 min in the memory gate ahead of it. Three hours killed five passes
+# between Aug 23 and Aug 25, each discarding the run it was part way through
+# writing. The timer will not start a second instance over a running one, so a
+# longer ceiling only skips later occurrences.
 TimeoutStartSec=6h

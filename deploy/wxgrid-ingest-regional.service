@@ -14,7 +14,14 @@ IOWeight=20
 # them. It has never needed the headroom the full pass gets.
 MemoryHigh=1G
 MemoryMax=2G
-# Two models, roughly twenty minutes of work. An hour is generous; anything
-# longer than this is a stuck fetch, not a slow one, and the next hourly
-# occurrence is a better answer than holding the window.
-TimeoutStartSec=45min
+# Measured 2026-08-25, both models with a new run to fetch: hrdps 24.5 min,
+# hrrr 24.9 min, so 49.4 min of work. That is the every-six-hours case where
+# both have something new; a typical hourly occurrence fetches one new HRRR
+# cycle and takes about half of it. The memory gate ahead of this can spend up
+# to 20 min of the window before any of that starts.
+#
+# An earlier 45min ceiling here was set from a bad measurement: it counted only
+# the interval between the first and last step written and missed the pre-render
+# that follows, which for HRDPS is longer than the fetch. Measure a model from
+# its first log line to its last, not from its steps.
+TimeoutStartSec=2h

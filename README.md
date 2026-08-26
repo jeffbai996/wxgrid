@@ -255,17 +255,25 @@ python -m wxgrid.ingest --all            # ~10 min first time; ~130 MB GRIB per 
 uvicorn wxgrid.api:app --port 8097       # http://127.0.0.1:8097/
 ```
 
-Production: `deploy/wxgrid.service` (API) plus two ingest timers, because the
-models do not age at the same rate. `deploy/wxgrid-ingest-regional.timer`
-fetches HRRR and HRDPS hourly, which is how often HRRR publishes;
-`deploy/wxgrid-ingest.timer` fetches the globals and then the ensemble every
-three hours. A run already in the store is skipped, so an occurrence with
-nothing new costs one HEAD per model.
+Production: `deploy/wxgrid.service` (API) plus one ingest timer per refresh
+tier, because the models do not age at the same rate:
 
-They are separate units so that a slow model cannot starve a fast one. A
-single pass over all eight models takes hours, and a timer will not fire while
-its own service is still running, so an hourly 3 km model sharing a pass with a
-30-member ensemble refreshed once per pass at best. Tailnet: `tailscale serve --https=8464 http://127.0.0.1:8097`.
+| timer | models | cadence |
+|---|---|---|
+| `wxgrid-ingest-regional.timer` | HRDPS, HRRR | hourly |
+| `wxgrid-ingest.timer` | AIFS, AI-GFS, GEM, GFS, IFS | every 3 h |
+| `wxgrid-ingest-ensemble.timer` | GEFS | every 6 h |
+
+`python -m wxgrid.ingest --group {regional,global,ensemble}` is what each one
+runs; `--all` still does everything in one pass, for a hand-run. A run already
+in the store is skipped, so an occurrence with nothing new costs one HEAD per
+model.
+
+They are separate units so a slow tier cannot starve a fast one. One pass over
+all eight models takes hours, and a timer will not fire while its own service
+is still running, so an hourly 3 km model sharing a pass with a 30-member
+ensemble refreshed once per pass at best. Sharing a pass also means sharing a
+timeout, and the tier at the end of the queue is the one that gets truncated. Tailnet: `tailscale serve --https=8464 http://127.0.0.1:8097`.
 After a run lands, the ingest pre-renders the layers a visit actually opens
 (wind, temperature, gusts, rain, cloud, pressure) for every step, as the exact
 files the request path would write, so those never render on a click. Every

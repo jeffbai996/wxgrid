@@ -1,5 +1,5 @@
 [Unit]
-Description=wxgrid global and ensemble ingest, every 3 h (a run already stored is skipped)
+Description=wxgrid global ingest, every 3 h (a run already stored is skipped)
 
 [Timer]
 OnBootSec=10min

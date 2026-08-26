@@ -1,0 +1,20 @@
+[Unit]
+Description=wxgrid — fetch the ensemble into the store
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/local-projects/wxgrid
+ExecStart=%h/local-projects/wxgrid/venv/bin/python -m wxgrid.ingest --group ensemble
+Nice=10
+IOSchedulingClass=idle
+# Same 15:1 arbitration as every ingest: the API outweighs it.
+CPUWeight=20
+IOWeight=20
+MemoryHigh=2G
+MemoryMax=3G
+# The ensemble is its own unit rather than the tail of the global pass. Run as
+# one job, the globals came first and the ensemble inherited whatever was left
+# of a shared ceiling, so a slow global run truncated GEFS and discarded the
+# partial write — the same fault the split was made to remove, one tier down.
+# Measured 2026-08-25: GEFS is roughly 100 min including its probability pass.
+TimeoutStartSec=4h

@@ -1,0 +1,11 @@
+[Unit]
+Description=wxgrid ensemble ingest, every 6 h (GEFS publishes 4 runs a day and is the least perishable)
+
+[Timer]
+OnBootSec=20min
+OnCalendar=*-*-* 01,07,13,19:20:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
