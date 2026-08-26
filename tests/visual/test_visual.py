@@ -12,7 +12,8 @@ import pytest
 
 from tests.visual import views as V
 from tests.visual.driver import Chrome, available
-from tests.visual.harness import GOLDEN_DIR, capture, compare, measure, painting
+from tests.visual.harness import (GOLDEN_DIR, capture, compare, is_private_build,
+                                  measure, painting)
 from tests.visual.run import OUT_DIR, _capture_overlay, _feature_count, _server_up
 
 
@@ -28,6 +29,9 @@ def base(request) -> str:
         value = "http://127.0.0.1:8097"
     if not _server_up(value):
         pytest.skip(f"no wxgrid at {value}")
+    if is_private_build(value):
+        pytest.skip(f"{value} serves the private theme; goldens are public-font. "
+                    f"Point --base at a public instance.")
     return value
 
 

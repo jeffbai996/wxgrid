@@ -28,6 +28,32 @@ fires burning, no alerts out. The API is asked what it has first. Nothing to
 draw means the view is skipped and says so. Features returned and a blank map
 is the failure.
 
+## Point it at a public instance, for capture AND for check
+
+The operator's own build serves `front/private/`, which rebinds `--font-body`
+to a proprietary face. Goldens are recorded against the public face, so a text
+region checked against a private build differs by typeface alone and goes red
+for a reason that is not a regression. Nine of the ten goldens carry text.
+
+Both commands refuse a private instance rather than let anyone chase that, and
+the pytest wrapper skips.
+
+The catch is that `front/private/` is gitignored but still sits on disk in the
+primary checkout, so an instance started from there serves it as well. A fresh
+worktree has no such directory, which makes it the reliable way to get a public
+one:
+
+```
+git worktree add --detach ../wxgrid-pub main
+cd ../wxgrid-pub
+WXGRID_DATA_DIR=<the live store> WXGRID_CACHE_DIR=<a scratch dir> \
+  ../wxgrid/venv/bin/uvicorn wxgrid.api:app --host 127.0.0.1 --port 8297
+python -m tests.visual.run check --base http://127.0.0.1:8297
+```
+
+The store can be the live one; nothing here writes to it, and the separate
+cache dir keeps rendered frames out of the running instance's cache.
+
 ## Running it
 
 Needs a wxgrid to look at and a Chrome listening for CDP.
@@ -36,7 +62,7 @@ Needs a wxgrid to look at and a Chrome listening for CDP.
 python -m tests.visual.run capture              # record every golden
 python -m tests.visual.run check                # compare against them
 python -m tests.visual.run check rail-right     # one view
-python -m tests.visual.run check --base http://127.0.0.1:8197
+python -m tests.visual.run check --base http://127.0.0.1:8297
 ```
 
 `check` exits non-zero when a view fails. Failed comparisons write an

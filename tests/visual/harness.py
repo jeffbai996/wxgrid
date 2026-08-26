@@ -54,6 +54,28 @@ class View:
         return f"{base}{sep}visual=1{frag}"
 
 
+def is_private_build(base: str) -> bool:
+    """Whether this instance serves the operator's private theme.
+
+    It matters because that theme rebinds `--font-body` to a proprietary face.
+    Goldens are recorded against the public face, so a text region checked
+    against a private build diffs one typeface against another and goes red for
+    a reason that is not a regression. Both `capture` and `check` refuse rather
+    than let someone chase that.
+
+    `theme.js` is the signal, not `theme.css`: the API answers theme.js with an
+    empty 200 when there is no overlay (so the page never logs a missing
+    script), while theme.css simply 404s — and a 404 still carries a JSON error
+    body, which a naive "did I get any bytes" check reads as private."""
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{base.rstrip('/')}/private/theme.js", timeout=5) as r:
+            return r.status == 200 and len(r.read(64).strip()) > 0
+    except Exception:
+        return False
+
+
 def quiesce(tab: Tab, wait_ms: int) -> dict:
     """Stop everything that would differ between two identical runs.
 

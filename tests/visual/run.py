@@ -21,8 +21,8 @@ from pathlib import Path
 
 from tests.visual import views as V
 from tests.visual.driver import Chrome, Tab, available, chrome_port
-from tests.visual.harness import (GOLDEN_DIR, capture, compare, measure, painting,
-                                  quiesce, write_diff)
+from tests.visual.harness import (GOLDEN_DIR, capture, compare, is_private_build,
+                                  measure, painting, quiesce, write_diff)
 
 OUT_DIR = Path("/tmp/wxgrid-visual")
 
@@ -177,6 +177,19 @@ def main(argv: list[str] | None = None) -> int:
     if not available():
         print(f"no debuggable Chrome on port {chrome_port()}; "
               f"set BROWSE_CHROME_PORT or start one", file=sys.stderr)
+        return 2
+    if is_private_build(args.base):
+        print(f"{args.base} serves the private theme, which rebinds the body font.\n"
+              f"Goldens are recorded against the public face, so every text region\n"
+              f"would differ by typeface alone.\n\n"
+              f"Note that the primary checkout keeps front/private/ ON DISK even\n"
+              f"though git ignores it, so an instance started there is private too.\n"
+              f"Serve from a fresh worktree, which has no such directory:\n"
+              f"  git worktree add --detach ../wxgrid-pub main\n"
+              f"  cd ../wxgrid-pub && WXGRID_DATA_DIR=<store> WXGRID_CACHE_DIR=<scratch> \\\n"
+              f"    ../wxgrid/venv/bin/uvicorn wxgrid.api:app --port 8297\n"
+              f"  python -m tests.visual.run {args.command} --base http://127.0.0.1:8297",
+              file=sys.stderr)
         return 2
     return cmd_capture(args) if args.command == "capture" else cmd_check(args)
 
