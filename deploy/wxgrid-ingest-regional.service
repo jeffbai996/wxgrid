@@ -1,0 +1,20 @@
+[Unit]
+Description=wxgrid — fetch the short-range regional models into the store
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/local-projects/wxgrid
+ExecStart=%h/local-projects/wxgrid/venv/bin/python -m wxgrid.ingest --group regional
+Nice=10
+IOSchedulingClass=idle
+# Same 15:1 arbitration as the main pass: the API outweighs any ingest.
+CPUWeight=20
+IOWeight=20
+# Regional grids are small next to a global one, and this unit fetches two of
+# them. It has never needed the headroom the full pass gets.
+MemoryHigh=1G
+MemoryMax=2G
+# Two models, roughly twenty minutes of work. An hour is generous; anything
+# longer than this is a stuck fetch, not a slow one, and the next hourly
+# occurrence is a better answer than holding the window.
+TimeoutStartSec=45min

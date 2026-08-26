@@ -1,10 +1,17 @@
 [Unit]
-Description=wxgrid — fetch the latest complete run of every model into the store
+Description=wxgrid — fetch the global and ensemble models into the store
 
 [Service]
 Type=oneshot
 WorkingDirectory=%h/local-projects/wxgrid
-ExecStart=%h/local-projects/wxgrid/venv/bin/python -m wxgrid.ingest --all
+# The globals and the ensemble, in that order, as two oneshot steps. The
+# short-range regionals are NOT here: they live in wxgrid-ingest-regional,
+# on their own hourly timer. One pass used to fetch everything, which tied an
+# HOURLY 3 km model to a twice-daily ensemble — a full pass measured 3h55m on
+# 2026-08-25 and the timer cannot fire while one is running, so HRRR could
+# refresh at best once per pass and was found ten hours stale.
+ExecStart=%h/local-projects/wxgrid/venv/bin/python -m wxgrid.ingest --group global
+ExecStart=%h/local-projects/wxgrid/venv/bin/python -m wxgrid.ingest --group ensemble
 Nice=10
 IOSchedulingClass=idle
 # Nice alone did not protect the API: during an ingest hour a cold point read
@@ -14,4 +21,8 @@ CPUWeight=20
 IOWeight=20
 MemoryHigh=2G
 MemoryMax=3G
-TimeoutStartSec=3h
+# Measured: a full eight-model pass ran 3h55m and was still going. Three hours
+# killed five passes between Aug 23 and Aug 25, each one discarding the run it
+# was part way through writing. The timer will not start a second instance over
+# a running one, so a longer ceiling only skips later occurrences.
+TimeoutStartSec=6h

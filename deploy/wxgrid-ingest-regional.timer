@@ -1,0 +1,11 @@
+[Unit]
+Description=wxgrid regional ingest, hourly (HRRR publishes every hour and forecasts 48 h)
+
+[Timer]
+OnBootSec=5min
+OnCalendar=*-*-* *:05:00
+RandomizedDelaySec=3min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
