@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -141,3 +142,14 @@ def test_the_probe_reads_the_field_and_keeps_the_colour_fallback():
     assert 'if (WX.field && WX.field.live) { data = null; forUrl = ""; return; }' in probe
     # the nearest-colour inversion is still there for the raster path
     assert "for (let k = 0; k < 256; k++) { const c = r.cols[k].rgb;" in probe
+
+
+def test_the_service_worker_keeps_field_files_with_the_run():
+    sw = _read("sw.js")
+    # The field files need a cache generation of their own, and the number only
+    # ever goes up: pin the floor, not the name, so the next unrelated bump is
+    # not a test failure.
+    m = re.search(r'const VERSION = "wxgrid-v(\d+)"', sw)
+    assert m and int(m.group(1)) >= 31
+    assert "IMMUTABLE = /^api\\/(layer|field|wind|isolines|thunder)\\//" in sw
+    assert "/\\/api\\/(?:layer|field|wind|isolines|thunder)(\\/[^/]+\\/[^/]+\\/)/" in sw

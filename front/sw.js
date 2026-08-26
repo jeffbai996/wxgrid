@@ -4,9 +4,10 @@
 // Three caches, three lifetimes:
 //   shell    the app itself (html/js/css/fonts/vendor/icons). Cache-first;
 //            replaced wholesale when VERSION changes.
-//   runtime  /api/layer, /api/wind, /api/isolines, /api/thunder — these URLs
+//   runtime  /api/layer, /api/field, /api/wind, /api/isolines, /api/thunder —
+//            these URLs
 //            carry the run id, so their bytes never change: cache-first, and
-//            pruned the moment /api/models says that run is gone. A layer PNG
+//            pruned the moment /api/models says that run is gone. A frame
 //            therefore never outlives the run it belongs to.
 //   data     everything else under /api — network-first, cache as fallback,
 //            so an offline app shows the last thing it loaded instead of a
@@ -19,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v30";   // v30: cursor-value toggle on the strip
+const VERSION = "wxgrid-v31";   // v31: the field files and the GPU shading path
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
@@ -78,7 +79,7 @@ async function shellUrls() {
   return [...rel].map(at);
 }
 
-const IMMUTABLE = /^api\/(layer|wind|isolines|thunder)\//;
+const IMMUTABLE = /^api\/(layer|field|wind|isolines|thunder)\//;
 
 // ── install / activate ────────────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ async function pruneRuns(catalog) {
   for (const req of await cache.keys()) {
     const p = new URL(req.url).pathname;
     // /api/<kind>/<model>/<run>/... — keep anything we cannot parse.
-    const m = p.match(/\/api\/(?:layer|wind|isolines|thunder)(\/[^/]+\/[^/]+\/)/);
+    const m = p.match(/\/api\/(?:layer|field|wind|isolines|thunder)(\/[^/]+\/[^/]+\/)/);
     if (m && !live.has(m[1])) await cache.delete(req);
   }
 }
