@@ -1864,30 +1864,37 @@ def air(lat: float, lon: float) -> dict:
 
 # ── tides: DFO (Canada) + NOAA CO-OPS (US) ───────────────────────────────
 
+# A failed upstream call must never be cached as an answer: the cache keeps
+# whatever `fetch` returns, so an empty station list on one bad morning would
+# have said "no tide station" for a week, and one timed-out prediction said it
+# for an hour (Seattle, 2026-08-26). Let the exception escape the cache and
+# answer "unknown" for this request only.
+def _uncached_on_error(key: str, ttl: float, fetch: Callable[[], Any], what: str, fallback: Any) -> Any:
+    try:
+        return cache.get(key, ttl, fetch)
+    except Exception as exc:
+        log.warning("%s: %s", what, exc)
+        return fallback
+
+
 def _dfo_stations() -> list[dict]:
-    def fetch():
-        try:
-            return _get_json("https://api-iwls.dfo-mpo.gc.ca/api/v1/stations", timeout=30)
-        except Exception as exc:
-            log.warning("dfo stations: %s", exc)
-            return []
-    return cache.get("tides:dfo:stations", 7 * 24 * 3600, fetch)
+    return _uncached_on_error("tides:dfo:stations", 7 * 24 * 3600,
+                              lambda: _get_json("https://api-iwls.dfo-mpo.gc.ca/api/v1/stations", timeout=30) or [],
+                              "dfo stations", [])
 
 
 def _noaa_stations() -> list[dict]:
     def fetch():
-        try:
-            j = _get_json("https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json", {"type": "tidepredictions"}, timeout=40)
-            return j.get("stations", [])
-        except Exception as exc:
-            log.warning("noaa stations: %s", exc)
-            return []
-    return cache.get("tides:noaa:stations", 7 * 24 * 3600, fetch)
+        j = _get_json("https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json", {"type": "tidepredictions"}, timeout=40)
+        return j.get("stations", [])
+    return _uncached_on_error("tides:noaa:stations", 7 * 24 * 3600, fetch, "noaa stations", [])
 
 
 def tides(lat: float, lon: float, max_km: float = 60.0) -> dict | None:
-    """Next high/low water at the nearest tide station (Canadian DFO or US
-    NOAA CO-OPS), 48 h, metres. None when no station is within reach."""
+    """Turns of the tide at the nearest station (Canadian DFO or US NOAA
+    CO-OPS), metres. The window opens 12 h behind now so a curve through the
+    events has a turn to start from; it runs 48 h ahead. None when no station
+    is within reach; a failed fetch is not cached (see _uncached_on_error)."""
     key = f"tides:{lat:.2f}:{lon:.2f}"
     def fetch():
         from datetime import datetime, timedelta, timezone
@@ -1909,30 +1916,27 @@ def tides(lat: float, lon: float, max_km: float = 60.0) -> dict | None:
             return None
         d, src, st = best
         now = datetime.now(timezone.utc)
+        start, end = now - timedelta(hours=12), now + timedelta(hours=48)
         events = []
-        try:
-            if src == "dfo":
-                j = _get_json(f"https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/{st['id']}/data",
-                              {"time-series-code": "wlp-hilo", "from": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                               "to": (now + timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%SZ")}, timeout=20)
-                vals = [(e["eventDate"], float(e["value"])) for e in j]
-                for k, (t, v) in enumerate(vals):
-                    prev = vals[k - 1][1] if k else None
-                    nxt = vals[k + 1][1] if k + 1 < len(vals) else None
-                    kind = "H" if (prev is None or v >= prev) and (nxt is None or v >= nxt) else "L"
-                    events.append({"time": t, "height_m": round(v, 2), "type": kind})
-                name, sid = st.get("officialName"), st.get("code")
-            else:
-                j = _get_json("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter",
-                              {"product": "predictions", "datum": "MLLW", "station": st["id"], "time_zone": "gmt", "units": "metric",
-                               "interval": "hilo", "format": "json", "begin_date": now.strftime("%Y%m%d %H:%M"),
-                               "range": 48}, timeout=20)
-                for e in j.get("predictions", []):
-                    events.append({"time": e["t"].replace(" ", "T") + "Z", "height_m": round(float(e["v"]), 2), "type": e["type"]})
-                name, sid = st.get("name"), st.get("id")
-        except Exception as exc:
-            log.info("tides %s %s: %s", src, st.get("id"), exc)
-            return None
+        if src == "dfo":
+            j = _get_json(f"https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/{st['id']}/data",
+                          {"time-series-code": "wlp-hilo", "from": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                           "to": end.strftime("%Y-%m-%dT%H:%M:%SZ")}, timeout=20)
+            vals = [(e["eventDate"], float(e["value"])) for e in (j or [])]
+            for k, (t, v) in enumerate(vals):
+                prev = vals[k - 1][1] if k else None
+                nxt = vals[k + 1][1] if k + 1 < len(vals) else None
+                kind = "H" if (prev is None or v >= prev) and (nxt is None or v >= nxt) else "L"
+                events.append({"time": t, "height_m": round(v, 2), "type": kind})
+            name, sid = st.get("officialName"), st.get("code")
+        else:
+            j = _get_json("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter",
+                          {"product": "predictions", "datum": "MLLW", "station": st["id"], "time_zone": "gmt", "units": "metric",
+                           "interval": "hilo", "format": "json", "begin_date": start.strftime("%Y%m%d %H:%M"),
+                           "range": 60}, timeout=20)
+            for e in (j or {}).get("predictions", []):
+                events.append({"time": e["t"].replace(" ", "T") + "Z", "height_m": round(float(e["v"]), 2), "type": e["type"]})
+            name, sid = st.get("name"), st.get("id")
         return {"source": "DFO CHS" if src == "dfo" else "NOAA CO-OPS", "station": name, "station_id": sid, "distance_km": round(d, 1),
-                "datum": "chart datum" if src == "dfo" else "MLLW", "events": events[:8]}
-    return cache.get(key, 3600, fetch)
+                "datum": "chart datum" if src == "dfo" else "MLLW", "events": events[:12]}
+    return _uncached_on_error(key, 3600, fetch, f"tides {lat:.2f},{lon:.2f}", None)

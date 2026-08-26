@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v31";   // v31: the field files and the GPU shading path
+const VERSION = "wxgrid-v32";   // v32: the tide curve on the hero
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

@@ -226,6 +226,43 @@
     return gloss ? `<abbr title="${esc(gloss)}">${esc(tok)}</abbr>` : esc(tok);
   }).join(" ");
 
+  // ── The tide on the hero ───────────────────────────────────────────────
+  // The stations hand back turns only — high, low, high — so the water between
+  // them is drawn as a half-cosine from one turn to the next, which is the
+  // shape a semi-diurnal tide really has and the rule the pocket tables use.
+  // A marker sits at the card's time, and the sentence says the next turn.
+  // Shown only inside the same 40 km the coast readings use: a station 60 km
+  // up a strait is not this beach's tide.
+  function tideHero(pt) {
+    const t = pt && pt.tides;
+    if (!t || !t.events || t.events.length < 2 || t.distance_km == null || t.distance_km > 40) return "";
+    const ev = t.events.map((e) => ({ x: new Date(e.time).getTime(), y: e.height_m, type: e.type })).sort((a, b) => a.x - b.x);
+    const x0 = ev[0].x, x1 = ev[ev.length - 1].x, span = Math.max(x1 - x0, 1);
+    const ys = ev.map((e) => e.y), lo = Math.min(...ys), hi = Math.max(...ys), rng = Math.max(hi - lo, 0.2);
+    const H = 30, PAD = 2;
+    const X = (x) => (x - x0) / span * 100, Y = (y) => H - PAD - (y - lo) / rng * (H - 2 * PAD);
+    const between = (a, b, x) => a.y + (b.y - a.y) * (1 - Math.cos(Math.PI * (x - a.x) / (b.x - a.x))) / 2;
+    const pts = [];
+    for (let k = 0; k + 1 < ev.length; k++)
+      for (let s = 0; s < 14; s++) { const x = ev[k].x + (ev[k + 1].x - ev[k].x) * s / 14; pts.push(`${X(x).toFixed(2)},${Y(between(ev[k], ev[k + 1], x)).toFixed(2)}`); }
+    pts.push(`${X(x1).toFixed(2)},${Y(ev[ev.length - 1].y).toFixed(2)}`);
+    const now = W().validDate.getTime();
+    let hNow = null, rising = null;
+    for (let k = 0; k + 1 < ev.length; k++)
+      if (now >= ev[k].x && now <= ev[k + 1].x) { hNow = between(ev[k], ev[k + 1], now); rising = ev[k + 1].y > ev[k].y; break; }
+    const next = ev.find((e) => e.x > now);
+    const unit = W().units.altUnit;
+    const labels = ev.map((e) => `<i class="tl ${e.type}" style="left:${X(e.x).toFixed(1)}%">${W().units.alt(e.y, 1).v}</i>`).join("");
+    const marker = hNow != null ? `<i class="tnow" style="left:${X(now).toFixed(1)}%"></i>` : "";
+    const words = next
+      ? `<b>${hNow != null ? `${W().units.alt(hNow, 1).v} ${unit} ${rising ? "rising" : "falling"} · ` : ""}${next.type === "H" ? "high" : "low"} ${W().units.alt(next.y, 1).v} ${unit} at ${W().units.time(new Date(next.x))}</b>`
+      : `<b>tide</b>`;
+    return `<div class="tide-hero" title="${esc(t.source)} · ${esc(t.datum)}">
+      <div class="tide-line">${words}<span class="dim">${esc(t.station)} · ${W().units.dist(t.distance_km).txt}</span></div>
+      <div class="tide-plot"><svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,${H} ${pts.join(" ")} 100,${H}"/><polyline points="${pts.join(" ")}"/></svg>${labels}${marker}</div>
+    </div>`;
+  }
+
   // ── Now: hero, local context, station obs, meteogram ─────────────────
   function renderNow(pt, d, i) {
     const { speed, speedUnit, f, arrow } = W();
@@ -312,6 +349,7 @@
           ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span><i class="brk" aria-hidden="true"></i>${sun.len ? `<span class="len" title="Daylight">${W_ICONS.day || ""}${sun.len}</span>` : ""}<span class="moon" title="${moon.name}, ${moon.pct}% lit">${moon.glyph} ${moon.pct}%</span></div>` : ""}
         </div>
       </div>
+      ${tideHero(pt)}
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
       <div class="meta">${chips.join("")}</div>
       ${contextCues(pt, d, i)}

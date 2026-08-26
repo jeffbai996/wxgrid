@@ -694,3 +694,71 @@ def test_alert_detail_resolves_an_nws_id_to_its_own_document(monkeypatch):
     assert d["sev"] == 3 and d["urgency"] == "Expected" and d["description"] == "The river is up."
     # the id resolves to raw CAP JSON, which is not a page to send a reader to
     assert d["url"] is None
+
+
+# ── tides ──────────────────────────────────────────────────────────────
+
+def _noaa_station_list():
+    return {"stations": [{"id": "9447130", "name": "SEATTLE (Madison St.), Elliott Bay", "lat": 47.6026, "lng": -122.3393}]}
+
+
+def test_a_failed_tide_prediction_is_not_remembered_as_no_station(monkeypatch):
+    # Seattle 404'd for an hour on 2026-08-26 after ONE CO-OPS timeout: the
+    # None from the failed prediction fetch was cached like a real answer.
+    calls = {"pred": 0}
+
+    def fake_get(url, params=None, timeout=20):
+        if url.endswith("stations.json"):
+            return _noaa_station_list()
+        if "api-iwls" in url:
+            return []
+        calls["pred"] += 1
+        if calls["pred"] == 1:
+            raise TimeoutError("read timed out")
+        return {"predictions": [{"t": "2026-08-27 01:00", "v": "3.1", "type": "H"}]}
+
+    monkeypatch.setattr(ext, "_get_json", fake_get)
+    ext.cache._d.clear()
+    assert ext.tides(47.6, -122.34) is None
+    assert ext.tides(47.6, -122.34)["station"].startswith("SEATTLE")
+    assert calls["pred"] == 2
+
+
+def test_a_failed_station_list_is_not_cached_for_a_week(monkeypatch):
+    calls = {"list": 0}
+
+    def fake_get(url, params=None, timeout=20):
+        if url.endswith("stations.json"):
+            calls["list"] += 1
+            if calls["list"] == 1:
+                raise ConnectionError("down")
+            return _noaa_station_list()
+        if "api-iwls" in url:
+            return []
+        return {"predictions": []}
+
+    monkeypatch.setattr(ext, "_get_json", fake_get)
+    ext.cache._d.clear()
+    assert ext._noaa_stations() == []
+    assert len(ext._noaa_stations()) == 1
+    assert calls["list"] == 2
+
+
+def test_tide_window_starts_before_now_so_the_curve_has_a_left_anchor(monkeypatch):
+    seen = {}
+
+    def fake_get(url, params=None, timeout=20):
+        if url.endswith("stations.json"):
+            return _noaa_station_list()
+        if "api-iwls" in url:
+            return []
+        seen.update(params)
+        return {"predictions": []}
+
+    monkeypatch.setattr(ext, "_get_json", fake_get)
+    ext.cache._d.clear()
+    ext.tides(47.6, -122.34)
+    from datetime import datetime, timezone
+    begin = datetime.strptime(seen["begin_date"], "%Y%m%d %H:%M").replace(tzinfo=timezone.utc)
+    assert (datetime.now(timezone.utc) - begin).total_seconds() > 6 * 3600
+    assert int(seen["range"]) >= 60

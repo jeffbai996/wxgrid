@@ -163,3 +163,13 @@ def test_the_field_layer_holds_the_last_frame_while_the_next_loads():
     assert "let pending = null;" in field
     assert "if (!pending || !pending.a || !pending.a.img) return;" in field
     assert "if (pending && (e === pending.a || e === pending.b)) continue;" in field
+
+
+def test_the_hero_draws_the_tide_as_a_curve_when_a_station_is_near():
+    panes = _read("panes.js")
+    css = _read("styles.css")
+    assert "function tideHero(pt)" in panes and "${tideHero(pt)}" in panes
+    # cosine between consecutive turns — the classic hi/lo interpolation
+    assert "Math.cos(" in panes.split("function tideHero")[1].split("\n  }\n")[0]
+    # the peek keeps the tide with the hero rather than hiding it with the rest
+    assert "#point.sheet-peek #point-now > :not(.hero):not(.tide-hero) { display: none; }" in css
