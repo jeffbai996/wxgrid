@@ -905,7 +905,8 @@ table.wtape tr.r-dir td { height: 20px; }
 .hero .sun .len { color: var(--fg-2); }
 /* the tide under the hero: a half-cosine between the station's turns,
    the heights riding the crests and troughs, a bar at the card's time */
-.tide-hero { margin: 2px 0 8px; }
+/* a flex item of #point-now: min-width auto would size it to the nowrap sentence and shove the station off the card */
+.tide-hero { margin: 2px 0 8px; min-width: 0; width: 100%; }
 .tide-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font: 500 11px var(--font-num); color: var(--fg-2); }
 .tide-line b { font: 700 12px var(--font-display); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tide-line .dim { white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
