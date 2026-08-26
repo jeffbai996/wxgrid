@@ -49,6 +49,7 @@
     while (cacheBytes > CACHE_BYTES && entries.length > 2) {
       const e = entries.shift();
       if (e === shown.a || e === shown.b) continue;
+      if (pending && (e === pending.a || e === pending.b)) continue;
       cache.delete(e.url);
       cacheBytes -= e.bytes;
       if (e.tex && gl) gl.deleteTexture(e.tex);
@@ -504,29 +505,44 @@ void main() {
   let showSerial = 0;
   function want(url, gen, repaint) {
     const e = entryFor(url);
-    if (!e.img && !e.failed) e.promise.then(() => { if (gen === showSerial) repaint(); }).catch((err) => {
+    if (!e.img && !e.failed) e.promise.then(() => { if (gen === showSerial) { commit(); repaint(); } }).catch((err) => {
       // A missing field for a run the catalog names is the server saying
       // this path is not on offer; anything else is one bad step.
       if (gen === showSerial && err && (err.status === 404 || err.status === 501 || /altered/.test(err.message))) fallback(err.status ? `field ${err.status}` : err.message);
     });
     return e;
   }
+  // What has been asked for but has no pixels yet. The map keeps drawing the
+  // last complete frame until it does: an ImageSource holds its old image
+  // across an updateImage, and a step change that blanked the map for the
+  // length of a request would be a worse map than the one this replaces.
+  let pending = null;
+
+  function commit() {
+    if (!pending || !pending.a || !pending.a.img) return;
+    Object.assign(shown, pending);
+    pending = null;
+  }
+
   // spec: { a: url, b: url|null, t, layer, level, model }
   function show(spec) {
     if (!live) return;
     const gen = ++showSerial;
     const repaint = () => { if (WX.map) WX.map.triggerRepaint(); if (WX.probe) { WX.probe.pinUpdate(); } if (WX.fn && WX.fn.updateMarkerFlag) WX.fn.updateMarkerFlag(); };
     const lg = rampFor(spec.layer, spec.level);
-    shown.layer = spec.layer; shown.level = spec.level; shown.model = spec.model;
-    shown.snap = SNAP_LAYERS.has(spec.layer);
-    shown.cells = CELL_LAYERS.has(spec.layer);
-    shown.ramp = lg; shown.enc = lg && lg.enc; shown.rule = lg && lg.alpha;
+    const snap = SNAP_LAYERS.has(spec.layer);
     let t = spec.t || 0;
     // a held field shows whichever step is nearer, so the tape and the map agree
-    if (shown.snap && spec.b && t >= 0.5) { spec = { ...spec, a: spec.b, b: null }; t = 0; }
-    shown.t = shown.snap ? 0 : t;
-    shown.a = want(spec.a, gen, repaint);
-    shown.b = spec.b && t > 0 ? want(spec.b, gen, repaint) : null;
+    if (snap && spec.b && t >= 0.5) { spec = { ...spec, a: spec.b, b: null }; t = 0; }
+    pending = {
+      layer: spec.layer, level: spec.level, model: spec.model,
+      snap, cells: CELL_LAYERS.has(spec.layer),
+      ramp: lg, enc: lg && lg.enc, rule: lg && lg.alpha,
+      t: snap ? 0 : t,
+      a: want(spec.a, gen, repaint),
+      b: spec.b && t > 0 ? want(spec.b, gen, repaint) : null,
+    };
+    commit();
     repaint();
   }
   function prefetch(url) { if (live) entryFor(url).promise.catch(() => {}); }

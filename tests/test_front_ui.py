@@ -153,3 +153,13 @@ def test_the_service_worker_keeps_field_files_with_the_run():
     assert m and int(m.group(1)) >= 31
     assert "IMMUTABLE = /^api\\/(layer|field|wind|isolines|thunder)\\//" in sw
     assert "/\\/api\\/(?:layer|field|wind|isolines|thunder)(\\/[^/]+\\/[^/]+\\/)/" in sw
+
+
+def test_the_field_layer_holds_the_last_frame_while_the_next_loads():
+    # An ImageSource keeps its old image across updateImage. Blanking the map
+    # for the length of a request would be the one place the new path is
+    # worse than the one it replaces.
+    field = _read("field.js")
+    assert "let pending = null;" in field
+    assert "if (!pending || !pending.a || !pending.a.img) return;" in field
+    assert "if (pending && (e === pending.a || e === pending.b)) continue;" in field
