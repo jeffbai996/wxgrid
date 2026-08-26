@@ -437,6 +437,11 @@ lifts) degrade quietly.
 
 Short version; the commit log is the long one.
 
+- **2026-08-25** — the map draws the model field instead of a picture of it:
+  `/api/field` ships each frame as 16-bit data, the browser colours it on the
+  GPU, and the timeline mixes the two steps it sits between. Unit and level
+  switches stop costing a request; the cursor value comes out of the field
+  rather than out of the colour. `/api/layer` stays as the fallback.
 - **2026-08-22** — the store halves: float16 with stored offsets for every
   field; the ingest paces its writes and downloads, reads each variable once
   when building the point cube (it was thirty times), and hands decoded GRIB
