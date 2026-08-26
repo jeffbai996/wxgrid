@@ -19,7 +19,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v28";   // v28: alert map cards, beach coast probe
+const VERSION = "wxgrid-v29";   // v29: locate pinned to the strip, regional models by view
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
