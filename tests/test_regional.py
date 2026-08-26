@@ -84,11 +84,19 @@ def test_hrrr_since_start_precip_is_deaccumulated_per_hour():
     np.testing.assert_allclose(accumulation_bucket("per_step", 2, 1, total, previous), total)
 
 
-def test_regional_ingests_follow_every_global_model():
+def test_the_most_perishable_models_ingest_first():
+    # HRRR publishes hourly and forecasts 48 h: it is stale within the hour.
+    # It used to run LAST, behind the ensemble, and a GEFS pass long enough to
+    # outlast the hourly timer left it ten hours old (2026-08-25).
     order = ingest_order()
-    first_regional = next(i for i, key in enumerate(order) if MODELS[key].regional)
-    assert all(not MODELS[key].regional for key in order[:first_regional])
-    assert order[first_regional:] == ["hrdps", "hrrr"]
+    assert order[:2] == ["hrdps", "hrrr"]
+    last_regional = max(i for i, key in enumerate(order) if MODELS[key].regional)
+    assert all(MODELS[key].regional for key in order[:last_regional + 1])
+    # the ensemble is the heaviest fetch and the least time-critical — it goes
+    # after every deterministic model, never in front of one
+    ens = [i for i, key in enumerate(order) if MODELS[key].spread_params]
+    assert ens and min(ens) > max(i for i, key in enumerate(order)
+                                  if not MODELS[key].spread_params and not MODELS[key].regional)
 
 
 def test_regional_render_and_particle_grid_do_not_wrap():

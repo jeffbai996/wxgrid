@@ -218,6 +218,8 @@ body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 70
   background: var(--panel-solid); border: 1px solid var(--line-strong); color: var(--fg); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
 .locate-btn svg { width: 20px; height: 20px; display: block; }
 .tstrip .strip-locate { color: var(--fg); }
+.tstrip .strip-probe { color: var(--fg); }
+.tstrip .strip-probe.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .locate-btn:hover { border-color: var(--accent); color: var(--accent); }
 .locate-btn.on { color: var(--accent); border-color: var(--accent); }
 .rail { display: flex; flex-direction: column; gap: 2px; max-height: 100%; overflow-y: auto; scrollbar-width: none;

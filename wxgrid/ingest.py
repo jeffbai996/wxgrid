@@ -365,12 +365,27 @@ def augment_waves(model: Model, rid: str, grib_root: Path = GRIB_DIR, store_root
 
 
 def ingest_order() -> list[str]:
-    """Global products first, then the two heavier regional products.
+    """Most perishable first: short-range regional, then global, then ensemble.
 
-    Keeping each group sorted makes the timer deterministic while ensuring a
-    slow regional fetch never delays an available global cycle.
+    This used to run globals first so "a slow regional fetch never delays an
+    available global cycle", which had it backwards for the model that needs
+    freshness most. HRRR sat last, behind GEFS — whose 30 members and
+    probability pass can run for hours — and because the hourly timer cannot
+    fire while a pass is still running, HRRR went ten hours without a refresh
+    (2026-08-25). A 3 km hourly model is the first thing to go stale and the
+    last thing anyone wants stale; a 10-day global that publishes four times a
+    day can wait the extra two minutes.
+
+    Each group stays sorted by key so the pass is deterministic.
     """
-    return sorted(MODELS, key=lambda key: (MODELS[key].regional, key))
+    def rank(key: str) -> tuple[int, str]:
+        m = MODELS[key]
+        if m.regional:
+            return (0, key)                             # short range, ages fastest
+        # spread_params is what an ensemble carries and nothing else does: it
+        # is the heaviest fetch in the pass and the least time-critical.
+        return (2 if m.spread_params else 1, key)
+    return sorted(MODELS, key=rank)
 
 
 def main(argv: list[str] | None = None) -> int:

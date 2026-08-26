@@ -19,7 +19,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v29";   // v29: locate pinned to the strip, regional models by view
+const VERSION = "wxgrid-v30";   // v30: cursor-value toggle on the strip
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

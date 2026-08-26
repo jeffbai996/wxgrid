@@ -821,7 +821,10 @@
     const pt = $("#probe-toggle");
     if (pt) {
       pt.classList.toggle("on", state.probeChip);
-      pt.onclick = () => { state.probeChip = !state.probeChip; localStorage.setItem("wxgrid.probe", state.probeChip ? "1" : "0"); pt.classList.toggle("on", state.probeChip); if (!state.probeChip && WX.probe) WX.probe.hover(null); };
+      pt.onclick = () => { state.probeChip = !state.probeChip; localStorage.setItem("wxgrid.probe", state.probeChip ? "1" : "0"); pt.classList.toggle("on", state.probeChip); if (!state.probeChip && WX.probe) WX.probe.hover(null);
+        // the strip carries the same switch; toggling either must light both
+        const sp = document.querySelector(".strip-probe");
+        if (sp) { sp.classList.toggle("on", state.probeChip); sp.setAttribute("aria-pressed", state.probeChip ? "true" : "false"); } };
     }
     $("#alerts-toggle").onclick = () => { state.alerts = !state.alerts; $("#alerts-toggle").classList.toggle("on", state.alerts); if (state.alerts) WX.ov.loadAlerts(); else WX.ov.clearAlerts(); };
     $("#storms-toggle").onclick = () => { state.storms = !state.storms; $("#storms-toggle").classList.toggle("on", state.storms);
@@ -928,6 +931,24 @@
     // should be on the outside rather than hiding in the three-dot menu").
     st.insertAdjacentHTML("afterbegin", `<button class="strip-locate" data-tip="My location" aria-label="My location">${$("#locate-btn").innerHTML}</button>`);
     st.querySelector(".strip-locate").onclick = () => $("#locate-btn").click();
+    // Reading a value off the map is the other thing people come to a weather
+    // map to do, and its switch was buried in the same flyout — the feature
+    // reads as missing when you cannot find the toggle (Jeff 2026-08-25: "the
+    // feature where u can toggle data card on hover ... never implemented").
+    // Same treatment: head of the strip, never trimmed, state mirrored so the
+    // strip and the menu can never disagree about whether it is on.
+    const pt0 = $("#probe-toggle");
+    if (pt0) {
+      st.insertAdjacentHTML("afterbegin", `<button class="strip-probe" data-tip="Value under the cursor" aria-label="Value under the cursor" aria-pressed="false">${pt0.querySelector("svg").outerHTML}</button>`);
+      const sp = st.querySelector(".strip-probe");
+      const syncProbe = () => {
+        const on = !!state.probeChip;
+        sp.classList.toggle("on", on);
+        sp.setAttribute("aria-pressed", on ? "true" : "false");
+      };
+      sp.onclick = () => { pt0.click(); syncProbe(); };
+      syncProbe();
+    }
     // overflow flyout: the strip stays fixed, the extras animate out beside it
     st.insertAdjacentHTML("beforeend", `<button id="strip-more" data-tip="More layers and tools" aria-label="More" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>`);
     document.body.insertAdjacentHTML("beforeend", '<div id="strip-more-pop" class="tstrip strip-pop"></div>');
@@ -1224,7 +1245,8 @@
     Array.from(pop.children).forEach((el) => st.insertBefore(el, more));
     // .strip-locate is a primary control, not an overlay toggle: it is sized
     // with the rest but never trimmed into the flyout.
-    const trimmable = (el) => el !== more && !el.classList.contains("strip-locate");
+    const trimmable = (el) => el !== more
+      && !el.classList.contains("strip-locate") && !el.classList.contains("strip-probe");
     const all = Array.from(st.querySelectorAll("button, .sep")).filter((el) => el !== more);
     const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
     const tb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tb-h")) || 150;
