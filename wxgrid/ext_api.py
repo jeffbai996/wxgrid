@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, HTTPException, Query
 from starlette.responses import StreamingResponse
 
-from wxgrid import ext
+from wxgrid import ext, liveness
 
 router = APIRouter(prefix="/api")
 
@@ -74,8 +74,17 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
 
 @router.get("/health")
 def api_health():
-    """Which upstreams are answering. An upstream is "down" when its last
-    failure is newer than its last success and less than 30 min old."""
+    """Which upstreams are answering, plus which of them are actually LIVE.
+
+    `upstreams`/`down` are the passive, host-level view: an upstream is "down"
+    when its last failure is newer than its last success and less than 30 min
+    old. That view only knows about a host once ordinary traffic has hit it,
+    and it counts an HTTP 200 as success even when the body is an error
+    document — see wxgrid.liveness for why that is not the same question as
+    "is this source live". `sources`/`sources_down` are that module's active,
+    scheduled answer: a per-source record last refreshed on its own TTL,
+    never inline on this request (ensure_fresh serves the stored result and,
+    only if it is stale, kicks a background refresh for next time)."""
     import time as _t
     now = _t.time()
     out = {}
@@ -83,7 +92,19 @@ def api_health():
         down = h["fail"] > h["ok"] and now - h["fail"] < 1800
         out[host] = {"down": down, "last_ok_s": round(now - h["ok"]) if h["ok"] else None,
                      "error": h["error"] if down else ""}
-    return {"upstreams": out, "down": sorted(k for k, v in out.items() if v["down"])}
+    live = liveness.ensure_fresh()
+    return {"upstreams": out, "down": sorted(k for k, v in out.items() if v["down"]),
+            "sources": live["sources"], "sources_down": live["sources_down"],
+            "sources_checked_at": live["checked_at"]}
+
+
+@router.get("/health/sources")
+def api_health_sources():
+    """The active liveness registry on its own: one record per external
+    source, each carrying whether it is currently live, the detail string its
+    content assertion measured, and how long it has been down if it is not.
+    Never probes inline — see wxgrid.liveness.ensure_fresh."""
+    return liveness.ensure_fresh()
 
 
 @router.get("/geo")
