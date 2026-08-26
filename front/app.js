@@ -416,10 +416,33 @@
     const [w, s, e, n] = m.domain;
     return [[w, n], [e, n], [e, s], [w, s]];
   };
+  // A regional model is offered when its grid covers a real part of what you
+  // are looking at — not when the map CENTRE happens to sit inside it. The
+  // centre test disabled HRRR the moment you panned a little south, with most
+  // of the continental grid still on screen (Jeff 2026-08-25: "HRRR is not
+  // loading"); one degree of pan flipped a model on and off. Rendering already
+  // clips to the domain, so a partly-covered view draws the part it has.
   const modelInView = (m) => {
     if (!m || !m.regional || !map) return true;
-    const c = map.getCenter(), lon = wlon(c.lng), [w, s, e, n] = m.domain;
-    return c.lat >= s && c.lat <= n && lon >= w && lon <= e;
+    const [w, s, e, n] = m.domain;
+    const c = map.getCenter();
+    if (c.lat >= s && c.lat <= n) { const lo = wlon(c.lng); if (lo >= w && lo <= e) return true; }
+    let b;
+    try { b = map.getBounds(); } catch { return false; }
+    if (!b) return false;
+    const vs = b.getSouth(), vn = b.getNorth(), vw = b.getWest(), ve = b.getEast();
+    const latOverlap = Math.min(vn, n) - Math.max(vs, s);
+    if (latOverlap <= 0) return false;
+    // A view wider than the world, or one wrapped past the antimeridian, has
+    // no meaningful west/east span to intersect — fall back to latitude alone.
+    const lonOverlap = (ve - vw >= 360 || ve < vw)
+      ? e - w : Math.min(ve, e) - Math.max(vw, w);
+    if (lonOverlap <= 0) return false;
+    // Ignore a sliver at the edge of the screen: a model worth switching to
+    // has to cover enough of the view to be worth looking at.
+    const area = (latOverlap * lonOverlap) /
+                 Math.max(1e-9, (vn - vs) * Math.min(360, ve - vw));
+    return area >= 0.12;
   };
 
   // ── controls ──────────────────────────────────────────────────────────
