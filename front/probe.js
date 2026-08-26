@@ -1,9 +1,13 @@
 // Value under the cursor for the layer on screen: a picker that follows the
 // mouse.
-// No extra request: the layer PNG the map already shows is decoded once into
-// an offscreen canvas and read back through the legend's colour ramp; wind
-// and waves come straight from the particle field. Hover only — touch
-// devices have the tap-to-open card.
+// No extra request either way. On the GPU path the number comes out of the
+// same decoded field the shader coloured the pixel from (WX.field.sample), so
+// the chip, the pin and the marker flag say what the map is showing to the
+// resolution the field was encoded at. Without that path the layer PNG is
+// decoded into an offscreen canvas and read back through the legend's colour
+// ramp, which is a nearest-colour guess and all the picture can offer. Wind
+// and waves come straight from the particle field. Hover only — touch devices
+// have the tap-to-open card.
 (function () {
   "use strict";
   const WX = window.WX;
@@ -49,8 +53,10 @@
     return lut;
   }
 
-  // Decode the layer PNG the map is showing (same URL → browser cache).
+  // Decode the layer PNG the map is showing (same URL → browser cache). The
+  // GPU path has the field itself and never wants this image.
   function refresh() {
+    if (WX.field && WX.field.live) { data = null; forUrl = ""; return; }
     const url = WX.fn.layerUrl && WX.fn.layerUrl();
     if (!url || url === forUrl) return;
     forUrl = url; data = null;
@@ -77,16 +83,26 @@
       if (layer === "waves") { const h = spd / 3; return { text: WX.units.alt(h, 1).txt, sub: `${WX.arrow((dir + 180) % 360)} ${Math.round((dir + 180) % 360)}°` }; }
       return { text: `${Math.round(WX.speed(spd))} ${WX.speedUnit()}`, sub: `${WX.arrow(dir)} ${Math.round(dir)}°` };
     }
-    if (!data) return null;
     const r = ramp(layer, WX.state.level); if (!r) return null;
-    const pixel = imagePixel(lng, lat); if (!pixel) return null;
-    const { x, y } = pixel;
-    const i = (y * data.w + x) * 4;
-    const R = data.px[i], G = data.px[i + 1], B = data.px[i + 2], A = data.px[i + 3];
-    if (A === 0) return { text: ["tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "cape", "uvi", "fog", "solar"].includes(layer) ? "0" : "—", sub: r.lg.units };
-    let best = 0, bd = 1e9;
-    for (let k = 0; k < 256; k++) { const c = r.cols[k].rgb; const d = (c[0] - R) ** 2 + (c[1] - G) ** 2 + (c[2] - B) ** 2; if (d < bd) { bd = d; best = k; } }
-    let v = r.cols[best].v;
+    // Layers whose "nothing here" is a real zero rather than an absence.
+    const ZERO = ["tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "cape", "uvi", "fog", "solar"];
+    let v;
+    if (WX.field && WX.field.live) {
+      const got = WX.field.sample(lng, lat);
+      if (!got) return null;                       // the field is still decoding
+      if (!got.valid) return { text: ZERO.includes(layer) ? "0" : "—", sub: r.lg.units };
+      v = got.v;
+    } else {
+      if (!data) return null;
+      const pixel = imagePixel(lng, lat); if (!pixel) return null;
+      const { x, y } = pixel;
+      const i = (y * data.w + x) * 4;
+      const R = data.px[i], G = data.px[i + 1], B = data.px[i + 2], A = data.px[i + 3];
+      if (A === 0) return { text: ZERO.includes(layer) ? "0" : "—", sub: r.lg.units };
+      let best = 0, bd = 1e9;
+      for (let k = 0; k < 256; k++) { const c = r.cols[k].rgb; const d = (c[0] - R) ** 2 + (c[1] - G) ** 2 + (c[2] - B) ** 2; if (d < bd) { bd = d; best = k; } }
+      v = r.cols[best].v;
+    }
     if (["wind", "gust", "gfactor"].includes(layer)) return { text: `${Math.round(WX.speed(v))} ${WX.speedUnit()}`, sub: "" };
     const U = WX.units;
     // Same conversion table as the legend — a probe that says metres under a

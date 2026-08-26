@@ -133,3 +133,11 @@ def test_precipitation_type_is_drawn_as_cells_and_everything_else_smooth():
     # accumulations hold their step in time but stay continuous in space
     assert '"tp6", "tp24", "tp72"' in field.split("SNAP_LAYERS")[1].split(")")[0]
     assert "vec4 crw(float t)" in field and "u_cells > 0.5" in field
+
+
+def test_the_probe_reads_the_field_and_keeps_the_colour_fallback():
+    probe = _read("probe.js")
+    assert "const got = WX.field.sample(lng, lat);" in probe
+    assert 'if (WX.field && WX.field.live) { data = null; forUrl = ""; return; }' in probe
+    # the nearest-colour inversion is still there for the raster path
+    assert "for (let k = 0; k < 256; k++) { const c = r.cols[k].rgb;" in probe
