@@ -7,7 +7,7 @@ from PIL import Image
 
 from wxgrid import api, render
 from wxgrid.config import STORE_DIR
-from wxgrid.ingest import accumulation_bucket, ingest_order
+from wxgrid.ingest import TIERS, accumulation_bucket, ingest_order, model_tier, models_in
 from wxgrid.models import MODELS, Model
 from wxgrid.store import RunReader, RunWriter
 
@@ -97,6 +97,36 @@ def test_the_most_perishable_models_ingest_first():
     ens = [i for i, key in enumerate(order) if MODELS[key].spread_params]
     assert ens and min(ens) > max(i for i, key in enumerate(order)
                                   if not MODELS[key].spread_params and not MODELS[key].regional)
+
+
+def test_every_model_lands_in_exactly_one_tier():
+    seen = [k for tier in TIERS for k in models_in(tier)]
+    assert sorted(seen) == sorted(MODELS)
+    assert len(seen) == len(set(seen))
+
+
+def test_the_tiers_agree_with_the_pass_order():
+    # --group and the pass order read the same classifier on purpose: a model
+    # cannot be early in the order and in a slow group at the same time.
+    order = ingest_order()
+    positions = [order.index(k) for tier in TIERS for k in models_in(tier)]
+    assert positions == sorted(positions)
+
+
+def test_the_regional_tier_is_what_the_hourly_timer_fetches():
+    # The split exists so an hourly 3 km model is not tied to a twice-daily
+    # ensemble: one --all pass ran 3h55m on 2026-08-25 and HRRR could only
+    # refresh once inside it.
+    assert models_in("regional") == ["hrdps", "hrrr"]
+    assert all(MODELS[k].regional for k in models_in("regional"))
+    assert models_in("ensemble") == ["gefs"]
+    assert all(MODELS[k].spread_params for k in models_in("ensemble"))
+    assert not any(MODELS[k].regional or MODELS[k].spread_params
+                   for k in models_in("global"))
+
+
+def test_model_tier_names_only_known_tiers():
+    assert {model_tier(k) for k in MODELS} <= set(TIERS)
 
 
 def test_regional_render_and_particle_grid_do_not_wrap():

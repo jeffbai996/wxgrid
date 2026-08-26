@@ -373,20 +373,40 @@ def ingest_order() -> list[str]:
 
     Each group stays sorted by key so the pass is deterministic.
     """
-    def rank(key: str) -> tuple[int, str]:
-        m = MODELS[key]
-        if m.regional:
-            return (0, key)                             # short range, ages fastest
-        # spread_params is what an ensemble carries and nothing else does: it
-        # is the heaviest fetch in the pass and the least time-critical.
-        return (2 if m.spread_params else 1, key)
-    return sorted(MODELS, key=rank)
+    return sorted(MODELS, key=lambda key: (TIERS.index(model_tier(key)), key))
+
+
+# How perishable a model is, and therefore how often it is worth fetching.
+# One name for the idea, used by the pass order and by --group, so a model
+# cannot be early in the order and in the wrong group at the same time.
+TIERS = ("regional", "global", "ensemble")
+
+
+def model_tier(key: str) -> str:
+    """Which refresh tier a model belongs to.
+
+    regional  short range, ages fastest, cheapest to fetch
+    global    the deterministic globals
+    ensemble  spread_params is what an ensemble carries and nothing else does:
+              the heaviest fetch in the pass and the least time-critical
+    """
+    m = MODELS[key]
+    if m.regional:
+        return "regional"
+    return "ensemble" if m.spread_params else "global"
+
+
+def models_in(group: str) -> list[str]:
+    """The models of one tier, in pass order."""
+    return [k for k in ingest_order() if model_tier(k) == group]
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", choices=sorted(MODELS), help="one model")
     ap.add_argument("--all", action="store_true", help="every model")
+    ap.add_argument("--group", choices=TIERS,
+                    help="every model of one refresh tier: regional, global or ensemble")
     ap.add_argument("--run", default="auto", help="YYYY-MM-DDTHH (UTC) or 'auto'")
     ap.add_argument("--keep-grib", action="store_true")
     ap.add_argument("--augment-waves", action="store_true", help="add wave fields to runs already in the store")
@@ -396,9 +416,14 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    keys = ingest_order() if args.all else ([args.model] if args.model else [])
+    if args.all:
+        keys = ingest_order()
+    elif args.group:
+        keys = models_in(args.group)
+    else:
+        keys = [args.model] if args.model else []
     if not keys:
-        ap.error("--model or --all")
+        ap.error("--model, --group or --all")
     rc = 0
     for key in keys:
         model = get_model(key)
