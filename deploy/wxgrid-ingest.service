@@ -28,11 +28,3 @@ MemoryMax=3G
 # writing. The timer will not start a second instance over a running one, so a
 # longer ceiling only skips later occurrences.
 TimeoutStartSec=6h
-# The memory gate ahead of this exits 75 (EX_TEMPFAIL) when it gives up: the
-# host stayed under pressure for the whole bounded wait, so this occurrence
-# stands down and the next one tries. That is a deliberate deferral, not a
-# breakage, and without this line systemd records it as a failed unit — which
-# makes "the desktop was busy" and "the ingest is broken" indistinguishable in
-# systemctl --failed, in any health check, and to whoever is reading at 03:00.
-# A real failure still shows red.
-SuccessExitStatus=75
