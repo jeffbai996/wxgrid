@@ -36,7 +36,10 @@ ECCC dd.weather.gc.ca (GEM GDPS, HRDPS) ────┘        (GRIB2 → each m
                                              │
               ┌──────────────────────────────┴──────────────────────────┐
      wxgrid.api (FastAPI :8097)                                 wxgrid.reader (xarray)
-     /api/layer      Mercator PNG per model/run/step/layer        open_run · series · region_mean · spread
+     /api/field      the model grid as 16-bit data, coloured in     open_run · series · region_mean · spread
+                     the browser
+     /api/layer      the same frame coloured on the server, for
+                     clients without WebGL
      /api/wind       coarse u/v for the particle layer
      /api/point      every variable at every step, one gridpoint
      /api/xsection   vertical slice between two points
@@ -316,9 +319,9 @@ to `data/cache/ext.json`) unless marked *direct*:
 `tape.js` (the forecast table), `search.js`, `panes.js` (card
 panes), `particles.js` (wind particles + barbs), `static-api.js` (Pages
 shim). MapLibre GL (vendored) on OpenFreeMap's dark style (positron in the
-light theme; dark theme is OLED black), one
-`image` source draped over the world in Web Mercator (the server reprojects
-the lat/lon grid so the drape is exact), a 2-D canvas particle layer above it
+light theme; dark theme is OLED black), the weather field drawn by a custom
+WebGL layer (`field.js`, see below) with the server-coloured `image` source
+underneath it as the fallback, a 2-D canvas particle layer above it
 (cambecc/earth lineage), a resizable weather tape + scrubber (← → keys,
 space to play), a model picker that keeps the *valid time* when you switch,
 altitude picker for wind/temp (surface, 1000…200 hPa, with altitude or flight
@@ -347,6 +350,41 @@ URL hash and are applied when one is pasted into an open tab. Measure tool,
 saved places, first-run tour. Fonts: DM Sans / Urbanist / Geist
 Mono (OFL, see `front/fonts/LICENSES.md`).
 
+### The weather field: data to the browser, colour on the GPU
+
+The map draws the model grid itself, not a picture of it. `/api/field` sends
+one frame as a lossless 16-bit PNG on the model's own lat/lon grid: the red
+and green channels carry the value over a fixed per-layer range, blue is 1
+where the model has a value and 0 where it does not (land under a wave field,
+a step it never published). The range, the colour ramp and the fade rule for
+every layer are published in `/api/models`, so the browser and the server work
+from one table.
+
+`front/field.js` decodes those frames, keeps the last few, and draws them
+through a MapLibre custom layer. Every screen pixel is projected back onto the
+grid and sampled there with the same cubic kernel the server used, mixed with
+the next forecast step, faded by the layer's rule and looked up in a 256-entry
+ramp texture. Four things follow from that:
+
+- Changing units changes nothing on the wire. The ramp is in display units
+  already, so °C to °F is a label, not a request.
+- Changing level or layer costs one frame at most, and nothing at all for a
+  frame already decoded.
+- The timeline is continuous. Dragging the scrubber mixes the two steps it
+  sits between and the clock follows; the release lands on a real model step,
+  because the wind, the isobars and the tape only exist on those. Precipitation
+  type and the accumulation layers hold their step: a six-hour bucket half
+  mixed with the next is not a quantity anyone measured.
+- The cursor readout is the value the pixel was coloured from, read out of the
+  same decoded frame, instead of guessing the value back out of the colour.
+
+Precipitation type is drawn as cells rather than a smooth surface: it is a
+code, so a pixel between a rain cell and a snow cell is one or the other.
+
+`/api/layer` still serves the server-coloured PNG and is what the map falls
+back to with no WebGL, no field endpoint, or `?field=0` in the URL. The
+fallback is one line in the console naming which path is live.
+
 The met-service badge names whoever forecasts for the country under the
 cursor. This build draws its own **monogram** in the service's brand colour —
 their actual logos are trademarks, and an approximation of a trademark is
@@ -359,7 +397,7 @@ a private instance (see `front/private/`).
 `index.html` at install time, so a new module is picked up without editing a
 list — and keeps three more caches: layer and wind requests cache-first (they
 are immutable per run, and entries are evicted when their run leaves the
-catalog), everything else under `/api` network-first with a cached fallback,
+catalog), field files with them, everything else under `/api` network-first with a cached fallback,
 and enough of the basemap style for MapLibre to fire `load` at all. Offline you
 get the last data you loaded and a banner saying so, not a broken page.
 `manifest.webmanifest` installs it to a home screen; on iOS that is Share →
