@@ -17,9 +17,11 @@
 //   WX.field.enable(catalog)          decide once whether this path is live
 //   WX.field.live                     true when the GPU path is drawing
 //   WX.field.layer                    the CustomLayerInterface to add as "wx-field"
-//   WX.field.show(spec)               what to draw: {a, b, t, layer, level, model, snap}
+//   WX.field.show(spec)               what to draw: {a, b, t, layer, level, model}
 //   WX.field.prefetch(url)            warm the cache for a neighbouring step
 //   WX.field.sample(lng, lat)         {v, valid} at a point, as drawn
+//   WX.field.ready()                  true once there are pixels on screen
+//   WX.field.shown                    what is on screen, for the console
 //   WX.field.onFallback = (why) => {} called once if the path has to give up
 (function () {
   "use strict";
@@ -138,19 +140,6 @@
       out[i * 4 + 3] = 255;
     }
     return out;
-  }
-
-  // The alpha rule, on the CPU, for the probe and for tests of the port.
-  function alphaOf(rule, x) {
-    if (!rule) return 1;
-    const clip = (v) => Math.max(0, Math.min(1, v));
-    switch (rule.kind) {
-      case "ramp": { const a = clip((x - (rule.x0 || 0)) / rule.k); return rule.p ? Math.pow(a, rule.p) : a; }
-      case "abs": return clip(Math.abs(x) / rule.k);
-      case "fall": return clip((rule.x0 - x) / rule.k);
-      case "step": return x >= rule.x0 ? 1 : 0;
-      default: return 1;
-    }
   }
 
   // ── sampling on the CPU ────────────────────────────────────────────────
@@ -560,6 +549,6 @@ void main() {
     return true;
   }
 
-  WX.field = { enable, get live() { return live; }, layer, show, prefetch, sample, ready, alphaOf, buildLut, onFallback: null,
+  WX.field = { enable, get live() { return live; }, layer, show, prefetch, sample, ready, onFallback: null,
                get shown() { return shown; } };
 })();
