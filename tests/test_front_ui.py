@@ -272,3 +272,15 @@ def test_the_hero_and_the_outdoors_verdict_read_one_story_and_the_tape_has_a_col
     assert "function wireTapeHover(tape)" in tape and "wireTapeHover(tape);" in tape
     assert 'if (e.pointerType === "touch") return;' in tape
     assert "#tape-card" in css
+
+
+def test_the_marine_touring_and_leave_at_cards_exist_and_make_one_call_each():
+    panes = _read("panes.js"); route = _read("route.js"); css = _read("styles.css")
+    assert "function marineCard(pt, d, i)" in panes and 'section("Sea", marineCard(pt, d, i)' in panes
+    m = panes.split("function marineCard")[1].split("function hourStrip")[0]
+    assert '"offshore"' in m and '"onshore"' in m and "Blown out" in m and "Clean" in m
+    assert "const touringHtml" in panes and "${touringHtml}${powderHtml}" in panes
+    assert "Stay low" in panes and "Pick your aspects" in panes and "Go touring" in panes
+    assert "async function bestDepartures()" in route and "function scoreSummary(s, thr)" in route
+    assert "[0, 3, 6, 9, 12, 15, 18, 21, 24]" in route            # nine departures over a day
+    assert ".modcard.marine, .modcard.touring" in css

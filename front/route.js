@@ -104,6 +104,11 @@
                          background: transparent; border: 1px solid var(--line); border-radius: 9px; padding: 5px 10px; cursor: pointer; }
   #wxr button.wxr-mini:hover { color: var(--fg); border-color: var(--line-strong); }
   #wxr .wxr-x { position: absolute; top: 6px; right: 8px; width: 24px; height: 24px; font-size: 13px; }
+  #wxr .wxr-bests { display: inline-flex; gap: 5px; flex-wrap: wrap; }
+  #wxr .wxr-pick { cursor: pointer; background: transparent; gap: 5px; }
+  #wxr .wxr-pick small { font: 500 9.5px var(--font-num); color: var(--dim); text-transform: none; letter-spacing: 0; }
+  #wxr .wxr-pick.best { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+  #wxr .wxr-bests .idle { font: 600 10px var(--font-display); color: var(--dim); }
 
   #wxr .wxr-strip { overflow-x: auto; overflow-y: hidden; margin-top: 7px; }
   #wxr table.wtape th.lab { background: transparent; }
@@ -178,6 +183,8 @@
       <button class="icon wxr-x" type="button" title="Close route" aria-label="Close route">×</button>
       <div class="wxr-ctls">
         <label class="wxr-ctl" title="Departure (local time)">Leave<input type="datetime-local" class="wxr-depart" aria-label="Departure time"></label>
+        <button class="wxr-mini wxr-best" title="Score departures over the next 24 h and pick the driest, calmest">Best time</button>
+        <span class="wxr-bests"></span>
         <label class="wxr-ctl" title="Travel speed"><select class="wxr-mode" aria-label="Travel mode"><option value="">Mode</option>${MODES.map((m) => `<option value="${m.key}">${m.label}</option>`).join("")}</select><input type="number" class="wxr-speed" min="1" step="1" aria-label="Travel speed"><b class="wxr-unit"></b></label>
         <button class="wxr-mini wxr-clear" type="button" title="Remove all points">Clear</button>
       </div>
@@ -189,6 +196,7 @@
     const dep = el.querySelector(".wxr-depart");
     dep.value = localISO(new Date(Math.ceil(Date.now() / 9e5) * 9e5));
     dep.onchange = () => { departISO = dep.value ? new Date(dep.value).toISOString() : null; load(); };
+    el.querySelector(".wxr-best").onclick = () => bestDepartures();
     const sp = el.querySelector(".wxr-speed");
     sp.value = Math.round(fromKmh(speedKmh));
     sp.onchange = () => {
@@ -331,6 +339,39 @@
       loading = false; data = null;
       render(navigator.onLine ? "Route forecast unavailable for this model." : "Offline. Route forecasts need the server.");
     }
+  }
+
+  // Leave-at: the same route scored at every second hour of the next 24,
+  // ranked by what you would actually avoid — rain on the road first, gusts,
+  // then poor visibility and ice — and the three best offered as buttons.
+  // Eight forecasts, four in flight at a time; the head says "scoring".
+  function scoreSummary(s, thr) {
+    let sc = 0;
+    sc += (s.total_precip_mm || 0) * 1.0 + (s.total_snow_mm || 0) * 2.5;
+    if (s.worst_gust && s.worst_gust.value != null) sc += Math.max(0, s.worst_gust.value - (thr.gust_ms || 15) * 0.6) * 0.8;
+    if (s.min_vis_km && s.min_vis_km.value != null && s.min_vis_km.value < 10) sc += (10 - s.min_vis_km.value) * 0.5;
+    sc += (s.hazard || 0) * 3 + (s.flags || []).length * 1.5 + (s.alerts || []).length * 4;
+    return sc;
+  }
+  async function bestDepartures() {
+    if (pts.length < 2 || window.WXStatic) return;
+    const el = box(), out = el.querySelector(".wxr-bests"), btn = el.querySelector(".wxr-best");
+    btn.disabled = true; out.innerHTML = `<span class="idle">scoring…</span>`;
+    const base = new Date(); base.setMinutes(0, 0, 0);
+    const hours = [0, 3, 6, 9, 12, 15, 18, 21, 24];
+    const body = (dep) => ({ path: pts.map((p) => [Number(WX.wlon(p[0]).toFixed(4)), Number(p[1].toFixed(4))]), depart: dep.toISOString(), speed_kmh: Math.round(speedKmh * 10) / 10, model: WX.state.model, run: WX.state.run });
+    const results = [];
+    const queue = hours.slice();
+    const worker = async () => { while (queue.length) { const h = queue.shift(); const dep = new Date(base.getTime() + h * 3600e3);
+      try { const r = await fetch(`${WX.API}/route`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body(dep)) }); if (!r.ok) continue; const d = await r.json(); results.push({ h, dep, score: scoreSummary(d.summary, d.thresholds || {}), s: d.summary }); } catch (e) { /* one sample lost, the rest still rank */ } } };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    btn.disabled = false;
+    if (!results.length) { out.innerHTML = `<span class="idle">no scores</span>`; return; }
+    results.sort((a, b) => a.score - b.score || a.h - b.h);
+    const why = (x) => { const s = x.s, bits = []; if ((s.total_precip_mm || 0) < 0.05 && (s.total_snow_mm || 0) < 0.05) bits.push("dry"); else { const p = uPrecip(s.total_precip_mm || 0); bits.push(`${n1(p.v)} ${p.unit}`); }
+      if (s.worst_gust && s.worst_gust.value != null) bits.push(`gusts ${Math.round(spd(s.worst_gust.value))}`); return bits.join(" · "); };
+    out.innerHTML = results.slice(0, 3).map((x, k) => `<button class="wxr-chip wxr-pick${k === 0 ? " best" : ""}" data-t="${x.dep.toISOString()}" title="${esc(why(x))}">${esc(uTime(x.dep.toISOString(), { weekday: "short" }))}<small>${esc(why(x))}</small></button>`).join("");
+    out.querySelectorAll(".wxr-pick").forEach((b) => b.onclick = () => { departISO = b.dataset.t; const dep = el.querySelector(".wxr-depart"); if (dep) dep.value = localISO(new Date(departISO)); load(); });
   }
 
   // ── render (head, strip, readout) ──────────────────────────────────────

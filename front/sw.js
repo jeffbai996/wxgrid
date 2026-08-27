@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v48";   // v48: one story for hero and Outdoors; tape column card
+const VERSION = "wxgrid-v49";   // v49: marine, touring and leave-at
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

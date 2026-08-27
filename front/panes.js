@@ -1102,7 +1102,31 @@
     else if (pt.avy) avyHtml = avyBlock(pt.avy, AVY_COLORS);
     else fetchAvy(pt);
     const powderHtml = powder ? `<div class="verdict good"><b>Powder morning shaping up</b><span class="dim">${W().units.snow(sn24we * slr / 10).txt} at ${slr}:1, ridge wind workable</span></div>` : "";
-    $("#winter").innerHTML = `${powderHtml}${resortHtml}${boardHtml}<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${avyHtml}
+    // Touring: the four things a skinner checks before the car — new snow,
+    // where the freezing level is going, which aspects the wind is loading,
+    // and today's danger rating — on one card with one call.
+    const touringHtml = (() => {
+      const U = W().units;
+      const newCm = sn24we == null ? null : sn24we * slr / 10;
+      const avyDay = pt.avy && pt.avy.days && pt.avy.days[0];
+      const lvl = avyDay ? Math.max(...["alp", "tln", "btl"].map((b) => (avyDay[b] && avyDay[b].level != null ? avyDay[b].level : -1))) : -1;
+      const lvlName = ["Low", "Moderate", "Considerable", "High", "Extreme"][lvl] || null;
+      const loading = w850 != null && speed(w850) > (W().state.units === "kt" ? 15 : W().state.units === "ms" ? 8 : W().state.units === "mph" ? 17 : 28);
+      const worries = [];
+      if (lvl >= 3) worries.push(`${lvlName.toLowerCase()} danger`);
+      if (rainOnSnow) worries.push("rain on snow");
+      if (loading) worries.push(`${lee} aspects loading`);
+      if (flTrend === " ↑") worries.push("freezing level rising");
+      const call = lvl >= 3 || rainOnSnow ? ["Stay low", "bad"] : lvl === 2 || loading ? ["Pick your aspects", "meh"] : ["Go touring", "good"];
+      const stats = [
+        `<div><small>New snow 24 h</small><b>${newCm == null ? "—" : U.snow(sn24we * slr / 10).v}<i>${esc(U.snowUnit)}</i></b><em>${newCm == null ? "" : `${slr}:1`}</em></div>`,
+        `<div><small>Freezing level</small><b>${fl == null ? "—" : U.alt(Math.round(fl / 50) * 50).v}<i>${esc(U.altUnit)}</i></b><em>${flTrend === " ↓" ? "falling" : flTrend === " ↑" ? "rising" : "steady"}</em></div>`,
+        `<div><small>Wind loading</small><b>${loading ? lee : "light"}</b><em>${w850 != null ? `850 hPa ${speed(w850).toFixed(0)} ${esc(speedUnit())}` : ""}</em></div>`,
+        lvlName ? `<div><small>Danger</small><b class="avy-${lvl}">${lvlName}</b><em>${esc((avyDay.label || avyDay.date || "today").toString().slice(0, 9))}</em></div>` : "",
+      ].filter(Boolean).join("");
+      return `<div class="modcard touring ${call[1]}"><div class="mod-head"><span class="call">${call[0]}</span><span class="dim">${worries.length ? worries.join(" · ") : "nothing flagged"}</span></div><div class="mod-stats">${stats}</div></div>`;
+    })();
+    $("#winter").innerHTML = `${touringHtml}${powderHtml}${resortHtml}${boardHtml}<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${avyHtml}
       <div class="note">Board: the model column interpolated to each height, so snow and rain are what falls THERE. Depth ratios come from the band temperature. Without a ski area nearby the bands are this point's elevation and 450/900 m above it — the gridpoint does not know what the terrain does. Snow depth is the model snowpack, not a station.</div>`;
     const link = $("#winter .resort-link");
     if (link) link.onclick = () => W().ov.selectResort(link.dataset.resort);
@@ -1278,7 +1302,7 @@
       ${section("Sun", uv, take("UV"), "uv index, 48 h · daily peaks labelled")}
       ${section("Wind", gust, take("Wind", "Max gust", "Feels like", "Dry, calm"), "gusts, 48 h")}
       ${cold ? section("Snow &amp; cold", "", take("Freezing", "Snow level")) : ""}
-      ${take("Sea state").length ? section("Sea", "", take("Sea state")) : ""}
+      ${take("Sea state").length ? section("Sea", marineCard(pt, d, i), take("Sea state")) : ""}
       ${tidesHtml}${airHtml(pt || {})}
       <div class="note">Snow level ≈ freezing level − ${W().units.alt(300).txt}. Gusts come from models that ship one. Terrain is unresolved at 0.25°.</div>`;
     wireTideProbe();
@@ -1349,6 +1373,51 @@
       wave: w('<path d="M2 12c2-3 4-3 6 0s4 3 6 0 4-3 6 0M2 18c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/>'),
     };
   })();
+
+  // The sea, for someone going in: swell, period, where it comes from, the
+  // wind against it (offshore holds a wave up, onshore knocks it down), the
+  // water, the tide's turn — and one verdict from all of it, with a 48 h
+  // swell strip so the call for tomorrow is on the same card.
+  function marineCard(pt, d, i) {
+    const s = d.series, U = W().units, { speed, speedUnit, arrow } = W();
+    const swh = seaVal(d, i, "swh"); if (!swh) return "";
+    const mwp = seaVal(d, i, "mwp"), mwd = seaVal(d, i, "mwd"), sst = seaVal(d, i, "sst");
+    const w = s.wind ? s.wind[i] : null, wd = s.wdir ? s.wdir[i] : null;
+    // onshore / offshore: the coast probe says which way the sea lies from
+    // the pin; wind blowing TOWARD the sea is offshore. With no probe the
+    // swell's own direction stands in for "where the sea is".
+    const seaBearing = (() => { const c = coastNear(d); if (c && c.bearing != null) return c.bearing; return mwd ? mwd.v : null; })();
+    let rel = null;
+    if (w != null && wd != null && seaBearing != null) {
+      const to = (wd + 180) % 360, diff = Math.abs(((to - seaBearing) + 540) % 360 - 180);
+      rel = diff < 60 ? "offshore" : diff > 120 ? "onshore" : "cross-shore";
+    }
+    const kmh = w == null ? null : w * 3.6;
+    const per = mwp ? mwp.v : null, h = swh.v;
+    // the call: size, period and wind, in the order a surfer weighs them
+    let call, cls, why;
+    if (h > 3.5 || (kmh != null && kmh > 40 && rel !== "offshore")) { call = "Heavy"; cls = "bad"; why = h > 3.5 ? "big swell" : "strong onshore wind"; }
+    else if (h < 0.5) { call = "Flat"; cls = "meh"; why = "no swell to speak of"; }
+    else if ((per == null || per >= 9) && (kmh == null || kmh < 15 || rel === "offshore")) { call = "Clean"; cls = "good"; why = rel === "offshore" ? "offshore wind, groomed faces" : "light wind, long-period swell"; }
+    else if (kmh != null && kmh >= 25 && rel === "onshore") { call = "Blown out"; cls = "bad"; why = "onshore wind on the faces"; }
+    else { call = "Rideable"; cls = "meh"; why = per != null && per < 9 ? "short-period wind swell" : "some wind on it"; }
+    const tide = nextTide(pt);
+    const tideTxt = tide ? `${tide.type === "H" ? "high" : "low"} at ${U.time(tide.time)}` : "";
+    const stats = [
+      `<div><small>Swell</small><b>${U.alt(h, 1).v}<i>${esc(U.altUnit)}</i></b>${mwd ? `<em>${arrow(mwd.v)} from ${compass(mwd.v)}</em>` : ""}</div>`,
+      per != null ? `<div><small>Period</small><b>${per.toFixed(0)}<i>s</i></b><em>${per >= 12 ? "ground swell" : per >= 9 ? "mid-period" : "wind swell"}</em></div>` : "",
+      w != null ? `<div><small>Wind</small><b>${speed(w).toFixed(0)}<i>${esc(speedUnit())}</i></b><em>${wd != null ? `${arrow(wd)} ${compass(wd)}` : ""}${rel ? ` · ${rel}` : ""}</em></div>` : "",
+      sst ? `<div><small>Water</small><b>${U.tempC(sst.v - K).v}<i>${esc(U.tempUnit)}</i></b><em>${sst.v - K < 12 ? "5/4 hooded" : sst.v - K < 16 ? "4/3 wetsuit" : sst.v - K < 20 ? "3/2 wetsuit" : "boardshorts"}</em></div>` : "",
+      tide ? `<div><small>Tide</small><b>${esc(U.time(tide.time))}</b><em>next ${tide.type === "H" ? "high" : "low"} · ${esc(U.alt(tide.height_m, 1).txt)}</em></div>` : "",
+    ].filter(Boolean).join("");
+    // 48 h of swell as a strip: height in the cell, the ramp by size
+    const strip = hourStrip(d, i, 48, (k) => {
+      const v = s.swh ? s.swh[k] : null;
+      return { bg: v == null ? "transparent" : `rgba(74,169,217,${Math.min(0.85, 0.12 + v / 4).toFixed(2)})`, v: v == null ? "" : `swell ${U.alt(v, 1).txt}${s.mwp && s.mwp[k] != null ? ` · ${s.mwp[k].toFixed(0)} s` : ""}`, n: v };
+    }, (k, v) => (v != null && (k === i || isDayPeak(d, k, s.swh)) ? U.alt(v, 1).v : ""));
+    return `<div class="modcard marine ${cls}"><div class="mod-head"><span class="call">${call}</span><span class="dim">${why}${tideTxt ? ` · ${tideTxt}` : ""}</span></div>
+      <div class="mod-stats">${stats}</div>${strip}</div>`;
+  }
 
   // A row of hour cells over the next `hours` from step i, each as wide as
   // the hours it covers, with the day named where it changes. `cell(k)`

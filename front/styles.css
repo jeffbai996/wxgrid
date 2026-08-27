@@ -1362,3 +1362,12 @@ body.no-map #particles { display: none; }
 #tape-card span i { font-style: normal; color: var(--dim); }
 #tape-card span b { font: 700 12px var(--font-num); color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; }
 #tape-card span b small { font: 600 10px var(--font-num); color: var(--dim); }
+
+/* ── marine and touring cards: one call, then the numbers ────────────── */
+.modcard .mod-head .call { font: 800 15px var(--font-display) !important; letter-spacing: -.01em; }
+.modcard.good .call { color: var(--good); } .modcard.meh .call { color: var(--warm); } .modcard.bad .call { color: var(--bad); }
+.modcard.marine, .modcard.touring { border-left: 3px solid var(--line-strong); }
+.modcard.good { border-left-color: var(--good); } .modcard.meh { border-left-color: var(--warm); } .modcard.bad { border-left-color: var(--bad); }
+.modcard.marine .hstrip { margin-top: 10px; }
+.modcard .mod-stats b.avy-0 { color: #52b788; } .modcard .mod-stats b.avy-1 { color: #f2c94c; } .modcard .mod-stats b.avy-2 { color: #f2994a; }
+.modcard .mod-stats b.avy-3 { color: #eb5757; } .modcard .mod-stats b.avy-4 { color: #111; background: #eb5757; padding: 0 5px; border-radius: 4px; }
