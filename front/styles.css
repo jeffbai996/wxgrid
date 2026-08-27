@@ -905,6 +905,9 @@ table.wtape tr.r-dir td { height: 20px; }
 .hero .sun .len { color: var(--fg-2); }
 /* ── the Outdoors tide card ──────────────────────────────────────────── */
 /* readout: the water now, which way it is going, and the next turn */
+.tides-obs .obs-head { align-items: flex-start; }
+.tides-obs .obs-head .stn { flex-wrap: wrap; }
+.tides-obs .obs-head .stn .nm { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
 .tides-obs .obs-head .src { display: flex; flex-direction: column; align-items: flex-end; font: 500 10px var(--font-display); color: var(--dim); white-space: nowrap; flex: 0 0 auto; }
 .tides-obs .obs-head .src b { font: 700 11px var(--font-mono); color: var(--fg-2); letter-spacing: .04em; }
 .tide-card { margin: 6px 0 4px; min-width: 0; }
@@ -916,9 +919,9 @@ table.wtape tr.r-dir td { height: 20px; }
 .tide-now .tdir.up { color: var(--rain); }
 .tide-now .tdir.dn { color: var(--warm); }
 .tide-now .tnext { display: inline-flex; align-items: baseline; gap: 6px; margin-left: auto; font: 500 11px var(--font-num); color: var(--fg-2); }
-.tide-now .tnext i { font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
-.tide-now .tnext b { font: 700 12px var(--font-display); color: var(--fg); }
-.tide-now .tnext em { font-style: normal; color: var(--dim); }
+.tide-now .tnext b { font: 700 13px var(--font-display); color: var(--fg); }
+.tide-now .tnext b.H { color: var(--rain); }
+.tide-now .tnext em { font: 500 10px var(--font-num); font-style: normal; color: var(--dim); }
 /* chart: a y column, then the water with a label band above and below it */
 .tide-plot { display: flex; gap: 6px; margin-top: 8px; height: 84px; }
 .tide-y { position: relative; flex: 0 0 30px; font: 600 9.5px var(--font-mono); color: var(--dim); text-align: right; }

@@ -271,7 +271,7 @@
       ? `<div class="tide-now">
           <span class="tnum"><b>${U.alt(hNow, 1).v}</b><i>${unit}</i></span>
           <span class="tdir ${rising ? "up" : "dn"}">${rising ? "↗ rising" : "↘ falling"}</span>
-          ${next ? `<span class="tnext"><i>next</i><b>${next.type === "H" ? "high" : "low"} ${U.alt(next.y, 1).v} ${unit}</b><em>${U.time(new Date(next.x))}${inTxt ? ` · in ${inTxt}` : ""}</em></span>` : ""}
+          ${next ? `<span class="tnext"><b class="${next.type}">${next.type === "H" ? "▲" : "▼"} ${U.alt(next.y, 1).v} ${unit}</b><em>${U.time(new Date(next.x))}${inTxt ? ` · ${inTxt}` : ""}</em></span>` : ""}
         </div>`
       : "";
     return `<div class="tide-card">${readout}

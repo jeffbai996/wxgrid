@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v34";   // v34: the tide card gets axes and a readout
+const VERSION = "wxgrid-v35";   // v35: tide readout arrows, station may wrap
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

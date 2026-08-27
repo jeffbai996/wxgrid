@@ -225,10 +225,27 @@ class RunReader:
         self.domain = tuple(self.attrs.get("domain", fallback.domain))
         self.lats = np.asarray(self.group["latitude"][:], dtype=np.float32)
         self.lons = np.asarray(self.group["longitude"][:], dtype=np.float32)
+        # The cube index is built here, once, and not lazily on first use: the
+        # card reads its ~75 variables through a thread pool, and a lazy build
+        # had every thread find it missing and open every cube array through
+        # zarr's single event loop — 7 s for a first card that takes 0.2 s.
+        self._pt_cache: dict = {}
+        if "pt" in self.group:
+            g = self.group["pt"]
+            self._pt_cache = {name: g[name] for name in g.array_keys()}
+        # same reason for the encoding attrs: the first card opened every
+        # source array once per thread that happened to reach it first
+        self._var_attrs: dict = {v: dict(self.group[v].attrs) for v in self.variables}
 
     def decode(self, var: str, values: np.ndarray) -> np.ndarray:
-        """Undo the on-disk encoding (see encoding_for) for raw reads of `var`."""
-        return decode_values(dict(self.group[var].attrs), values)
+        """Undo the on-disk encoding (see encoding_for) for raw reads of `var`.
+        The encoding attrs are read from the array once per reader: opening
+        the array again on every point read was a metadata round-trip per
+        variable per card."""
+        attrs = self._var_attrs.get(var)
+        if attrs is None:                       # a variable outside the manifest
+            attrs = self._var_attrs[var] = dict(self.group[var].attrs)
+        return decode_values(attrs, values)
 
     def slab(self, var: str, step: int) -> np.ndarray:
         """One (ny, nx) float32 field on this model's regular lat/lon grid."""
@@ -265,11 +282,6 @@ class RunReader:
 
     @property
     def _pt(self) -> dict:
-        if not hasattr(self, "_pt_cache"):
-            self._pt_cache = {}
-            if "pt" in self.group:
-                g = self.group["pt"]
-                self._pt_cache = {name: g[name] for name in g.array_keys()}
         return self._pt_cache
 
     def manifest(self) -> dict:

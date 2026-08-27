@@ -41,3 +41,26 @@ def test_point_cube_reads_each_variable_once(tmp_path, monkeypatch):
     store.build_point_cube("gfs", "2026-01-01T00", root)
     src_reads = [n for n in reads if not n.startswith("/pt")]
     assert sorted(src_reads) == sorted(f"/{v}" for v in fields)
+
+
+def test_the_cube_index_is_built_once_however_many_threads_open_the_reader(tmp_path, monkeypatch):
+    # The card reads ~75 variables through an 8-thread pool. The reader's
+    # cube index was a lazy property, so all eight threads found it missing
+    # and each opened every cube array through zarr's one event loop — a
+    # 7 s first card instead of 0.2 s (2026-08-26). Build it once, up front.
+    from concurrent.futures import ThreadPoolExecutor
+    root, fields = _run(tmp_path)
+    store.build_point_cube("gfs", "2026-01-01T00", root)
+    opens = []
+    orig = zarr.Group.__getitem__
+    monkeypatch.setattr(zarr.Group, "__getitem__",
+                        lambda self, key: opens.append(key) or orig(self, key))
+    r = store.RunReader("gfs", "2026-01-01T00", root)
+    assert "_pt_cache" in vars(r)                       # eager, not lazy
+    assert opens.count("pt") == 1
+    built = len(opens)
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(lambda v: r.point(v, 49.0, -123.0), list(fields) * 4))
+    # after construction, no read opens a group member again: not the cube,
+    # not a source array for its encoding attrs
+    assert opens[built:] == []
