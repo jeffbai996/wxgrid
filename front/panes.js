@@ -1274,7 +1274,7 @@
     // under it in plain words: one glance says 28, the next says km/h, the
     // third says which. Green is not painted on — a fine reading is the
     // quiet default; only meh/bad earn a colour and a rule.
-    const lead = (v) => { const m = String(v).match(/^(—|[-+]?\d[\d.,]*\s?(?:°|%|h)?)(.*)$/s); return m ? `<b>${m[1]}</b>${m[2].trim() ? `<small>${m[2].trim()}</small>` : ""}` : `<b class="word">${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}</b>`; };
+    const lead = (v) => { const m = String(v).match(/^(—|[-+]?\d[\d.,]*\s?(?:°[CF]?|%|h(?=\s|$))?)(.*)$/s); return m ? `<b>${m[1]}</b>${m[2].trim() ? `<small>${m[2].trim()}</small>` : ""}` : `<b class="word">${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}</b>`; };
     // Each card carries its glyph in the corner and, where the reading is a
     // share of something, a gauge under the number: cloud is a share of the
     // sky, dry hours a share of three days, UV a share of the 11-point scale.
@@ -1356,7 +1356,7 @@
   // under, a glyph in the corner, a gauge when the value is a share — for the
   // other tabs that carry a handful of readings.
   function statCards(rows, cls) {
-    const lead = (v) => { const m = String(v).match(/^(—|[-+]?\d[\d.,]*\s?(?:°|%|h)?)(.*)$/s); return m ? `<b>${m[1]}</b>${m[2].trim() ? `<small>${m[2].trim()}</small>` : ""}` : `<b class="word">${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}</b>`; };
+    const lead = (v) => { const m = String(v).match(/^(—|[-+]?\d[\d.,]*\s?(?:°[CF]?|%|h(?=\s|$))?)(.*)$/s); return m ? `<b>${m[1]}</b>${m[2].trim() ? `<small>${m[2].trim()}</small>` : ""}` : `<b class="word">${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}</b>`; };
     return `<div class="kv ${cls || ""}">${rows.map(([k, v, c, g, share]) => `<div class="stat ${c || ""}${g ? ` g-${g}` : ""}">${g ? `<i class="glyph">${OD_GLYPHS[g] || ""}</i>` : ""}<span class="v">${lead(v)}</span><span class="k">${k}</span>${share != null ? `<i class="gauge"><b style="width:${(share * 100).toFixed(0)}%"></b></i>` : ""}</div>`).join("")}</div>`;
   }
 
