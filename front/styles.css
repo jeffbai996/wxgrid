@@ -1350,6 +1350,6 @@ body:has(#point[hidden]) #centre-mark { display: block; }
 /* ── no WebGL: the map pane says why it is blank ─────────────────────── */
 body.no-map #map { background: var(--panel-solid); }
 body.no-map #particles { display: none; }
-.nomap { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 24px; gap: 6px; color: var(--fg-2); }
+.nomap { position: absolute; inset: 0; z-index: 3; display: grid; place-content: center; text-align: center; padding: 24px; gap: 6px; color: var(--fg-2); }
 .nomap b { font: 700 15px var(--font-display); color: var(--fg); }
 .nomap span { max-width: 360px; font: 500 12.5px/1.5 var(--font-body); }
