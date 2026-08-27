@@ -177,3 +177,14 @@ def test_the_outdoors_tide_card_draws_the_curve_and_the_hero_stays_lean():
     assert "tide-hero" not in css and "tide-hero" not in panes
     # only turns still ahead of the card's time are listed
     assert "new Date(e.time).getTime() > now).slice(0, 6)" in panes
+
+
+def test_outdoors_is_sectioned_with_a_graphic_per_question_and_names_its_worry():
+    panes = _read("panes.js")
+    out = panes.split("function renderOutdoors")[1].split("function hourStrip")[0]
+    assert 'section("Sky &amp; rain", sky' in out and 'section("Sun", uv' in out and 'section("Wind", gust' in out
+    assert "Workable, watch it" not in out                     # the verdict says what to watch
+    assert 'class="why"' in out
+    assert 'rows.push(["Sun"' not in out                       # sunrise lives on the hero
+    assert "const H = 48;" in out                              # every strip: two days
+    assert "function hourStrip(d, i, hours, cell, label)" in panes and "function sparkStrip(" in panes

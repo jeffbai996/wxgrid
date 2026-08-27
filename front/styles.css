@@ -505,6 +505,26 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 .verdict.meh { border-left-color: var(--warm); } .verdict.meh b { color: var(--warm); }
 .verdict.bad { border-left-color: var(--bad); } .verdict.bad b { color: var(--bad); }
 .verdict .dim { font-size: 11px; }
+.verdict .why { flex-basis: 100%; margin-top: -2px; font: 500 12px var(--font-body); color: var(--fg-2); }
+/* ── Outdoors: a section per question, each with its graphic ─────────── */
+.od { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); }
+.od:first-of-type { border-top: 0; padding-top: 2px; }
+.od h4 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0 0 6px; font: 750 13px var(--font-display); color: var(--fg); letter-spacing: -.005em; }
+.od h4 span { font: 500 10px var(--font-display); color: var(--dim); text-align: right; }
+.od .kv { margin-top: 8px; }
+.hstrip { margin: 2px 0 2px; }
+.hstrip .cells { display: flex; gap: 1px; height: 26px; border-radius: 6px; overflow: hidden; position: relative; }
+.hstrip .cells i { position: relative; display: block; min-width: 0; font-style: normal; }
+.hstrip .cells i b { position: absolute; left: 15%; right: 15%; bottom: 0; background: var(--rain); border-radius: 2px 2px 0 0; opacity: .9; }
+.hstrip .cells i s { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-decoration: none; font: 700 10px var(--font-num); color: #1a1a1a; }
+.hstrip .hx { position: relative; height: 13px; margin-top: 2px; }
+.hstrip .hx i { position: absolute; top: 0; padding-left: 4px; border-left: 1px solid var(--line-strong); font: 700 9px var(--font-display); font-style: normal; color: var(--fg-2); line-height: 13px; }
+.hstrip.spark .cells { height: 44px; border-radius: 0; overflow: visible; border-bottom: 1px solid var(--line); }
+.hstrip.spark svg { width: 100%; height: 100%; display: block; }
+.hstrip.spark polygon { fill: color-mix(in srgb, var(--warm) 18%, transparent); }
+.hstrip.spark polyline { fill: none; stroke: var(--warm); stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.hstrip.spark .peak { position: absolute; top: -2px; transform: translateX(-50%); text-decoration: none; font: 700 10px var(--font-num); color: var(--warm); white-space: nowrap; }
+.hstrip.spark .peak.r { transform: translateX(-100%); }
 .verdict-win { display: inline-flex; align-items: baseline; gap: 7px; }
 .verdict-win i { font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
 .verdict-win b { font: 650 12.5px var(--font-num); color: var(--fg); }

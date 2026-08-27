@@ -1168,13 +1168,14 @@
         ? W().units.alt(Math.round(125 * Math.max(0, t - (s.d2m[i] - K)) / 50) * 50).txt : "clear or n/a", ""],
       ...(s.vis && s.vis[i] != null ? [["Visibility", `${(s.vis[i] / 1000).toFixed(s.vis[i] < 5000 ? 1 : 0)} km`, s.vis[i] > 9000 ? "good" : s.vis[i] > 3000 ? "meh" : "bad"]] : []),
     ];
-    const sun2 = sunTimes(W().state.point.lat, W().state.point.lon, W().validDate);
-    if (sun2 && sun2.rise) rows.push(["Sun", `${sun2.rise} → ${sun2.set}`, ""]);
-    // The verdict: the worst of the calls the rows already made, said once
-    // at the top the way a partner would say it at the trailhead.
-    const calls = rows.map((r) => r[2]).filter(Boolean);
-    const verdict = calls.includes("bad") ? ["Rough out there", "bad"]
-      : calls.includes("meh") ? ["Workable, watch it", "meh"] : ["Looks good", "good"];
+    // The verdict: the worst of the calls the rows already made, said once at
+    // the top the way a partner would say it at the trailhead — and WHY, by
+    // name. The old two-word verdict told nobody what to watch.
+    const flagged = rows.filter((r) => r[2] === "bad" || r[2] === "meh");
+    const worst = flagged.some((r) => r[2] === "bad") ? "bad" : flagged.length ? "meh" : "good";
+    const nameOf = (r) => `${r[0].toLowerCase().replace(/ \(.*\)| 24 h| \/ gust|,.*/g, "")} ${r[1].replace(/<[^>]+>/g, "")}`;
+    const why = flagged.filter((r) => r[2] === worst).slice(0, 3).map(nameOf).join(" · ");
+    const verdict = worst === "bad" ? ["Rough out there", "bad"] : worst === "meh" ? ["Workable", "meh"] : ["Looks good", "good"];
     // The best window in the next 48 h: dry, calm and in daylight for 3 h+.
     // People do not plan around a table; they plan around "when".
     let winHtml = "";
@@ -1201,19 +1202,74 @@
         ${tideCard(pt)}
         <div class="tides">${turns.map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${W().units.alt(e.height_m, 1).txt}</b><small>${W().units.dateTime(e.time, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div></div>`;
     }
-    // the sun's day at a glance: 24 hourly UV cells in the map's own ramp
-    let uvStrip = "";
-    if (s.uvi) {
-      const cells = [];
-      for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) {
-        const v = s.uvi[k];
-        cells.push(`<i title="UV ${v == null ? "?" : v.toFixed(0)} at ${new Date(d.valid[k]).toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric" }))}" style="background:${v == null || v < 0.5 ? "rgba(127,127,127,.12)" : W().rampColor("uvi", v, 0.85)}"></i>`);
-      }
-      if (cells.length > 3) uvStrip = `<i class="kicker">uv through the day</i><div class="uvstrip">${cells.join("")}</div>`;
-    }
-    $("#outdoors").innerHTML = `<div class="verdict ${verdict[1]}"><b>${verdict[0]}</b>${winHtml}</div>
-      <div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${uvStrip}${tidesHtml}${airHtml(pt || {})}
+    // Each group of readings gets the graphic that explains it, drawn over
+    // the same 48 h: the strips share one clock, so the eye lines them up.
+    const H = 48;
+    const uv = hourStrip(d, i, H, (k) => {
+      const v = s.uvi ? s.uvi[k] : null;
+      return { bg: v == null || v < 0.5 ? "rgba(127,127,127,.12)" : W().rampColor("uvi", v, 0.85), v };
+    }, (k, v) => v != null && v >= 3 && isDayPeak(d, k, s.uvi) ? v.toFixed(0) : "");
+    const sky = hourStrip(d, i, H, (k) => {
+      const c = s.tcc ? s.tcc[k] : null, r = s.tp6 ? s.tp6[k] : 0;
+      return { bg: c == null ? "transparent" : `rgba(127,140,160,${(0.1 + 0.55 * c).toFixed(2)})`, bar: r > 0.05 ? Math.min(1, r / 8) : 0, v: r };
+    }, () => "");
+    const gust = sparkStrip(d, i, H, s.gust || s.wind, (v) => speed(v));
+    const take = (...keys) => rows.filter((r) => keys.some((k) => r[0].startsWith(k)));
+    const kv = (rs) => rs.length ? `<div class="kv">${rs.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>` : "";
+    const section = (title, graphic, rs, note) => `<section class="od"><h4>${title}${note ? `<span>${note}</span>` : ""}</h4>${graphic || ""}${kv(rs)}</section>`;
+    const cold = fl != null && (t == null || t < 12 || snowLevel < 3000);
+    $("#outdoors").innerHTML = `<div class="verdict ${verdict[1]}"><b>${verdict[0]}</b>${why ? `<span class="why">${why}</span>` : ""}${winHtml}</div>
+      ${section("Sky &amp; rain", sky, take("Precip", "Next 24 h rain", "Cloud", "Visibility", "Thunder"), "cloud cover · rain bars, 48 h")}
+      ${section("Sun", uv, take("UV"), "uv index, 48 h · daily peaks labelled")}
+      ${section("Wind", gust, take("Wind", "Max gust", "Feels like", "Dry, calm"), "gusts, 48 h")}
+      ${cold ? section("Snow &amp; cold", "", take("Freezing", "Snow level")) : ""}
+      ${take("Sea state").length ? section("Sea", "", take("Sea state")) : ""}
+      ${tidesHtml}${airHtml(pt || {})}
       <div class="note">Snow level ≈ freezing level − ${W().units.alt(300).txt}. Gusts come from models that ship one. Terrain is unresolved at 0.25°.</div>`;
+  }
+
+  // A row of hour cells over the next `hours` from step i, each as wide as
+  // the hours it covers, with the day named where it changes. `cell(k)`
+  // gives {bg, bar?, v}; `label(k, v)` prints inside the cell or nothing.
+  function hourStrip(d, i, hours, cell, label) {
+    const cells = [], days = [];
+    let total = 0, lastDay = null;
+    for (let k = i; k < d.steps.length && d.steps[k] < d.steps[i] + hours; k++) {
+      const h = stepHrs(d, k), c = cell(k), when = new Date(d.valid[k]);
+      const day = when.toLocaleDateString(undefined, W().units.timeOpts({ weekday: "short" }));
+      if (day !== lastDay) { days.push(`<i style="left:${(total / hours * 100).toFixed(1)}%">${day}</i>`); lastDay = day; }
+      cells.push(`<i style="flex:${h} 0 0;background:${c.bg}" title="${when.toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }))}${c.v != null ? ` · ${typeof c.v === "number" ? c.v.toFixed(1) : c.v}` : ""}">${c.bar ? `<b style="height:${(c.bar * 100).toFixed(0)}%"></b>` : ""}<s>${label(k, c.v)}</s></i>`);
+      total += h;
+    }
+    if (cells.length < 4) return "";
+    return `<div class="hstrip"><div class="cells">${cells.join("")}</div><div class="hx">${days.join("")}</div></div>`;
+  }
+  function isDayPeak(d, k, arr) {
+    if (!arr || arr[k] == null) return false;
+    const day = new Date(d.valid[k]).toDateString();
+    for (let q = 0; q < d.valid.length; q++)
+      if (new Date(d.valid[q]).toDateString() === day && arr[q] != null && (arr[q] > arr[k] || (arr[q] === arr[k] && q < k))) return false;
+    return true;
+  }
+  // A filled line over the next `hours`, scaled to its own maximum, the
+  // maximum named. For gusts, pressure — anything whose shape is the story.
+  function sparkStrip(d, i, hours, arr, conv) {
+    if (!arr) return "";
+    const pts = [], days = [];
+    let total = 0, mx = 0, lastDay = null, peakAt = 0;
+    const win = [];
+    for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + hours; k++) {
+      if (arr[k] == null) continue;
+      const v = conv(arr[k]), x = d.steps[k] - d.steps[i];
+      win.push([x, v]); if (v > mx) { mx = v; peakAt = x; }
+      const when = new Date(d.valid[k]), day = when.toLocaleDateString(undefined, W().units.timeOpts({ weekday: "short" }));
+      if (day !== lastDay && x < hours) { days.push(`<i style="left:${(x / hours * 100).toFixed(1)}%">${day}</i>`); lastDay = day; }
+      total = x;
+    }
+    if (win.length < 4 || !mx) return "";
+    const X = (x) => (x / hours * 100).toFixed(2), Y = (v) => (100 - v / mx * 88).toFixed(2);
+    win.forEach(([x, v]) => pts.push(`${X(x)},${Y(v)}`));
+    return `<div class="hstrip spark"><div class="cells"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,100 ${pts.join(" ")} ${X(total)},100"/><polyline points="${pts.join(" ")}"/></svg><s class="peak${peakAt / hours > 0.8 ? " r" : ""}" style="left:${X(peakAt)}%">${mx.toFixed(0)} ${W().speedUnit()}</s></div><div class="hx">${days.join("")}</div></div>`;
   }
 
   // ── Spread: how much the ensemble disagrees with itself ───────────────
