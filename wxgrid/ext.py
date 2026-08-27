@@ -299,16 +299,38 @@ def ocean_name(lat: float, lon: float) -> str:
     return "the open sea"
 
 
-def nearest_water(lat: float, lon: float, nodes: list[dict], sea_km: float = 1500.0) -> str:
-    """The name of the water at a point: the nearest named sea if one is close,
-    otherwise the ocean it sits in. Seas are small and specific and their
-    labelling node can sit well off centre, so they only win inside `sea_km`.
+# How far a named sea's node may claim a pin. OSM gives a sea one point, not
+# an outline, and one radius for all of them named the open Pacific "Salish
+# Sea" from 750 km out (Jeff 2026-08-27). The reach is a size, roughly half
+# the body's span; anything unlisted is a middling marginal sea or gulf.
+_SEA_REACH_KM = {
+    "Mediterranean Sea": 1400, "South China Sea": 1200, "Arabian Sea": 1200, "Philippine Sea": 1200,
+    "Caribbean Sea": 1000, "Coral Sea": 1000, "Tasman Sea": 1000, "Bay of Bengal": 900, "Bering Sea": 900,
+    "Red Sea": 900, "Sea of Okhotsk": 800, "Gulf of Mexico": 800, "Gulf of Alaska": 800,
+    "Hudson Bay": 700, "Norwegian Sea": 700, "Barents Sea": 700, "Greenland Sea": 700, "Labrador Sea": 700,
+    "Sea of Japan": 700, "East China Sea": 600, "Baltic Sea": 600, "Black Sea": 600, "Caspian Sea": 600,
+    "North Sea": 500, "Persian Gulf": 500, "Gulf of St. Lawrence": 350, "Lake Baikal": 350,
+    "Lake Superior": 300, "Lake Michigan": 250, "Aral Sea": 250, "Lake Huron": 200, "Lake Erie": 200,
+    "Lake Victoria": 200, "Sea of Azov": 200, "Lake Ontario": 150, "Salish Sea": 120,
+}
+_SEA_REACH_DEFAULT_KM = 400.0
+
+
+def sea_reach_km(name: str) -> float:
+    return float(_SEA_REACH_KM.get(name, _SEA_REACH_DEFAULT_KM))
+
+
+def nearest_water(lat: float, lon: float, nodes: list[dict], sea_km: float | None = None) -> str:
+    """The name of the water at a point: the nearest named sea whose reach
+    covers the point, otherwise the ocean it sits in. Seas are small and
+    specific and their labelling node can sit well off centre, so each only
+    wins inside its own reach (`sea_reach_km`, or `sea_km` for all when given).
     OSM has no `place=ocean` nodes to fall back on, so `ocean_name` does."""
     best_sea = best_ocean = None
     for n in nodes:
         d = _haversine_km(lat, lon, n["lat"], n["lon"])
         if n.get("kind") == "sea":
-            if d <= sea_km and (best_sea is None or d < best_sea[0]):
+            if d <= (sea_km if sea_km is not None else sea_reach_km(n["name"])) and (best_sea is None or d < best_sea[0]):
                 best_sea = (d, n)
         elif best_ocean is None or d < best_ocean[0]:
             best_ocean = (d, n)

@@ -762,3 +762,13 @@ def test_tide_window_starts_before_now_so_the_curve_has_a_left_anchor(monkeypatc
     begin = datetime.strptime(seen["begin_date"], "%Y%m%d %H:%M").replace(tzinfo=timezone.utc)
     assert (datetime.now(timezone.utc) - begin).total_seconds() > 6 * 3600
     assert int(seen["range"]) >= 60
+
+
+
+def test_a_small_sea_does_not_claim_the_open_ocean_from_750_km_out():
+    nodes = [{"name": "Salish Sea", "lat": 48.5, "lon": -123.0, "kind": "sea"},
+             {"name": "Gulf of Alaska", "lat": 56.0, "lon": -145.0, "kind": "sea"}]
+    assert ext.nearest_water(44.01, -130.21, nodes) == "North Pacific Ocean"   # was "Salish Sea"
+    assert ext.nearest_water(48.6, -123.2, nodes) == "Salish Sea"
+    assert ext.nearest_water(52.0, -150.0, nodes) == "Gulf of Alaska"           # a big gulf reaches
+    assert ext.sea_reach_km("Some Bay Nobody Listed") == ext._SEA_REACH_DEFAULT_KM
