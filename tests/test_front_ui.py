@@ -214,3 +214,15 @@ def test_each_probe_wires_its_own_chart():
     assert '$("#outdoors .tide-area[data-ev]")' in panes
     tide_css = "\n".join(l for l in css.splitlines() if l.startswith((".tide", ".tides-obs")))
     assert "font-mono" not in tide_css                      # Urbanist/DM Sans, not Geist Mono
+
+
+def test_the_outdoors_verdict_carries_a_briefing_and_the_tape_shades_its_rain():
+    panes = _read("panes.js"); tape = _read("tape.js"); css = _read("styles.css")
+    assert "function outdoorsBrief(d, i, c)" in panes and 'class="brief"' in panes
+    # the hero summary says where the sky is going and where the wind is from
+    summ = panes.split("function summarise")[1].split("const BEAUFORT")[0]
+    assert "Clouding over" in summ and "Clearing" in summ and "from the ${compass(" in summ
+    assert "rest.slice(0, 4)" in summ
+    # rain amount as a bar behind the number, square-root scaled, 10 mm full
+    assert "Math.sqrt(mm / 10)" in tape and 'class="bar"' in tape
+    assert "table.wtape tr.r-rain td .bar" in css

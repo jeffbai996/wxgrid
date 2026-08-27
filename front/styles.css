@@ -506,6 +506,7 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 .verdict.bad { border-left-color: var(--bad); } .verdict.bad b { color: var(--bad); }
 .verdict .dim { font-size: 11px; }
 .verdict .why { flex-basis: 100%; margin-top: -2px; font: 500 12px var(--font-body); color: var(--fg-2); }
+.verdict .brief { flex-basis: 100%; margin: 4px 0 0; font: 500 12.5px/1.5 var(--font-body); color: var(--fg); }
 /* ── Outdoors: a section per question, each with its graphic ─────────── */
 .od { margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); }
 .od:first-of-type { border-top: 0; padding-top: 2px; }
@@ -872,6 +873,7 @@ table.wtape tr.r-temp td { font: 700 13px var(--font-num); font-variant-numeric:
 table.wtape tr.r-feels td { color: var(--fg-2); }
 table.wtape tr.r-rain td { color: var(--rain); font-weight: 600; position: relative; }
 table.wtape tr.r-rain td span { position: relative; }
+table.wtape tr.r-rain td .bar { position: absolute; left: 1px; right: 1px; bottom: 0; background: var(--rain); opacity: .16; border-radius: 2px 2px 0 0; pointer-events: none; }
 /* sunrise and sunset: thin amber notches at the top of their columns */
 table.wtape td.sun-rise, table.wtape td.sun-set { position: relative; }
 table.wtape tr.r-hour td.sun-rise::after, table.wtape tr.r-hour td.sun-set::after {

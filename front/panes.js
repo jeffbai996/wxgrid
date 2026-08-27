@@ -128,7 +128,8 @@
     const gusts = (s.gust || s.wind || []).slice(i, end + 1).map((v, k) => [v, i + k]).filter(([v]) => v != null);
     const peak = gusts.length ? gusts.reduce((a, b) => (b[0] > a[0] ? b : a)) : null;
     const windy = peak && peak[0] * 3.6 >= 35;
-    const gustPhrase = () => `${s.gust ? "gusting" : "winds"} to ${Math.round(W().speed(peak[0]))} ${W().speedUnit()}`;
+    const fromDir = () => (peak && s.wdir && s.wdir[peak[1]] != null ? ` from the ${compass(s.wdir[peak[1]])}` : "");
+    const gustPhrase = () => `${s.gust ? "gusting" : "winds"} to ${Math.round(W().speed(peak[0]))} ${W().speedUnit()}${fromDir()}`;
     let windSaid = false;
     if (s.tp6 || s.sf6) {
       const total = idx.reduce((a, k) => a + amountAt(k), 0);
@@ -169,12 +170,21 @@
       }
     }
 
+    // Where the sky is going: the sentence people actually want from a
+    // forecast — clearing, or clouding over, and when.
+    if (s.tcc && cc != null) {
+      const half = idx[Math.floor(idx.length / 2)];
+      const later = idx.slice(idx.indexOf(half)).map((k) => val("tcc", k)).filter((v) => v != null);
+      const cc2 = later.length ? later.reduce((a, b) => a + b, 0) / later.length : null;
+      if (cc2 != null && cc2 - cc > 0.35) rest.push(`Clouding over ${when(half)}.`);
+      else if (cc2 != null && cc - cc2 > 0.35) rest.push(`Clearing ${when(half)}.`);
+    }
     // Two warnings nothing else carries.
     if (dp != null && t0 != null && t0 - dp < 1 && (w0 == null || w0 * 3.6 < 12)) rest.push("Air is sitting at its dew point, so expect fog.");
     const uvMax = Math.max(...idx.map((k) => val("uvi", k) ?? -1));
     if (uvMax >= 8) rest.push(`Strong sun, UV ${Math.round(uvMax)} by midday.`);
 
-    return [...lead, ...rest.slice(0, 3)].join(" ");
+    return [...lead, ...rest.slice(0, 4)].join(" ");
   }
 
   // Two readings that only mean anything at sea. Both are the scales a mariner
@@ -1224,7 +1234,8 @@
     const kv = (rs) => rs.length ? `<div class="kv">${rs.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>` : "";
     const section = (title, graphic, rs, note) => `<section class="od"><h4>${title}${note ? `<span>${note}</span>` : ""}</h4>${graphic || ""}${kv(rs)}</section>`;
     const cold = fl != null && (t == null || t < 12 || snowLevel < 3000);
-    $("#outdoors").innerHTML = `<div class="verdict ${verdict[1]}"><b>${verdict[0]}</b>${why ? `<span class="why">${why}</span>` : ""}${winHtml}</div>
+    const brief = outdoorsBrief(d, i, { rain24, chance, gustMax24, fl, snowLevel, cold, calm, gusty });
+    $("#outdoors").innerHTML = `<div class="verdict ${verdict[1]}"><b>${verdict[0]}</b>${why ? `<span class="why">${why}</span>` : ""}${winHtml}${brief ? `<p class="brief">${brief}</p>` : ""}</div>
       ${section("Sky &amp; rain", sky, take("Precip", "Next 24 h rain", "Cloud", "Visibility", "Thunder"), "cloud cover · rain bars, 48 h")}
       ${section("Sun", uv, take("UV"), "uv index, 48 h · daily peaks labelled")}
       ${section("Wind", gust, take("Wind", "Max gust", "Feels like", "Dry, calm"), "gusts, 48 h")}
@@ -1234,6 +1245,47 @@
       <div class="note">Snow level ≈ freezing level − ${W().units.alt(300).txt}. Gusts come from models that ship one. Terrain is unresolved at 0.25°.</div>`;
     wireTideProbe();
     wireWindProbe();
+  }
+
+  // The trailhead briefing under the verdict: the two days ahead in the
+  // order a person plans them — rain, wind, sun, snow, sea — each in one
+  // sentence with a time attached, none of them a restatement of a card.
+  function outdoorsBrief(d, i, c) {
+    const { speed, speedUnit } = W(), s = d.series, U = W().units;
+    const at = (k) => new Date(d.valid[k]);
+    const clock = (k) => at(k).toLocaleString(undefined, U.timeOpts({ weekday: "short", hour: "numeric" })).replace(":00", "");
+    const idx = []; for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + 48; k++) idx.push(k);
+    if (idx.length < 3) return "";
+    const out = [];
+    // rain: the wet stretch, or its absence, with the cloud's direction
+    const wet = idx.filter((k) => s.tp6 && (s.tp6[k] || 0) > 0.2);
+    const cc = (ks) => { const v = ks.map((k) => s.tcc && s.tcc[k]).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const half = Math.ceil(idx.length / 2), c1 = cc(idx.slice(0, half)), c2 = cc(idx.slice(half));
+    const cloudWord = c1 == null || c2 == null ? "" : c2 - c1 > 0.3 ? `, clouding over from ${clock(idx[half])}` : c1 - c2 > 0.3 ? `, clearing from ${clock(idx[half])}` : c1 > 0.7 ? ", grey throughout" : c1 < 0.3 ? ", mostly clear" : "";
+    if (s.tp6) {
+      if (!wet.length) out.push(`Dry for the next two days${cloudWord}${c.chance != null && c.chance >= 20 ? `; ${c.chance}% of the ensemble disagrees` : ""}.`);
+      else {
+        const a = wet[0], b = wet[wet.length - 1], tot = wet.reduce((x, k) => x + (s.tp6[k] || 0), 0);
+        out.push(`${wet.length <= 2 ? "Showers" : "Rain"} ${a === i ? "now" : `from ${clock(a)}`}${b > a ? ` to ${clock(b)}` : ""}, ${U.precip(tot).txt} in all${cloudWord}.`);
+      }
+    }
+    // wind: the strongest gust ahead, and whether the day starts easier
+    const g = s.gust || s.wind;
+    if (g) {
+      let pk = i; for (const k of idx) if (g[k] != null && g[k] > (g[pk] || 0)) pk = k;
+      const v = speed(g[pk] || 0), calmNow = s.wind && s.wind[i] != null && speed(s.wind[i]) < c.calm;
+      out.push(v < c.calm ? `Light winds throughout.` : `${v >= c.gusty ? "Windy" : "Breezy"} ${pk === i ? "now" : `by ${clock(pk)}`}, ${s.gust ? "gusts" : "winds"} to ${v.toFixed(0)} ${speedUnit()}${calmNow && pk !== i ? ", calm before that" : ""}.`);
+    }
+    // sun: the UV peak and when
+    if (s.uvi) {
+      let pk = null; for (const k of idx) if (s.uvi[k] != null && (pk == null || s.uvi[k] > s.uvi[pk])) pk = k;
+      if (pk != null && s.uvi[pk] >= 3) out.push(`UV ${Math.round(s.uvi[pk])} at its peak ${clock(pk)}${s.uvi[pk] >= 8 ? " — cover up" : ""}.`);
+    }
+    // snow: only where the freezing level is part of the plan
+    if (c.cold && c.fl != null) out.push(`Freezing level ${U.alt(Math.round(c.fl / 50) * 50).txt}, snow above about ${U.alt(Math.round(c.snowLevel / 50) * 50).txt}.`);
+    // sea: the swell, from where
+    if (s.swh && s.swh[i] != null) out.push(`Swell ${U.alt(s.swh[i], 1).txt}${s.mwp && s.mwp[i] != null ? ` at ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` from the ${compass(s.mwd[i])}` : ""}.`);
+    return out.join(" ");
   }
 
   // Pointer over the tide chart: a ring rides the water under the cursor

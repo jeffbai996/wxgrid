@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v42";   // v42: probes wire their own chart; tide numbers in Urbanist
+const VERSION = "wxgrid-v43";   // v43: trailhead briefing, sky direction, rain bars in the tape
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
