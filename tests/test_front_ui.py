@@ -205,3 +205,12 @@ def test_the_wind_chart_is_drawn_like_the_tide_chart():
     assert 'class="tdot now"' in wind and "polyline class=\"g\"" in wind   # ring, gust line
     assert "function wireWindProbe()" in panes and "wireWindProbe();" in panes
     assert "sparkStrip" not in panes and ".hstrip.line" not in css      # the old strip is gone
+
+
+def test_each_probe_wires_its_own_chart():
+    panes = _read("panes.js"); css = _read("styles.css")
+    # the wind card reuses the tide frame, so the tide probe must pick the
+    # area that carries tide events — not the first .tide-area in the DOM
+    assert '$("#outdoors .tide-area[data-ev]")' in panes
+    tide_css = "\n".join(l for l in css.splitlines() if l.startswith((".tide", ".tides-obs")))
+    assert "font-mono" not in tide_css                      # Urbanist/DM Sans, not Geist Mono

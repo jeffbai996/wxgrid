@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v41";   // v41: the wind chart drawn like the tide chart
+const VERSION = "wxgrid-v42";   // v42: probes wire their own chart; tide numbers in Urbanist
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

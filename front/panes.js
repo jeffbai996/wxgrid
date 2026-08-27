@@ -1240,7 +1240,7 @@
   // and a tag says when and how high. Same cosine as the drawing, so the
   // ring sits on the line rather than near it.
   function wireTideProbe() {
-    const area = $("#outdoors .tide-area");
+    const area = $("#outdoors .tide-area[data-ev]");
     if (!area || area.dataset.wired) return;
     area.dataset.wired = "1";
     const ev = JSON.parse(area.dataset.ev), lo = +area.dataset.lo, rng = +area.dataset.rng;
