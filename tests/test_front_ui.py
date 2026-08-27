@@ -176,7 +176,7 @@ def test_the_outdoors_tide_card_draws_the_curve_and_the_hero_stays_lean():
     assert "tideCard(pt)" not in panes.split("function renderNow")[1].split("fetchNearStorm(pt)")[0]
     assert "tide-hero" not in css and "tide-hero" not in panes
     # only turns still ahead of the card's time are listed
-    assert "new Date(e.time).getTime() > now).slice(0, 6)" in panes
+    assert "new Date(e.time).getTime() > now).slice(0, 8)" in panes
 
 
 def test_outdoors_is_sectioned_with_a_graphic_per_question_and_names_its_worry():
