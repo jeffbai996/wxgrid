@@ -226,14 +226,14 @@
     return gloss ? `<abbr title="${esc(gloss)}">${esc(tok)}</abbr>` : esc(tok);
   }).join(" ");
 
-  // ── The tide on the hero ───────────────────────────────────────────────
+  // ── The tide card (Outdoors) ───────────────────────────────────────────
   // The stations hand back turns only — high, low, high — so the water between
   // them is drawn as a half-cosine from one turn to the next, which is the
   // shape a semi-diurnal tide really has and the rule the pocket tables use.
   // A marker sits at the card's time, and the sentence says the next turn.
-  // Shown only inside the same 40 km the coast readings use: a station 60 km
+  // The hero stays lean — this lives on the Outdoors tab. Shown only inside the same 40 km the coast readings use: a station 60 km
   // up a strait is not this beach's tide.
-  function tideHero(pt) {
+  function tideCard(pt) {
     const t = pt && pt.tides;
     if (!t || !t.events || t.events.length < 2 || t.distance_km == null || t.distance_km > 40) return "";
     const ev = t.events.map((e) => ({ x: new Date(e.time).getTime(), y: e.height_m, type: e.type })).sort((a, b) => a.x - b.x);
@@ -259,7 +259,7 @@
     const words = next
       ? `<b>${hNow != null ? `${W().units.alt(hNow, 1).v} ${unit} ${rising ? "rising" : "falling"} · ` : ""}${next.type === "H" ? "high" : "low"} ${W().units.alt(next.y, 1).v} ${unit} at ${W().units.time(new Date(next.x))}</b>`
       : `<b>tide</b>`;
-    return `<div class="tide-hero" title="${esc(t.source)} · ${esc(t.datum)}">
+    return `<div class="tide-card" title="${esc(t.source)} · ${esc(t.datum)}">
       <div class="tide-line">${words}<span class="dim">${esc(t.station)} · ${W().units.dist(t.distance_km).txt}</span></div>
       <div class="tide-plot"><svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,${H} ${pts.join(" ")} 100,${H}"/><polyline points="${pts.join(" ")}"/></svg>${labels}${marker}</div>
     </div>`;
@@ -351,7 +351,6 @@
           ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span><i class="brk" aria-hidden="true"></i>${sun.len ? `<span class="len" title="Daylight">${W_ICONS.day || ""}${sun.len}</span>` : ""}<span class="moon" title="${moon.name}, ${moon.pct}% lit">${moon.glyph} ${moon.pct}%</span></div>` : ""}
         </div>
       </div>
-      ${tideHero(pt)}
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
       <div class="meta">${chips.join("")}</div>
       ${contextCues(pt, d, i)}
@@ -1178,8 +1177,11 @@
     let tidesHtml = "";
     if (pt && pt.tides && pt.tides.events && pt.tides.events.length) {
       const t = pt.tides;
+      const now = W().validDate.getTime();
+      const turns = t.events.filter((e) => new Date(e.time).getTime() > now).slice(0, 6);
       tidesHtml = `<div class="obs"><div class="obs-head"><span>Tides · ${esc(t.station)} · ${W().units.dist(t.distance_km).txt}</span><span class="dim">${esc(t.source)} · ${esc(t.datum)}</span></div>
-        <div class="tides">${t.events.slice(0, 6).map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${W().units.alt(e.height_m, 1).txt}</b><small>${W().units.dateTime(e.time, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div></div>`;
+        ${tideCard(pt)}
+        <div class="tides">${turns.map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${W().units.alt(e.height_m, 1).txt}</b><small>${W().units.dateTime(e.time, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div></div>`;
     }
     // the sun's day at a glance: 24 hourly UV cells in the map's own ramp
     let uvStrip = "";

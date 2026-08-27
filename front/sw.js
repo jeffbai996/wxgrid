@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v32";   // v32: the tide curve on the hero
+const VERSION = "wxgrid-v33";   // v33: the tide curve moves to the Outdoors card
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

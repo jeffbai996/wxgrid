@@ -683,7 +683,7 @@ table.bandtape .nil { color: var(--line-strong); }
      tabs and everything under the hero go, so nothing half-renders. */
   #point.sheet-peek .point-tabs, #point.sheet-peek #point-foot, #point.sheet-peek #point-local { display: none; }
   #point.sheet-peek #point-body { overflow: hidden; }
-  #point.sheet-peek #point-now > :not(.hero):not(.tide-hero) { display: none; }
+  #point.sheet-peek #point-now > :not(.hero) { display: none; }
   #point.sheet-peek .hero { margin: 2px 0 0; }
   .sheet-grip i { display: block; width: 38px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 0 auto; }
   #levels { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
@@ -903,13 +903,12 @@ table.wtape tr.r-dir td { height: 20px; }
 .hero .sun .brk { flex-basis: 100%; height: 0; }
 .hero .sun svg { width: 12px; height: 12px; }
 .hero .sun .len { color: var(--fg-2); }
-/* the tide under the hero: a half-cosine between the station's turns,
+/* the Outdoors tide card: a half-cosine between the station's turns,
    the heights riding the crests and troughs, a bar at the card's time */
-/* a flex item of #point-now: min-width auto would size it to the nowrap sentence and shove the station off the card */
-.tide-hero { margin: 2px 0 8px; min-width: 0; width: 100%; }
+.tide-card { margin: 4px 0 6px; min-width: 0; }
 .tide-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font: 500 11px var(--font-num); color: var(--fg-2); }
 .tide-line b { font: 700 12px var(--font-display); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tide-line .dim { white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tide-line .dim { display: none; }
 .tide-plot { position: relative; height: 44px; margin-top: 3px; }
 .tide-plot svg { position: absolute; left: 0; right: 0; top: 10px; width: 100%; height: 30px; display: block; overflow: visible; }
 .tide-plot polygon { fill: color-mix(in srgb, var(--rain) 16%, transparent); }
