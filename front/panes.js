@@ -1386,7 +1386,7 @@
     // onshore / offshore: the coast probe says which way the sea lies from
     // the pin; wind blowing TOWARD the sea is offshore. With no probe the
     // swell's own direction stands in for "where the sea is".
-    const seaBearing = (() => { const c = coastNear(d); if (c && c.bearing != null) return c.bearing; return mwd ? mwd.v : null; })();
+    const seaBearing = (() => { const c = coastNear(d); if (c && c.bearing_deg != null) return c.bearing_deg; return mwd ? mwd.v : null; })();
     let rel = null;
     if (w != null && wd != null && seaBearing != null) {
       const to = (wd + 180) % 360, diff = Math.abs(((to - seaBearing) + 540) % 360 - 180);
