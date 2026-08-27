@@ -516,7 +516,7 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 .od .kv .stat { gap: 1px; padding: 8px 10px 7px; border-radius: 9px; box-shadow: none; background: rgba(127,140,160,.07); border-left: 3px solid transparent; }
 .od .kv .stat .v { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 5px; font: 750 20px/1.05 var(--font-display); letter-spacing: -.015em; color: var(--fg); font-variant-numeric: tabular-nums; }
 .od .kv .stat .v b { font-weight: inherit; }
-.od .kv .stat .v b.word { font-size: 16px; text-transform: capitalize; }
+.od .kv .stat .v b.word { font-size: 16px; }
 .od .kv .stat .v small { font: 600 11px var(--font-num); color: var(--fg-2); letter-spacing: 0; }
 .od .kv .stat .v .dim { font-size: 11px; }
 .od .kv .stat .k { font: 500 10.5px var(--font-body); letter-spacing: 0; text-transform: none; color: var(--dim); }

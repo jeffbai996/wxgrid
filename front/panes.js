@@ -1235,7 +1235,7 @@
     // under it in plain words: one glance says 28, the next says km/h, the
     // third says which. Green is not painted on — a fine reading is the
     // quiet default; only meh/bad earn a colour and a rule.
-    const lead = (v) => { const m = String(v).match(/^(—|[-+]?\d[\d.,]*\s?(?:°|%|h)?)(.*)$/s); return m ? `<b>${m[1]}</b>${m[2].trim() ? `<small>${m[2].trim()}</small>` : ""}` : `<b class="word">${v}</b>`; };
+    const lead = (v) => { const m = String(v).match(/^(—|[-+]?\d[\d.,]*\s?(?:°|%|h)?)(.*)$/s); return m ? `<b>${m[1]}</b>${m[2].trim() ? `<small>${m[2].trim()}</small>` : ""}` : `<b class="word">${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}</b>`; };
     const kv = (rs) => rs.length ? `<div class="kv">${rs.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="v">${lead(v)}</span><span class="k">${k.replace(/ \(≈\)/, " ≈").replace("Precip", "Precip.")}</span></div>`).join("")}</div>` : "";
     const section = (title, graphic, rs, note) => `<section class="od"><h4>${title}${note ? `<span>${note}</span>` : ""}</h4>${graphic || ""}${kv(rs)}</section>`;
     const cold = fl != null && (t == null || t < 12 || snowLevel < 3000);
