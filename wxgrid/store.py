@@ -299,11 +299,23 @@ class RunReader:
 # timeout: the kernel drops the lock when the holder dies, so a killed ingest
 # cannot leave a stale lock behind. Non-blocking — a second writer for the
 # same run steps aside rather than queueing up behind a multi-hour pass.
+_HELD: set[tuple[str, str, str]] = set()   # locks this process holds, for re-entry
+
+
 @contextmanager
 def run_lock(model: str, rid: str, root: Path = STORE_DIR):
     """Yields True while this process holds the run's lock, False if another
-    process has it (the caller skips). Held until the block exits."""
+    process has it (the caller skips). Held until the block exits.
+
+    Re-entrant within a process: the ingest holds the lock while it builds
+    the point cube at the end of its pass, and the cube builder takes the
+    same lock — a non-re-entrant lock had it skip its own cube on every run
+    (2026-08-27 03:58, "locked by another writer": it was us)."""
     import fcntl
+    key = (str(root), model, rid)
+    if key in _HELD:
+        yield True
+        return
     lock_path = root / model / f".{rid}.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fh = open(lock_path, "w")
@@ -313,9 +325,11 @@ def run_lock(model: str, rid: str, root: Path = STORE_DIR):
         except OSError:
             yield False
             return
+        _HELD.add(key)
         try:
             yield True
         finally:
+            _HELD.discard(key)
             fcntl.flock(fh, fcntl.LOCK_UN)
             lock_path.unlink(missing_ok=True)
     finally:

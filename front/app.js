@@ -343,6 +343,9 @@
       addLayer() {}, removeLayer() {}, addSource() {}, removeSource() {}, addImage() {}, hasImage: () => false,
       setLayoutProperty() {}, setPaintProperty() {}, getPaintProperty: () => undefined, setFilter() {}, setLayerZoomRange() {},
       queryRenderedFeatures: () => [], triggerRepaint() {}, resize() {}, remove() {}, addControl() {}, removeControl() {},
+      // what Marker and Popup ask their map for on addTo()
+      _getUIString: (k) => k, _requestRenderFrame: () => 0, _cancelRenderFrame() {}, getPitch: () => 0, getBearing: () => 0,
+      getMaxPitch: () => 0, getTerrain: () => null, transform: { width: 800, height: 600 },
       getContainer: () => el, getCanvasContainer: () => el, getCanvas: () => el.querySelector("canvas") || Object.assign(document.createElement("canvas"), { width: size().w, height: size().h }),
       getBounds() { const b = bounds(); return { getWest: () => b.west, getEast: () => b.east, getSouth: () => b.south, getNorth: () => b.north, toArray: () => [[b.west, b.south], [b.east, b.north]] }; },
       project(ll) { const b = bounds(), { w, h } = size(); const lng = Array.isArray(ll) ? ll[0] : ll.lng, lat = Array.isArray(ll) ? ll[1] : ll.lat; return { x: (lng - b.west) / (b.east - b.west) * w, y: (b.north - lat) / (b.north - b.south) * h }; },

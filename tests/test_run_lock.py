@@ -72,3 +72,18 @@ def test_ingest_run_uses_the_same_lock(tmp_path):
         assert out["skipped"] == "locked"
     finally:
         holder.kill(); holder.wait()
+
+
+
+def test_the_lock_is_reentrant_so_the_ingest_can_build_its_own_cube(tmp_path):
+    # The ingest holds the run lock and then calls build_point_cube, which
+    # takes it again. Skipping there left every new run without a cube.
+    rid = _run(tmp_path)
+    with store.run_lock("gfs", rid, tmp_path) as held:
+        assert held is True
+        assert store.build_point_cube("gfs", rid, tmp_path) == 1
+        with store.run_lock("gfs", rid, tmp_path) as again:
+            assert again is True
+    # released for real once the outer block exits: a second process gets it
+    holder = _hold(tmp_path, "gfs", rid)
+    holder.kill(); holder.wait()
