@@ -284,3 +284,12 @@ def test_the_marine_touring_and_leave_at_cards_exist_and_make_one_call_each():
     assert "async function bestDepartures()" in route and "function scoreSummary(s, thr)" in route
     assert "[0, 3, 6, 9, 12, 15, 18, 21, 24]" in route            # nine departures over a day
     assert ".modcard.marine, .modcard.touring" in css
+
+
+def test_aloft_readings_are_cards_and_legend_ticks_are_urbanist():
+    panes = _read("panes.js"); css = _read("styles.css")
+    assert "function statCards(rows, cls)" in panes and '], "aloft-kv")' in panes
+    assert '<dl class="kv">' not in panes.split("function renderAloft")[1].split("const capeClass")[0]
+    assert ".aloft-kv .stat" in css and ".aloft-kv .stat.g-baro" in css
+    assert "font: 650 10.5px var(--font-display)" in css.split(".legend-ticks {")[1].split("}")[0]
+    assert '<i class="lvl">850 hPa</i>' in panes

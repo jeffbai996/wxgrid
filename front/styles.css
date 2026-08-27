@@ -360,7 +360,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .legend-head i { font: 600 9.5px var(--font-display); font-style: normal; color: var(--dim); letter-spacing: .01em; }
 .legend-head i .per { font-size: 8px; color: color-mix(in srgb, var(--dim) 55%, transparent); margin-left: 1px; }
 .legend-bar { height: 9px; border-radius: 5px; }
-.legend-ticks { display: flex; justify-content: space-between; font: 600 10.5px var(--font-num); font-variant-numeric: tabular-nums; color: var(--dim); margin-top: 3px; }
+.legend-ticks { display: flex; justify-content: space-between; font: 650 10.5px var(--font-display); letter-spacing: -.01em; font-variant-numeric: tabular-nums; color: var(--dim); margin-top: 3px; }
 .legend-ticks b { color: var(--fg); font-weight: 600; font-family: var(--font-display); }
 
 /* ── time bar + tape ─────────────────────────────────────────────────── */
@@ -1371,3 +1371,26 @@ body.no-map #particles { display: none; }
 .modcard.marine .hstrip { margin-top: 10px; }
 .modcard .mod-stats b.avy-0 { color: #52b788; } .modcard .mod-stats b.avy-1 { color: #f2c94c; } .modcard .mod-stats b.avy-2 { color: #f2994a; }
 .modcard .mod-stats b.avy-3 { color: #eb5757; } .modcard .mod-stats b.avy-4 { color: #111; background: #eb5757; padding: 0 5px; border-radius: 4px; }
+
+/* ── the Aloft readings, as the Outdoors cards ───────────────────────── */
+.aloft-kv { margin-top: 8px; gap: 6px; }
+.aloft-kv .stat { position: relative; gap: 1px; padding: 8px 36px 7px 10px; border-radius: 9px; box-shadow: none; background: rgba(127,140,160,.07); border-left: 3px solid transparent; }
+.aloft-kv .stat .v { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 5px; font: 750 20px/1.05 var(--font-display); letter-spacing: -.015em; color: var(--fg); font-variant-numeric: tabular-nums; }
+.aloft-kv .stat .v b { font-weight: inherit; }
+.aloft-kv .stat .v b.word { font-size: 14px; }
+.aloft-kv .stat .v small { font: 600 11px var(--font-num); color: var(--fg-2); letter-spacing: 0; }
+.aloft-kv .stat .v .dim { font-size: 11px; }
+.aloft-kv .stat .k { font: 500 10.5px var(--font-body); letter-spacing: 0; text-transform: none; color: var(--dim); }
+.aloft-kv .stat.good .v { color: var(--fg); }
+.aloft-kv .stat.meh { border-left-color: var(--warm); } .aloft-kv .stat.meh .v b { color: var(--warm); }
+.aloft-kv .stat.bad { border-left-color: var(--bad); } .aloft-kv .stat.bad .v b { color: var(--bad); }
+.aloft-kv .stat .glyph { position: absolute; top: 8px; right: 9px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; color: var(--c, var(--fg-2)); background: color-mix(in srgb, var(--c, var(--fg-2)) 14%, transparent); }
+.aloft-kv .stat .glyph svg { width: 14px; height: 14px; }
+.aloft-kv .stat.g-drop, .aloft-kv .stat.g-cloud { --c: var(--rain); }
+.aloft-kv .stat.g-bolt { --c: #e0a12a; }
+.aloft-kv .stat.g-flake { --c: #6cc3e8; }
+.aloft-kv .stat.g-baro { --c: #b7a6f0; }
+.aloft-kv .stat.meh .glyph { --c: var(--warm); } .aloft-kv .stat.bad .glyph { --c: var(--bad); }
+.aloft-kv .stat .gauge { display: block; height: 3px; margin-top: 6px; border-radius: 2px; background: rgba(127,140,160,.18); overflow: hidden; }
+.aloft-kv .stat .gauge b { display: block; height: 100%; border-radius: 2px; background: var(--c, var(--fg-2)); }
+.modcard .mod-stats em i.lvl { font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-right: 5px; padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; }
