@@ -255,7 +255,11 @@
     const next = ev.find((e) => e.x > now);
     const edge = (x) => x < 6 ? " l" : x > 94 ? " r" : "";
     const labels = ev.map((e) => `<i class="tl ${e.type}${edge(X(e.x))}" style="left:${X(e.x).toFixed(1)}%">${U.alt(e.y, 1).v}</i>`).join("");
-    const marker = hNow != null ? `<i class="tnow" style="left:${X(now).toFixed(1)}%"></i>` : "";
+    // The card's time is a ring on the water, not a bar across it; a second
+    // ring follows the pointer and says the time and height under it.
+    const marker = hNow != null ? `<i class="tdot now" style="left:${X(now).toFixed(1)}%;top:${Y(hNow).toFixed(1)}%"></i>` : "";
+    const probe = `<i class="tdot hov" hidden></i><s class="tlab" hidden></s>`;
+    const evData = esc(JSON.stringify(ev.map((e) => [e.x, e.y])));
     // the datum line, when it is inside the range (a negative low sits under it)
     const datum = lo < 0 && hi > 0 ? `<i class="tzero" style="top:${Y(0).toFixed(1)}%"></i>` : "";
     // x axis: every local midnight is a day, every local noon a tick
@@ -277,7 +281,7 @@
     return `<div class="tide-card">${readout}
       <div class="tide-plot">
         <div class="tide-y"><i>${U.alt(hi, 1).v}</i><i>${U.alt(lo, 1).v}</i><u>${unit}</u></div>
-        <div class="tide-area"><div class="tide-water"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,100 ${pts.join(" ")} 100,100"/><polyline points="${pts.join(" ")}"/></svg>${datum}</div>${labels}${marker}</div>
+        <div class="tide-area" data-ev="${evData}" data-lo="${lo}" data-rng="${rng}"><div class="tide-water"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,100 ${pts.join(" ")} 100,100"/><polyline points="${pts.join(" ")}"/></svg>${datum}${marker}${probe}</div>${labels}</div>
       </div>
       <div class="tide-x">${xt.join("")}</div>
     </div>`;
@@ -1226,6 +1230,35 @@
       ${take("Sea state").length ? section("Sea", "", take("Sea state")) : ""}
       ${tidesHtml}${airHtml(pt || {})}
       <div class="note">Snow level ≈ freezing level − ${W().units.alt(300).txt}. Gusts come from models that ship one. Terrain is unresolved at 0.25°.</div>`;
+    wireTideProbe();
+  }
+
+  // Pointer over the tide chart: a ring rides the water under the cursor
+  // and a tag says when and how high. Same cosine as the drawing, so the
+  // ring sits on the line rather than near it.
+  function wireTideProbe() {
+    const area = $("#outdoors .tide-area");
+    if (!area || area.dataset.wired) return;
+    area.dataset.wired = "1";
+    const ev = JSON.parse(area.dataset.ev), lo = +area.dataset.lo, rng = +area.dataset.rng;
+    const x0 = ev[0][0], x1 = ev[ev.length - 1][0];
+    const dot = area.querySelector(".tdot.hov"), lab = area.querySelector(".tlab");
+    const show = (clientX) => {
+      const r = area.getBoundingClientRect(), f = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+      const x = x0 + f * (x1 - x0);
+      let h = null;
+      for (let k = 0; k + 1 < ev.length; k++)
+        if (x >= ev[k][0] && x <= ev[k + 1][0]) { h = ev[k][1] + (ev[k + 1][1] - ev[k][1]) * (1 - Math.cos(Math.PI * (x - ev[k][0]) / (ev[k + 1][0] - ev[k][0]))) / 2; break; }
+      if (h == null) return;
+      const top = 100 - (h - lo) / rng * 100;
+      dot.style.left = `${(f * 100).toFixed(1)}%`; dot.style.top = `${top.toFixed(1)}%`; dot.hidden = false;
+      lab.textContent = `${W().units.dateTime(new Date(x), { weekday: "short", hour: "numeric", minute: "2-digit" })} · ${W().units.alt(h, 1).txt}`;
+      lab.style.left = `${(f * 100).toFixed(1)}%`; lab.classList.toggle("r", f > 0.6); lab.hidden = false;
+    };
+    const hide = () => { dot.hidden = true; lab.hidden = true; };
+    area.addEventListener("pointermove", (e) => show(e.clientX));
+    area.addEventListener("pointerdown", (e) => show(e.clientX));
+    area.addEventListener("pointerleave", hide);
   }
 
   // A row of hour cells over the next `hours` from step i, each as wide as

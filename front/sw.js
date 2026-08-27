@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v38";   // v38: gust peak label hangs inward at the edges
+const VERSION = "wxgrid-v39";   // v39: tide time is a ring, pointer probe
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

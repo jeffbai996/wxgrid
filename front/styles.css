@@ -961,7 +961,13 @@ table.wtape tr.r-dir td { height: 20px; }
 .tide-area .tl.L { bottom: 1px; }
 .tide-area .tl.l { transform: none; }
 .tide-area .tl.r { transform: translateX(-100%); }
-.tide-area .tnow { position: absolute; top: 12px; bottom: 12px; width: 1.5px; background: var(--fg); opacity: .75; transform: translateX(-50%); border-radius: 1px; }
+.tide-area { touch-action: pan-y; cursor: crosshair; }
+.tide-water .tdot { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--panel-solid); border: 2px solid var(--rain); box-sizing: border-box; pointer-events: none; }
+.tide-water .tdot.now { border-color: var(--fg); }
+.tide-water .tdot.hov { background: var(--rain); }
+.tide-water .tlab { position: absolute; top: -13px; transform: translateX(-50%); text-decoration: none; white-space: nowrap; pointer-events: none;
+  font: 700 9.5px var(--font-num); color: var(--fg); background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 5px; padding: 1px 5px; z-index: 2; }
+.tide-water .tlab.r { transform: translateX(-100%); }
 .tide-x { position: relative; height: 14px; margin-left: 36px; border-top: 1px solid var(--line); }
 .tide-x i { position: absolute; top: 2px; transform: translateX(-50%); font: 500 9px var(--font-display); font-style: normal; color: var(--dim); white-space: nowrap; }
 .tide-x i::before { content: ""; position: absolute; left: 50%; top: -3px; width: 1px; height: 3px; background: var(--line-strong); }

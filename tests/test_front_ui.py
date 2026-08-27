@@ -188,3 +188,11 @@ def test_outdoors_is_sectioned_with_a_graphic_per_question_and_names_its_worry()
     assert 'rows.push(["Sun"' not in out                       # sunrise lives on the hero
     assert "const H = 48;" in out                              # every strip: two days
     assert "function hourStrip(d, i, hours, cell, label)" in panes and "function sparkStrip(" in panes
+
+
+def test_the_tide_chart_marks_time_with_a_ring_and_follows_the_pointer():
+    panes = _read("panes.js"); css = _read("styles.css")
+    assert 'class="tdot now"' in panes and "tnow" not in panes          # no bar
+    assert "function wireTideProbe()" in panes and "wireTideProbe();" in panes
+    assert 'addEventListener("pointermove"' in panes.split("function wireTideProbe")[1].split("\n  }\n")[0]
+    assert ".tide-area .tnow" not in css
