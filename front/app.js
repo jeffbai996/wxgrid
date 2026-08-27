@@ -353,6 +353,18 @@
       jumpTo(o) { if (o.center) c = { lng: o.center[0] ?? o.center.lng, lat: o.center[1] ?? o.center.lat }; if (o.zoom != null) z = o.zoom; emit("move"); emit("moveend"); },
       flyTo(o) { shim.jumpTo(o); }, easeTo(o) { shim.jumpTo(o); }, fitBounds() { emit("moveend"); },
     };
+    // Markers, popups and controls are MapLibre objects that reach into the
+    // real map's transform on addTo(); with no map they become inert
+    // stand-ins with the same chainable surface, so route pins, the probe
+    // pin and quake popups neither draw nor throw.
+    const inert = class { constructor(o) { this._el = (o && o.element) || document.createElement("div"); this._ll = { lng: 0, lat: 0 }; }
+      setLngLat(ll) { this._ll = Array.isArray(ll) ? { lng: ll[0], lat: ll[1] } : ll; return this; } getLngLat() { return this._ll; }
+      addTo() { return this; } remove() { return this; } getElement() { return this._el; } on() { return this; } off() { return this; }
+      setDraggable() { return this; } setOffset() { return this; } setHTML() { return this; } setDOMContent() { return this; }
+      setText() { return this; } isOpen() { return false; } setMaxWidth() { return this; } toggleClassName() { return this; }
+      addClassName() { return this; } removeClassName() { return this; } getPopup() { return null; } setPopup() { return this; }
+      togglePopup() { return this; } setRotation() { return this; } onAdd() { return document.createElement("div"); } onRemove() {} };
+    maplibregl.Marker = inert; maplibregl.Popup = inert; maplibregl.AttributionControl = inert; maplibregl.NavigationControl = inert; maplibregl.ScaleControl = inert;
     el.innerHTML = `<div class="nomap"><b>Map unavailable</b><span>This browser has no WebGL, so the map is off. Search a place or use the tape and card — the forecast is all here.</span></div>`;
     setTimeout(() => { emit("style.load"); emit("load"); }, 0);
     return shim;
