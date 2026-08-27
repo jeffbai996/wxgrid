@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v33";   // v33: the tide curve moves to the Outdoors card
+const VERSION = "wxgrid-v34";   // v34: the tide card gets axes and a readout
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

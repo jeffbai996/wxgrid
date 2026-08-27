@@ -172,7 +172,7 @@ def test_the_outdoors_tide_card_draws_the_curve_and_the_hero_stays_lean():
     # cosine between consecutive turns — the classic hi/lo interpolation
     assert "Math.cos(" in panes.split("function tideCard")[1].split("\n  }\n")[0]
     # the curve sits in the Outdoors tides block, not on the hero
-    assert panes.index("${tideCard(pt)}") > panes.index("Tides · ${esc(t.station)}")
+    assert panes.index("${tideCard(pt)}") > panes.index("<b>Tides</b><span class=\"nm\">${esc(t.station)}")
     assert "tideCard(pt)" not in panes.split("function renderNow")[1].split("fetchNearStorm(pt)")[0]
     assert "tide-hero" not in css and "tide-hero" not in panes
     # only turns still ahead of the card's time are listed

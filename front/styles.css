@@ -903,21 +903,47 @@ table.wtape tr.r-dir td { height: 20px; }
 .hero .sun .brk { flex-basis: 100%; height: 0; }
 .hero .sun svg { width: 12px; height: 12px; }
 .hero .sun .len { color: var(--fg-2); }
-/* the Outdoors tide card: a half-cosine between the station's turns,
-   the heights riding the crests and troughs, a bar at the card's time */
-.tide-card { margin: 4px 0 6px; min-width: 0; }
-.tide-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font: 500 11px var(--font-num); color: var(--fg-2); }
-.tide-line b { font: 700 12px var(--font-display); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tide-line .dim { display: none; }
-.tide-plot { position: relative; height: 44px; margin-top: 3px; }
-.tide-plot svg { position: absolute; left: 0; right: 0; top: 10px; width: 100%; height: 30px; display: block; overflow: visible; }
-.tide-plot polygon { fill: color-mix(in srgb, var(--rain) 16%, transparent); }
-.tide-plot polyline { fill: none; stroke: var(--rain); stroke-width: 1.4; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-.tide-plot .tl { position: absolute; transform: translateX(-50%); font: 600 9.5px var(--font-mono); font-style: normal; color: var(--fg-2); line-height: 1; }
-.tide-plot .tl.H { top: 0; color: var(--rain); }
-.tide-plot .tl.L { bottom: 0; }
-.tide-plot .tl.l { transform: none; }
-.tide-plot .tl.r { transform: translateX(-100%); }
+/* ── the Outdoors tide card ──────────────────────────────────────────── */
+/* readout: the water now, which way it is going, and the next turn */
+.tides-obs .obs-head .src { display: flex; flex-direction: column; align-items: flex-end; font: 500 10px var(--font-display); color: var(--dim); white-space: nowrap; flex: 0 0 auto; }
+.tides-obs .obs-head .src b { font: 700 11px var(--font-mono); color: var(--fg-2); letter-spacing: .04em; }
+.tide-card { margin: 6px 0 4px; min-width: 0; }
+.tide-now { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.tide-now .tnum { display: inline-flex; align-items: baseline; gap: 3px; }
+.tide-now .tnum b { font: 700 24px/1 var(--font-display); font-variant-numeric: tabular-nums; color: var(--fg); letter-spacing: -.01em; }
+.tide-now .tnum i { font: 600 11px var(--font-display); font-style: normal; color: var(--dim); }
+.tide-now .tdir { font: 700 11px var(--font-display); letter-spacing: .04em; text-transform: uppercase; }
+.tide-now .tdir.up { color: var(--rain); }
+.tide-now .tdir.dn { color: var(--warm); }
+.tide-now .tnext { display: inline-flex; align-items: baseline; gap: 6px; margin-left: auto; font: 500 11px var(--font-num); color: var(--fg-2); }
+.tide-now .tnext i { font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.tide-now .tnext b { font: 700 12px var(--font-display); color: var(--fg); }
+.tide-now .tnext em { font-style: normal; color: var(--dim); }
+/* chart: a y column, then the water with a label band above and below it */
+.tide-plot { display: flex; gap: 6px; margin-top: 8px; height: 84px; }
+.tide-y { position: relative; flex: 0 0 30px; font: 600 9.5px var(--font-mono); color: var(--dim); text-align: right; }
+.tide-y i { position: absolute; right: 0; font-style: normal; line-height: 1; transform: translateY(-50%); }
+.tide-y i:first-child { top: 14px; }
+.tide-y i:nth-child(2) { top: calc(100% - 14px); }
+.tide-y u { position: absolute; right: 0; top: 50%; transform: translateY(-50%); text-decoration: none; font: 500 9px var(--font-display); opacity: .7; }
+.tide-area { position: relative; flex: 1 1 auto; min-width: 0; border-left: 1px solid var(--line); }
+.tide-water { position: absolute; left: 0; right: 0; top: 14px; bottom: 14px; }
+.tide-water svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.tide-water polygon { fill: color-mix(in srgb, var(--rain) 16%, transparent); }
+.tide-water polyline { fill: none; stroke: var(--rain); stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.tide-water .tzero { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--line-strong); }
+.tide-area .tl { position: absolute; transform: translateX(-50%); font: 600 9.5px var(--font-mono); font-style: normal; line-height: 1; color: var(--fg-2); }
+.tide-area .tl.H { top: 1px; color: var(--rain); }
+.tide-area .tl.L { bottom: 1px; }
+.tide-area .tl.l { transform: none; }
+.tide-area .tl.r { transform: translateX(-100%); }
+.tide-area .tnow { position: absolute; top: 12px; bottom: 12px; width: 1.5px; background: var(--fg); opacity: .75; transform: translateX(-50%); border-radius: 1px; }
+.tide-area .tnow s { position: absolute; top: -12px; left: 4px; text-decoration: none; font: 700 8.5px var(--font-display); color: var(--fg); white-space: nowrap; opacity: .9; }
+.tide-x { position: relative; height: 14px; margin-left: 36px; border-top: 1px solid var(--line); }
+.tide-x i { position: absolute; top: 2px; transform: translateX(-50%); font: 500 9px var(--font-display); font-style: normal; color: var(--dim); white-space: nowrap; }
+.tide-x i::before { content: ""; position: absolute; left: 50%; top: -3px; width: 1px; height: 3px; background: var(--line-strong); }
+.tide-x i.day { font-weight: 700; color: var(--fg-2); }
+.tides-obs .tides { margin-top: 8px; }
 .tide-plot .tnow { position: absolute; top: 8px; bottom: 2px; width: 1.5px; background: var(--fg); opacity: .7; transform: translateX(-50%); border-radius: 1px; }
 .meta { display: flex; flex-wrap: wrap; gap: 6px 8px; font: 500 12px var(--font-mono); color: var(--fg-2); margin: 0 0 4px; }
 .meta b { color: var(--fg); font-weight: 700; }

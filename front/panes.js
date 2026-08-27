@@ -230,38 +230,56 @@
   // The stations hand back turns only — high, low, high — so the water between
   // them is drawn as a half-cosine from one turn to the next, which is the
   // shape a semi-diurnal tide really has and the rule the pocket tables use.
-  // A marker sits at the card's time, and the sentence says the next turn.
-  // The hero stays lean — this lives on the Outdoors tab. Shown only inside the same 40 km the coast readings use: a station 60 km
-  // up a strait is not this beach's tide.
+  // The chart earns its axes: heights on the left in the user's unit against
+  // the station datum, days and noons along the bottom, a bar at the card's
+  // time. Turn heights sit in bands above and below the water so they can
+  // never collide with it. Shown only inside the same 40 km the coast
+  // readings use: a station 60 km up a strait is not this beach's tide.
   function tideCard(pt) {
     const t = pt && pt.tides;
     if (!t || !t.events || t.events.length < 2 || t.distance_km == null || t.distance_km > 40) return "";
+    const U = W().units, unit = U.altUnit;
     const ev = t.events.map((e) => ({ x: new Date(e.time).getTime(), y: e.height_m, type: e.type })).sort((a, b) => a.x - b.x);
     const x0 = ev[0].x, x1 = ev[ev.length - 1].x, span = Math.max(x1 - x0, 1);
     const ys = ev.map((e) => e.y), lo = Math.min(...ys), hi = Math.max(...ys), rng = Math.max(hi - lo, 0.2);
-    const H = 30, PAD = 2;
-    const X = (x) => (x - x0) / span * 100, Y = (y) => H - PAD - (y - lo) / rng * (H - 2 * PAD);
+    const X = (x) => (x - x0) / span * 100, Y = (y) => 100 - (y - lo) / rng * 100;
     const between = (a, b, x) => a.y + (b.y - a.y) * (1 - Math.cos(Math.PI * (x - a.x) / (b.x - a.x))) / 2;
     const pts = [];
     for (let k = 0; k + 1 < ev.length; k++)
-      for (let s = 0; s < 14; s++) { const x = ev[k].x + (ev[k + 1].x - ev[k].x) * s / 14; pts.push(`${X(x).toFixed(2)},${Y(between(ev[k], ev[k + 1], x)).toFixed(2)}`); }
-    pts.push(`${X(x1).toFixed(2)},${Y(ev[ev.length - 1].y).toFixed(2)}`);
+      for (let q = 0; q < 16; q++) { const x = ev[k].x + (ev[k + 1].x - ev[k].x) * q / 16; pts.push(`${X(x).toFixed(2)},${Y(between(ev[k], ev[k + 1], x)).toFixed(2)}`); }
+    pts.push(`100,${Y(ev[ev.length - 1].y).toFixed(2)}`);
     const now = W().validDate.getTime();
     let hNow = null, rising = null;
     for (let k = 0; k + 1 < ev.length; k++)
       if (now >= ev[k].x && now <= ev[k + 1].x) { hNow = between(ev[k], ev[k + 1], now); rising = ev[k + 1].y > ev[k].y; break; }
     const next = ev.find((e) => e.x > now);
-    const unit = W().units.altUnit;
-    // a label at either edge would be cut in half by the card: hang it inward
-    const edge = (x) => x < 5 ? " l" : x > 95 ? " r" : "";
-    const labels = ev.map((e) => `<i class="tl ${e.type}${edge(X(e.x))}" style="left:${X(e.x).toFixed(1)}%">${W().units.alt(e.y, 1).v}</i>`).join("");
-    const marker = hNow != null ? `<i class="tnow" style="left:${X(now).toFixed(1)}%"></i>` : "";
-    const words = next
-      ? `<b>${hNow != null ? `${W().units.alt(hNow, 1).v} ${unit} ${rising ? "rising" : "falling"} · ` : ""}${next.type === "H" ? "high" : "low"} ${W().units.alt(next.y, 1).v} ${unit} at ${W().units.time(new Date(next.x))}</b>`
-      : `<b>tide</b>`;
-    return `<div class="tide-card" title="${esc(t.source)} · ${esc(t.datum)}">
-      <div class="tide-line">${words}<span class="dim">${esc(t.station)} · ${W().units.dist(t.distance_km).txt}</span></div>
-      <div class="tide-plot"><svg viewBox="0 0 100 ${H}" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,${H} ${pts.join(" ")} 100,${H}"/><polyline points="${pts.join(" ")}"/></svg>${labels}${marker}</div>
+    const edge = (x) => x < 6 ? " l" : x > 94 ? " r" : "";
+    const labels = ev.map((e) => `<i class="tl ${e.type}${edge(X(e.x))}" style="left:${X(e.x).toFixed(1)}%">${U.alt(e.y, 1).v}</i>`).join("");
+    const marker = hNow != null ? `<i class="tnow" style="left:${X(now).toFixed(1)}%"><s>${U.time(new Date(now))}</s></i>` : "";
+    // the datum line, when it is inside the range (a negative low sits under it)
+    const datum = lo < 0 && hi > 0 ? `<i class="tzero" style="top:${Y(0).toFixed(1)}%"></i>` : "";
+    // x axis: every local midnight is a day, every local noon a tick
+    const hourOf = new Intl.DateTimeFormat("en-US", U.timeOpts({ hour: "2-digit", hour12: false }));
+    const xt = [];
+    for (let x = Math.ceil(x0 / 3600e3) * 3600e3; x <= x1; x += 3600e3) {
+      const h = hourOf.format(new Date(x)).replace("24", "00");
+      if (h === "00") xt.push(`<i class="day" style="left:${X(x).toFixed(1)}%">${new Date(x).toLocaleDateString(undefined, U.timeOpts({ weekday: "short" }))}</i>`);
+      else if (h === "12") xt.push(`<i style="left:${X(x).toFixed(1)}%">noon</i>`);
+    }
+    const dt = next ? next.x - now : 0, inTxt = dt > 0 ? (dt < 3600e3 ? `${Math.round(dt / 60e3)} min` : `${Math.floor(dt / 3600e3)} h ${String(Math.round(dt % 3600e3 / 60e3)).padStart(2, "0")}`) : "";
+    const readout = hNow != null
+      ? `<div class="tide-now">
+          <span class="tnum"><b>${U.alt(hNow, 1).v}</b><i>${unit}</i></span>
+          <span class="tdir ${rising ? "up" : "dn"}">${rising ? "↗ rising" : "↘ falling"}</span>
+          ${next ? `<span class="tnext"><i>next</i><b>${next.type === "H" ? "high" : "low"} ${U.alt(next.y, 1).v} ${unit}</b><em>${U.time(new Date(next.x))}${inTxt ? ` · in ${inTxt}` : ""}</em></span>` : ""}
+        </div>`
+      : "";
+    return `<div class="tide-card">${readout}
+      <div class="tide-plot">
+        <div class="tide-y"><i>${U.alt(hi, 1).v}</i><i>${U.alt(lo, 1).v}</i><u>${unit}</u></div>
+        <div class="tide-area"><div class="tide-water"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,100 ${pts.join(" ")} 100,100"/><polyline points="${pts.join(" ")}"/></svg>${datum}</div>${labels}${marker}</div>
+      </div>
+      <div class="tide-x">${xt.join("")}</div>
     </div>`;
   }
 
@@ -1179,7 +1197,7 @@
       const t = pt.tides;
       const now = W().validDate.getTime();
       const turns = t.events.filter((e) => new Date(e.time).getTime() > now).slice(0, 6);
-      tidesHtml = `<div class="obs"><div class="obs-head"><span>Tides · ${esc(t.station)} · ${W().units.dist(t.distance_km).txt}</span><span class="dim">${esc(t.source)} · ${esc(t.datum)}</span></div>
+      tidesHtml = `<div class="obs tides-obs"><div class="obs-head"><span class="stn"><b>Tides</b><span class="nm">${esc(t.station)} · ${W().units.dist(t.distance_km).txt}</span></span><span class="src"><b>${esc(t.datum)}</b>${esc(t.source)}</span></div>
         ${tideCard(pt)}
         <div class="tides">${turns.map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${W().units.alt(e.height_m, 1).txt}</b><small>${W().units.dateTime(e.time, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div></div>`;
     }
