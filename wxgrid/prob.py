@@ -112,6 +112,14 @@ def ingest_probability(rid: str, store_root: Path = STORE_DIR, workers: int = 8,
     """Count member exceedances for every 6 h step of a stored GEFS run and
     write the percent fields into its group. Restartable: a step whose three
     fields are already non-NaN is skipped."""
+    from wxgrid.store import run_lock
+    with run_lock("gefs", rid, store_root) as held:
+        if not held:
+            return {"run": rid, "skipped": "locked"}
+        return _ingest_probability_locked(rid, store_root, workers, members)
+
+
+def _ingest_probability_locked(rid: str, store_root: Path, workers: int, members: int) -> dict:
     import zarr
     from zarr.codecs import BloscCodec
 

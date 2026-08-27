@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -24,6 +25,9 @@ from zarr.codecs import BloscCodec
 
 from wxgrid.config import CACHE_DIR, GRID_LAT_N, GRID_LON_N, GRID_RES, KEEP_RUNS, STORE_DIR
 from wxgrid.models import HALF_PRECISION_PREFIXES, get_model
+
+import logging
+log = logging.getLogger(__name__)
 
 LATS = np.linspace(90.0, -90.0, GRID_LAT_N, dtype=np.float32)
 LONS = (np.arange(GRID_LON_N, dtype=np.float32) * GRID_RES - 180.0).astype(np.float32)
@@ -291,6 +295,33 @@ class RunReader:
                 "domain": list(self.domain)}
 
 
+# One writer per run, whatever the writer is. flock, not a lockfile with a
+# timeout: the kernel drops the lock when the holder dies, so a killed ingest
+# cannot leave a stale lock behind. Non-blocking — a second writer for the
+# same run steps aside rather than queueing up behind a multi-hour pass.
+@contextmanager
+def run_lock(model: str, rid: str, root: Path = STORE_DIR):
+    """Yields True while this process holds the run's lock, False if another
+    process has it (the caller skips). Held until the block exits."""
+    import fcntl
+    lock_path = root / model / f".{rid}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(lock_path, "w")
+    try:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+            lock_path.unlink(missing_ok=True)
+    finally:
+        fh.close()
+
+
 POINT_TILE = 24    # point-cube spatial chunk (24 × 24 gridpoints = 6° × 6°)
 
 
@@ -298,7 +329,16 @@ def build_point_cube(model: str, rid: str, root: Path = STORE_DIR, variables: li
     """Re-chunk a run for point reads: pt/<var> with chunks (all steps, 24, 24),
     so a point series decompresses one small chunk instead of every step.
     Roughly doubles the run on disk. Idempotent per variable; returns the
-    number of variables written."""
+    number of variables written; 0 without touching the run when another
+    process holds its lock."""
+    with run_lock(model, rid, root) as held:
+        if not held:
+            log.info("%s %s: locked by another writer, point cube skipped", model, rid)
+            return 0
+        return _build_point_cube_locked(model, rid, root, variables)
+
+
+def _build_point_cube_locked(model: str, rid: str, root: Path, variables: list[str] | None) -> int:
     g = zarr.open_group(run_path(model, rid, root), mode="r+")
     pt = g.require_group("pt")
     codec = BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle")

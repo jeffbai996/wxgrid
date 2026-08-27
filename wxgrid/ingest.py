@@ -23,7 +23,7 @@ from wxgrid.config import GRIB_DIR, STORE_DIR
 from wxgrid.ens import wind_speed_spread
 from wxgrid.grib import iter_fields
 from wxgrid.models import MODELS, Model, get_model
-from wxgrid.store import RunWriter, build_point_cube, list_runs, prune, run_id, run_path
+from wxgrid.store import RunWriter, build_point_cube, list_runs, prune, run_id, run_lock, run_path
 
 log = logging.getLogger("wxgrid.ingest")
 
@@ -86,20 +86,12 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
         return {"model": model.key, "run": rid, "skipped": True}
     # One writer per run: the timer and a hand-run ingest of the same run
     # would otherwise rmtree each other's half-written group (seen 2026-08-18).
-    import fcntl
-    lock_path = store_root / model.key / f".{rid}.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    lock = open(lock_path, "w")
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        log.info("%s %s is being ingested by another process, skipping", model.key, rid)
-        return {"model": model.key, "run": rid, "skipped": "locked"}
-    try:
+    # The same lock guards the maintenance writers (store.run_lock, #4vd6x).
+    with run_lock(model.key, rid, store_root) as held:
+        if not held:
+            log.info("%s %s is being written by another process, skipping", model.key, rid)
+            return {"model": model.key, "run": rid, "skipped": "locked"}
         return _ingest_locked(model, run, rid, grib_root, store_root, keep_grib)
-    finally:
-        fcntl.flock(lock, fcntl.LOCK_UN); lock.close()
-        lock_path.unlink(missing_ok=True)
 
 
 def write_spread(writer: RunWriter, model: Model, step: int, paths: list[Path],
@@ -318,6 +310,17 @@ def augment_waves(model: Model, rid: str, grib_root: Path = GRIB_DIR, store_root
 
     if not model.wave_params:
         return {"model": model.key, "run": rid, "skipped": "no wave params"}
+    with run_lock(model.key, rid, store_root) as held:
+        if not held:
+            return {"model": model.key, "run": rid, "skipped": "locked"}
+        return _augment_waves_locked(model, rid, grib_root, store_root)
+
+
+def _augment_waves_locked(model: Model, rid: str, grib_root: Path, store_root: Path) -> dict:
+    import zarr
+    from zarr.codecs import BloscCodec
+    from wxgrid.models import LEVEL_EVERY
+
     path = run_path(model.key, rid, store_root)
     g = zarr.open_group(path, mode="r+")
     have = list(g.attrs.get("variables", []))
