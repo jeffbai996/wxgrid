@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v43";   // v43: trailhead briefing, sky direction, rain bars in the tape
+const VERSION = "wxgrid-v44";   // v44: Outdoors cards lead with the number
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

@@ -226,3 +226,11 @@ def test_the_outdoors_verdict_carries_a_briefing_and_the_tape_shades_its_rain():
     # rain amount as a bar behind the number, square-root scaled, 10 mm full
     assert "Math.sqrt(mm / 10)" in tape and 'class="bar"' in tape
     assert "table.wtape tr.r-rain td .bar" in css
+
+
+def test_outdoors_cards_lead_with_the_number_and_keep_green_quiet():
+    panes = _read("panes.js"); css = _read("styles.css")
+    out = panes.split("function renderOutdoors")[1].split("function hourStrip")[0]
+    assert "const lead = (v) =>" in out and '<span class="v">${lead(v)}</span><span class="k">' in out   # value first
+    assert ".od .kv .stat.good .v { color: var(--fg); }" in css                                       # fine = uncoloured
+    assert ".od .kv .stat.meh { border-left-color: var(--warm); }" in css
