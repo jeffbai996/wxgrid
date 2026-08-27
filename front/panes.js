@@ -255,7 +255,7 @@
     const next = ev.find((e) => e.x > now);
     const edge = (x) => x < 6 ? " l" : x > 94 ? " r" : "";
     const labels = ev.map((e) => `<i class="tl ${e.type}${edge(X(e.x))}" style="left:${X(e.x).toFixed(1)}%">${U.alt(e.y, 1).v}</i>`).join("");
-    const marker = hNow != null ? `<i class="tnow" style="left:${X(now).toFixed(1)}%"><s>${U.time(new Date(now))}</s></i>` : "";
+    const marker = hNow != null ? `<i class="tnow" style="left:${X(now).toFixed(1)}%"></i>` : "";
     // the datum line, when it is inside the range (a negative low sits under it)
     const datum = lo < 0 && hi > 0 ? `<i class="tzero" style="top:${Y(0).toFixed(1)}%"></i>` : "";
     // x axis: every local midnight is a day, every local noon a tick
