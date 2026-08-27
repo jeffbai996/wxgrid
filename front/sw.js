@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v36";   // v36: Outdoors in sections with strips
+const VERSION = "wxgrid-v37";   // v37: the gust line strip stops inheriting .spark
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
