@@ -155,14 +155,20 @@
     const defaultZoom = innerWidth > 820 ? 5 : 4;
     applyTheme(localStorage.getItem("wxgrid.theme") || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"), false);
     const hash = readHash();
-    map = new maplibregl.Map({
+    // No WebGL — a locked-down laptop, a remote desktop, a headless browser —
+    // used to kill the whole app before the card opened: MapLibre came up
+    // with no painter and the first map call threw on null. The forecast does
+    // not need the map. A shim answers every map call inertly, the map pane
+    // says why it is blank, and the tape, card and search carry on.
+    map = hasWebGL() ? new maplibregl.Map({
       container: "map", style: mapStyle(),
       center: hash ? [hash.lon, hash.lat] : saved ? saved.center : [-123, 47], zoom: hash ? hash.zoom : saved && currentMapScale ? saved.zoom : defaultZoom,
       // Past z11 the field is one world-sized image being stretched, and what
       // you actually want is the ground: streets, lifts, runs. So the map keeps
       // zooming to where the basemap still has detail, and the field steps back.
       minZoom: 1.2, maxZoom: 15, attributionControl: false, renderWorldCopies: true, fadeDuration: 0,
-    });
+    }) : noMap(hash ? [hash.lon, hash.lat] : saved ? saved.center : [-123, 47], hash ? hash.zoom : defaultZoom);
+    if (map.noMap) { document.body.classList.add("no-map"); toast("No WebGL here: the map is off, the forecast still works", 9000); }
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
     // The globe. MapLibre's "globe" projection IS the nullschool behaviour:
     // a sphere when zoomed out, easing itself flat around z6 so streets stay
@@ -189,7 +195,7 @@
       if (state.radar && WX.ov.refreshRadarSource) WX.ov.refreshRadarSource();
       pushHash();
     });
-    wind = new WindLayer(map, $("#particles"));
+    wind = map.noMap ? { setDensity() {}, setEnabled() {}, setField() {}, setMode() {} } : new WindLayer(map, $("#particles"));
     if (WX.probe && WX.probe.wireCityValues) WX.probe.wireCityValues();
     WX.windLayer = wind;
     wind.setDensity(state.particleDensity);
@@ -311,6 +317,43 @@
   // The GPU path can give up at any point: no WebGL, a shader that will not
   // compile, a field the server does not have. Put the raster layer back and
   // carry on where it left off.
+  function hasWebGL() {
+    try { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") || c.getContext("webgl")); }
+    catch (e) { return false; }
+  }
+  // The map that is not there. Same surface app.js and the overlays call,
+  // answers that keep them quiet: no layers, no features, a centre and zoom
+  // it remembers, a flat equirectangular project/unproject over the pane so
+  // the probe and the marker land somewhere sane. `style.load` and `load`
+  // fire once so the boot sequence that waits on them proceeds.
+  function noMap(center, zoom) {
+    const el = $("#map"); const handlers = {}; let c = { lng: center[0], lat: center[1] }, z = zoom;
+    const emit = (ev) => (handlers[ev] || []).slice().forEach((h) => { try { h({ target: shim }); } catch (e) { console.warn(e); } });
+    const size = () => ({ w: el.clientWidth || 800, h: el.clientHeight || 600 });
+    const bounds = () => { const { w, h } = size(); const dpp = 360 / (256 * Math.pow(2, z)); return { west: c.lng - w / 2 * dpp, east: c.lng + w / 2 * dpp, south: c.lat - h / 2 * dpp, north: c.lat + h / 2 * dpp }; };
+    const shim = {
+      noMap: true,
+      on(ev, a, b) { (handlers[ev] = handlers[ev] || []).push(typeof a === "function" ? a : b); return shim; },
+      once(ev, a, b) { const h = typeof a === "function" ? a : b; const w = (e) => { shim.off(ev, w); h(e); }; return shim.on(ev, w); },
+      off(ev, a, b) { const h = typeof a === "function" ? a : b; handlers[ev] = (handlers[ev] || []).filter((x) => x !== h); return shim; },
+      getCenter: () => ({ lng: c.lng, lat: c.lat, toArray: () => [c.lng, c.lat] }),
+      getZoom: () => z, isMoving: () => false, isStyleLoaded: () => true, loaded: () => true,
+      getProjection: () => ({ type: "mercator" }), setProjection() {}, setStyle() { setTimeout(() => emit("style.load"), 0); },
+      getStyle: () => ({ layers: [], sources: {} }), getLayer: () => undefined, getSource: () => undefined,
+      addLayer() {}, removeLayer() {}, addSource() {}, removeSource() {}, addImage() {}, hasImage: () => false,
+      setLayoutProperty() {}, setPaintProperty() {}, getPaintProperty: () => undefined, setFilter() {}, setLayerZoomRange() {},
+      queryRenderedFeatures: () => [], triggerRepaint() {}, resize() {}, remove() {}, addControl() {}, removeControl() {},
+      getContainer: () => el, getCanvasContainer: () => el, getCanvas: () => el.querySelector("canvas") || Object.assign(document.createElement("canvas"), { width: size().w, height: size().h }),
+      getBounds() { const b = bounds(); return { getWest: () => b.west, getEast: () => b.east, getSouth: () => b.south, getNorth: () => b.north, toArray: () => [[b.west, b.south], [b.east, b.north]] }; },
+      project(ll) { const b = bounds(), { w, h } = size(); const lng = Array.isArray(ll) ? ll[0] : ll.lng, lat = Array.isArray(ll) ? ll[1] : ll.lat; return { x: (lng - b.west) / (b.east - b.west) * w, y: (b.north - lat) / (b.north - b.south) * h }; },
+      unproject(pt) { const b = bounds(), { w, h } = size(); const x = Array.isArray(pt) ? pt[0] : pt.x, y = Array.isArray(pt) ? pt[1] : pt.y; return { lng: b.west + x / w * (b.east - b.west), lat: b.north - y / h * (b.north - b.south) }; },
+      jumpTo(o) { if (o.center) c = { lng: o.center[0] ?? o.center.lng, lat: o.center[1] ?? o.center.lat }; if (o.zoom != null) z = o.zoom; emit("move"); emit("moveend"); },
+      flyTo(o) { shim.jumpTo(o); }, easeTo(o) { shim.jumpTo(o); }, fitBounds() { emit("moveend"); },
+    };
+    el.innerHTML = `<div class="nomap"><b>Map unavailable</b><span>This browser has no WebGL, so the map is off. Search a place or use the tape and card — the forecast is all here.</span></div>`;
+    setTimeout(() => { emit("style.load"); emit("load"); }, 0);
+    return shim;
+  }
   function fieldGaveUp() {
     if (!map || !catalog || !state.model) return;         // gave up before the first frame
     state.stepIdx = Math.min(steps().length - 1, state.stepIdx + Math.round(state.frac));

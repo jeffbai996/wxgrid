@@ -540,6 +540,8 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 .od .kv .stat.bad { border-left-color: var(--bad); } .od .kv .stat.bad .v b { color: var(--bad); }
 .hstrip { margin: 2px 0 2px; }
 .hstrip .cells { display: flex; gap: 1px; height: 26px; border-radius: 6px; position: relative; cursor: crosshair; touch-action: pan-y; }
+.hstrip .cells i.n::after { content: ""; position: absolute; inset: 0; background: rgba(20,28,48,.28); pointer-events: none; }
+.tide-area .nb { position: absolute; top: 0; bottom: 0; background: rgba(20,28,48,.12); pointer-events: none; }
 .hstrip .cells > i:first-child { border-radius: 6px 0 0 6px; } .hstrip .cells > i:last-of-type { border-radius: 0 6px 6px 0; }
 .hstrip .cells .tlab { position: absolute; top: -22px; transform: translateX(-50%); text-decoration: none; white-space: nowrap; pointer-events: none; font: 700 9.5px var(--font-num); color: var(--fg); background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 5px; padding: 1px 5px; z-index: 2; }
 .hstrip .cells .tlab.r { transform: translateX(-100%); }
@@ -1344,3 +1346,10 @@ body:has(#point[hidden]) #centre-mark { display: block; }
   background: color-mix(in srgb, var(--al, transparent) 5%, rgba(127,127,127,.04)); border-radius: 0 8px 8px 0; }
 .alert .al-instr > b { font: 800 8.5px var(--font-display); text-transform: uppercase; letter-spacing: .08em; color: var(--al, var(--warm)); }
 .alert .al-instr .alert-text { margin: 3px 0 6px; }
+
+/* ── no WebGL: the map pane says why it is blank ─────────────────────── */
+body.no-map #map { background: var(--panel-solid); }
+body.no-map #particles { display: none; }
+.nomap { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 24px; gap: 6px; color: var(--fg-2); }
+.nomap b { font: 700 15px var(--font-display); color: var(--fg); }
+.nomap span { max-width: 360px; font: 500 12.5px/1.5 var(--font-body); }

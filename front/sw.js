@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v46";   // v46: strips answer the pointer
+const VERSION = "wxgrid-v47";   // v47: no-WebGL shim, night bands
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

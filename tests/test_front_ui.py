@@ -249,3 +249,15 @@ def test_every_outdoors_strip_answers_the_pointer():
     assert "function wireStripProbes()" in panes and "wireStripProbes();" in panes
     assert ".hstrip .cells .tlab" in css
     assert "cloud ${Math.round(c * 100)}%" in panes            # the sky strip says cloud and rain in words
+
+
+def test_no_webgl_leaves_the_forecast_working_and_night_shades_the_strips():
+    app = _read("app.js"); panes = _read("panes.js"); css = _read("styles.css")
+    assert "function hasWebGL()" in app and "function noMap(center, zoom)" in app
+    assert "map = hasWebGL() ? new maplibregl.Map({" in app
+    for m in ("project(", "unproject(", "getBounds()", "queryRenderedFeatures", "once(ev", "jumpTo(o)"):
+        assert m in app.split("function noMap")[1].split("function fieldGaveUp")[0]
+    assert "body.no-map #map" in css
+    assert "function isNight(lat, lon, when)" in panes and "function nightBands(x0, x1, X)" in panes
+    assert "${nights}" in panes and "${nightBands(x0, x1, X)}" in panes         # wind and tide charts
+    assert ".hstrip .cells i.n::after" in css and ".tide-area .nb" in css

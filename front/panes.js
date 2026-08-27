@@ -291,7 +291,7 @@
     return `<div class="tide-card">${readout}
       <div class="tide-plot">
         <div class="tide-y"><i>${U.alt(hi, 1).v}</i><i>${U.alt(lo, 1).v}</i><u>${unit}</u></div>
-        <div class="tide-area" data-ev="${evData}" data-lo="${lo}" data-rng="${rng}"><div class="tide-water"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,100 ${pts.join(" ")} 100,100"/><polyline points="${pts.join(" ")}"/></svg>${datum}${marker}${probe}</div>${labels}</div>
+        <div class="tide-area" data-ev="${evData}" data-lo="${lo}" data-rng="${rng}">${nightBands(x0, x1, X)}<div class="tide-water"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,100 ${pts.join(" ")} 100,100"/><polyline points="${pts.join(" ")}"/></svg>${datum}${marker}${probe}</div>${labels}</div>
       </div>
       <div class="tide-x">${xt.join("")}</div>
     </div>`;
@@ -1366,15 +1366,27 @@
   // A row of hour cells over the next `hours` from step i, each as wide as
   // the hours it covers, with the day named where it changes. `cell(k)`
   // gives {bg, bar?, v}; `label(k, v)` prints inside the cell or nothing.
+  // Is it night at this point at this instant? Between sunset and sunrise
+  // by the same arithmetic the hero's sun times use; polar day/night when
+  // the sun never crosses the horizon.
+  function isNight(lat, lon, when) {
+    const st = sunTimes(lat, lon, when);
+    const h = when.getUTCHours() + when.getUTCMinutes() / 60;
+    if (!st) return Math.abs(lat) > 60 && (lat > 0) === (when.getUTCMonth() < 3 || when.getUTCMonth() > 8);
+    const r = st.riseUtc, s = st.setUtc;
+    return r < s ? (h < r || h >= s) : (h >= s && h < r);
+  }
   function hourStrip(d, i, hours, cell, label) {
     const cells = [], days = [];
+    const pt = W().state.point || {};
     let total = 0, lastDay = null;
     for (let k = i; k < d.steps.length && d.steps[k] < d.steps[i] + hours; k++) {
       const h = stepHrs(d, k), c = cell(k), when = new Date(d.valid[k]);
+      const night = pt.lat != null && isNight(pt.lat, pt.lon, when);
       const day = when.toLocaleDateString(undefined, W().units.timeOpts({ weekday: "short" }));
       if (day !== lastDay) { days.push(`<i style="left:${(total / hours * 100).toFixed(1)}%">${day}</i>`); lastDay = day; }
       const said = c.v == null || c.v === "" ? "" : typeof c.v === "number" ? ` · UV ${c.v.toFixed(0)}` : ` · ${c.v}`;
-      cells.push(`<i style="flex:${h} 0 0;background:${c.bg}" title="${when.toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }))}${said}">${c.bar ? `<b style="height:${(c.bar * 100).toFixed(0)}%"></b>` : ""}<s>${label(k, c.n != null ? c.n : c.v)}</s></i>`);
+      cells.push(`<i class="${night ? "n" : ""}" style="flex:${h} 0 0;background:${c.bg}" title="${when.toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }))}${said}">${c.bar ? `<b style="height:${(c.bar * 100).toFixed(0)}%"></b>` : ""}<s>${label(k, c.n != null ? c.n : c.v)}</s></i>`);
       total += h;
     }
     if (cells.length < 4) return "";
@@ -1425,11 +1437,12 @@
     }
     const marker = `<i class="tdot now" style="left:0%;top:${Y(cur[1]).toFixed(1)}%"></i>`;
     const probe = `<i class="tdot hov" hidden></i><s class="tlab" hidden></s>`;
+    const nights = nightBands(x0, x1, X);
     const data = esc(JSON.stringify(rows.map((r) => [r[0], +r[1].toFixed(1), r[2] == null ? null : +r[2].toFixed(1), r[3] == null ? null : Math.round(r[3])])));
     return `<div class="tide-card wind-card">${readout}
       <div class="tide-plot">
         <div class="tide-y"><i>${mx.toFixed(0)}</i><i>0</i><u>${unit}</u></div>
-        <div class="tide-area wind-area" data-rows="${data}" data-mx="${mx}"><div class="tide-water wind-water"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${gpts.length > 3 ? `<polygon class="g" points="${gpts.join(" ")} ${wpts.slice().reverse().join(" ")}"/>` : ""}<polygon class="w" points="0,100 ${wpts.join(" ")} 100,100"/>${gpts.length > 3 ? `<polyline class="g" points="${gpts.join(" ")}"/>` : ""}<polyline class="w" points="${wpts.join(" ")}"/></svg>${marker}${probe}</div></div>
+        <div class="tide-area wind-area" data-rows="${data}" data-mx="${mx}">${nights}<div class="tide-water wind-water"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${gpts.length > 3 ? `<polygon class="g" points="${gpts.join(" ")} ${wpts.slice().reverse().join(" ")}"/>` : ""}<polygon class="w" points="0,100 ${wpts.join(" ")} 100,100"/>${gpts.length > 3 ? `<polyline class="g" points="${gpts.join(" ")}"/>` : ""}<polyline class="w" points="${wpts.join(" ")}"/></svg>${marker}${probe}</div></div>
       </div>
       <div class="tide-x">${xt.join("")}</div>
     </div>`;
@@ -1454,6 +1467,17 @@
       cells.addEventListener("pointerdown", (e) => show(e.clientX));
       cells.addEventListener("pointerleave", () => { lab.hidden = true; });
     });
+  }
+  // Night as bands across a chart between x0 and x1 (ms), hour by hour.
+  function nightBands(x0, x1, X) {
+    const pt = W().state.point; if (!pt || pt.lat == null) return "";
+    const out = []; let start = null;
+    for (let x = x0; x <= x1 + 3600e3; x += 3600e3) {
+      const n = x <= x1 && isNight(pt.lat, pt.lon, new Date(x));
+      if (n && start == null) start = x;
+      if (!n && start != null) { out.push(`<i class="nb" style="left:${X(start).toFixed(1)}%;width:${(X(Math.min(x, x1)) - X(start)).toFixed(1)}%"></i>`); start = null; }
+    }
+    return out.join("");
   }
   function wireWindProbe() {
     const area = $("#outdoors .wind-area");

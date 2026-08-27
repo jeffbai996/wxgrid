@@ -93,9 +93,12 @@ def api_health():
         out[host] = {"down": down, "last_ok_s": round(now - h["ok"]) if h["ok"] else None,
                      "error": h["error"] if down else ""}
     live = liveness.ensure_fresh()
+    from wxgrid.freshness import run_ages
+    runs = run_ages()
     return {"upstreams": out, "down": sorted(k for k, v in out.items() if v["down"]),
             "sources": live["sources"], "sources_down": live["sources_down"],
-            "sources_checked_at": live["checked_at"]}
+            "sources_checked_at": live["checked_at"],
+            "runs": runs, "stale": [r["model"] for r in runs if r["stale"]]}
 
 
 @router.get("/health/sources")
