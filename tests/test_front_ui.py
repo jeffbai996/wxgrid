@@ -220,7 +220,7 @@ def test_the_outdoors_verdict_carries_a_briefing_and_the_tape_shades_its_rain():
     panes = _read("panes.js"); tape = _read("tape.js"); css = _read("styles.css")
     assert "function outdoorsBrief(d, i, c)" in panes and 'class="brief"' in panes
     # the hero summary says where the sky is going and where the wind is from
-    summ = panes.split("function summarise")[1].split("const BEAUFORT")[0]
+    summ = panes.split("function story(d, sel)")[1].split("const BEAUFORT")[0]
     assert "Clouding over" in summ and "Clearing" in summ and "from the ${compass(" in summ
     assert "rest.slice(0, 4)" in summ
     # rain amount as a bar behind the number, square-root scaled, 10 mm full
@@ -261,3 +261,14 @@ def test_no_webgl_leaves_the_forecast_working_and_night_shades_the_strips():
     assert "function isNight(lat, lon, when)" in panes and "function nightBands(x0, x1, X)" in panes
     assert "${nights}" in panes and "${nightBands(x0, x1, X)}" in panes         # wind and tide charts
     assert ".hstrip .cells i.n::after" in css and ".tide-area .nb" in css
+
+
+def test_the_hero_and_the_outdoors_verdict_read_one_story_and_the_tape_has_a_column_card():
+    panes = _read("panes.js"); tape = _read("tape.js"); css = _read("styles.css")
+    assert "function story(d, sel)" in panes
+    assert "const parts = story(d, sel);" in panes.split("function summarise")[1].split("\n  }\n")[0]
+    assert "const parts = story(d, i);" in panes.split("function outdoorsBrief")[1].split("\n  }\n")[0]
+    assert "rest.push(" not in panes.split("function story(d, sel)")[1].split("function summarise")[0]
+    assert "function wireTapeHover(tape)" in tape and "wireTapeHover(tape);" in tape
+    assert 'if (e.pointerType === "touch") return;' in tape
+    assert "#tape-card" in css

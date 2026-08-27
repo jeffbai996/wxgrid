@@ -273,9 +273,56 @@
       renderTapeSelection();
     };
     tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => pick(Number(c.dataset.i)));
+    wireTapeHover(tape);
     tape.querySelectorAll("th.day[data-first]").forEach((c) => c.onclick = () => pick(Number(c.dataset.first)));
     renderTapePlace();
     renderTapeSelection();
+  }
+
+  // Hover a column (mouse or pen — a finger is already the tap that picks
+  // it) and a card reads the column out in words: every row the tape has
+  // for that hour, labelled, so nobody has to line numbers up with the
+  // labels at the far left. Built from the rendered cells, so it says
+  // whatever the tape says, in the tape's units.
+  function wireTapeHover(tape) {
+    if (tape.dataset.hoverWired) return;
+    tape.dataset.hoverWired = "1";
+    let card = document.getElementById("tape-card");
+    if (!card) { card = document.createElement("div"); card.id = "tape-card"; card.hidden = true; document.body.appendChild(card); }
+    let shownFor = null;
+    const hide = () => { card.hidden = true; shownFor = null; };
+    const show = (td) => {
+      const i = td.dataset.i;
+      if (shownFor === i) return;
+      shownFor = i;
+      const table = td.closest("table");
+      const rows = [];
+      let day = "";
+      table.querySelectorAll("th.day[data-first]").forEach((th) => { if (Number(th.dataset.first) <= Number(i)) day = th.textContent; });
+      table.querySelectorAll("tr").forEach((tr) => {
+        const lab = tr.querySelector("th.lab"); const cell = tr.querySelector(`td[data-i="${i}"]`);
+        if (!lab || !cell) return;
+        const name = (lab.childNodes[0] && lab.childNodes[0].textContent || "").trim(), unit = (lab.querySelector("small") || {}).textContent || "";
+        let val = cell.textContent.trim();
+        if (tr.classList.contains("r-icon")) return;
+        if (tr.classList.contains("r-hour")) { rows.unshift(`<b class="when">${day ? `${day} · ` : ""}${val}</b>`); return; }
+        if (tr.classList.contains("r-dir")) { const g = cell.querySelector("[title]"); val = g ? g.title : val; }
+        if (!val || val === "—") return;
+        rows.push(`<span><i>${name}</i><b>${val}${unit && !/[a-z°%]/.test(val) ? ` <small>${unit.split("·")[0].trim()}</small>` : ""}</b></span>`);
+      });
+      card.innerHTML = rows.join("");
+      card.hidden = false;
+      const r = td.getBoundingClientRect(), cw = card.offsetWidth, ch = card.offsetHeight;
+      const left = Math.max(6, Math.min(innerWidth - cw - 6, r.left + r.width / 2 - cw / 2));
+      card.style.left = `${left}px`; card.style.top = `${Math.max(6, r.top - ch - 8)}px`;
+    };
+    tape.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "touch") return;
+      const td = e.target.closest && e.target.closest("td[data-i]");
+      if (td) show(td); else hide();
+    });
+    tape.addEventListener("pointerleave", hide);
+    tape.addEventListener("scroll", hide, { passive: true });
   }
 
   function renderTapeSelection() {

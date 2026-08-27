@@ -1353,3 +1353,12 @@ body.no-map #particles { display: none; }
 .nomap { position: absolute; inset: 0; z-index: 3; display: grid; place-content: center; text-align: center; padding: 24px; gap: 6px; color: var(--fg-2); }
 .nomap b { font: 700 15px var(--font-display); color: var(--fg); }
 .nomap span { max-width: 360px; font: 500 12.5px/1.5 var(--font-body); }
+
+/* ── the tape's column card ──────────────────────────────────────────── */
+#tape-card { position: fixed; z-index: 40; pointer-events: none; display: grid; grid-template-columns: auto auto; gap: 2px 12px; padding: 8px 10px 9px; border-radius: 10px;
+  background: var(--panel-solid); border: 1px solid var(--line-strong); box-shadow: 0 8px 24px rgba(0,0,0,.18); font: 500 11.5px var(--font-num); color: var(--fg-2); }
+#tape-card .when { grid-column: 1 / -1; font: 700 12px var(--font-display); color: var(--fg); margin-bottom: 3px; }
+#tape-card span { display: contents; }
+#tape-card span i { font-style: normal; color: var(--dim); }
+#tape-card span b { font: 700 12px var(--font-num); color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; }
+#tape-card span b small { font: 600 10px var(--font-num); color: var(--dim); }
