@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v39";   // v39: tide time is a ring, pointer probe
+const VERSION = "wxgrid-v40";   // v40: tide card cleanup
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

@@ -929,6 +929,7 @@ table.wtape tr.r-dir td { height: 20px; }
 .tides-obs .obs-head { align-items: flex-start; }
 .tides-obs .obs-head .stn { flex-wrap: wrap; }
 .tides-obs .obs-head .stn .nm { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
+.tides-obs .obs-head .stn .nm small { font: 500 10px var(--font-num); color: var(--dim); margin-left: 6px; }
 .tides-obs .obs-head .src { display: flex; flex-direction: column; align-items: flex-end; font: 500 10px var(--font-display); color: var(--dim); white-space: nowrap; flex: 0 0 auto; }
 .tides-obs .obs-head .src b { font: 700 11px var(--font-mono); color: var(--fg-2); letter-spacing: .04em; }
 .tide-card { margin: 6px 0 4px; min-width: 0; }
@@ -972,7 +973,9 @@ table.wtape tr.r-dir td { height: 20px; }
 .tide-x i { position: absolute; top: 2px; transform: translateX(-50%); font: 500 9px var(--font-display); font-style: normal; color: var(--dim); white-space: nowrap; }
 .tide-x i::before { content: ""; position: absolute; left: 50%; top: -3px; width: 1px; height: 3px; background: var(--line-strong); }
 .tide-x i.day { font-weight: 700; color: var(--fg-2); }
-.tides-obs .tides { margin-top: 8px; }
+.tides-obs .tides { margin-top: 8px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 10px; }
+.tide-foot { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); font: 500 10px var(--font-display); color: var(--dim); }
+.tide-foot b { font: 700 11px var(--font-num); color: var(--fg-2); }
 .tide-plot .tnow { position: absolute; top: 8px; bottom: 2px; width: 1.5px; background: var(--fg); opacity: .7; transform: translateX(-50%); border-radius: 1px; }
 .meta { display: flex; flex-wrap: wrap; gap: 6px 8px; font: 500 12px var(--font-mono); color: var(--fg-2); margin: 0 0 4px; }
 .meta b { color: var(--fg); font-weight: 700; }

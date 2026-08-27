@@ -270,7 +270,7 @@
       if (h === "00") xt.push(`<i class="day" style="left:${X(x).toFixed(1)}%">${new Date(x).toLocaleDateString(undefined, U.timeOpts({ weekday: "short" }))}</i>`);
       else if (h === "12") xt.push(`<i style="left:${X(x).toFixed(1)}%">noon</i>`);
     }
-    const dt = next ? next.x - now : 0, inTxt = dt > 0 ? (dt < 3600e3 ? `${Math.round(dt / 60e3)} min` : `${Math.floor(dt / 3600e3)} h ${String(Math.round(dt % 3600e3 / 60e3)).padStart(2, "0")}`) : "";
+    const dt = next ? next.x - now : 0, inTxt = dt > 0 ? (dt < 3600e3 ? `${Math.round(dt / 60e3)} min` : `${Math.floor(dt / 3600e3)}h${String(Math.round(dt % 3600e3 / 60e3)).padStart(2, "0")}`) : "";
     const readout = hNow != null
       ? `<div class="tide-now">
           <span class="tnum"><b>${U.alt(hNow, 1).v}</b><i>${unit}</i></span>
@@ -1201,10 +1201,12 @@
     if (pt && pt.tides && pt.tides.events && pt.tides.events.length) {
       const t = pt.tides;
       const now = W().validDate.getTime();
-      const turns = t.events.filter((e) => new Date(e.time).getTime() > now).slice(0, 6);
-      tidesHtml = `<div class="obs tides-obs"><div class="obs-head"><span class="stn"><b>Tides</b><span class="nm">${esc(t.station)} · ${W().units.dist(t.distance_km).txt}</span></span><span class="src"><b>${esc(t.datum)}</b>${esc(t.source)}</span></div>
+      const turns = t.events.filter((e) => new Date(e.time).getTime() > now).slice(0, 8);
+      const hs = turns.map((e) => e.height_m), range = hs.length > 1 ? Math.max(...hs) - Math.min(...hs) : null;
+      tidesHtml = `<div class="obs tides-obs"><div class="obs-head"><span class="stn"><b>Tides</b><span class="nm">${esc(t.station)}<small>${W().units.dist(t.distance_km).txt}</small></span></span><span class="src"><b>${esc(t.datum)}</b>${esc(t.source)}</span></div>
         ${tideCard(pt)}
-        <div class="tides">${turns.map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${W().units.alt(e.height_m, 1).txt}</b><small>${W().units.dateTime(e.time, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div></div>`;
+        <div class="tides">${turns.map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${W().units.alt(e.height_m, 1).txt}</b><small>${W().units.dateTime(e.time, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div>
+        ${range != null ? `<div class="tide-foot"><span>range <b>${W().units.alt(range, 1).txt}</b></span><span>${turns.length} turns ahead</span></div>` : ""}</div>`;
     }
     // Each group of readings gets the graphic that explains it, drawn over
     // the same 48 h: the strips share one clock, so the eye lines them up.
