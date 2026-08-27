@@ -1269,7 +1269,7 @@
     if (win.length < 4 || !mx) return "";
     const X = (x) => (x / hours * 100).toFixed(2), Y = (v) => (100 - v / mx * 88).toFixed(2);
     win.forEach(([x, v]) => pts.push(`${X(x)},${Y(v)}`));
-    return `<div class="hstrip line"><div class="cells"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,100 ${pts.join(" ")} ${X(total)},100"/><polyline points="${pts.join(" ")}"/></svg><s class="peak${peakAt / hours > 0.8 ? " r" : ""}" style="left:${X(peakAt)}%">${mx.toFixed(0)} ${W().speedUnit()}</s></div><div class="hx">${days.join("")}</div></div>`;
+    return `<div class="hstrip line"><div class="cells"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,100 ${pts.join(" ")} ${X(total)},100"/><polyline points="${pts.join(" ")}"/></svg><s class="peak${peakAt / hours > 0.85 ? " r" : peakAt / hours < 0.12 ? " l" : ""}" style="left:${X(peakAt)}%">${mx.toFixed(0)} ${W().speedUnit()}</s></div><div class="hx">${days.join("")}</div></div>`;
   }
 
   // ── Spread: how much the ensemble disagrees with itself ───────────────

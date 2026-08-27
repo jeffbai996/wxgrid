@@ -525,6 +525,7 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 .hstrip.line polyline { fill: none; stroke: var(--warm); stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 .hstrip.line .peak { position: absolute; top: -2px; transform: translateX(-50%); text-decoration: none; font: 700 10px var(--font-num); color: var(--warm); white-space: nowrap; }
 .hstrip.line .peak.r { transform: translateX(-100%); }
+.hstrip.line .peak.l { transform: none; padding-left: 3px; }
 .verdict-win { display: inline-flex; align-items: baseline; gap: 7px; }
 .verdict-win i { font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
 .verdict-win b { font: 650 12.5px var(--font-num); color: var(--fg); }
