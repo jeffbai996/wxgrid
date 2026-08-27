@@ -521,6 +521,21 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 .od .kv .stat .v .dim { font-size: 11px; }
 .od .kv .stat .k { font: 500 10.5px var(--font-body); letter-spacing: 0; text-transform: none; color: var(--dim); }
 .od .kv .stat.good .v { color: var(--fg); }
+/* the glyph in the corner, tinted by what the card is about; a gauge under
+   the number where the reading is a share of something */
+.od .kv .stat { position: relative; padding-right: 36px; }
+.od .kv .stat .glyph { position: absolute; top: 8px; right: 9px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; color: var(--c, var(--fg-2)); background: color-mix(in srgb, var(--c, var(--fg-2)) 14%, transparent); }
+.od .kv .stat .glyph svg { width: 14px; height: 14px; }
+.od .kv .stat.g-drop, .od .kv .stat.g-dice, .od .kv .stat.g-cloud, .od .kv .stat.g-base, .od .kv .stat.g-eye { --c: var(--rain); }
+.od .kv .stat.g-bolt, .od .kv .stat.g-sun { --c: #e0a12a; }
+.od .kv .stat.g-wind, .od .kv .stat.g-gust, .od .kv .stat.g-thermo { --c: var(--warm); }
+.od .kv .stat.g-clock { --c: var(--good); }
+.od .kv .stat.g-flake, .od .kv .stat.g-peak { --c: #6cc3e8; }
+.od .kv .stat.g-wave { --c: #4aa9d9; }
+.od .kv .stat.meh .glyph { --c: var(--warm); } .od .kv .stat.bad .glyph { --c: var(--bad); }
+.od .kv .stat .gauge { display: block; height: 3px; margin-top: 6px; border-radius: 2px; background: rgba(127,140,160,.18); overflow: hidden; }
+.od .kv .stat .gauge b { display: block; height: 100%; border-radius: 2px; background: var(--c, var(--fg-2)); }
+.od .kv .stat.meh .gauge b { background: var(--warm); } .od .kv .stat.bad .gauge b { background: var(--bad); }
 .od .kv .stat.meh { border-left-color: var(--warm); } .od .kv .stat.meh .v b { color: var(--warm); }
 .od .kv .stat.bad { border-left-color: var(--bad); } .od .kv .stat.bad .v b { color: var(--bad); }
 .hstrip { margin: 2px 0 2px; }

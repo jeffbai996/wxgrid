@@ -234,3 +234,11 @@ def test_outdoors_cards_lead_with_the_number_and_keep_green_quiet():
     assert "const lead = (v) =>" in out and '<span class="v">${lead(v)}</span><span class="k">' in out   # value first
     assert ".od .kv .stat.good .v { color: var(--fg); }" in css                                       # fine = uncoloured
     assert ".od .kv .stat.meh { border-left-color: var(--warm); }" in css
+
+
+def test_outdoors_cards_carry_a_glyph_and_a_gauge_where_the_reading_is_a_share():
+    panes = _read("panes.js"); css = _read("styles.css")
+    assert "const OD_GLYPHS" in panes and 'class="glyph"' in panes and 'class="gauge"' in panes
+    out = panes.split("function renderOutdoors")[1].split("function hourStrip")[0]
+    assert 'k.startsWith("Dry, calm")' in out and "num / 11" in out            # dry hours of 72, UV of 11
+    assert ".od .kv .stat .glyph" in css and ".od .kv .stat .gauge b" in css

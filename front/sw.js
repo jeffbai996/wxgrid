@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v44";   // v44: Outdoors cards lead with the number
+const VERSION = "wxgrid-v45";   // v45: Outdoors cards get glyphs and gauges
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

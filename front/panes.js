@@ -1236,7 +1236,25 @@
     // third says which. Green is not painted on — a fine reading is the
     // quiet default; only meh/bad earn a colour and a rule.
     const lead = (v) => { const m = String(v).match(/^(—|[-+]?\d[\d.,]*\s?(?:°|%|h)?)(.*)$/s); return m ? `<b>${m[1]}</b>${m[2].trim() ? `<small>${m[2].trim()}</small>` : ""}` : `<b class="word">${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}</b>`; };
-    const kv = (rs) => rs.length ? `<div class="kv">${rs.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="v">${lead(v)}</span><span class="k">${k.replace(/ \(≈\)/, " ≈").replace("Precip", "Precip.")}</span></div>`).join("")}</div>` : "";
+    // Each card carries its glyph in the corner and, where the reading is a
+    // share of something, a gauge under the number: cloud is a share of the
+    // sky, dry hours a share of three days, UV a share of the 11-point scale.
+    const glyphFor = (k) => k.startsWith("Precip now") ? "drop" : k.startsWith("Next 24 h rain") ? "drop" : k.startsWith("Precip chance") ? "dice"
+      : k.startsWith("Cloud base") ? "base" : k.startsWith("Cloud") ? "cloud" : k.startsWith("Thunder") ? "bolt" : k.startsWith("Visibility") ? "eye"
+      : k.startsWith("UV") ? "sun" : k.startsWith("Wind") ? "wind" : k.startsWith("Max gust") ? "gust" : k.startsWith("Feels") ? "thermo"
+      : k.startsWith("Dry, calm") ? "clock" : k.startsWith("Freezing") ? "flake" : k.startsWith("Snow level") ? "peak" : k.startsWith("Sea") ? "wave" : "";
+    const gaugeFor = (k, v) => {
+      const num = parseFloat(String(v).replace(/<[^>]+>/g, ""));
+      if (!isFinite(num)) return null;
+      if (k.startsWith("Cloud") && !k.startsWith("Cloud base")) return num / 100;
+      if (k.startsWith("Precip chance")) return num / 100;
+      if (k.startsWith("Dry, calm")) { const m = String(v).match(/of (\d+)/); return m ? num / +m[1] : null; }
+      if (k.startsWith("UV")) return Math.min(1, num / 11);
+      if (k.startsWith("Visibility")) return Math.min(1, num / 20);
+      return null;
+    };
+    const kv = (rs) => rs.length ? `<div class="kv">${rs.map(([k, v, cls]) => { const gg = gaugeFor(k, v), gl = glyphFor(k);
+      return `<div class="stat ${cls || ""}${gl ? ` g-${gl}` : ""}">${gl ? `<i class="glyph">${OD_GLYPHS[gl] || ""}</i>` : ""}<span class="v">${lead(v)}</span><span class="k">${k.replace(/ \(≈\)/, " ≈").replace("Precip", "Precip.")}</span>${gg != null ? `<i class="gauge"><b style="width:${(gg * 100).toFixed(0)}%"></b></i>` : ""}</div>`; }).join("")}</div>` : "";
     const section = (title, graphic, rs, note) => `<section class="od"><h4>${title}${note ? `<span>${note}</span>` : ""}</h4>${graphic || ""}${kv(rs)}</section>`;
     const cold = fl != null && (t == null || t < 12 || snowLevel < 3000);
     const brief = outdoorsBrief(d, i, { rain24, chance, gustMax24, fl, snowLevel, cold, calm, gusty });
@@ -1320,6 +1338,28 @@
     area.addEventListener("pointerdown", (e) => show(e.clientX));
     area.addEventListener("pointerleave", hide);
   }
+
+  // The card glyphs: 24-unit strokes, one line weight, coloured by the card
+  // through currentColor so a flagged card's glyph flags with it.
+  const OD_GLYPHS = (() => {
+    const w = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+    return {
+      drop: w('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>'),
+      dice: w('<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="15" cy="15" r="1" fill="currentColor"/><circle cx="15" cy="9" r="1" fill="currentColor"/><circle cx="9" cy="15" r="1" fill="currentColor"/>'),
+      cloud: w('<path d="M7 18a4 4 0 0 1-.5-8 6 6 0 0 1 11.4 1.6A3.5 3.5 0 0 1 17.5 18z"/>'),
+      base: w('<path d="M7 14a4 4 0 0 1-.5-8 6 6 0 0 1 11.4 1.6A3.5 3.5 0 0 1 17.5 14z"/><path d="M4 20h16"/>'),
+      bolt: w('<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>'),
+      eye: w('<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+      sun: w('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+      wind: w('<path d="M3 8h9a3 3 0 1 0-3-3M3 12h14a3 3 0 1 1-3 3M3 16h7a2 2 0 1 1-2 2"/>'),
+      gust: w('<path d="M3 10h11a3 3 0 1 0-3-3M3 14h16a3 3 0 1 1-3 3"/><path d="M4 19l2-1 2 1 2-1"/>'),
+      thermo: w('<path d="M10 4a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z"/><path d="M12 9v6"/>'),
+      clock: w('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+      flake: w('<path d="M12 2v20M2 12h20M5 5l14 14M19 5 5 19"/>'),
+      peak: w('<path d="M3 20 10 7l3 5 2-3 6 11z"/><path d="M8 11l2-1 2 1"/>'),
+      wave: w('<path d="M2 12c2-3 4-3 6 0s4 3 6 0 4-3 6 0M2 18c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/>'),
+    };
+  })();
 
   // A row of hour cells over the next `hours` from step i, each as wide as
   // the hours it covers, with the day named where it changes. `cell(k)`
