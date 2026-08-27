@@ -539,7 +539,10 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 .od .kv .stat.meh { border-left-color: var(--warm); } .od .kv .stat.meh .v b { color: var(--warm); }
 .od .kv .stat.bad { border-left-color: var(--bad); } .od .kv .stat.bad .v b { color: var(--bad); }
 .hstrip { margin: 2px 0 2px; }
-.hstrip .cells { display: flex; gap: 1px; height: 26px; border-radius: 6px; overflow: hidden; position: relative; }
+.hstrip .cells { display: flex; gap: 1px; height: 26px; border-radius: 6px; position: relative; cursor: crosshair; touch-action: pan-y; }
+.hstrip .cells > i:first-child { border-radius: 6px 0 0 6px; } .hstrip .cells > i:last-of-type { border-radius: 0 6px 6px 0; }
+.hstrip .cells .tlab { position: absolute; top: -22px; transform: translateX(-50%); text-decoration: none; white-space: nowrap; pointer-events: none; font: 700 9.5px var(--font-num); color: var(--fg); background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 5px; padding: 1px 5px; z-index: 2; }
+.hstrip .cells .tlab.r { transform: translateX(-100%); }
 .hstrip .cells i { position: relative; display: block; min-width: 0; font-style: normal; }
 .hstrip .cells i b { position: absolute; left: 15%; right: 15%; bottom: 0; background: var(--rain); border-radius: 2px 2px 0 0; opacity: .9; }
 .hstrip .cells i s { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-decoration: none; font: 700 10px var(--font-num); color: #1a1a1a; }

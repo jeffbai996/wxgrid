@@ -1223,11 +1223,12 @@
     const H = 48;
     const uv = hourStrip(d, i, H, (k) => {
       const v = s.uvi ? s.uvi[k] : null;
-      return { bg: v == null || v < 0.5 ? "rgba(127,127,127,.12)" : W().rampColor("uvi", v, 0.85), v };
-    }, (k, v) => v != null && v >= 3 && isDayPeak(d, k, s.uvi) ? v.toFixed(0) : "");
+      return { bg: v == null || v < 0.5 ? "rgba(127,127,127,.12)" : W().rampColor("uvi", v, 0.85), v, n: v };
+    }, (k, c) => c != null && c >= 3 && isDayPeak(d, k, s.uvi) ? c.toFixed(0) : "");
     const sky = hourStrip(d, i, H, (k) => {
       const c = s.tcc ? s.tcc[k] : null, r = s.tp6 ? s.tp6[k] : 0;
-      return { bg: c == null ? "transparent" : `rgba(127,140,160,${(0.1 + 0.55 * c).toFixed(2)})`, bar: r > 0.05 ? Math.min(1, r / 8) : 0, v: r };
+      return { bg: c == null ? "transparent" : `rgba(127,140,160,${(0.1 + 0.55 * c).toFixed(2)})`, bar: r > 0.05 ? Math.min(1, r / 8) : 0,
+        v: `${c == null ? "" : `cloud ${Math.round(c * 100)}%`}${r > 0.05 ? ` · ${W().units.precip(r).txt}` : ""}` };
     }, () => "");
     const gust = windCard(d, i, H);
     const take = (...keys) => rows.filter((r) => keys.some((k) => r[0].startsWith(k)));
@@ -1268,6 +1269,7 @@
       <div class="note">Snow level ≈ freezing level − ${W().units.alt(300).txt}. Gusts come from models that ship one. Terrain is unresolved at 0.25°.</div>`;
     wireTideProbe();
     wireWindProbe();
+    wireStripProbes();
   }
 
   // The trailhead briefing under the verdict: the two days ahead in the
@@ -1371,7 +1373,8 @@
       const h = stepHrs(d, k), c = cell(k), when = new Date(d.valid[k]);
       const day = when.toLocaleDateString(undefined, W().units.timeOpts({ weekday: "short" }));
       if (day !== lastDay) { days.push(`<i style="left:${(total / hours * 100).toFixed(1)}%">${day}</i>`); lastDay = day; }
-      cells.push(`<i style="flex:${h} 0 0;background:${c.bg}" title="${when.toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }))}${c.v != null ? ` · ${typeof c.v === "number" ? c.v.toFixed(1) : c.v}` : ""}">${c.bar ? `<b style="height:${(c.bar * 100).toFixed(0)}%"></b>` : ""}<s>${label(k, c.v)}</s></i>`);
+      const said = c.v == null || c.v === "" ? "" : typeof c.v === "number" ? ` · UV ${c.v.toFixed(0)}` : ` · ${c.v}`;
+      cells.push(`<i style="flex:${h} 0 0;background:${c.bg}" title="${when.toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }))}${said}">${c.bar ? `<b style="height:${(c.bar * 100).toFixed(0)}%"></b>` : ""}<s>${label(k, c.n != null ? c.n : c.v)}</s></i>`);
       total += h;
     }
     if (cells.length < 4) return "";
@@ -1430,6 +1433,27 @@
       </div>
       <div class="tide-x">${xt.join("")}</div>
     </div>`;
+  }
+  // Hover on any hour strip (sky, sun): a tag names the hour and the value
+  // under the pointer. The cells already carry that text as a title for the
+  // long-press crowd; the tag shows it without the wait.
+  function wireStripProbes() {
+    document.querySelectorAll("#outdoors .hstrip").forEach((strip) => {
+      if (strip.dataset.wired) return;
+      strip.dataset.wired = "1";
+      const cells = strip.querySelector(".cells");
+      const lab = document.createElement("s"); lab.className = "tlab"; lab.hidden = true; cells.appendChild(lab);
+      const show = (clientX) => {
+        const r = cells.getBoundingClientRect(), f = Math.max(0, Math.min(0.999, (clientX - r.left) / r.width));
+        const el = document.elementFromPoint(r.left + f * r.width, r.top + r.height / 2);
+        const cell = el && el.closest("i[title]");
+        if (!cell) { lab.hidden = true; return; }
+        lab.textContent = cell.title; lab.style.left = `${(f * 100).toFixed(1)}%`; lab.classList.toggle("r", f > 0.6); lab.hidden = false;
+      };
+      cells.addEventListener("pointermove", (e) => show(e.clientX));
+      cells.addEventListener("pointerdown", (e) => show(e.clientX));
+      cells.addEventListener("pointerleave", () => { lab.hidden = true; });
+    });
   }
   function wireWindProbe() {
     const area = $("#outdoors .wind-area");
