@@ -1219,7 +1219,7 @@
       const c = s.tcc ? s.tcc[k] : null, r = s.tp6 ? s.tp6[k] : 0;
       return { bg: c == null ? "transparent" : `rgba(127,140,160,${(0.1 + 0.55 * c).toFixed(2)})`, bar: r > 0.05 ? Math.min(1, r / 8) : 0, v: r };
     }, () => "");
-    const gust = sparkStrip(d, i, H, s.gust || s.wind, (v) => speed(v));
+    const gust = windCard(d, i, H);
     const take = (...keys) => rows.filter((r) => keys.some((k) => r[0].startsWith(k)));
     const kv = (rs) => rs.length ? `<div class="kv">${rs.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>` : "";
     const section = (title, graphic, rs, note) => `<section class="od"><h4>${title}${note ? `<span>${note}</span>` : ""}</h4>${graphic || ""}${kv(rs)}</section>`;
@@ -1233,6 +1233,7 @@
       ${tidesHtml}${airHtml(pt || {})}
       <div class="note">Snow level ≈ freezing level − ${W().units.alt(300).txt}. Gusts come from models that ship one. Terrain is unresolved at 0.25°.</div>`;
     wireTideProbe();
+    wireWindProbe();
   }
 
   // Pointer over the tide chart: a ring rides the water under the cursor
@@ -1286,25 +1287,76 @@
       if (new Date(d.valid[q]).toDateString() === day && arr[q] != null && (arr[q] > arr[k] || (arr[q] === arr[k] && q < k))) return false;
     return true;
   }
-  // A filled line over the next `hours`, scaled to its own maximum, the
-  // maximum named. For gusts, pressure — anything whose shape is the story.
-  function sparkStrip(d, i, hours, arr, conv) {
-    if (!arr) return "";
-    const pts = [], days = [];
-    let total = 0, mx = 0, lastDay = null, peakAt = 0;
-    const win = [];
-    for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + hours; k++) {
-      if (arr[k] == null) continue;
-      const v = conv(arr[k]), x = d.steps[k] - d.steps[i];
-      win.push([x, v]); if (v > mx) { mx = v; peakAt = x; }
-      const when = new Date(d.valid[k]), day = when.toLocaleDateString(undefined, W().units.timeOpts({ weekday: "short" }));
-      if (day !== lastDay && x < hours) { days.push(`<i style="left:${(x / hours * 100).toFixed(1)}%">${day}</i>`); lastDay = day; }
-      total = x;
+  // The wind over the next `hours` as the tide is drawn: a readout on top
+  // (wind now, from where, the gust with it, the peak gust ahead and when),
+  // a chart with its y axis in the user's unit, wind as the line and gusts
+  // as the lighter band above it, a ring at the card's time, and a pointer
+  // probe that says the time, wind, gust and direction under the finger.
+  function windCard(d, i, hours) {
+    const { speed, speedUnit, arrow } = W(), s = d.series;
+    if (!s.wind) return "";
+    const unit = speedUnit();
+    const rows = [];
+    for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + hours; k++)
+      if (s.wind[k] != null) rows.push([new Date(d.valid[k]).getTime(), speed(s.wind[k]), s.gust && s.gust[k] != null ? speed(s.gust[k]) : null, s.wdir ? s.wdir[k] : null]);
+    if (rows.length < 4) return "";
+    const x0 = rows[0][0], x1 = rows[rows.length - 1][0], span = Math.max(x1 - x0, 1);
+    const mx = Math.max(1, ...rows.map((r) => Math.max(r[1], r[2] || 0)));
+    const X = (x) => (x - x0) / span * 100, Y = (v) => 100 - v / mx * 92;
+    const wpts = rows.map((r) => `${X(r[0]).toFixed(2)},${Y(r[1]).toFixed(2)}`);
+    const gpts = rows.filter((r) => r[2] != null).map((r) => `${X(r[0]).toFixed(2)},${Y(r[2]).toFixed(2)}`);
+    // the peak gust ahead (or the peak wind if the model ships no gust)
+    let peak = rows[0]; for (const r of rows) if ((r[2] ?? r[1]) > (peak[2] ?? peak[1])) peak = r;
+    const now = W().validDate.getTime();
+    const dt = peak[0] - now, inTxt = dt > 3600e3 ? `${Math.floor(dt / 3600e3)}h${String(Math.round(dt % 3600e3 / 60e3)).padStart(2, "0")}` : dt > 0 ? `${Math.round(dt / 60e3)} min` : "";
+    const cur = rows[0];
+    const readout = `<div class="tide-now wind-now">
+        <span class="tnum"><b>${cur[1].toFixed(0)}</b><i>${unit}</i></span>
+        <span class="tdir">${cur[3] != null ? `${arrow(cur[3])} ${compass(cur[3])}` : ""}${cur[2] != null ? ` · gusts ${cur[2].toFixed(0)}` : ""}</span>
+        ${peak !== cur ? `<span class="tnext"><b>peak ${(peak[2] ?? peak[1]).toFixed(0)} ${unit}</b><em>${W().units.dateTime(new Date(peak[0]), { weekday: "short", hour: "numeric" })}${inTxt ? ` · ${inTxt}` : ""}</em></span>` : ""}
+      </div>`;
+    // x axis: every local midnight is a day, every local noon a tick
+    const hourOf = new Intl.DateTimeFormat("en-US", W().units.timeOpts({ hour: "2-digit", hour12: false }));
+    const xt = [];
+    for (let x = Math.ceil(x0 / 3600e3) * 3600e3; x <= x1; x += 3600e3) {
+      const h = hourOf.format(new Date(x)).replace("24", "00");
+      if (h === "00") xt.push(`<i class="day" style="left:${X(x).toFixed(1)}%">${new Date(x).toLocaleDateString(undefined, W().units.timeOpts({ weekday: "short" }))}</i>`);
+      else if (h === "12") xt.push(`<i style="left:${X(x).toFixed(1)}%">noon</i>`);
     }
-    if (win.length < 4 || !mx) return "";
-    const X = (x) => (x / hours * 100).toFixed(2), Y = (v) => (100 - v / mx * 88).toFixed(2);
-    win.forEach(([x, v]) => pts.push(`${X(x)},${Y(v)}`));
-    return `<div class="hstrip line"><div class="cells"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,100 ${pts.join(" ")} ${X(total)},100"/><polyline points="${pts.join(" ")}"/></svg><s class="peak${peakAt / hours > 0.85 ? " r" : peakAt / hours < 0.12 ? " l" : ""}" style="left:${X(peakAt)}%">${mx.toFixed(0)} ${W().speedUnit()}</s></div><div class="hx">${days.join("")}</div></div>`;
+    const marker = `<i class="tdot now" style="left:0%;top:${Y(cur[1]).toFixed(1)}%"></i>`;
+    const probe = `<i class="tdot hov" hidden></i><s class="tlab" hidden></s>`;
+    const data = esc(JSON.stringify(rows.map((r) => [r[0], +r[1].toFixed(1), r[2] == null ? null : +r[2].toFixed(1), r[3] == null ? null : Math.round(r[3])])));
+    return `<div class="tide-card wind-card">${readout}
+      <div class="tide-plot">
+        <div class="tide-y"><i>${mx.toFixed(0)}</i><i>0</i><u>${unit}</u></div>
+        <div class="tide-area wind-area" data-rows="${data}" data-mx="${mx}"><div class="tide-water wind-water"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${gpts.length > 3 ? `<polygon class="g" points="${gpts.join(" ")} ${wpts.slice().reverse().join(" ")}"/>` : ""}<polygon class="w" points="0,100 ${wpts.join(" ")} 100,100"/>${gpts.length > 3 ? `<polyline class="g" points="${gpts.join(" ")}"/>` : ""}<polyline class="w" points="${wpts.join(" ")}"/></svg>${marker}${probe}</div></div>
+      </div>
+      <div class="tide-x">${xt.join("")}</div>
+    </div>`;
+  }
+  function wireWindProbe() {
+    const area = $("#outdoors .wind-area");
+    if (!area || area.dataset.wired) return;
+    area.dataset.wired = "1";
+    const rows = JSON.parse(area.dataset.rows), mx = +area.dataset.mx;
+    const x0 = rows[0][0], x1 = rows[rows.length - 1][0];
+    const dot = area.querySelector(".tdot.hov"), lab = area.querySelector(".tlab");
+    const show = (clientX) => {
+      const r = area.getBoundingClientRect(), f = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+      const x = x0 + f * (x1 - x0);
+      let a = rows[0], b = rows[rows.length - 1];
+      for (let k = 0; k + 1 < rows.length; k++) if (x >= rows[k][0] && x <= rows[k + 1][0]) { a = rows[k]; b = rows[k + 1]; break; }
+      const t = b[0] === a[0] ? 0 : (x - a[0]) / (b[0] - a[0]);
+      const w = a[1] + (b[1] - a[1]) * t, g = a[2] != null && b[2] != null ? a[2] + (b[2] - a[2]) * t : null;
+      const near = t < 0.5 ? a : b;
+      dot.style.left = `${(f * 100).toFixed(1)}%`; dot.style.top = `${(100 - w / mx * 92).toFixed(1)}%`; dot.hidden = false;
+      lab.textContent = `${W().units.dateTime(new Date(x), { weekday: "short", hour: "numeric" })} · ${w.toFixed(0)}${g != null ? ` / ${g.toFixed(0)}` : ""} ${W().speedUnit()}${near[3] != null ? ` ${W().arrow(near[3])} ${compass(near[3])}` : ""}`;
+      lab.style.left = `${(f * 100).toFixed(1)}%`; lab.classList.toggle("r", f > 0.6); lab.hidden = false;
+    };
+    const hide = () => { dot.hidden = true; lab.hidden = true; };
+    area.addEventListener("pointermove", (e) => show(e.clientX));
+    area.addEventListener("pointerdown", (e) => show(e.clientX));
+    area.addEventListener("pointerleave", hide);
   }
 
   // ── Spread: how much the ensemble disagrees with itself ───────────────

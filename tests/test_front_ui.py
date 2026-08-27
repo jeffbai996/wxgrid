@@ -187,7 +187,7 @@ def test_outdoors_is_sectioned_with_a_graphic_per_question_and_names_its_worry()
     assert 'class="why"' in out
     assert 'rows.push(["Sun"' not in out                       # sunrise lives on the hero
     assert "const H = 48;" in out                              # every strip: two days
-    assert "function hourStrip(d, i, hours, cell, label)" in panes and "function sparkStrip(" in panes
+    assert "function hourStrip(d, i, hours, cell, label)" in panes and "function windCard(d, i, hours)" in panes
 
 
 def test_the_tide_chart_marks_time_with_a_ring_and_follows_the_pointer():
@@ -196,3 +196,12 @@ def test_the_tide_chart_marks_time_with_a_ring_and_follows_the_pointer():
     assert "function wireTideProbe()" in panes and "wireTideProbe();" in panes
     assert 'addEventListener("pointermove"' in panes.split("function wireTideProbe")[1].split("\n  }\n")[0]
     assert ".tide-area .tnow" not in css
+
+
+def test_the_wind_chart_is_drawn_like_the_tide_chart():
+    panes = _read("panes.js"); css = _read("styles.css")
+    wind = panes.split("function windCard")[1].split("function wireWindProbe")[0]
+    assert 'class="tide-y"' in wind and 'class="tide-x"' in wind        # axes
+    assert 'class="tdot now"' in wind and "polyline class=\"g\"" in wind   # ring, gust line
+    assert "function wireWindProbe()" in panes and "wireWindProbe();" in panes
+    assert "sparkStrip" not in panes and ".hstrip.line" not in css      # the old strip is gone
