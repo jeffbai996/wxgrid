@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v49";   // v49: marine, touring and leave-at
+const VERSION = "wxgrid-v50";   // v50: aloft readings as cards; legend ticks in Urbanist
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

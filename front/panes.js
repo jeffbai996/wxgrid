@@ -817,13 +817,13 @@
     const fl = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[i] : null;
     const sfc = s.wind ? `<tr><td class="mono">sfc</td><td>${W().units.alt(10).txt}</td><td class="dir">${s.wdir[i] != null ? `<i style="${arrowRot(s.wdir[i])}"></i>${String(s.wdir[i]).padStart(3, "0")}°` : "—"}</td><td><span class="wchip" style="background:${windColor(s.wind[i] || 0)}">${f(s.wind[i], (v) => speed(v).toFixed(0))}</span> ${speedUnit()}${s.gust ? ` <span class="dim">gusts ${f(s.gust[i], (v) => speed(v).toFixed(0))}</span>` : ""}</td><td class="tempc" style="color:${s.t2m && s.t2m[i] != null ? tempColor(s.t2m[i] - K) : "inherit"}">${f(s.t2m && s.t2m[i], (v) => W().units.temp(v).v)}°</td></tr>` : "";
     $("#aloft").innerHTML = `<table class="aloft"><thead><tr><th>Level</th><th>Height</th><th>Dir</th><th>Speed</th><th>Temp</th></tr></thead><tbody>${rows}${sfc}</tbody></table>
-      <dl class="kv">
-        <dt>Freezing level</dt><dd>${fl != null ? W().units.alt(fl).txt : (d.levels && d.levels.length ? "below 925 hPa or above 250" : "—")}</dd>
-        <dt>Total cloud</dt><dd>${f(s.tcc && s.tcc[i], (v) => (v * 100).toFixed(0) + "%")}</dd>
-        <dt>CAPE</dt><dd class="${capeClass(s.cape && s.cape[i])}">${f(s.cape && s.cape[i], (v) => v.toFixed(0) + " J/kg")}${s.cape ? "" : " <span class=dim>(model has none)</span>"}</dd>
-        <dt>QNH (MSL)</dt><dd>${f(s.msl && s.msl[i], (v) => W().units.press(v, W().units.pressUnit === "hPa" ? 1 : undefined).txt)}</dd>
-        <dt>Dew point spread</dt><dd>${s.d2m && s.t2m && s.t2m[i] != null && s.d2m[i] != null ? W().units.tempDelta(s.t2m[i] - s.d2m[i]).toFixed(1) + " " + W().units.tempUnit : "—"}</dd>
-      </dl>
+      ${statCards([
+        ["Freezing level", fl != null ? W().units.alt(fl).txt : (d.levels && d.levels.length ? "below 925 hPa or above 250" : "—"), "", "flake"],
+        ["Total cloud", f(s.tcc && s.tcc[i], (v) => (v * 100).toFixed(0) + "%"), "", "cloud", s.tcc && s.tcc[i] != null ? s.tcc[i] : null],
+        ["CAPE", `${f(s.cape && s.cape[i], (v) => v.toFixed(0) + " J/kg")}${s.cape ? "" : " <span class=dim>(model has none)</span>"}`, capeClass(s.cape && s.cape[i]), "bolt"],
+        ["QNH (MSL)", f(s.msl && s.msl[i], (v) => W().units.press(v, W().units.pressUnit === "hPa" ? 1 : undefined).txt), "", "baro"],
+        ["Dew point spread", s.d2m && s.t2m && s.t2m[i] != null && s.d2m[i] != null ? W().units.tempDelta(s.t2m[i] - s.d2m[i]).toFixed(1) + " " + W().units.tempUnit : "—", "", "drop"],
+      ], "aloft-kv")}
       ${tafHtml()}
       <div class="note">Gridpoint winds, true direction, FROM. Heights are geopotential.</div>`;
   }
@@ -1121,7 +1121,7 @@
       const stats = [
         `<div><small>New snow 24 h</small><b>${newCm == null ? "—" : U.snow(sn24we * slr / 10).v}<i>${esc(U.snowUnit)}</i></b><em>${newCm == null ? "" : `${slr}:1`}</em></div>`,
         `<div><small>Freezing level</small><b>${fl == null ? "—" : U.alt(Math.round(fl / 50) * 50).v}<i>${esc(U.altUnit)}</i></b><em>${flTrend === " ↓" ? "falling" : flTrend === " ↑" ? "rising" : "steady"}</em></div>`,
-        `<div><small>Wind loading</small><b>${loading ? lee : "light"}</b><em>${w850 != null ? `850 hPa ${speed(w850).toFixed(0)} ${esc(speedUnit())}` : ""}</em></div>`,
+        `<div><small>Wind loading</small><b>${loading ? lee : "light"}</b><em>${w850 != null ? `<i class="lvl">850 hPa</i>${speed(w850).toFixed(0)} ${esc(speedUnit())}` : ""}</em></div>`,
         lvlName ? `<div><small>Danger</small><b class="avy-${lvl}">${lvlName}</b><em>${esc((avyDay.label || avyDay.date || "today").toString().slice(0, 9))}</em></div>` : "",
       ].filter(Boolean).join("");
       return `<div class="modcard touring ${call[1]}"><div class="mod-head"><span class="call">${call[0]}</span><span class="dim">${worries.length ? worries.join(" · ") : "nothing flagged"}</span></div><div class="mod-stats">${stats}</div></div>`;
@@ -1352,6 +1352,14 @@
     area.addEventListener("pointerleave", hide);
   }
 
+  // Stat cards the way Outdoors draws them — number first, unit small, label
+  // under, a glyph in the corner, a gauge when the value is a share — for the
+  // other tabs that carry a handful of readings.
+  function statCards(rows, cls) {
+    const lead = (v) => { const m = String(v).match(/^(—|[-+]?\d[\d.,]*\s?(?:°|%|h)?)(.*)$/s); return m ? `<b>${m[1]}</b>${m[2].trim() ? `<small>${m[2].trim()}</small>` : ""}` : `<b class="word">${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}</b>`; };
+    return `<div class="kv ${cls || ""}">${rows.map(([k, v, c, g, share]) => `<div class="stat ${c || ""}${g ? ` g-${g}` : ""}">${g ? `<i class="glyph">${OD_GLYPHS[g] || ""}</i>` : ""}<span class="v">${lead(v)}</span><span class="k">${k}</span>${share != null ? `<i class="gauge"><b style="width:${(share * 100).toFixed(0)}%"></b></i>` : ""}</div>`).join("")}</div>`;
+  }
+
   // The card glyphs: 24-unit strokes, one line weight, coloured by the card
   // through currentColor so a flagged card's glyph flags with it.
   const OD_GLYPHS = (() => {
@@ -1371,6 +1379,7 @@
       flake: w('<path d="M12 2v20M2 12h20M5 5l14 14M19 5 5 19"/>'),
       peak: w('<path d="M3 20 10 7l3 5 2-3 6 11z"/><path d="M8 11l2-1 2 1"/>'),
       wave: w('<path d="M2 12c2-3 4-3 6 0s4 3 6 0 4-3 6 0M2 18c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/>'),
+      baro: w('<circle cx="12" cy="13" r="8"/><path d="M12 13l4-4"/><path d="M12 5v2M5 13h2M17 13h2"/>'),
     };
   })();
 
