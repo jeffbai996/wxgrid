@@ -1819,7 +1819,10 @@ def _ensemble_features(sid: str, name: str) -> list[dict]:
     """One thin line per member, and the ensemble mean flagged so the front
     end can draw it a shade brighter than its thirty children."""
     members = storm_ensemble(sid)
-    return [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": pts},
+    # unwrapped here too: the member lists are cached for the storm's life,
+    # and a list cached before the unwrap existed would otherwise draw the
+    # old way until it expired
+    return [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": _unwrap_lons(pts)},
              "properties": {"id": sid, "storm": name, "layer": "ens",
                             "member": tech, "mean": tech == "AEMN"}}
             for tech, pts in sorted(members.items()) if len(pts) > 1]
