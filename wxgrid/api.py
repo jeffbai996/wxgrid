@@ -354,10 +354,37 @@ def _render_plan(model: str, tag: str) -> tuple[str, int]:
     return tag, 2
 
 
+_models_cache: dict = {"key": None, "payload": None}
+
+
+def _models_key(summary: dict) -> tuple:
+    """What the catalog depends on: which runs exist and when each was last
+    (re)written. Same key, same answer — the catalog used to be rebuilt from
+    every run's metadata on every request, 1.5-3 s that every other request
+    of a cold visit queued behind (2026-08-28)."""
+    parts = []
+    for key, rids in sorted(summary.items()):
+        for rid in rids:
+            try:
+                parts.append((key, rid, run_path(key, rid).joinpath("zarr.json").stat().st_mtime_ns))
+            except FileNotFoundError:
+                parts.append((key, rid, 0))
+    return tuple(parts)
+
+
 @app.get("/api/models")
 def api_models() -> dict:
-    out = []
     summary = store_summary()
+    k = _models_key(summary)
+    if _models_cache["key"] == k and _models_cache["payload"] is not None:
+        return _models_cache["payload"]
+    payload = _build_models(summary)
+    _models_cache["key"], _models_cache["payload"] = k, payload
+    return payload
+
+
+def _build_models(summary: dict) -> dict:
+    out = []
     for key, m in MODELS.items():
         entry = {"key": key, "label": m.label, "short": m.short, "grid": m.grid,
                  "attribution": m.attribution, "domain": list(m.domain),

@@ -87,3 +87,9 @@ def test_the_lock_is_reentrant_so_the_ingest_can_build_its_own_cube(tmp_path):
     # released for real once the outer block exits: a second process gets it
     holder = _hold(tmp_path, "gfs", rid)
     holder.kill(); holder.wait()
+
+
+def test_repair_cubes_builds_only_what_is_missing(tmp_path):
+    rid = _run(tmp_path)
+    assert ingest.repair_cubes(ingest.get_model("gfs"), tmp_path) == [rid]
+    assert ingest.repair_cubes(ingest.get_model("gfs"), tmp_path) == []      # idempotent

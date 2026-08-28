@@ -46,16 +46,29 @@ def run_ages(now: datetime | None = None, root: Path = STORE_DIR) -> list[dict]:
             out.append({"model": key, "tier": t, "run": None, "age_h": None, "max_age_h": allow, "stale": True})
             continue
         age = (now - parse_run_id(runs[0])).total_seconds() / 3600
-        out.append({"model": key, "tier": t, "run": runs[0], "age_h": round(age, 1), "max_age_h": allow, "stale": age > allow})
+        out.append({"model": key, "tier": t, "run": runs[0], "age_h": round(age, 1), "max_age_h": allow, "stale": age > allow,
+                    "cube": _has_cube(key, runs[0], root)})
     return out
+
+
+def _has_cube(model: str, rid: str, root: Path) -> bool:
+    """The point cube is what makes a card 0.2 s instead of 10 s; a served
+    run without one is a fault worth showing next to staleness."""
+    import zarr
+    from wxgrid.store import run_path
+    try:
+        return "pt" in zarr.open_group(run_path(model, rid, root), mode="r")
+    except Exception:                                            # noqa: BLE001
+        return False
 
 
 def main(argv: list[str] | None = None) -> int:
     rows = run_ages()
-    stale = [r for r in rows if r["stale"]]
+    stale = [r for r in rows if r["stale"] or r.get("cube") is False]
     for r in rows:
         age = "none" if r["age_h"] is None else f"{r['age_h']:.1f} h"
-        print(f"{'STALE' if r['stale'] else 'ok   '} {r['model']:6s} {r['tier']:8s} {r['run'] or '-':16s} {age:>8s} / {r['max_age_h']:.0f} h")
+        flag = "STALE" if r["stale"] else "NOCUBE" if r.get("cube") is False else "ok"
+        print(f"{flag:6s} {r['model']:6s} {r['tier']:8s} {r['run'] or '-':16s} {age:>8s} / {r['max_age_h']:.0f} h")
     return 1 if stale else 0
 
 

@@ -204,3 +204,16 @@ def test_a_point_with_no_sea_within_reach_gets_no_coast_block():
     c = TestClient(api.app)
     p = c.get("/api/point", params={"lat": 49.28, "lon": -110.0, "model": "ifs"}).json()
     assert "coast" not in p["derived"]
+
+
+def test_the_catalog_is_cached_until_the_store_changes(monkeypatch):
+    from wxgrid import api
+    calls = []
+    real = api._build_models
+    monkeypatch.setattr(api, "_build_models", lambda summary: calls.append(1) or real(summary))
+    api._models_cache["key"] = None
+    api.api_models(); api.api_models()
+    assert len(calls) == 1                                  # second call served from the cache
+    api._models_cache["key"] = None                         # a changed key rebuilds
+    api.api_models()
+    assert len(calls) == 2

@@ -42,3 +42,13 @@ def test_regional_models_are_held_to_a_tighter_clock(tmp_path):
 def test_a_model_with_no_runs_is_stale(tmp_path):
     r = {x["model"]: x for x in freshness.run_ages(datetime(2026, 1, 1, tzinfo=timezone.utc), tmp_path)}["ifs"]
     assert r["run"] is None and r["stale"] is True
+
+
+def test_a_served_run_without_its_cube_is_flagged(tmp_path):
+    _run(tmp_path, "gfs", "2026-01-01T06")
+    now = datetime(2026, 1, 1, 8, tzinfo=timezone.utc)
+    r = {x["model"]: x for x in freshness.run_ages(now, tmp_path)}["gfs"]
+    assert r["cube"] is False
+    store.build_point_cube("gfs", "2026-01-01T06", tmp_path)
+    r = {x["model"]: x for x in freshness.run_ages(now, tmp_path)}["gfs"]
+    assert r["cube"] is True

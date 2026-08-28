@@ -293,3 +293,8 @@ def test_aloft_readings_are_cards_and_legend_ticks_are_urbanist():
     assert ".aloft-kv .stat" in css and ".aloft-kv .stat.g-baro" in css
     assert "font: 650 10.5px var(--font-display)" in css.split(".legend-ticks {")[1].split("}")[0]
     assert '<i class="lvl">850 hPa</i>' in panes
+
+
+def test_the_storm_list_is_fetched_once_per_card():
+    panes = _read("panes.js")
+    assert "let stormMemo = { t: 0, p: null };" in panes and "storms().then((gj) =>" in panes

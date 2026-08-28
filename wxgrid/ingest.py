@@ -457,10 +457,36 @@ def main(argv: list[str] | None = None) -> int:
                     rc = 1
                 continue
             ingest_run(model, run, keep_grib=args.keep_grib)
+            # A served run without its point cube is a 10 s card instead of
+            # 0.2 s (2026-08-28: three models' newest runs had none after a
+            # lock bug). Idempotent, cheap when the cube is there.
+            repair_cubes(model)
         except Exception:
             log.exception("%s failed", key)
             rc = 1
     return rc
+
+
+def repair_cubes(model: Model, store_root: Path = STORE_DIR) -> list[str]:
+    """Build the point cube for any complete run of `model` that lacks one.
+    Returns the run ids it built."""
+    import zarr
+    built = []
+    for rid in list_runs(model.key, store_root):
+        try:
+            g = zarr.open_group(run_path(model.key, rid, store_root), mode="r")
+            if "pt" in g:
+                continue
+        except Exception:                                        # noqa: BLE001
+            continue
+        try:
+            n = build_point_cube(model.key, rid, store_root)
+            if n:
+                built.append(rid)
+                log.info("%s %s: point cube repaired, %d variables", model.key, rid, n)
+        except Exception:
+            log.exception("%s %s point cube repair failed", model.key, rid)
+    return built
 
 
 if __name__ == "__main__":
