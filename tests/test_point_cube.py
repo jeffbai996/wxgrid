@@ -43,6 +43,43 @@ def test_point_cube_reads_each_variable_once(tmp_path, monkeypatch):
     assert sorted(src_reads) == sorted(f"/{v}" for v in fields)
 
 
+def test_point_cube_checks_the_gate_between_variables(tmp_path):
+    root, fields = _run(tmp_path)
+    gates = []
+
+    assert store.build_point_cube(
+        "gfs", "2026-01-01T00", root, step_gate=lambda: gates.append("wait")
+    ) == 2
+    assert gates == ["wait"] * len(fields)
+
+
+def test_an_interrupted_variable_is_rebuilt(tmp_path):
+    root, fields = _run(tmp_path)
+    assert store.build_point_cube("gfs", "2026-01-01T00", root) == 2
+    g = zarr.open_group(store.run_path("gfs", "2026-01-01T00", root), mode="r+")
+    g["pt"]["t2m"].attrs["complete"] = False
+    g["pt"]["t2m"][:] = 0
+
+    assert store.build_point_cube("gfs", "2026-01-01T00", root) == 1
+    np.testing.assert_array_equal(g["pt"]["t2m"][:], g["t2m"][:])
+    assert g["pt"]["t2m"].attrs["complete"] is True
+
+
+def test_reader_ignores_an_interrupted_variable(tmp_path):
+    root, fields = _run(tmp_path)
+    store.build_point_cube("gfs", "2026-01-01T00", root)
+    g = zarr.open_group(store.run_path("gfs", "2026-01-01T00", root), mode="r+")
+    g["pt"]["t2m"].attrs["complete"] = False
+    g["pt"]["t2m"][:] = 0
+
+    reader = store.RunReader("gfs", "2026-01-01T00", root)
+    i, j = reader.indices(49.0, -123.0)
+    np.testing.assert_array_equal(
+        reader.point("t2m", 49.0, -123.0),
+        reader.decode("t2m", g["t2m"][:, int(i), int(j)]),
+    )
+
+
 def test_the_cube_index_is_built_once_however_many_threads_open_the_reader(tmp_path, monkeypatch):
     # The card reads ~75 variables through an 8-thread pool. The reader's
     # cube index was a lazy property, so all eight threads found it missing

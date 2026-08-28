@@ -16,6 +16,7 @@ import shutil
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 import os
 import time
@@ -236,7 +237,13 @@ class RunReader:
         self._pt_cache: dict = {}
         if "pt" in self.group:
             g = self.group["pt"]
-            self._pt_cache = {name: g[name] for name in g.array_keys()}
+            for name in g.array_keys():
+                arr = g[name]
+                # New cubes mark each variable complete only after every
+                # chunk lands. Missing means complete for compatibility with
+                # cubes written before the marker existed.
+                if arr.attrs.get("complete", True):
+                    self._pt_cache[name] = arr
         # same reason for the encoding attrs: the first card opened every
         # source array once per thread that happened to reach it first
         self._var_attrs: dict = {v: dict(self.group[v].attrs) for v in self.variables}
@@ -339,7 +346,13 @@ def run_lock(model: str, rid: str, root: Path = STORE_DIR):
 POINT_TILE = 24    # point-cube spatial chunk (24 × 24 gridpoints = 6° × 6°)
 
 
-def build_point_cube(model: str, rid: str, root: Path = STORE_DIR, variables: list[str] | None = None) -> int:
+def build_point_cube(
+    model: str,
+    rid: str,
+    root: Path = STORE_DIR,
+    variables: list[str] | None = None,
+    step_gate: Callable[[], None] | None = None,
+) -> int:
     """Re-chunk a run for point reads: pt/<var> with chunks (all steps, 24, 24),
     so a point series decompresses one small chunk instead of every step.
     Roughly doubles the run on disk. Idempotent per variable; returns the
@@ -349,22 +362,33 @@ def build_point_cube(model: str, rid: str, root: Path = STORE_DIR, variables: li
         if not held:
             log.info("%s %s: locked by another writer, point cube skipped", model, rid)
             return 0
-        return _build_point_cube_locked(model, rid, root, variables)
+        return _build_point_cube_locked(model, rid, root, variables, step_gate)
 
 
-def _build_point_cube_locked(model: str, rid: str, root: Path, variables: list[str] | None) -> int:
+def _build_point_cube_locked(
+    model: str,
+    rid: str,
+    root: Path,
+    variables: list[str] | None,
+    step_gate: Callable[[], None] | None,
+) -> int:
     g = zarr.open_group(run_path(model, rid, root), mode="r+")
     pt = g.require_group("pt")
     codec = BloscCodec(cname="zstd", clevel=3, shuffle="bitshuffle")
     n = 0
     for var in (variables or list(g.attrs.get("variables", []))):
-        if var in pt or var not in g:
+        if var not in g:
             continue
+        if var in pt:
+            if pt[var].attrs.get("complete", True):
+                continue
+            del pt[var]
         src = g[var]
         arr = pt.create_array(var, shape=src.shape, dtype=src.dtype,
                               chunks=(src.shape[0], POINT_TILE, POINT_TILE), compressors=codec,
                               fill_value=np.nan, dimension_names=("step", "latitude", "longitude"))
-        arr.attrs.update({k: src.attrs[k] for k in ("offset", "scale", "units") if k in src.attrs})
+        attrs = {k: src.attrs[k] for k in ("offset", "scale", "units") if k in src.attrs}
+        arr.attrs.update({**attrs, "complete": False})
         # Copy one latitude band at a time. Reading the whole variable would be
         # ~250 MB resident per variable and, with several ingests and the API
         # in flight, that was enough to put fragserv into swap (2026-08-18).
@@ -381,7 +405,10 @@ def _build_point_cube_locked(model: str, rid: str, root: Path, variables: list[s
             pacer.spend(band.nbytes)
             arr[:, y0:y1, :] = band
         del full
+        arr.attrs["complete"] = True
         n += 1
+        if step_gate:
+            step_gate()
     return n
 
 

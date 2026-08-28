@@ -134,16 +134,24 @@ def fetch_ecmwf_wave(client, model: Model, run: datetime, step: int, out_dir: Pa
 def _ecmwf_get(client, model: Model, run: datetime, step: int, target: Path, req: dict) -> bool:
     if target.exists() and target.stat().st_size > 0:
         return True
+    target.unlink(missing_ok=True)
+    temporary = target.with_name(f".{target.name}.part")
     params = list(req["param"])
     for _ in range(len(params)):
+        temporary.unlink(missing_ok=True)
         try:
             client.retrieve(type="fc", date=run.strftime("%Y%m%d"), time=run.hour, step=step,
-                            target=str(target), **{**req, "param": params})
-            # the ECMWF client streams the file itself; charge it afterwards
-            # so the average over the run still holds the cap
-            _dl_pacer.spend(target.stat().st_size if target.exists() else 0)
+                            target=str(temporary), **{**req, "param": params})
+            size = temporary.stat().st_size
+            temporary.replace(target)
+            # The ECMWF client streams the file itself; charge it afterwards
+            # so the average over the run still holds the cap. The rename is
+            # first so an interruption during pacing still leaves a complete,
+            # reusable file rather than a misleading partial final path.
+            _dl_pacer.spend(size)
             return True
         except Exception as exc:
+            temporary.unlink(missing_ok=True)
             msg = str(exc)
             # "No index entries for param=10fg" → drop that one param and retry.
             missing = None
@@ -153,10 +161,9 @@ def _ecmwf_get(client, model: Model, run: datetime, step: int, target: Path, req
                     break
             if missing is None or len(params) == 1:
                 log.warning("%s %s step %d: %s", model.key, run, step, msg.splitlines()[0][:160])
-                target.unlink(missing_ok=True)
                 return False
             params.remove(missing)
-    target.unlink(missing_ok=True)
+    temporary.unlink(missing_ok=True)
     return False
 
 

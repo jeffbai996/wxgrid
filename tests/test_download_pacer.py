@@ -50,10 +50,34 @@ def test_download_pacer_slows_a_fast_source(tmp_path, monkeypatch):
 
 def test_ecmwf_get_charges_the_file_after_retrieve(tmp_path, monkeypatch):
     spent = []
+    retrieve_targets = []
     monkeypatch.setattr(fetch, "_dl_pacer", type("P", (), {"spend": lambda self, n: spent.append(n)})())
     class Client:
-        def retrieve(self, **kw): Path(kw["target"]).write_bytes(b"z" * 5000)
+        def retrieve(self, **kw):
+            retrieve_targets.append(Path(kw["target"]))
+            Path(kw["target"]).write_bytes(b"z" * 5000)
     from wxgrid.models import get_model
     from datetime import datetime
-    ok = fetch._ecmwf_get(Client(), get_model("aifs"), datetime(2026, 1, 1), 0, tmp_path / "s.grib2", {"param": ["2t"]})
+    target = tmp_path / "s.grib2"
+    ok = fetch._ecmwf_get(Client(), get_model("aifs"), datetime(2026, 1, 1), 0, target, {"param": ["2t"]})
     assert ok and spent == [5000]
+    assert retrieve_targets == [tmp_path / ".s.grib2.part"]
+    assert target.read_bytes() == b"z" * 5000
+    assert not retrieve_targets[0].exists()
+
+
+def test_ecmwf_get_removes_a_partial_download_after_failure(tmp_path):
+    class Client:
+        def retrieve(self, **kw):
+            Path(kw["target"]).write_bytes(b"partial")
+            raise RuntimeError("connection reset")
+
+    from wxgrid.models import get_model
+    from datetime import datetime
+    target = tmp_path / "s.grib2"
+
+    assert not fetch._ecmwf_get(
+        Client(), get_model("aifs"), datetime(2026, 1, 1), 0, target, {"param": ["2t"]}
+    )
+    assert not target.exists()
+    assert not (tmp_path / ".s.grib2.part").exists()

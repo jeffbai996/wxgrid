@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+import shlex
 import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,6 +29,19 @@ from wxgrid.models import MODELS, Model, get_model
 from wxgrid.store import RunWriter, build_point_cube, list_runs, prune, run_id, run_lock, run_path
 
 log = logging.getLogger("wxgrid.ingest")
+
+
+def wait_for_step_gate() -> None:
+    """Run the optional host-pressure gate at a safe ingest boundary.
+
+    The command is deliberately opt-in so normal installs have no dependency
+    on a host-specific pressure monitor.  It runs without a shell; a non-zero
+    exit aborts the ingest while all completed downloads remain reusable.
+    """
+    command = os.environ.get("WXGRID_STEP_GATE_COMMAND", "").strip()
+    if not command:
+        return
+    subprocess.run(shlex.split(command), check=True)
 
 
 def accumulation_bucket(mode: str, step: int, start_step: int, accum: np.ndarray,
@@ -169,7 +185,7 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
                 log.warning("unreadable GRIB %s, dropping it", p.name, exc_info=True)
                 p.unlink(missing_ok=True)
 
-    def on_step(step: int, paths: list[Path]) -> None:
+    def write_step(step: int, paths: list[Path]) -> None:
         # The ensemble-spread GRIB decodes to the same shortNames as the mean,
         # so the two sets of files are kept apart by name and mapped through
         # different tables (Model.canonical vs Model.canonical_spread).
@@ -226,6 +242,14 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         write_spread(writer, model, step, spread_paths, got)
         log.info("%s %s step %03d written", model.key, rid, step)
 
+    def on_step(step: int, paths: list[Path]) -> None:
+        write_step(step, paths)
+        # The write stack and its decoded arrays are gone before waiting, so a
+        # pressure pause does not pin the just-completed step in RAM. Gating
+        # the final step matters too: the point-cube build that follows is the
+        # most disk-intensive phase of the ingest.
+        wait_for_step_gate()
+
     fetcher = {"ecmwf": fetch.fetch_ecmwf, "nomads": fetch.fetch_gfs, "aws-aigfs": fetch.fetch_aigfs,
                "nomads-gefs": fetch.fetch_gefs, "datamart": fetch.fetch_gem,
                "hrdps": fetch.fetch_hrdps, "aws-hrrr": fetch.fetch_hrrr}[model.source]
@@ -239,10 +263,11 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         try:
             from wxgrid.prob import ingest_probability
             log.info("gefs %s probability: %s", rid, ingest_probability(rid, store_root))
+            wait_for_step_gate()
         except Exception:
             log.exception("gefs %s probability failed (run ships without it)", rid)
     try:
-        build_point_cube(model.key, rid, store_root)
+        build_point_cube(model.key, rid, store_root, step_gate=wait_for_step_gate)
     except Exception:
         log.exception("%s %s point cube failed (point reads fall back to the step layout)", model.key, rid)
     if not keep_grib:
@@ -483,7 +508,7 @@ def repair_cubes(model: Model, store_root: Path = STORE_DIR) -> list[str]:
         except Exception:                                        # noqa: BLE001
             continue
         try:
-            n = build_point_cube(model.key, rid, store_root)
+            n = build_point_cube(model.key, rid, store_root, step_gate=wait_for_step_gate)
             if n:
                 built.append(rid)
                 log.info("%s %s: point cube repaired, %d variables", model.key, rid, n)
