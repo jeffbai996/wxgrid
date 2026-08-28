@@ -1881,7 +1881,7 @@ def storms() -> dict:
                     log.info("nhc %s %s: %s", s.get("id"), kind, exc)
         jf, jm = _jtwc_storms()
         return {"type": "FeatureCollection", "features": feats + jf, "storms": meta + jm}
-    return cache.get("storms-v10", 900, fetch)
+    return cache.get("storms-v11", 900, fetch)   # v11: tracks unwrapped across the dateline
 
 
 # ── air quality / UV (Open-Meteo) ────────────────────────────────────────
