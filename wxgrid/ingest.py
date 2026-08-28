@@ -472,7 +472,10 @@ def repair_cubes(model: Model, store_root: Path = STORE_DIR) -> list[str]:
     Returns the run ids it built."""
     import zarr
     built = []
-    for rid in list_runs(model.key, store_root):
+    # Newest complete run only: it is the one every card reads, and a cube
+    # is half a run on disk — rebuilding one for every superseded run was
+    # 10 min and 3 GB apiece for runs nobody opens (2026-08-28).
+    for rid in list_runs(model.key, store_root)[:1]:
         try:
             g = zarr.open_group(run_path(model.key, rid, store_root), mode="r")
             if "pt" in g:

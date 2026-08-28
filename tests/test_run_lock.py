@@ -89,7 +89,8 @@ def test_the_lock_is_reentrant_so_the_ingest_can_build_its_own_cube(tmp_path):
     holder.kill(); holder.wait()
 
 
-def test_repair_cubes_builds_only_what_is_missing(tmp_path):
-    rid = _run(tmp_path)
-    assert ingest.repair_cubes(ingest.get_model("gfs"), tmp_path) == [rid]
+def test_repair_cubes_builds_only_the_newest_missing_cube(tmp_path):
+    _run(tmp_path, rid="2026-01-01T00")
+    rid = _run(tmp_path, rid="2026-01-01T06")
+    assert ingest.repair_cubes(ingest.get_model("gfs"), tmp_path) == [rid]   # newest only
     assert ingest.repair_cubes(ingest.get_model("gfs"), tmp_path) == []      # idempotent
