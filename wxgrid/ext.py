@@ -1723,7 +1723,7 @@ def _history_features(sid: str, name: str, year: int | None = None) -> list[dict
     fixes = storm_history(sid, year=year)[-40:]
     if len(fixes) < 2:
         return []
-    feats = [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[f["lon"], f["lat"]] for f in fixes]},
+    feats = [{"type": "Feature", "geometry": {"type": "LineString", "coordinates": _unwrap_lons([[f["lon"], f["lat"]] for f in fixes])},
               "properties": {"id": sid, "storm": name, "layer": "past"}}]
     for f in fixes:
         cat = storm_category(f["kt"], f["lat"], f["lon"])
@@ -1743,6 +1743,24 @@ def _history_features(sid: str, name: str, year: int | None = None) -> list[dict
 ATCF_ADECK = "https://ftp.nhc.noaa.gov/atcf/aid_public/a{sid}.dat.gz"
 ENS_TECHS = tuple(f"AP{n:02d}" for n in range(1, 31)) + ("AEMN",)
 ENS_MAX_TAU = 168          # 7 days; past that the members are noise with a line through them
+
+
+def _unwrap_lons(pts: list[list[float]]) -> list[list[float]]:
+    """Keep a track continuous across the dateline: a member stepping from
+    179.8°W to 179.9°E is a 0.3° move, and drawn as [-179.8, 179.9] it is a
+    359.7° line the long way round the planet (the rings across the whole
+    Pacific on 2026-08-28). Each point is shifted by ±360 to stay within
+    180° of the one before; MapLibre draws longitudes past ±180 in place."""
+    out = []
+    for lon, lat in pts:
+        if out:
+            prev = out[-1][0]
+            while lon - prev > 180:
+                lon -= 360
+            while lon - prev < -180:
+                lon += 360
+        out.append([round(lon, 2), lat])
+    return out
 
 
 def _parse_adeck_members(raw: bytes) -> dict[str, list[list[float]]]:
@@ -1776,7 +1794,7 @@ def _parse_adeck_members(raw: bytes) -> dict[str, list[list[float]]]:
         if tau > ENS_MAX_TAU:
             continue
         rows.setdefault(f[4], {}).setdefault(tau, [round(lon, 2), round(lat, 2)])
-    return {tech: [taus[t] for t in sorted(taus)] for tech, taus in rows.items() if len(taus) > 1}
+    return {tech: _unwrap_lons([taus[t] for t in sorted(taus)]) for tech, taus in rows.items() if len(taus) > 1}
 
 
 def storm_ensemble(sid: str) -> dict[str, list[list[float]]]:

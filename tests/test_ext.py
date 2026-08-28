@@ -772,3 +772,11 @@ def test_a_small_sea_does_not_claim_the_open_ocean_from_750_km_out():
     assert ext.nearest_water(48.6, -123.2, nodes) == "Salish Sea"
     assert ext.nearest_water(52.0, -150.0, nodes) == "Gulf of Alaska"           # a big gulf reaches
     assert ext.sea_reach_km("Some Bay Nobody Listed") == ext._SEA_REACH_DEFAULT_KM
+
+
+
+def test_storm_tracks_stay_continuous_across_the_dateline():
+    pts = [[-179.0, 37.0], [-179.8, 37.5], [179.9, 38.0], [179.2, 38.4], [-179.6, 39.0]]
+    out = ext._unwrap_lons(pts)
+    assert out == [[-179.0, 37.0], [-179.8, 37.5], [-180.1, 38.0], [-180.8, 38.4], [-179.6, 39.0]]
+    assert all(abs(b[0] - a[0]) < 180 for a, b in zip(out, out[1:]))
