@@ -712,12 +712,19 @@ def wind_json(u: np.ndarray, v: np.ndarray, factor: int = 4, decimals: int = 1,
         if wrap:
             mm = np.concatenate([mm, mm[:, :1]], axis=1)
     ny, nx = uu.shape
+
+    def _compact(a: np.ndarray) -> list:
+        # Round in float64, not float32: json.dumps prints a float32 0.1 as its
+        # exact float64 expansion (17 digits), which made this payload 2 MB.
+        a = np.nan_to_num(a.astype(np.float64))
+        return (np.round(a, decimals) if decimals else np.rint(a).astype(int)).ravel().tolist()
+
     payload = {
         "lat0": lat0, "lon0": lon0, "dlat": dlat * factor, "dlon": dlon * factor,
         "wrap": wrap,
         "ny": int(ny), "nx": int(nx),
-        "u": (np.round(np.nan_to_num(uu), decimals) if decimals else np.rint(np.nan_to_num(uu)).astype(int)).ravel().tolist(),
-        "v": (np.round(np.nan_to_num(vv), decimals) if decimals else np.rint(np.nan_to_num(vv)).astype(int)).ravel().tolist(),
+        "u": _compact(uu),
+        "v": _compact(vv),
     }
     if mm is not None:
         payload["mask"] = mm.astype(np.uint8).ravel().tolist()

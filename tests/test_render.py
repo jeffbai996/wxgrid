@@ -270,3 +270,19 @@ def test_missing_data_is_transparent_under_every_alpha_rule():
         field[0, 0] = 0.0
         a = np.asarray(Image.open(io.BytesIO(render.colorize(field, layer))).convert("RGBA"))[..., 3]
         assert a[1].max() == 0 and a[0, 1:].max() == 0, layer
+
+
+def test_wind_json_serialises_rounded_values_compactly():
+    # Slabs come out of zarr as float32. Rounding float32 to one decimal and
+    # handing it to json.dumps printed the float64 expansion of the float32
+    # value (-4.699999809265137), 17 digits per number: a 2 MB payload for
+    # 65k points. The wire format has to carry what was asked for: "-4.7".
+    import json
+    import re
+    u = np.full((16, 16), -4.7, dtype=np.float32)
+    v = np.full((16, 16), 12.34, dtype=np.float32)
+    text = render.wind_json(u, v, factor=4).decode()
+    d = json.loads(text)
+    assert d["u"][0] == -4.7 and d["v"][0] == 12.3
+    longest = max(re.findall(r"-?\d+\.\d+", text), key=len)
+    assert len(longest) <= 6, longest
