@@ -546,7 +546,10 @@
   // Europe, Africa and the Indian Ocean. Himawari has no keyless tile
   // service, so East Asia and the western Pacific stay a gap, and the badge
   // says so.
-  const SAT_LAYERS = [
+  // A function, not a table at module scope: WMS() is a const defined further
+  // down this file, and reading it here at load time threw (TDZ) and took the
+  // whole overlays module with it (2026-09-01).
+  const SAT_LAYERS = () => [
     ["sat-east", `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_GeoColor/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`, "Satellite: NASA GIBS / NOAA GOES", 7],
     ["sat-west", `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-West_ABI_GeoColor/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`, "Satellite: NASA GIBS / NOAA GOES", 7],
     ["sat-mtg", WMS("mtg_fd:rgb_geocolour", "https://view.eumetsat.int/geoserver/wms"), "Satellite: EUMETSAT Meteosat MTG", 8],
@@ -554,7 +557,7 @@
   ];
   function loadSat() {
     const bust = Math.floor(Date.now() / 6e5);            // a new tile URL every 10 min, so the latest frame wins the cache
-    for (const [id, url, attribution, maxzoom] of SAT_LAYERS) {
+    for (const [id, url, attribution, maxzoom] of SAT_LAYERS()) {
       if (M().getSource(id)) continue;
       M().addSource(id, { type: "raster", tileSize: 256, maxzoom, attribution, tiles: [`${url}${url.includes("?") ? "&" : "?"}t=${bust}`] });
       M().addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, "wx");
@@ -565,7 +568,7 @@
     if (M().getLayer("wx")) M().setPaintProperty("wx", "raster-opacity", Math.min(0.3, LAYER_ALPHA[state.layer]));
     badge("sat", `Satellite <b>GOES + Meteosat</b> <small>~1 h old · no Himawari: East Asia / W Pacific uncovered</small>`, "#9fb0c8");
   }
-  function clearSat() { SAT_LAYERS.forEach(([l]) => { if (M().getLayer(l)) M().removeLayer(l); if (M().getSource(l)) M().removeSource(l); }); badge("sat", null); WX.fn.applyStep(); }
+  function clearSat() { SAT_LAYERS().forEach(([l]) => { if (M().getLayer(l)) M().removeLayer(l); if (M().getSource(l)) M().removeSource(l); }); badge("sat", null); WX.fn.applyStep(); }
 
   // ── corner badges ─────────────────────────────────────────────────────
   // A keyed stack of small chips bottom-left, above the met-service badge:
