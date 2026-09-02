@@ -53,6 +53,16 @@ data on the model's own grid; the browser colours it on the GPU, mixes the two
 steps the scrubber sits between, and reads the cursor value out of the same
 bytes. Unit and level changes cost nothing on the wire.
 
+**Two models, one map.** Split the map and drag the divider: one model on the
+left, another on the right, same layer, same legend, same valid time, each
+resolved on its own run and step spacing. The probe reads whichever side the
+cursor is on. Permalinks carry the split.
+
+**Observations on the forecast.** The Stations overlay puts every METAR in
+view on the map: flight-category pins, temperature, wind with an arrow the way
+the air is going, and the decoded report on tap. The check on the forecast,
+where the forecast is.
+
 **Tap anywhere.** Hero conditions, a forecast strip to 16 days, the nearest
 station's actual METAR, air quality, warnings in force, a meteogram, then tabs
 for aloft winds, an airgram, a Skew-T, winter, outdoors, and every model side
@@ -81,9 +91,9 @@ containment and incident page, drawn over satellite hotspots.
 ![wildfires](docs/img/04-fires.jpg)
 
 **A real sounding.** Skew-T log-P with isotherms, adiabats, mixing-ratio lines,
-the parcel path, LCL and CAPE, with the nearest actual radiosonde ascent drawn
-over the model profile. The balloon gives you the moisture profile the model
-physically cannot.
+the parcel path, LCL and CAPE, a hodograph with the surface-to-500 hPa bulk
+shear, and the nearest actual radiosonde ascent drawn over the model profile.
+The balloon gives you the moisture profile the model physically cannot.
 
 **How much to believe it.** GEFS spread as a plume: median, band, and the
 honest note that the band is mean ± z·σ rather than the members themselves.
@@ -309,6 +319,7 @@ for a year.
 | `/api/fires/layer`, `/api/fires/near` | wildfire incidents, perimeters, hotspots |
 | `/api/sigmet/layer`, `/api/sigmet/point` | aviation hazard areas |
 | `/api/resorts`, `/api/resorts/all`, `/api/resorts/snow`, `/api/resorts/{id}`, `POST /api/resorts/rebuild` | ski resort catalog, snow colouring, details |
+| `/api/obs/layer` | METAR stations in a view (`s`, `w`, `n`, `e`) as GeoJSON; 204 when the view is too wide |
 | `/api/alerts/{layer,point,detail,ec}`, `/api/avy/{layer,point}`, `/api/storms`, `/api/tides`, `/api/obs`, `/api/station`, `/api/air`, `/api/geo`, `/api/geo/reverse` | external feeds |
 | `/api/health`, `/api/health/sources` | upstream reachability; liveness sweep results |
 | `/healthz` | process liveness |
@@ -384,6 +395,11 @@ when you switch, an altitude picker (surface, 1000…200 hPa), radar with its
 own timeline, place search, and a tap-anywhere, resizable point card. On a
 phone the card is a bottom sheet over the tape. Permalinks live in the URL
 hash. Fonts are DM Sans, Urbanist and Geist Mono (OFL).
+
+**Embedding.** `?embed=1` renders the map, legend and clock with none of the
+other chrome, for an iframe on another page; the settings drawer writes the
+snippet for the current view, and the wordmark in the frame opens the full app
+on the same view.
 
 Card panes: **Now** (hero, alerts, air quality, station obs, up to 16 daily
 cells, meteogram), **Aloft** (winds and temperatures per level, freezing level,
@@ -478,9 +494,8 @@ explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
 
 ## Roadmap
 
-- Model split-screen on the map.
-- A model-agreement layer: cross-model spread of temperature, precipitation and
-  wind at each valid time.
+- Swell decomposition from the ECMWF wave stream (wind waves, swell, peak
+  period).
 - WeatherNext 2 (DeepMind FGN ensemble) via BigQuery once the data-request
   form clears. AIFS-ENS member columns for true plumes.
 - ICON (needs icosahedral regrid weights), hourly GFS surface tier, GFS waves
@@ -491,6 +506,10 @@ explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
 
 Short version; the commit log is the long one.
 
+- **2026-09-01** — split-screen: two models side by side on one layer and
+  valid time. Station observations (METAR) as a map overlay. Embed mode and
+  the iframe snippet. Hodograph on the Skew-T. Test suite offline by default
+  with a socket guard and per-test timeout; orphaned GRIB scratch swept.
 - **2026-08-25** — the map draws the model field instead of a picture of it:
   `/api/field` ships 16-bit data, the browser colours it on the GPU, the
   timeline mixes the two steps it sits between. `/api/layer` stays as the
