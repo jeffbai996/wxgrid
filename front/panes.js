@@ -356,9 +356,19 @@
     if (gustChance != null && gustChance >= 20) normal.push(stat("Gale chance", gustChance, "%", "#ffb454", "", "Share of members with gusts over 50 km/h in the next 24 h"));
     if (s.sf6 && s.sf6[i] > 0.05) normal.push(stat("New snow", W().units.snow(s.sf6[i]).v, W().units.snowUnit, "#cfe8ff"));
     if (!sea && s.sd_cm && s.sd_cm[i] >= 0.5) normal.push(stat("Snow depth", W().units.snow(s.sd_cm[i]).v, W().units.snowUnit, "#9fd3ff"));
+    // 24 h totals and changes, from the step after this one to +24 h
+    const ahead = (arr) => { const out = []; for (let k = i + 1; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) if (arr[k] != null) out.push(arr[k]); return out; };
+    if (s.tp6) { const r24 = ahead(s.tp6).reduce((a, b) => a + b, 0); if (r24 >= 0.5) normal.push(stat("Rain 24 h", W().units.precip(r24).v, W().units.precipUnit, "#5aa9ff")); }
     if (s.tcc && s.tcc[i] != null) normal.push(stat("Cloud", (s.tcc[i] * 100).toFixed(0), "%", "#9fb0c8"));
-    if (s.d2m) normal.push(stat("Dew point", `${f(s.d2m[i], (v) => W().units.temp(v).v)}°`, "", "#6cd7c4",
-      s.t2m && s.t2m[i] != null && s.d2m[i] != null ? `<em>RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%</em>` : ""));
+    if (s.t2m && s.d2m && s.t2m[i] != null && s.d2m[i] != null) {
+      const rh = Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)));
+      normal.push(stat("Humidity", rh, "%", rh >= 90 ? "#7cc4ff" : rh <= 30 ? "#ffb454" : "#7fd8e8"));
+    }
+    { const uv = uvNow(d, i); if (uv && uv.uvi >= 1) normal.push(stat(uv.peak ? "UV peak" : "UV index", uv.uvi.toFixed(0), "", uv.uvi >= 8 ? "var(--bad)" : uv.uvi >= 6 ? "#ff8a3d" : uv.uvi >= 3 ? "#ffd166" : "#78d39a")); }
+    if (s.vis && s.vis[i] != null) normal.push(stat("Visibility", W().units.dist(s.vis[i] / 1000, s.vis[i] < 5000 ? 1 : 0).v, W().units.dist(1).unit, s.vis[i] > 9000 ? "#78d39a" : s.vis[i] > 3000 ? "#ffd166" : "var(--bad)"));
+    if (s.t2m && s.t2m[i] != null) { const k24 = d.steps.findIndex((h, k) => k > i && h >= d.steps[i] + 24); const t24 = k24 > 0 ? s.t2m[k24] : null;
+      if (t24 != null && Math.abs(t24 - s.t2m[i]) >= 1.5) { const dT = W().units.tempDelta(t24 - s.t2m[i]); normal.push(stat("24 h change", `${dT > 0 ? "+" : "−"}${Math.abs(dT).toFixed(0)}°`, "", dT > 0 ? "#ff8a3d" : "#6cb6ff")); } }
+    if (s.d2m) normal.push(stat("Dew point", `${f(s.d2m[i], (v) => W().units.temp(v).v)}°`, "", "#6cd7c4"));
     // Pressure with its direction: the number alone says nothing, the trend is
     // the whole reason a barometer is on the wall.
     if (s.msl) {
@@ -372,7 +382,7 @@
       if (win.length >= 4) {
         const mn = Math.min(...win), mx = Math.max(...win), span = Math.max(mx - mn, 60);
         const pts = win.map((v, k) => `${(k / (win.length - 1) * 44).toFixed(1)},${(11 - (v - mn) / span * 10).toFixed(1)}`).join(" ");
-        spark = `<svg class="pspark" viewBox="0 0 44 12" aria-hidden="true"><polyline points="${pts}"/></svg>`;
+        spark = `<svg class="pspark" viewBox="0 0 44 12" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}"/></svg>`;
       }
       normal.push(stat("Pressure", f(s.msl[i], (v) => W().units.press(v).v), W().units.pressUnit + trend, "#b7a6f0", spark));
     }
