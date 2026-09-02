@@ -55,7 +55,7 @@ def test_tape_has_equal_outer_gutters_and_owns_safe_area_padding():
     block = css.split("#timebar {", 1)[1].split("}", 1)[0]
     assert "left: 8px; right: 8px" in block
     assert "bottom: 8px" in block
-    assert "calc(6px + env(safe-area-inset-bottom))" in block
+    assert "calc(3px + env(safe-area-inset-bottom))" in block   # tightened 2026-09-02, slider sits on the edge
 
 
 def test_next_48_hour_blurb_vertical_space_is_compact():

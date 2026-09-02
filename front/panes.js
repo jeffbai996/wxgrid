@@ -341,10 +341,16 @@
       const peakG = gwin.length ? Math.max(...gwin) : null;
       // The dial: a thin ring, four cardinal ticks, one slim needle pointing
       // the way the air is going, nothing else.
+      // A labelled rose: N E S W at the rim, eight fine ticks between, one
+      // slim needle the colour of the wind pointing the way the air goes,
+      // a ghost tail behind it so the FROM side reads too.
       const dial = `<span class="wind-dial" style="--rot:${dir == null ? 0 : (dir + 180) % 360}deg" title="${dir == null ? "" : `from ${Math.round(dir)}°`}">
-        <svg viewBox="0 0 40 40" aria-hidden="true"><circle class="ring" cx="20" cy="20" r="17"/>
-        <path class="tick" d="M20 2.5v3M37.5 20h-3M20 37.5v-3M2.5 20h3"/>
-        <g class="needle"><path d="M20 5.5 L23.2 20 L20 23 L16.8 20 Z"/></g><circle class="hub" cx="20" cy="20" r="2"/></svg></span>`;
+        <svg viewBox="0 0 48 48" aria-hidden="true"><circle class="ring" cx="24" cy="24" r="21"/>
+        <g class="tick">${[45, 135, 225, 315].map((a) => `<path d="M24 4.5v2.5" transform="rotate(${a} 24 24)"/>`).join("")}</g>
+        <text class="card" x="24" y="10.2" text-anchor="middle">N</text><text class="card" x="41.2" y="26.6" text-anchor="middle">E</text>
+        <text class="card" x="24" y="43.2" text-anchor="middle">S</text><text class="card" x="6.8" y="26.6" text-anchor="middle">W</text>
+        <g class="needle"><path class="tail" d="M24 24 L22 34 L24 32.5 L26 34 Z"/><path class="head" d="M24 11 L27 24 L24 26.5 L21 24 Z"/></g>
+        <circle class="hub" cx="24" cy="24" r="1.8"/></svg></span>`;
       chips.push(`<span class="wind-readout" style="--wind-color:${windColor(w || 0)}">
         <span class="wind-main"><small>Wind</small><b>${f(w, (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b><em>${compass(dir)}${dir != null ? ` ${Math.round(dir)}°` : ""}${bf != null ? ` · ${BEAUFORT_NAME[bf]}` : ""}</em></span>
         ${dial}

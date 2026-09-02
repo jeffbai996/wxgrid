@@ -1329,7 +1329,9 @@
     };
     const setTapeHeight = (height, persist = false) => {
       const bounds = tapeBounds();
-      const maxH = innerWidth <= 820 ? Math.min(bounds.max, tapeContentMax()) : bounds.max;
+      // Never taller than the rows: a hand-stretched tape used to park dead
+      // panel between the table and the slider (Jeff 2026-09-02).
+      const maxH = Math.min(bounds.max, tapeContentMax());
       tapeHeight = clamp(Math.round(height), bounds.min, Math.max(bounds.min, maxH));
       tb.style.height = `${tapeHeight}px`; tb.classList.add("user-sized");
       tapeGrip.setAttribute("aria-valuemin", bounds.min); tapeGrip.setAttribute("aria-valuemax", bounds.max); tapeGrip.setAttribute("aria-valuenow", tapeHeight);
