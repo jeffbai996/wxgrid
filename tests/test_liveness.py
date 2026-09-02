@@ -183,11 +183,17 @@ def test_meteoalarm_assertion_requires_an_atom_feed():
 
 
 def test_bom_assertion_requires_a_nonempty_listing():
-    assert "3 active" in liveness._assert_bom(["a.cap.xml", "b.cap.xml", "c.cap.xml"])
+    assert "3 active" in liveness._assert_bom(["a.cap.xml", "b.cap.xml", "c.cap.xml", "IDQ10095.xml"])
     with pytest.raises(AssertionError):
         liveness._assert_bom([])
     with pytest.raises(AssertionError):
         liveness._assert_bom(None)
+
+
+def test_bom_quiet_day_with_no_cap_files_is_live_not_failed():
+    # A populated FWO directory with zero CAP-AU products is a lull, not rot.
+    msg = liveness._assert_bom(["IDQ10095.xml", "IDN10064.xml"])
+    assert msg.startswith("0 active") and "quiet" in msg
 
 
 def test_nhc_assertion_checks_activestorms_list():

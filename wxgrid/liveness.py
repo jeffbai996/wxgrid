@@ -315,13 +315,21 @@ def _call_bom() -> Any:
             ftp.quit()
         except Exception:
             ftp.close()
-    return [n for n in names if n.lower().endswith(".cap.xml")]
+    return list(names)
 
 
 def _assert_bom(names: Any) -> str:
+    """The FWO directory carries every BoM product, CAP-AU among them. A
+    listing with no entries at all means the directory (or the anonymous
+    login) is broken; zero CAP files inside a populated listing is a quiet
+    day, which does happen outside the storm season, and is reported as such
+    rather than failed (the header's "tighten first" note, honoured 2026-09)."""
     _require(isinstance(names, list), "FTP directory listing was not a list of names")
-    _require(len(names) > 0, "zero active CAP-AU products listed")
-    return f"{len(names)} active CAP-AU product(s)"
+    _require(len(names) > 0, "empty FTP directory listing")
+    cap = [n for n in names if str(n).lower().endswith(".cap.xml")]
+    if not cap:
+        return f"0 active CAP-AU products (quiet; {len(names)} other products listed)"
+    return f"{len(cap)} active CAP-AU product(s)"
 
 
 # ── alerts: Environment Canada GeoMet ──────────────────────────────────────
