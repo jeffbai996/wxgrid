@@ -251,8 +251,11 @@ regridded. That product has no 600 hPa and ships 300/400 hPa without
 temperature, so `gefs` stores seven levels. Its standard-deviation fields drive
 the Spread pane, labelled Gaussian from σ, not member traces.
 
-**IFS** also carries the ECMWF wave stream (significant height, mean direction,
-mean period) on 6 h steps. Older IFS runs can pick up waves with
+**IFS** also carries the ECMWF wave stream on 6 h steps: significant height,
+mean direction and period, peak period, and a swell height folded at ingest
+from the published 10–30 s period-band heights (root sum square). Wind sea is
+derived at request time as what is left of the total in quadrature. Open data
+publishes no wind-wave/swell split of its own; this is the honest substitute. Older IFS runs can pick up waves with
 `python -m wxgrid.ingest --model ifs --augment-waves`; a point cube can be
 rebuilt any time with `--point-cube`.
 
@@ -270,7 +273,7 @@ marked *direct*, whose tiles the browser fetches itself.
 | Feed | Provider | Coverage | Notes |
 |---|---|---|---|
 | Radar | ECCC GeoMet WMS (1 km, 6 min) · NOAA MRMS (~2 min) · RainViewer | Canada · CONUS · global | *direct* tiles; the source switches by map position; the server caches only frame lists |
-| Satellite | NASA GIBS GOES-East/West GeoColor | Americas | *direct* tiles, latest frame |
+| Satellite | NASA GIBS GOES-East/West GeoColor · EUMETView Meteosat MTG geocolour (0°) and IODC natural colour (45.5°E) | Americas, Pacific, Europe, Africa, Indian Ocean (no Himawari) | *direct* tiles, latest frame |
 | Aurora | NOAA SWPC OVATION + planetary Kp | global | rendered to a Mercator PNG |
 | Alerts | NWS · MeteoAlarm (Atom/CAP, EMMA_ID regions) · BoM (CAP-AU over anonymous FTP + AMOC districts) · Environment Canada ALERTS WMS (*direct*) | US · Europe · Australia · Canada | merged into one polygon layer and point lookup |
 | Tropical cyclones | NHC/CPHC (KMZ → GeoJSON), JTWC, ATCF a-decks | global | position, cone, forecast track, basin-correct category |
@@ -411,7 +414,8 @@ tides, marine), **Compare** (all models on the same valid times), **Spread**,
 
 Layers: wind, temperature, gusts, rain (6/24/72 h), new snow (6/24/72 h), snow
 depth, cloud, pressure, humidity (RH or dew point), CAPE, UV index, freezing
-level, waves (height or period), precipitation type, the aerosol set, and GEFS
+level, waves (height, swell, wind sea, mean and peak period, power),
+precipitation type, the aerosol set, and GEFS
 probabilities; plus isolines, wind barbs, cross-sections and a value probe
 under the cursor.
 
@@ -494,8 +498,6 @@ explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
 
 ## Roadmap
 
-- Swell decomposition from the ECMWF wave stream (wind waves, swell, peak
-  period).
 - WeatherNext 2 (DeepMind FGN ensemble) via BigQuery once the data-request
   form clears. AIFS-ENS member columns for true plumes.
 - ICON (needs icosahedral regrid weights), hourly GFS surface tier, GFS waves
@@ -508,8 +510,9 @@ Short version; the commit log is the long one.
 
 - **2026-09-01** — split-screen: two models side by side on one layer and
   valid time. Station observations (METAR) as a map overlay. Embed mode and
-  the iframe snippet. Hodograph on the Skew-T. Test suite offline by default
-  with a socket guard and per-test timeout; orphaned GRIB scratch swept.
+  the iframe snippet. Hodograph on the Skew-T. Meteosat discs in the satellite
+  overlay. Swell, wind sea and peak period wave layers. Test suite offline by
+  default with a socket guard and per-test timeout; orphaned GRIB scratch swept.
 - **2026-08-25** — the map draws the model field instead of a picture of it:
   `/api/field` ships 16-bit data, the browser colours it on the GPU, the
   timeline mixes the two steps it sits between. `/api/layer` stays as the
