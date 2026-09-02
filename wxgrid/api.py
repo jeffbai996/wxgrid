@@ -58,7 +58,7 @@ _CLOUD_BANDS = {"cloudlow": ("lcc", (1000, 925, 850)),
 _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72": ("sf6", 72)}
 # Layers that live only on LEVEL_EVERY steps (like the pressure levels).
 _SIX_HOURLY = ("frz", "waves", "wperiod", "prob_rain", "prob_gust", "vort500", "gh")
-_readers: dict[tuple[str, str], RunReader] = {}
+_readers: dict[tuple[str, str], tuple[float, RunReader]] = {}
 _pool = ThreadPoolExecutor(max_workers=8)
 _cache_locks: dict[str, threading.Lock] = {}
 _cache_locks_guard = threading.Lock()
