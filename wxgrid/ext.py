@@ -1499,7 +1499,12 @@ def storm_category(kt, lat, lon) -> dict:
             if kt >= lo:
                 return {"badge": badge, "label": label, "color": col}
         return {"badge": "TL", "label": "Tropical Low", "color": "#9fd0ff"}
-    if 40 <= lon < 100:                     # North Indian (IMD)
+    if 30 <= lon < 100:                     # North Indian (IMD): Arabian Sea/
+                                             # Gulf of Aden reach to ~30E off
+                                             # the Horn of Africa; the Red Sea
+                                             # itself never sees a cyclone, so
+                                             # nothing north of it is missed by
+                                             # cutting the band there.
         for lo, badge, label, col in ((120, "SuCS", "Super Cyclonic Storm", "#ff5b45"),
                                       (90, "ESCS", "Extremely Severe Cyclonic Storm", "#ff7a3d"),
                                       (64, "VSCS", "Very Severe Cyclonic Storm", "#ffa23c"),

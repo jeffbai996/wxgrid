@@ -431,6 +431,16 @@ def test_storm_category_labels_are_title_case():
         assert lab == " ".join(w if w == "·" else w.capitalize() for w in lab.split()), lab
 
 
+def test_storm_category_covers_the_western_arabian_sea():
+    # 38E, 12N (Gulf of Aden approach) is North Indian Ocean AoR (IMD/JTWC),
+    # not Atlantic. The band used to start at 40E, so this point fell
+    # through to Saffir-Simpson and got graded "Hurricane" instead of
+    # "Cyclonic Storm".
+    cat = ext.storm_category(50, 12, 38)
+    assert cat["label"] == "Severe Cyclonic Storm"
+    assert "Hurricane" not in cat["label"]
+
+
 _JTWC_RSS = """<rss><channel><item><title>Current Northwest Pacific/North Indian Ocean* Tropical Systems</title>
 <description><![CDATA[<p><b>Typhoon  17W (Saudel) Warning #18 </b><br>
 <b>Issued at 22/2100Z<b>
