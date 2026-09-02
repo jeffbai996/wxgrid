@@ -60,8 +60,12 @@ _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72":
 _SIX_HOURLY = ("frz", "waves", "wperiod", "prob_rain", "prob_gust", "vort500", "gh")
 _readers: dict[tuple[str, str], tuple[float, RunReader]] = {}
 _pool = ThreadPoolExecutor(max_workers=8)
-_cache_locks: dict[str, threading.Lock] = {}
-_cache_locks_guard = threading.Lock()
+# Striped, not per-key: a lock per distinct cache path lived for the life of
+# the process, and cache paths are per (model, run, step, layer, level,
+# format), so the dict grew with every frame ever requested. 256 stripes keep
+# the "one renderer per key" guarantee (two keys on one stripe merely queue).
+_CACHE_STRIPES = 256
+_cache_locks: tuple[threading.Lock, ...] = tuple(threading.Lock() for _ in range(_CACHE_STRIPES))
 # How many cold renders may run at once, across all keys. The per-key lock
 # stops the same image rendering twice; this stops six different images
 # rendering together — each is a global-grid upscale and encode, and a burst
@@ -77,9 +81,8 @@ def _cache_lock(path) -> threading.Lock:
     requested four times still did four global-grid renders and exhausted the
     worker's memory before any caller received the shared result.
     """
-    key = str(path)
-    with _cache_locks_guard:
-        return _cache_locks.setdefault(key, threading.Lock())
+    import zlib
+    return _cache_locks[zlib.crc32(str(path).encode()) % _CACHE_STRIPES]
 
 
 def _reader(model: str, run: str) -> RunReader:
