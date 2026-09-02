@@ -346,11 +346,10 @@
       // a ghost tail behind it so the FROM side reads too.
       const dial = `<span class="wind-dial" style="--rot:${dir == null ? 0 : (dir + 180) % 360}deg" title="${dir == null ? "" : `from ${Math.round(dir)}°`}">
         <svg viewBox="0 0 48 48" aria-hidden="true"><circle class="ring" cx="24" cy="24" r="21"/>
-        <g class="tick">${[45, 135, 225, 315].map((a) => `<path d="M24 4.5v2.5" transform="rotate(${a} 24 24)"/>`).join("")}</g>
         <text class="card" x="24" y="10.2" text-anchor="middle">N</text><text class="card" x="41.2" y="26.6" text-anchor="middle">E</text>
         <text class="card" x="24" y="43.2" text-anchor="middle">S</text><text class="card" x="6.8" y="26.6" text-anchor="middle">W</text>
-        <g class="needle"><path class="tail" d="M24 24 L22 34 L24 32.5 L26 34 Z"/><path class="head" d="M24 11 L27 24 L24 26.5 L21 24 Z"/></g>
-        <circle class="hub" cx="24" cy="24" r="1.8"/></svg></span>`;
+        <g class="needle"><path class="shaft" d="M24 24 V13"/><path class="head" d="M20.5 16.5 L24 12 L27.5 16.5"/></g>
+        <circle class="hub" cx="24" cy="24" r="1.6"/></svg></span>`;
       chips.push(`<span class="wind-readout" style="--wind-color:${windColor(w || 0)}">
         <span class="wind-main"><small>Wind</small><b>${f(w, (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b><em>${compass(dir)}${dir != null ? ` ${Math.round(dir)}°` : ""}${bf != null ? ` · ${BEAUFORT_NAME[bf]}` : ""}</em></span>
         ${dial}
