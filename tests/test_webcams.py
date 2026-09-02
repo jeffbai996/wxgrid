@@ -53,3 +53,39 @@ def test_near_point_shape():
     out = webcams.near_point(49.28, -123.12, 3, get_json=lambda *a, **k: [_dbc(1, -123.1, 49.3)],
                              cache_get=lambda k, t, fn: fn())
     assert out["cams"][0]["provider"] == "DriveBC" and "providers" in out
+
+
+def _windy(id_, lat, lon, **kw):
+    o = {"webcamId": id_, "title": f"Cam {id_}", "status": "active", "lastUpdatedOn": "2026-09-02T07:50:00.000Z",
+         "location": {"latitude": lat, "longitude": lon, "city": "Whistler", "region": "British Columbia", "country": "Canada"},
+         "images": {"current": {"preview": f"https://images-webcams.windy.com/{id_}/preview.jpg", "thumbnail": "x"}},
+         "urls": {"detail": f"https://windy.com/webcams/{id_}"}}
+    o.update(kw); return o
+
+
+def test_windy_parser_reads_v3_records_and_skips_inactive_or_imageless():
+    cams = webcams.parse_windy({"total": 3, "webcams": [_windy(1, 50.11, -122.95), _windy(2, 50.1, -122.9, status="inactive"),
+                                                        _windy(3, 50.1, -122.9, images={"current": {}})]})
+    assert [c.id for c in cams] == ["windy:1"]
+    assert cams[0].image.endswith("/1/preview.jpg") and cams[0].page == "https://windy.com/webcams/1"
+    assert cams[0].caption == "Whistler, British Columbia, Canada" and cams[0].provider == "Windy"
+
+
+def test_windy_is_queried_per_point_with_the_key_in_a_header_and_merged_by_distance(monkeypatch):
+    seen = {}
+    def get_json(url, params, timeout, headers=None):
+        if "windy" in url:
+            seen.update(params=params, headers=headers)
+            return {"webcams": [_windy(9, 49.31, -123.10)]}
+        return [_dbc(1, -123.0, 49.9)]
+    out = webcams.near_point(49.28, -123.12, 4, get_json=get_json, cache_get=lambda k, t, fn: fn(), windy="k3y")
+    assert seen["headers"] == {"X-WINDY-API-KEY": "k3y"} and seen["params"]["nearby"].startswith("49.280,-123.120,")
+    assert [c["id"] for c in out["cams"]] == ["windy:9", "drivebc:1"]           # nearer first, providers mixed
+    assert out["providers"] == ["drivebc", "windy"]
+
+
+def test_without_a_key_windy_is_not_called(monkeypatch):
+    monkeypatch.delenv(webcams.WINDY_ENV, raising=False)
+    calls = []
+    out = webcams.near_point(49.28, -123.12, 4, get_json=lambda url, *a, **k: calls.append(url) or [], cache_get=lambda k, t, fn: fn())
+    assert all("windy" not in u for u in calls) and out["providers"] == ["drivebc"]

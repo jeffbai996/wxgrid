@@ -138,6 +138,65 @@ def catalogue(*, get_json: Callable[..., Any], cache_get: Callable[..., Any]) ->
     return cams
 
 
-def near_point(lat: float, lon: float, n: int, *, get_json: Callable[..., Any], cache_get: Callable[..., Any]) -> dict:
-    cams = nearest(catalogue(get_json=get_json, cache_get=cache_get), lat, lon, n=n)
-    return {"cams": cams, "providers": [p[0] for p in PROVIDERS]}
+# ── Windy Webcams (keyed) ──────────────────────────────────────────────────
+# The one worldwide feed: mountain, beach and town cams contributed to
+# windy.com. Free tier: key in a header, image URLs good for ~15 minutes, and
+# the card links back to windy.com as the terms ask. Queried per point (the
+# catalogue is not downloadable), so it is cached per 0.1° cell for 10 min.
+WINDY_URL = "https://api.windy.com/webcams/api/v3/webcams"
+WINDY_ENV = "WXGRID_WINDY_WEBCAMS_KEY"
+WINDY_TTL_S = 10 * 60
+WINDY_RADIUS_KM = 80
+
+
+def windy_key() -> str | None:
+    import os
+    return os.environ.get(WINDY_ENV, "").strip() or None
+
+
+def parse_windy(payload: Any) -> list[Cam]:
+    out: list[Cam] = []
+    for o in (payload or {}).get("webcams") or []:
+        if not isinstance(o, dict) or o.get("status") not in (None, "active"):
+            continue
+        loc = o.get("location") or {}
+        lat, lon = _num(loc.get("latitude")), _num(loc.get("longitude"))
+        img = ((o.get("images") or {}).get("current") or {}).get("preview") or ""
+        if lat is None or lon is None or not img:
+            continue
+        cid = str(o.get("webcamId") or o.get("id") or img)
+        where = ", ".join(x for x in (loc.get("city"), loc.get("region"), loc.get("country")) if x)
+        out.append(Cam(
+            id=f"windy:{cid}", provider="Windy", name=str(o.get("title") or f"Webcam {cid}"), lat=lat, lon=lon,
+            image=str(img), page=str(((o.get("urls") or {}).get("detail")) or f"https://windy.com/webcams/{cid}"),
+            credit="Windy.com Webcams", caption=where, updated=o.get("lastUpdatedOn"),
+        ))
+    return out
+
+
+def windy_near(lat: float, lon: float, n: int, *, key: str, get_json: Callable[..., Any], cache_get: Callable[..., Any]) -> list[Cam]:
+    cell = f"{round(lat, 1)}:{round(lon, 1)}"
+
+    def fetch():
+        try:
+            return [asdict(c) for c in parse_windy(get_json(
+                # no distance sort on the free tier (sortKey allows popularity/createdOn only); nearest() sorts
+                WINDY_URL, {"nearby": f"{lat:.3f},{lon:.3f},{WINDY_RADIUS_KM}", "limit": max(n * 3, 12),
+                            "include": "images,location,urls"},
+                timeout=20, headers={"X-WINDY-API-KEY": key}))]
+        except Exception as exc:
+            log.warning("windy webcams failed: %s", exc)
+            return []
+    rows = cache_get(f"webcams:windy:{cell}", WINDY_TTL_S, fetch) or []
+    return [Cam(**r) for r in rows]
+
+
+def near_point(lat: float, lon: float, n: int, *, get_json: Callable[..., Any], cache_get: Callable[..., Any],
+               windy: str | None = None) -> dict:
+    cams = list(catalogue(get_json=get_json, cache_get=cache_get))
+    providers = [p[0] for p in PROVIDERS]
+    key = windy if windy is not None else windy_key()
+    if key:
+        cams.extend(windy_near(lat, lon, n, key=key, get_json=get_json, cache_get=cache_get))
+        providers.append("windy")
+    return {"cams": nearest(cams, lat, lon, n=n), "providers": providers}

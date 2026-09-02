@@ -121,9 +121,9 @@ def _mark(url: str, ok: bool, error: str = "") -> None:
         h["error"] = error[:120]
 
 
-def _get_json(url: str, params: dict | None = None, timeout: int = 20) -> Any:
+def _get_json(url: str, params: dict | None = None, timeout: int = 20, headers: dict | None = None) -> Any:
     try:
-        r = _session.get(url, params=params, timeout=timeout)
+        r = _session.get(url, params=params, timeout=timeout, headers=headers)
         r.raise_for_status()
     except Exception as exc:
         _mark(url, False, str(exc))

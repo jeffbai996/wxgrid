@@ -297,6 +297,7 @@ marked *direct*, whose tiles the browser fetches itself.
 | Earthquakes | USGS (M2.5+, past day) | global | *direct* GeoJSON feed |
 | Places | Nominatim search and reverse (1 req/s honoured) · Open-Meteo elevation | global | |
 | Ski resorts | OpenStreetMap via Overpass, DEM for base/summit | global | catalog, lifts, boundary; pins coloured by 72 h forecast snowfall when a snow layer is showing |
+| Webcams | DriveBC (OGL-BC) · Windy Webcams API (keyed, optional) | BC highways · worldwide | nearest cams on the point card; Windy needs `WXGRID_WINDY_WEBCAMS_KEY` and links back to windy.com |
 
 Attribution requirements are honoured in the interface: MeteoAlarm content is
 redistributed per meteoalarm.org terms, BoM products are © Commonwealth of
@@ -332,6 +333,7 @@ for a year.
 | `/api/fires/layer`, `/api/fires/near` | wildfire incidents, perimeters, hotspots |
 | `/api/sigmet/layer`, `/api/sigmet/point` | aviation hazard areas |
 | `/api/resorts`, `/api/resorts/all`, `/api/resorts/snow`, `/api/resorts/{id}`, `POST /api/resorts/rebuild` | ski resort catalog, snow colouring, details |
+| `/api/webcams` | nearest public webcams to a point (`lat`, `lon`, `n`) with distance and bearing |
 | `/api/obs/layer` | METAR stations in a view (`s`, `w`, `n`, `e`) as GeoJSON; 204 when the view is too wide |
 | `/api/alerts/{layer,point,detail,ec}`, `/api/avy/{layer,point}`, `/api/storms`, `/api/tides`, `/api/obs`, `/api/station`, `/api/air`, `/api/geo`, `/api/geo/reverse` | external feeds |
 | `/api/health`, `/api/health/sources` | upstream reachability; liveness sweep results |
@@ -396,6 +398,7 @@ Everything is an environment variable with a working default.
 | `WXGRID_PUBLIC` | unset | `1` hides `front/private/` |
 | `WXGRID_WRITE_MBPS` | `60` | ingest write pacing |
 | `WXGRID_DOWNLOAD_MBPS` | `20` | ingest download pacing |
+| `WXGRID_WINDY_WEBCAMS_KEY` | unset | Windy Webcams API key; unset = DriveBC cams only |
 | `WXGRID_WN2_ZARR` | unset | WeatherNext 2 Zarr URL (`gs://…` or a local path); unset = model not ingested |
 | `WXGRID_STEP_GATE_COMMAND` | unset | optional host-pressure gate run between ingest steps; non-zero exit aborts the pass, completed downloads stay reusable |
 
