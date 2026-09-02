@@ -778,6 +778,91 @@
       toast(`${gj.features.length} quakes M2.5+, 24 h · USGS`, 4000);
     } catch (e) { toast("USGS feed unavailable", 4000, "error"); }
   }
+  // ── observed: METAR stations across the view ──────────────────────────
+  // Observations on a forecast map are the check on the forecast. Pins are
+  // coloured by flight category (the aviation shorthand for "how bad is the
+  // weather right now"), carry the temperature, and point an arrow the way
+  // the wind is blowing; the card shows the decoded report and the raw line.
+  let obsReq = 0, obsPopup = null, obsBox = "";
+  const FLTCAT = { VFR: "#3ecf6a", MVFR: "#4a9eff", IFR: "#ff5e5e", LIFR: "#d95eff" };
+  const OBS_MINZOOM = 4.5;
+  function obsWanted() { return state.obs && M().getZoom() >= OBS_MINZOOM; }
+  async function loadObs(force) {
+    if (!state.obs) return;
+    if (!obsWanted()) { if (!force) return; }
+    const b = M().getBounds();
+    const q = `s=${b.getSouth().toFixed(2)}&w=${Math.max(-180, b.getWest()).toFixed(2)}&n=${b.getNorth().toFixed(2)}&e=${Math.min(180, b.getEast()).toFixed(2)}`;
+    if (q === obsBox && M().getSource("obs")) return;
+    const my = ++obsReq;
+    try {
+      const res = await fetch(U(`${API}/obs/layer?${q}`));
+      if (my !== obsReq || !state.obs) return;
+      if (res.status === 204) { toast("Zoom in for station observations", 3000); return; }
+      const gj = await res.json();
+      obsBox = q;
+      for (const f of gj.features) {
+        const p = f.properties;
+        p.tempTxt = p.temp_c == null ? "" : `${WX.units.tempC(p.temp_c).v}°`;
+        p.windTxt = p.wspd_kt == null ? "" : `${Math.round(speed(p.wspd_kt / 1.943844))}${p.wgst_kt ? `g${Math.round(speed(p.wgst_kt / 1.943844))}` : ""}`;
+        p.colour = FLTCAT[p.fltcat] || "#c9d1dc";
+        p.hasWind = p.wdir != null && p.wspd_kt > 0 ? 1 : 0;
+      }
+      if (M().getSource("obs")) M().getSource("obs").setData(gj);
+      else {
+        M().addSource("obs", { type: "geojson", data: gj });
+        // The wind arrow is an SDF sprite (recolourable per station), not a
+        // text glyph: the basemap's glyph ranges do not carry arrow symbols.
+        // It points the way the air is going, so its tail sits on the station
+        // and its head leads downwind — the reported direction is FROM.
+        if (!M().hasImage("wx-obs-arrow")) await addObsArrow();
+        M().addLayer({ id: "obs-arrow", type: "symbol", source: "obs", minzoom: OBS_MINZOOM, filter: ["==", ["get", "hasWind"], 1],
+          layout: { "icon-image": "wx-obs-arrow", "icon-size": ["interpolate", ["linear"], ["coalesce", ["get", "wspd_kt"], 0], 0, 0.6, 15, 0.9, 40, 1.25],
+                    "icon-rotate": ["+", ["get", "wdir"], 180], "icon-rotation-alignment": "map", "icon-anchor": "bottom", "icon-allow-overlap": true, "icon-ignore-placement": true },
+          paint: { "icon-color": ["get", "colour"], "icon-opacity": 0.9, "icon-halo-color": "#000", "icon-halo-width": 1 } });
+        M().addLayer({ id: "obs", type: "circle", source: "obs", minzoom: OBS_MINZOOM,
+          paint: { "circle-radius": 4.2, "circle-color": ["get", "colour"], "circle-stroke-color": "#000", "circle-stroke-width": 1.2, "circle-opacity": 0.95 } });
+        M().addLayer({ id: "obs-label", type: "symbol", source: "obs", minzoom: OBS_MINZOOM,
+          layout: { "text-field": ["concat", ["get", "tempTxt"], ["case", ["==", ["get", "windTxt"], ""], "", ["concat", "  ", ["get", "windTxt"]]]],
+                    "text-size": 11, "text-anchor": "left", "text-offset": [0.9, 0], "text-font": ["Noto Sans Bold"], "text-optional": true },
+          paint: { "text-color": "#fff", "text-halo-color": "rgba(0,0,0,.85)", "text-halo-width": 1.3 } });
+        M().on("click", "obs", (e) => {
+          const f = e.features[0], p = f.properties;
+          const when = p.time ? Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(p.time) ? p.time : p.time.replace(" ", "T") + "Z") : NaN;
+          const ago = Number.isFinite(when) ? (ms => ms < 90e3 ? "just now" : ms < 3600e3 ? `${Math.round(ms / 60e3)} min ago` : `${(ms / 3600e3).toFixed(1)} h ago`)(Date.now() - when) : "";
+          if (obsPopup) obsPopup.remove();
+          const wind = p.wspd_kt == null ? "—" : p.wdir == null ? `variable ${Math.round(speed(p.wspd_kt / 1.943844))} ${speedUnit()}` : `${Math.round(p.wdir)}° ${Math.round(speed(p.wspd_kt / 1.943844))}${p.wgst_kt ? ` gusting ${Math.round(speed(p.wgst_kt / 1.943844))}` : ""} ${speedUnit()}`;
+          obsPopup = mapCard(f.geometry.coordinates, "obs-pop", {
+            icon: "", color: p.colour, title: p.id, titleColor: p.colour, pill: p.fltcat || "obs", sub: p.name || "", ago,
+            hero: [p.temp_c != null && p.temp_c !== "null" && { k: "Temp", v: WX.units.tempC(Number(p.temp_c)).v, unit: WX.units.tempUnit },
+                   p.dewpoint_c != null && p.dewpoint_c !== "null" && { k: "Dew pt", v: WX.units.tempC(Number(p.dewpoint_c)).v, unit: WX.units.tempUnit },
+                   p.ceiling_ft != null && { k: "Ceiling", v: Math.round(Number(p.ceiling_ft)), unit: "ft" }],
+            rows: [["Wind", wind], ["Visibility", p.visib != null && p.visib !== "null" ? `${p.visib} SM` : "—"], ["Pressure", p.altim_hpa != null && p.altim_hpa !== "null" ? `${Number(p.altim_hpa).toFixed(1)} hPa` : "—"],
+                   p.wx && p.wx !== "null" ? ["Weather", p.wx] : null, ["METAR", p.raw || "—"]].filter(Boolean),
+            maxWidth: "340px" });
+        });
+        M().on("mouseenter", "obs", () => { M().getCanvas().style.cursor = "pointer"; });
+        M().on("mouseleave", "obs", () => { M().getCanvas().style.cursor = ""; });
+      }
+      if (force) toast(`${gj.features.length} stations reporting · aviationweather.gov`, 3500);
+    } catch (e) { if (force) toast("Station observations unavailable", 4000, "error"); }
+  }
+  function addObsArrow() {
+    return new Promise((resolve) => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="40" viewBox="0 0 24 40"><path d="M12 2 L21 16 L15 16 L15 38 L9 38 L9 16 L3 16 Z" fill="#fff"/></svg>`;
+      const img = new Image(24, 40);
+      img.onload = () => { try { if (!M().hasImage("wx-obs-arrow")) M().addImage("wx-obs-arrow", img, { sdf: true }); } catch (e) { /* raced another load */ } resolve(); };
+      img.onerror = () => resolve();
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    });
+  }
+  function refreshObs() { if (state.obs) loadObs(false); }
+  function clearObs() {
+    obsBox = "";
+    if (obsPopup) { obsPopup.remove(); obsPopup = null; }
+    for (const id of ["obs-label", "obs-arrow", "obs"]) if (M().getLayer(id)) M().removeLayer(id);
+    if (M().getSource("obs")) M().removeSource("obs");
+  }
+
   // ── aerosol optical depth: MODIS Terra+Aqua combined, yesterday (NASA GIBS)
   function loadAod() {
     if (M().getSource("aod")) return;
@@ -832,6 +917,6 @@
 
   function clearQuakes() { if (M().getLayer("quakes")) M().removeLayer("quakes"); if (M().getSource("quakes")) M().removeSource("quakes"); }
 
-  WX.ov = { loadImagery, clearImagery, setBase, loadTerrain, clearTerrain, updateNight, clearNight, loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
+  WX.ov = { loadObs, clearObs, refreshObs, loadImagery, clearImagery, setBase, loadTerrain, clearTerrain, updateNight, clearNight, loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
              loadRadar, clearRadar, refreshRadarSource, badge };
 })();

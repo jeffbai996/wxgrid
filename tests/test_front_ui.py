@@ -160,9 +160,11 @@ def test_the_field_layer_holds_the_last_frame_while_the_next_loads():
     # for the length of a request would be the one place the new path is
     # worse than the one it replaces.
     field = _read("field.js")
-    assert "let pending = null;" in field
-    assert "if (!pending || !pending.a || !pending.a.img) return;" in field
-    assert "if (pending && (e === pending.a || e === pending.b)) continue;" in field
+    # one pending slot per side of the split, each committed only once it has pixels
+    assert "const S0 = { shown, pending: null, serial: 0 };" in field
+    assert "if (!S.pending || !S.pending.a || !S.pending.a.img) return;" in field
+    assert "if (S0.pending && (e === S0.pending.a || e === S0.pending.b)) continue;" in field
+    assert "if (S1.pending && (e === S1.pending.a || e === S1.pending.b)) continue;" in field
 
 
 def test_the_outdoors_tide_card_draws_the_curve_and_the_hero_stays_lean():
@@ -298,3 +300,35 @@ def test_aloft_readings_are_cards_and_legend_ticks_are_urbanist():
 def test_the_storm_list_is_fetched_once_per_card():
     panes = _read("panes.js")
     assert "let stormMemo = { t: 0, p: null };" in panes and "storms().then((gj) =>" in panes
+
+
+def test_split_screen_draws_two_models_through_one_field_layer():
+    # Split-screen (2026-09-01): the right-hand model is a second side of the
+    # SAME custom layer, scissored at the divider, so both halves share the
+    # LUT, the valid time and the legend. It is never a second map.
+    field = _read("field.js")
+    app = _read("app.js")
+    html = _read("index.html")
+    css = _read("styles.css")
+    assert "function setSplit(x)" in field
+    assert "gl.enable(gl.SCISSOR_TEST)" in field and "gl.scissor(0, 0, xs, H)" in field
+    assert "function show(spec, side = 0)" in field
+    # the probe reads whichever side the cursor is on, without app.js knowing
+    assert "function sideOf(lng, lat)" in field
+    # the right side is resolved by VALID TIME on its own run and step spacing
+    assert "function fieldSpecFor(key)" in app
+    assert "WX.field.show(spec, 1)" in app
+    # particles stay with the left model: the canvas is clipped, not redrawn
+    assert "pc.style.clipPath = `inset(0 ${((1 - x) * 100).toFixed(2)}% 0 0)`" in app
+    # the split survives a permalink
+    assert ";v${state.vs}@${Math.round(state.splitX * 100)}" in app
+    assert 'id="split-bar"' in html and 'id="vs"' in html
+    assert "#split-bar .lab.l { right: 10px; }" in css
+
+
+def test_split_screen_is_a_gpu_path_feature_only():
+    # The raster fallback draws one image source; it cannot split. The control
+    # hides itself rather than offering a button that does nothing.
+    app = _read("app.js")
+    assert "vsBtn.hidden = !fieldLive()" in app
+    assert "const splitOn = () => !!(state.vs && fieldLive())" in app

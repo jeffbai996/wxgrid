@@ -26,7 +26,9 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
 <body>
 <div id="map"></div>
 <canvas id="particles"></canvas>
+<div id="split-bar" hidden aria-label="Split divider: drag to compare"><span class="lab l"></span><i class="grip" aria-hidden="true"></i><span class="lab r"></span></div>
 <div id="centre-mark" aria-hidden="true" title=""></div>
+<a id="embed-brand" href="./" target="_blank" rel="noopener" title="Open in wxgrid"><img src="logo.svg" alt="" width="18" height="18"><span>wxgrid</span></a>
 
 <header id="topbar">
   <a class="brand" href="./" title="wxgrid"><img src="logo.svg" alt="" width="26" height="26"><span>wxgrid</span></a>
@@ -35,6 +37,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
   </form>
   <span class="rowbreak" aria-hidden="true"></span>
   <div class="seg" id="models" role="tablist" aria-label="Model"></div>
+  <button id="vs" class="chip vs" hidden aria-pressed="false" title="Split the map: this model on the left, a second on the right, same layer and time">split</button>
   <select id="run" class="run" title="Model run (UTC)"></select>
   <button id="tuck" class="chip iconbtn tuck" hidden title="Tuck the controls away" aria-label="Tuck the controls away"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
   <button id="tucked" class="chip tucked" hidden title="Show the controls"></button>
@@ -65,6 +68,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
       <button id="aurora-toggle" class="row chip" title="Aurora nowcast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c0-6 2-12 5-12s2 6 4 6 2-6 4-6 3 6 3 12"/><path d="M2 20h20"/></svg><span>Aurora</span><i class="sw"></i></button>
       <button id="lightning-toggle" class="row chip" title="Lightning observations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg><span>Lightning</span><i class="sw"></i></button>
       <button id="aq-toggle" class="row chip" title="Aerosols: PM2.5, PM10, dust"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h13a3 3 0 1 0-3-3"/><path d="M3 13h16a3 3 0 1 1-3 3"/><path d="M3 18h9"/></svg><span>Air quality</span><i class="sw"></i></button>
+      <button id="obs-toggle" class="row chip" title="Station observations (METAR): wind, temperature, flight category"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><path d="m16.5 7.5-2 2M7.5 16.5l2-2"/></svg><span>Stations</span><i class="sw"></i></button>
       <button id="quakes-toggle" class="row chip" title="Earthquakes M2.5+, past day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h3l3-8 4 16 3-10 2 4h5"/></svg><span>Quakes</span><i class="sw"></i></button>
       <button id="aod-toggle" class="row chip" title="Aerosol optical depth, yesterday"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="8" r="2.5"/><circle cx="16" cy="6" r="2"/><circle cx="12" cy="14" r="3"/><circle cx="18" cy="16" r="2"/><circle cx="6" cy="17" r="2"/></svg><span>Aerosol</span><i class="sw"></i></button>
       <button id="thunder-toggle" class="row chip warn" title="Thunderstorm marks (CAPE + rain)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg><span>Thunder</span><i class="sw"></i></button>
