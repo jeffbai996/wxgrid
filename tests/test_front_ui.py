@@ -337,10 +337,8 @@ def test_split_screen_is_a_gpu_path_feature_only():
 def test_overlays_module_does_not_read_consts_before_they_exist():
     # 2026-09-01: a satellite table at module scope called WMS(), a const
     # declared later in the file; the TDZ throw killed WX.ov for every user.
+    # The table is a function now, evaluated when the overlay is switched on.
     ov = _read("overlays.js")
-    body_before_wms = ov.split("const WMS = ", 1)[0]
-    for line in body_before_wms.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("//") or "function " in stripped or "=> " in stripped:
-            continue
-        assert "WMS(" not in stripped, line
+    assert "const SAT_LAYERS = () => [" in ov
+    assert "const SAT_LAYERS = [" not in ov
+    assert "of SAT_LAYERS()" in ov and "SAT_LAYERS().forEach" in ov
