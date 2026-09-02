@@ -17,7 +17,9 @@
 //   WX.field.enable(catalog)          decide once whether this path is live
 //   WX.field.live                     true when the GPU path is drawing
 //   WX.field.layer                    the CustomLayerInterface to add as "wx-field"
-//   WX.field.show(spec)               what to draw: {a, b, t, layer, level, model}
+//   WX.field.show(spec, side = 0)     what to draw: {a, b, t, layer, level, model};
+//                                     side 1 is the right-hand model of a split
+//   WX.field.setSplit(x | null)       divider as a fraction of the map width; null = no split
 //   WX.field.prefetch(url)            warm the cache for a neighbouring step
 //   WX.field.sample(lng, lat)         {v, valid} at a point, as drawn
 //   WX.field.ready()                  true once there are pixels on screen
@@ -50,8 +52,9 @@
     const entries = [...cache.values()].filter((e) => e.img).sort((a, b) => a.used - b.used);
     while (cacheBytes > CACHE_BYTES && entries.length > 2) {
       const e = entries.shift();
-      if (e === shown.a || e === shown.b) continue;
-      if (pending && (e === pending.a || e === pending.b)) continue;
+      if (e === shown.a || e === shown.b || e === shown2.a || e === shown2.b) continue;
+      if (S0.pending && (e === S0.pending.a || e === S0.pending.b)) continue;
+      if (S1.pending && (e === S1.pending.a || e === S1.pending.b)) continue;
       cache.delete(e.url);
       cacheBytes -= e.bytes;
       if (e.tex && gl) gl.deleteTexture(e.tex);
@@ -106,7 +109,20 @@
   }
 
   // ── what is on screen ──────────────────────────────────────────────────
-  const shown = { a: null, b: null, t: 0, layer: "", level: 0, model: null, snap: false, cells: false, ramp: null, rule: null, enc: null };
+  const blank = () => ({ a: null, b: null, t: 0, layer: "", level: 0, model: null, snap: false, cells: false, ramp: null, rule: null, enc: null });
+  const shown = blank();            // the map's model (side 0)
+  const shown2 = blank();           // the right-hand model when the map is split (side 1)
+  // Split-screen: two models, one layer, one valid time, one legend. The
+  // divider is a fraction of the map width; left of it draws `shown`, right
+  // of it `shown2`, by scissoring the same custom layer twice. null = whole
+  // map is side 0.
+  let split = null;
+  // What has been asked for but has no pixels yet, per side. The map keeps
+  // drawing the last complete frame until it does: a step change that
+  // blanked the map for the length of a request would be a worse map than
+  // the one this replaces.
+  const S0 = { shown, pending: null, serial: 0 };
+  const S1 = { shown: shown2, pending: null, serial: 0 };
   let catalog = null;
   let live = false;
   let gaveUp = false;
@@ -199,17 +215,30 @@
   }
   // The display-unit value at a point, mixed between the two steps exactly
   // as the shader mixes them; null off the grid or where there is no data.
-  function sample(lng, lat) {
-    if (!live || !shown.a || !shown.enc) return null;
-    const A = sampleEntry(shown.a, lng, lat, shown);
+  function sampleSide(S, lng, lat) {
+    if (!S.a || !S.enc) return null;
+    const A = sampleEntry(S.a, lng, lat, S);
     if (!A) return null;
-    const B = shown.b && shown.t > 0 && !shown.snap ? sampleEntry(shown.b, lng, lat, shown) : null;
-    const dec = (q) => shown.enc.lo + q * (shown.enc.hi - shown.enc.lo);
+    const B = S.b && S.t > 0 && !S.snap ? sampleEntry(S.b, lng, lat, S) : null;
+    const dec = (q) => S.enc.lo + q * (S.enc.hi - S.enc.lo);
     if (!A.valid && !(B && B.valid)) return { v: null, valid: false };
     let q;
-    if (B && B.valid && A.valid) q = A.q + (B.q - A.q) * shown.t;
+    if (B && B.valid && A.valid) q = A.q + (B.q - A.q) * S.t;
     else q = A.valid ? A.q : B.q;
     return { v: dec(q), valid: true };
+  }
+  // Which side of the divider a geographic point falls on, in screen space.
+  function sideOf(lng, lat) {
+    if (split == null || !shown2.a || !WX.map) return 0;
+    try {
+      const w = WX.map.getContainer().clientWidth || 1;
+      return WX.map.project([lng, lat]).x / w >= split ? 1 : 0;
+    } catch (e) { return 0; }
+  }
+  function sample(lng, lat, side) {
+    if (!live) return null;
+    const S = (side == null ? sideOf(lng, lat) : side) === 1 ? shown2 : shown;
+    return sampleSide(S, lng, lat);
   }
 
   // ── the custom layer ───────────────────────────────────────────────────
@@ -418,15 +447,22 @@ void main() {
   const layer = {
     id: "wx-field", type: "custom", renderingMode: "2d",
     onAdd(map, gl) {
-      this.map = map; this.gl = gl; this.programs = {}; this.mesh = null; this.lut = null; this.lutKey = "";
+      this.map = map; this.gl = gl; this.programs = {}; this.meshes = {}; this.lut = null; this.lutKey = "";
       this.gl2 = typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext;
     },
     onRemove(map, gl) {
       for (const p of Object.values(this.programs || {})) gl.deleteProgram(p.program);
-      if (this.mesh) { gl.deleteBuffer(this.mesh.vb); gl.deleteBuffer(this.mesh.ib); }
+      for (const m of Object.values(this.meshes || {})) { gl.deleteBuffer(m.vb); gl.deleteBuffer(m.ib); }
       if (this.lut) gl.deleteTexture(this.lut);
       for (const e of cache.values()) if (e.tex) { gl.deleteTexture(e.tex); e.tex = null; }
-      this.programs = {}; this.mesh = null; this.lut = null; this.lutKey = "";
+      this.programs = {}; this.meshes = {}; this.lut = null; this.lutKey = "";
+    },
+    // One mesh per footprint (the world, or a regional domain), kept: a split
+    // between a global and a regional model needs both every frame.
+    meshFor(gl, model) {
+      const key = model.regional ? model.domain.join(",") : "world";
+      if (!this.meshes[key]) this.meshes[key] = buildMesh(gl, model);
+      return this.meshes[key];
     },
     render(gl, args) {
       if (!live || !shown.a || !shown.a.img || !shown.model || !shown.ramp) return;
@@ -435,10 +471,6 @@ void main() {
       if (!prog) {
         try { prog = this.programs[sd.variantName] = compile(gl, VERT(sd.vertexShaderPrelude, sd.define, this.gl2), FRAG(this.gl2)); }
         catch (err) { fallback("shader: " + err.message); return; }
-      }
-      if (!this.mesh || this.mesh.key !== (shown.model.regional ? shown.model.domain.join(",") : "world")) {
-        if (this.mesh) { gl.deleteBuffer(this.mesh.vb); gl.deleteBuffer(this.mesh.ib); }
-        this.mesh = buildMesh(gl, shown.model);
       }
       const lutKey = `${shown.layer}/${shown.level || 0}`;
       if (!this.lut || this.lutKey !== lutKey) {
@@ -453,8 +485,9 @@ void main() {
         this.lutKey = lutKey;
       }
       upload(gl, shown.a);
-      const haveB = shown.b && shown.b.img && shown.t > 0 && !shown.snap;
-      if (haveB) upload(gl, shown.b);
+      if (shown.b && shown.b.img && shown.t > 0 && !shown.snap) upload(gl, shown.b);
+      const two = split != null && shown2.a && shown2.a.img && shown2.model && shown2.enc;
+      if (two) { upload(gl, shown2.a); if (shown2.b && shown2.b.img && shown2.t > 0 && !shown2.snap) upload(gl, shown2.b); }
       evict(gl);
 
       gl.useProgram(prog.program);
@@ -464,75 +497,97 @@ void main() {
       if (u.u_projection_tile_mercator_coords) gl.uniform4f(u.u_projection_tile_mercator_coords, ...pd.tileMercatorCoords);
       if (u.u_projection_clipping_plane) gl.uniform4f(u.u_projection_clipping_plane, ...pd.clippingPlane);
       if (u.u_projection_transition) gl.uniform1f(u.u_projection_transition, pd.projectionTransition);
-      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, shown.a.tex); gl.uniform1i(u.u_a, 0);
-      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, haveB ? shown.b.tex : shown.a.tex); gl.uniform1i(u.u_b, 1);
       gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.lut); gl.uniform1i(u.u_lut, 2);
-      const g = shown.model.grid_spec, r = shown.rule || {};
-      gl.uniform1f(u.u_t, haveB ? shown.t : 0);
-      gl.uniform4f(u.u_grid, g.lon0, g.dlon, g.lat0, g.dlat);
-      gl.uniform2f(u.u_size, g.nx, g.ny);
-      gl.uniform1f(u.u_wrap, shown.model.regional ? 0 : 1);
-      gl.uniform1f(u.u_cells, shown.cells ? 1 : 0);
-      gl.uniform2f(u.u_enc, shown.enc.lo, shown.enc.hi);
-      gl.uniform2f(u.u_ramp, shown.ramp.lo, shown.ramp.hi);
-      gl.uniform4f(u.u_rule, RULE_KIND[r.kind] || 0, r.k || 1, r.x0 || 0, r.p || 1);
-      gl.uniform1f(u.u_alpha, (shown.rule && shown.rule.base != null ? shown.rule.base : 0.78) * opacityNow(this.map));
-
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.mesh.vb);
+      const alpha = (shown.rule && shown.rule.base != null ? shown.rule.base : 0.78) * opacityNow(this.map);
+      const wraps = wrapsFor(this.map, pd.projectionTransition);
       gl.enableVertexAttribArray(prog.a_pos);
-      gl.vertexAttribPointer(prog.a_pos, 2, gl.FLOAT, false, 0, 0);
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.mesh.ib);
-      for (const w of wrapsFor(this.map, pd.projectionTransition)) {
-        gl.uniform1f(u.u_offset, w);
-        gl.drawElements(gl.TRIANGLES, this.mesh.n, gl.UNSIGNED_SHORT, 0);
+
+      if (!two) { this.drawSide(gl, prog, shown, alpha, wraps); }
+      else {
+        // Same layer, same LUT, same valid time on both sides; only the
+        // model, its grid and its mesh differ. Scissor is screen space, so
+        // the divider is straight on the flat map and on the globe alike.
+        const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
+        const xs = Math.max(0, Math.min(W, Math.round(W * split)));
+        const had = gl.isEnabled(gl.SCISSOR_TEST), box = gl.getParameter(gl.SCISSOR_BOX);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.scissor(0, 0, xs, H); this.drawSide(gl, prog, shown, alpha, wraps);
+        gl.scissor(xs, 0, W - xs, H); this.drawSide(gl, prog, shown2, alpha, wraps);
+        if (had) gl.scissor(box[0], box[1], box[2], box[3]); else gl.disable(gl.SCISSOR_TEST);
       }
       gl.disableVertexAttribArray(prog.a_pos);
+    },
+    drawSide(gl, prog, S, alpha, wraps) {
+      const u = prog.u, mesh = this.meshFor(gl, S.model);
+      const haveB = S.b && S.b.img && S.t > 0 && !S.snap;
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, S.a.tex); gl.uniform1i(u.u_a, 0);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, haveB ? S.b.tex : S.a.tex); gl.uniform1i(u.u_b, 1);
+      const g = S.model.grid_spec, r = S.rule || {};
+      gl.uniform1f(u.u_t, haveB ? S.t : 0);
+      gl.uniform4f(u.u_grid, g.lon0, g.dlon, g.lat0, g.dlat);
+      gl.uniform2f(u.u_size, g.nx, g.ny);
+      gl.uniform1f(u.u_wrap, S.model.regional ? 0 : 1);
+      gl.uniform1f(u.u_cells, S.cells ? 1 : 0);
+      gl.uniform2f(u.u_enc, S.enc.lo, S.enc.hi);
+      gl.uniform2f(u.u_ramp, S.ramp.lo, S.ramp.hi);
+      gl.uniform4f(u.u_rule, RULE_KIND[r.kind] || 0, r.k || 1, r.x0 || 0, r.p || 1);
+      gl.uniform1f(u.u_alpha, alpha);
+      gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vb);
+      gl.vertexAttribPointer(prog.a_pos, 2, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.ib);
+      for (const w of wraps) {
+        gl.uniform1f(u.u_offset, w);
+        gl.drawElements(gl.TRIANGLES, mesh.n, gl.UNSIGNED_SHORT, 0);
+      }
     },
   };
 
   // ── driving it ─────────────────────────────────────────────────────────
-  let showSerial = 0;
-  function want(url, gen, repaint) {
+  function want(url, gen, repaint, S) {
     const e = entryFor(url);
-    if (!e.img && !e.failed) e.promise.then(() => { if (gen === showSerial) { commit(); repaint(); } }).catch((err) => {
+    if (!e.img && !e.failed) e.promise.then(() => { if (gen === S.serial) { commit(S); repaint(); } }).catch((err) => {
       // A missing field for a run the catalog names is the server saying
       // this path is not on offer; anything else is one bad step.
-      if (gen === showSerial && err && (err.status === 404 || err.status === 501 || /altered/.test(err.message))) fallback(err.status ? `field ${err.status}` : err.message);
+      if (gen === S.serial && err && (err.status === 404 || err.status === 501 || /altered/.test(err.message))) fallback(err.status ? `field ${err.status}` : err.message);
     });
     return e;
   }
-  // What has been asked for but has no pixels yet. The map keeps drawing the
-  // last complete frame until it does: an ImageSource holds its old image
-  // across an updateImage, and a step change that blanked the map for the
-  // length of a request would be a worse map than the one this replaces.
-  let pending = null;
 
-  function commit() {
-    if (!pending || !pending.a || !pending.a.img) return;
-    Object.assign(shown, pending);
-    pending = null;
+  function commit(S) {
+    if (!S.pending || !S.pending.a || !S.pending.a.img) return;
+    Object.assign(S.shown, S.pending);
+    S.pending = null;
   }
 
-  // spec: { a: url, b: url|null, t, layer, level, model }
-  function show(spec) {
+  // spec: { a: url, b: url|null, t, layer, level, model }; side 1 is the
+  // right-hand model of a split and is only drawn while a split is set.
+  function show(spec, side = 0) {
     if (!live) return;
-    const gen = ++showSerial;
+    const S = side === 1 ? S1 : S0;
+    const gen = ++S.serial;
     const repaint = () => { if (WX.map) WX.map.triggerRepaint(); if (WX.probe) { WX.probe.pinUpdate(); } if (WX.fn && WX.fn.updateMarkerFlag) WX.fn.updateMarkerFlag(); };
     const lg = rampFor(spec.layer, spec.level);
     const snap = SNAP_LAYERS.has(spec.layer);
     let t = spec.t || 0;
     // a held field shows whichever step is nearer, so the tape and the map agree
     if (snap && spec.b && t >= 0.5) { spec = { ...spec, a: spec.b, b: null }; t = 0; }
-    pending = {
+    S.pending = {
       layer: spec.layer, level: spec.level, model: spec.model,
       snap, cells: CELL_LAYERS.has(spec.layer),
       ramp: lg, enc: lg && lg.enc, rule: lg && lg.alpha,
       t: snap ? 0 : t,
-      a: want(spec.a, gen, repaint),
-      b: spec.b && t > 0 ? want(spec.b, gen, repaint) : null,
+      a: want(spec.a, gen, repaint, S),
+      b: spec.b && t > 0 ? want(spec.b, gen, repaint, S) : null,
     };
-    commit();
+    commit(S);
     repaint();
+  }
+  // x: divider as a fraction of the map width, or null to draw one model.
+  // Clearing forgets side 1 so its frames can leave the cache.
+  function setSplit(x) {
+    split = x == null ? null : Math.max(0.05, Math.min(0.95, +x));
+    if (split == null) { S1.serial++; S1.pending = null; Object.assign(shown2, blank()); }
+    if (WX.map) WX.map.triggerRepaint();
   }
   function prefetch(url) { if (live) entryFor(url).promise.catch(() => {}); }
   function ready() { return !!(shown.a && shown.a.img); }
@@ -549,6 +604,6 @@ void main() {
     return true;
   }
 
-  WX.field = { enable, get live() { return live; }, layer, show, prefetch, sample, ready, onFallback: null,
-               get shown() { return shown; } };
+  WX.field = { enable, get live() { return live; }, layer, show, setSplit, prefetch, sample, ready, onFallback: null,
+               get shown() { return shown; }, get shown2() { return shown2; }, get split() { return split; } };
 })();
