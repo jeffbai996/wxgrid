@@ -22,9 +22,12 @@ def test_warm_layers_writes_the_request_paths(tmp_path, monkeypatch):
     n = ingest.warm_layers("gem", "2026-01-02T00", STORE_DIR)
     assert n == 6                                       # 3 available layers × 2 steps (gust/tcc/msl absent → skipped)
     for layer in ("wind", "temp", "tp6"):
-        path = tmp_path / "gem" / "2026-01-02T00" / render.field_cache_name(0, layer)
+        # The client explicitly accepts lossless WebP and warm_layers now
+        # pre-encodes that common path; PNG remains the on-demand fallback.
+        path = tmp_path / "gem" / "2026-01-02T00" / render.field_cache_name(0, layer, "webp")
         assert path.exists()
-        assert path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+        encoded = path.read_bytes()
+        assert encoded[:4] == b"RIFF" and encoded[8:12] == b"WEBP"
         # the coloured PNG is the fallback path and renders on request
         assert not (tmp_path / "gem" / "2026-01-02T00" / render.layer_cache_name(0, layer, None)[0]).exists()
     # a second pass renders nothing: the names are the cache
