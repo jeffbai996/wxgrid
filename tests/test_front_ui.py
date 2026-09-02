@@ -332,7 +332,17 @@ def test_winter_tab_stays_for_winter_sport_country_all_year():
 
 def test_locate_sits_at_the_foot_of_the_tool_strip():
     app = _read("app.js")
-    assert 'st.insertAdjacentHTML("beforeend", `<button class="strip-locate"' in app
+    assert 'class="sep strip-locate-sep"' in app
+    assert 'if (locate) st.insertBefore(locate, more);' in app
+    assert '!el.classList.contains("strip-locate-sep")' in app
+
+
+def test_fire_and_smoke_are_their_own_strip_group_and_flyout_icons_match():
+    app = _read("app.js"); html = _read("index.html")
+    assert '["sigmet", "SIGMET", "warn"], null,' in app
+    assert '["fires", "Fires", "warn"], ["smoke", "Smoke"], null,' in app
+    assert '<div class="menu-sec">Fire &amp; smoke</div>' in html
+    assert 'pop.style.setProperty("--strip-btn", st.style.getPropertyValue("--strip-btn"));' in app
 
 
 def test_tape_control_walks_all_three_states_and_every_change_glides():
@@ -340,6 +350,12 @@ def test_tape_control_walks_all_three_states_and_every_change_glides():
     # tap); away is a pill, not a black slab; the glide runs for every pair.
     app = _read("app.js"); css = _read("styles.css"); html = _read("index.html")
     assert 'const nextTapeState = () => ({ full: "mini", mini: "away", away: "full" })[tapeState] || "full";' in app
+    assert app.index("const nextTapeState") < app.index("function wireOnce")
     assert "const animatable = prev !== s && !matchMedia(\"(prefers-reduced-motion: reduce)\").matches;" in app
     assert 'id="tape-pill"' in html
+    assert '<span class="l">Show forecast</span>' in html
     assert "#timebar.tape-away { height: 38px !important;" in css and "@keyframes pill-in" in css
+    assert "const TAPE_AWAY_HEIGHT = 38, TAPE_TAP_SLOP = 14;" in app
+    assert 'tb.classList.add("tape-dragging");' in app
+    assert 'tapeGrip.addEventListener("click",' in app
+    assert "#timebar.tape-dragging { height: var(--tape-drag-height) !important;" in css

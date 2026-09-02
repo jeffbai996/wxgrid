@@ -396,6 +396,7 @@ button:focus:not(:focus-visible) { outline: none; }
 #timebar.mini { height: auto !important; }
 /* the fold glide: an explicit height + clip while sliding between states */
 #timebar.tape-anim { transition: height .32s cubic-bezier(.32,.72,.24,1), background-color .32s ease, border-color .32s ease, box-shadow .32s ease; overflow: hidden; }
+#timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: hidden; transition: none !important; }
 #timebar.tape-anim #step { display: none; }
 #timebar.tape-anim-away { background: transparent; border-color: transparent; }
 /* out of the way entirely: only the grip is left to pull it back */
@@ -408,8 +409,9 @@ button:focus:not(:focus-visible) { outline: none; }
   background: var(--panel-solid); color: var(--fg); font: 700 12.5px var(--font-display); cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.35);
   animation: pill-in .28s cubic-bezier(.32,.72,.24,1) both; }
 .tape-pill svg { width: 15px; height: 15px; color: var(--accent); }
-.tape-pill .t { font: 600 12px var(--font-mono); font-variant-numeric: tabular-nums; }
-.tape-pill .l { color: var(--fg-2); font-weight: 600; }
+.tape-pill .t { color: var(--fg-2); font: 600 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.tape-pill .l { color: var(--fg); font-weight: 700; }
+.tape-pill .dot { color: var(--dim); }
 .tape-pill:hover { border-color: var(--accent); }
 @keyframes pill-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 #timebar.tape-away .tape-resize-handle, #timebar.mini .tape-resize-handle { display: grid; }

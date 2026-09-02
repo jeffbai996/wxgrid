@@ -101,6 +101,7 @@
   let uiWired = false;
   let setTapeState = () => {};
   let tapeState = "full";
+  const nextTapeState = () => ({ full: "mini", mini: "away", away: "full" })[tapeState] || "full";
 
   // ── shared helpers (used by panes.js) ────────────────────────────────
   const speed = (ms) => ms == null ? null : state.units === "kt" ? ms * 1.943844 : state.units === "ms" ? ms : state.units === "mph" ? ms * 2.236936 : ms * 3.6;
@@ -908,7 +909,8 @@
       const pill = $("#tape-pill");
       if (pill) pill.hidden = s !== "away";
       if (persist) localStorage.setItem("wxgrid.tapeState", s);
-      tmin.title = s === "full" ? "Collapse the forecast table" : "Show the forecast table";
+      const nextAction = s === "full" ? "Show compact forecast" : s === "mini" ? "Hide forecast timeline" : "Show full forecast";
+      tmin.title = nextAction; tmin.setAttribute("aria-label", nextAction);
       requestAnimationFrame(() => document.documentElement.style.setProperty("--tb-h", tb.offsetHeight + "px"));
     };
     const savedState = localStorage.getItem("wxgrid.tapeState")
@@ -917,7 +919,6 @@
     // One control walks the three states: full → header → away → full.
     // "Collapse completely" was only reachable by dragging the grip past a
     // hidden threshold, which read as broken (Jeff 2026-09-02).
-    const nextTapeState = () => ({ full: "mini", mini: "away", away: "full" })[tapeState] || "full";
     tmin.onclick = () => setTapeState(nextTapeState());
     const pillBtn = $("#tape-pill");
     if (pillBtn) pillBtn.onclick = () => setTapeState("full");
@@ -1045,7 +1046,9 @@
   // menus. Clicking proxies the real button; the observer below mirrors state.
   const STRIP = [
     ["radar", "Radar"], ["sat", "Satellite"], ["aurora", "Aurora"], ["aod", "Aerosol"], ["iso", "Isolines"], null,
-    ["alerts", "Alerts", "warn"], ["storms", "Storms", "warn"], ["thunder", "Thunder", "warn"], ["sigmet", "SIGMET", "warn"], ["fires", "Fires", "warn"], ["smoke", "Smoke"], ["aq", "Air quality"], ["quakes", "Quakes"], ["obs", "Stations"], null,
+    ["alerts", "Alerts", "warn"], ["storms", "Storms", "warn"], ["thunder", "Thunder", "warn"], ["sigmet", "SIGMET", "warn"], null,
+    ["fires", "Fires", "warn"], ["smoke", "Smoke"], null,
+    ["aq", "Air quality"], ["quakes", "Quakes"], ["obs", "Stations"], null,
     ["avy", "Avalanche"], ["resorts", "Ski resorts"], null,
     ["particles", "Particles"], ["barbs", "Barbs"], null,
     ["xsection", "Cross section"], ["route", "Route forecast"], ["measure", "Measure"],
@@ -1081,7 +1084,7 @@
     // At the foot of the strip with settings, not the head: a locate button
     // above twenty overlay toggles read as one of them and went unfound
     // (Jeff 2026-09-02: "kinda hiding up there").
-    st.insertAdjacentHTML("beforeend", `<button class="strip-locate" data-tip="My location" aria-label="My location">${$("#locate-btn").innerHTML}</button>`);
+    st.insertAdjacentHTML("beforeend", `<div class="sep strip-locate-sep"></div><button class="strip-locate" data-tip="My location" aria-label="My location">${$("#locate-btn").innerHTML}</button>`);
     st.querySelector(".strip-locate").onclick = () => $("#locate-btn").click();
     // Reading a value off the map is the other thing people come to a weather
     // map to do, and its switch was buried in the same flyout — the feature
@@ -1246,54 +1249,100 @@
     };
     if (tapeHeight) setTapeHeight(tapeHeight);
     else requestAnimationFrame(() => tapeGrip.setAttribute("aria-valuenow", Math.round(tb.getBoundingClientRect().height)));
-    let tapeDrag = null;
-    // The grip drags through the three states: pull it down past the minimum
-    // and the tape collapses to its header, further and it goes away. The
-    // height itself is only written once per frame — see perFrame.
-    const trackTape = perFrame((clientY) => {
-      if (!tapeDrag) return;
-      tapeDrag.want = tapeDrag.height + tapeDrag.y - clientY;
+    let tapeDrag = null, suppressGripClickUntil = 0;
+    const TAPE_AWAY_HEIGHT = 38, TAPE_TAP_SLOP = 14;
+    const tapeTargetState = (height) => {
       const min = tapeBounds().min;
-      if (tapeDrag.want >= min) { if (tapeState !== "full") setTapeState("full", false); setTapeHeight(tapeDrag.want); }
-      else if (tapeState === "full" && tapeDrag.want < min - 40) setTapeState("mini", false);
-      else if (tapeState === "mini" && tapeDrag.want < min - 110) setTapeState("away", false);
-    });
+      return height <= Math.round((TAPE_AWAY_HEIGHT + min) / 2) ? "away" : height < min ? "mini" : "full";
+    };
+    // Follow the pointer continuously all the way to the 38 px away state.
+    // Switching classes at two hidden thresholds made the last leg jump from
+    // a compact table to a pill while the finger was still moving. During a
+    // drag this is one clipped surface; the semantic state is chosen once,
+    // on release, then the existing glide finishes the small remainder.
+    const previewTapeDrag = (clientY) => {
+      if (!tapeDrag) return;
+      tapeDrag.lastY = clientY;
+      tapeDrag.want = clamp(tapeDrag.height + tapeDrag.y - clientY, TAPE_AWAY_HEIGHT, tapeBounds().max);
+      if (tapeDrag.from === "away" && tapeDrag.want > TAPE_AWAY_HEIGHT + 4) {
+        tb.classList.remove("tape-away"); tb.classList.add("mini");
+        const pill = $("#tape-pill"); if (pill) pill.hidden = true;
+      }
+      tb.style.setProperty("--tape-drag-height", `${Math.round(tapeDrag.want)}px`);
+      tb.classList.add("tape-dragging");
+      document.documentElement.style.setProperty("--tb-h", `${Math.round(tapeDrag.want)}px`);
+    };
+    const trackTape = perFrame(previewTapeDrag);
+    const restoreTapeDragStart = (drag) => {
+      tb.classList.remove("tape-dragging"); tb.style.removeProperty("--tape-drag-height");
+      tb.classList.toggle("mini", drag.from === "mini");
+      tb.classList.toggle("tape-away", drag.from === "away");
+      tb.style.height = drag.inlineHeight;
+      const pill = $("#tape-pill"); if (pill) pill.hidden = drag.from !== "away";
+      document.documentElement.style.setProperty("--tb-h", tb.offsetHeight + "px");
+    };
     tapeGrip.addEventListener("pointerdown", (e) => {
       e.preventDefault(); e.stopPropagation();
       const h0 = tb.getBoundingClientRect().height;
-      // want starts AT the height: a pure tap moves nothing, and |want - h|
-      // must then be zero — it was initialised to 0, so a tap measured as a
-      // full-height "drag" and the grip could minimise but never maximise
-      // (Jeff 2026-08-20).
-      tapeDrag = { id: e.pointerId, y: e.clientY, height: h0, want: h0, from: tapeState };
+      tapeDrag = { id: e.pointerId, y: e.clientY, lastY: e.clientY, height: h0, want: h0,
+        distance: 0, from: tapeState, inlineHeight: tb.style.height };
       tapeGrip.setPointerCapture(e.pointerId); tb.classList.add("is-resizing"); document.body.classList.add("resizing-tape");
     });
-    tapeGrip.addEventListener("pointermove", (e) => { if (tapeDrag && e.pointerId === tapeDrag.id) trackTape(e.clientY); });
-    const finishTape = (e) => {
+    tapeGrip.addEventListener("pointermove", (e) => {
+      if (!tapeDrag || e.pointerId !== tapeDrag.id) return;
+      tapeDrag.distance = Math.max(tapeDrag.distance, Math.abs(e.clientY - tapeDrag.y));
+      tapeDrag.lastY = e.clientY; trackTape(e.clientY);
+    });
+    const finishTape = (e, cancelled = false) => {
       if (!tapeDrag || (e && e.pointerId !== tapeDrag.id)) return;
-      const tap = Math.abs(tapeDrag.want - tapeDrag.height) < 5;
+      const drag = tapeDrag;
+      if (e && Number.isFinite(e.clientY)) {
+        drag.distance = Math.max(drag.distance, Math.abs(e.clientY - drag.y));
+        drag.lastY = e.clientY;
+      }
+      const tap = !cancelled && drag.distance < TAPE_TAP_SLOP;
+      if (!tap && !cancelled) previewTapeDrag(drag.lastY); // do not lose the last pre-RAF move
       tapeDrag = null; tb.classList.remove("is-resizing"); document.body.classList.remove("resizing-tape");
-      restoreSheetHeight();                    // the card re-budgets around the new tape
-      if (tap) setTapeState(nextTapeState());                              // a tap on the grip cycles
-      else {
-        // A release below the rows snaps to mini rather than parking on a
-        // clipped table (vertical scroll is locked, so clipped rows — the
-        // gust row — were simply gone; a floor on the height instead made
-        // the grip feel dead, Jeff 2026-08-22). Above the rows it stretches.
-        // Phones only. Wider screens cap the tape below its content (480 px
-        // against a taller table on an iPad), so there every release was
-        // "below the rows" and the tape could hold no height but the cap —
-        // "stretches until it becomes this big, not draggable at all"
-        // (Jeff 2026-08-22). Desktop and tablet keep whatever height was set.
-        const content = tapeContentMax();
-        if (innerWidth <= 820 && tapeState === "full" && isFinite(content) && tapeHeight && tapeHeight < content - 6) { resetTapeHeight(); setTapeState("mini"); }
-        localStorage.setItem("wxgrid.tapeState", tapeState);
+      suppressGripClickUntil = Date.now() + 500;
+      if (cancelled) {
+        restoreTapeDragStart(drag);
+      } else if (tap) {
+        restoreTapeDragStart(drag);
+        setTapeState(nextTapeState());
+      } else {
+        const visualHeight = tb.getBoundingClientRect().height;
+        const target = tapeTargetState(drag.want);
+        // Leave the preview at its exact release height while setTapeState
+        // measures the other end. Removing the drag class first without this
+        // explicit height was the remaining mini → away snap.
+        tb.classList.remove("tape-dragging", "mini", "tape-away");
+        tb.style.removeProperty("--tape-drag-height");
+        tb.style.height = `${visualHeight}px`;
+        const pill = $("#tape-pill"); if (pill) pill.hidden = true;
+        if (target === "full") {
+          setTapeHeight(drag.want, true);
+          setTapeState("full");
+        } else {
+          const unchanged = target === tapeState;
+          setTapeState(target);
+          if (unchanged) tb.style.height = "";
+        }
       }
       if (tapeHeight && tapeState === "full") localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
+      restoreSheetHeight();                    // the card re-budgets around the new tape
       restorePointPanelSize();
     };
-    tapeGrip.addEventListener("pointerup", finishTape); tapeGrip.addEventListener("pointercancel", finishTape);
-    tapeGrip.addEventListener("dblclick", (e) => { e.preventDefault(); resetTapeHeight(); restorePointPanelSize(); });
+    tapeGrip.addEventListener("pointerup", (e) => finishTape(e, false));
+    tapeGrip.addEventListener("pointercancel", (e) => finishTape(e, true));
+    tapeGrip.addEventListener("lostpointercapture", (e) => { if (tapeDrag) finishTape(e, false); });
+    // Pointer-up handles real taps. This is the keyboard/synthetic-click
+    // fallback; the short suppression window prevents one physical tap from
+    // walking two states when the browser also synthesises click.
+    tapeGrip.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (Date.now() < suppressGripClickUntil) return;
+      setTapeState(nextTapeState());
+    });
     tapeGrip.addEventListener("keydown", (e) => {
       if (e.key === "Home") { e.preventDefault(); resetTapeHeight(); restorePointPanelSize(); return; }
       if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
@@ -1392,15 +1441,21 @@
   // time bar. It never scrolls: a toolbar that scrolls hides its own controls.
   function fitStrip() {
     const st = $("#tstrip"); if (!st || getComputedStyle(st).display === "none") return;
-    const items = Array.from(st.querySelectorAll("button, .sep"));
     const more = $("#strip-more"), pop = $("#strip-more-pop");
-    if (!items.length || !more) return;
+    if (!more || !pop) return;
     // put everything back in the strip, then move the tail into the flyout
     Array.from(pop.children).forEach((el) => st.insertBefore(el, more));
+    // Overflowed controls are restored before `more`, so they used to land
+    // below Location on every subsequent fit. Re-pin the footer after every
+    // restore: divider, Location, then the three-dot overflow button.
+    const locate = st.querySelector(".strip-locate"), locateSep = st.querySelector(".strip-locate-sep");
+    if (locateSep) st.insertBefore(locateSep, more);
+    if (locate) st.insertBefore(locate, more);
     // .strip-locate is a primary control, not an overlay toggle: it is sized
     // with the rest but never trimmed into the flyout.
     const trimmable = (el) => el !== more
-      && !el.classList.contains("strip-locate") && !el.classList.contains("strip-probe");
+      && !el.classList.contains("strip-locate") && !el.classList.contains("strip-locate-sep")
+      && !el.classList.contains("strip-probe");
     const all = Array.from(st.querySelectorAll("button, .sep")).filter((el) => el !== more);
     const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
     const tb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tb-h")) || 150;
@@ -1412,6 +1467,10 @@
     // instead of stopping mid-map with a fixed cap (Jeff 2026-08-24).
     const avail = window.innerHeight - top - 6 - tb - 16;
     st.style.setProperty("--strip-btn", Math.max(26, Math.min(44, Math.floor((avail - 14 - seps * 7 - (all.length - 1) * 3) / Math.max(1, btns)))) + "px");
+    // The flyout is another .tstrip, but it does not inherit the fitted custom
+    // property from the main strip. Copy it explicitly so both columns use
+    // exactly the same button and glyph dimensions.
+    pop.style.setProperty("--strip-btn", st.style.getPropertyValue("--strip-btn"));
     // Then MEASURE and trim: arithmetic on gaps, borders and margins gets this
     // wrong every time, and being wrong here means a toolbar under the tape.
     const limit = st.getBoundingClientRect().top + avail;
@@ -1428,6 +1487,11 @@
       kids.forEach((el) => el.classList.remove("sep-hide"));
       if (kids.length && kids[0].classList.contains("sep")) kids[0].classList.add("sep-hide");
       if (kids.length && kids[kids.length - 1].classList.contains("sep")) kids[kids.length - 1].classList.add("sep-hide");
+      // Keep the anchored Location divider when a section boundary happens
+      // to land beside it; two hairlines in a row look like an empty group.
+      kids.forEach((el, i) => {
+        if (el.classList.contains("sep") && kids[i + 1] && kids[i + 1].classList.contains("sep")) el.classList.add("sep-hide");
+      });
     });
     const overflowed = pop.children.length > 0;
     more.hidden = !overflowed;
@@ -1507,7 +1571,11 @@
     $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts(narrow ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
     const pillT = $("#tape-pill .t");
-    if (pillT) pillT.textContent = v.toLocaleString(undefined, WX.units.timeOpts({ weekday: "short", hour: "numeric", minute: "2-digit" }));
+    if (pillT) {
+      const pillTime = v.toLocaleString(undefined, WX.units.timeOpts({ weekday: "short", hour: "numeric", minute: "2-digit" }));
+      pillT.textContent = pillTime;
+      $("#tape-pill").setAttribute("aria-label", `Show forecast timeline for ${pillTime}`);
+    }
     const atNow = state.stepIdx === currentStepIdx() && !state.frac;
     $("#lead").textContent = atNow ? "current" : `+${Math.round(shownHours())}h`;
     $("#tape-now").classList.toggle("on", atNow);
