@@ -476,6 +476,8 @@
 
     destroy() {
       this.stop();
+      if (this._pinchWait) { clearInterval(this._pinchWait); this._pinchWait = null; }
+      if (this._watch) { clearInterval(this._watch); this._watch = null; }
       window.removeEventListener("resize", this._resize);
       this.map.off("resize", this._resize);
       this.map.off("moveend", this._moveEnd);
