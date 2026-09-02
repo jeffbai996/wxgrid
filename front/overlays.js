@@ -540,20 +540,32 @@
     if (stormPopup) { stormPopup.remove(); stormPopup = null; } ["storm-lbl", "storm-eye", "storm-now", "storm-pts", "storm-past-pts", "storm-past", "storm-track", "storm-ens", "storm-cone-line", "storm-cone"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("storms")) M().removeSource("storms"); }
 
   // ── satellite: GOES GeoColor via NASA GIBS (timeless URL = latest) ────
+  // Three geostationary discs, keyless: GOES East/West GeoColor from NASA
+  // GIBS over the Americas and the Pacific; Meteosat MTG (0°, geocolour) and
+  // Meteosat IODC (45.5°E, natural colour) from EUMETView's public WMS over
+  // Europe, Africa and the Indian Ocean. Himawari has no keyless tile
+  // service, so East Asia and the western Pacific stay a gap, and the badge
+  // says so.
+  const SAT_LAYERS = [
+    ["sat-east", `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_GeoColor/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`, "Satellite: NASA GIBS / NOAA GOES", 7],
+    ["sat-west", `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-West_ABI_GeoColor/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`, "Satellite: NASA GIBS / NOAA GOES", 7],
+    ["sat-mtg", WMS("mtg_fd:rgb_geocolour", "https://view.eumetsat.int/geoserver/wms"), "Satellite: EUMETSAT Meteosat MTG", 8],
+    ["sat-iodc", WMS("msg_iodc:rgb_natural", "https://view.eumetsat.int/geoserver/wms"), "Satellite: EUMETSAT Meteosat IODC", 7],
+  ];
   function loadSat() {
-    for (const [id, name] of [["sat-east", "GOES-East_ABI_GeoColor"], ["sat-west", "GOES-West_ABI_GeoColor"]]) {
+    const bust = Math.floor(Date.now() / 6e5);            // a new tile URL every 10 min, so the latest frame wins the cache
+    for (const [id, url, attribution, maxzoom] of SAT_LAYERS) {
       if (M().getSource(id)) continue;
-      M().addSource(id, { type: "raster", tileSize: 256, maxzoom: 7, attribution: "Satellite: NASA GIBS / NOAA GOES",
-        tiles: [`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${name}/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png?t=${Math.floor(Date.now() / 6e5)}`] });
+      M().addSource(id, { type: "raster", tileSize: 256, maxzoom, attribution, tiles: [`${url}${url.includes("?") ? "&" : "?"}t=${bust}`] });
       M().addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 0.85, "raster-fade-duration": 0 } }, "wx");
     }
     // The imagery is the point here: the field steps well back, and a badge
     // says what the pixels are and where they end, so a hard disc edge over
     // Asia reads as coverage, not a bug.
     if (M().getLayer("wx")) M().setPaintProperty("wx", "raster-opacity", Math.min(0.3, LAYER_ALPHA[state.layer]));
-    badge("sat", `Satellite <b>GOES GeoColor</b> <small>~1 h old · Americas + Pacific only</small>`, "#9fb0c8");
+    badge("sat", `Satellite <b>GOES + Meteosat</b> <small>~1 h old · no Himawari: East Asia / W Pacific uncovered</small>`, "#9fb0c8");
   }
-  function clearSat() { ["sat-east", "sat-west"].forEach((l) => { if (M().getLayer(l)) M().removeLayer(l); if (M().getSource(l)) M().removeSource(l); }); badge("sat", null); WX.fn.applyStep(); }
+  function clearSat() { SAT_LAYERS.forEach(([l]) => { if (M().getLayer(l)) M().removeLayer(l); if (M().getSource(l)) M().removeSource(l); }); badge("sat", null); WX.fn.applyStep(); }
 
   // ── corner badges ─────────────────────────────────────────────────────
   // A keyed stack of small chips bottom-left, above the met-service badge:
