@@ -38,6 +38,10 @@ class _Cache:
     def __init__(self, path: "Path | None" = None) -> None:
         self._d: dict[str, tuple[float, Any]] = {}
         self._lock = threading.Lock()
+        # One upstream call per cold key: later callers for the same key wait
+        # on the first instead of each making the request (a hundred taps on
+        # a cold card used to be a hundred upstream fetches).
+        self._inflight: dict[str, threading.Event] = {}
         self._path = path
         self._dirty = False
         self._last_flush = 0.0
@@ -50,12 +54,26 @@ class _Cache:
                 self._d = {}
 
     def get(self, key: str, ttl: float, fn: Callable[[], Any]) -> Any:
-        now = time.time()
-        with self._lock:
-            hit = self._d.get(key)
-            if hit and now - hit[0] < ttl:
-                return hit[1]
-        val = fn()
+        while True:
+            now = time.time()
+            with self._lock:
+                hit = self._d.get(key)
+                if hit and now - hit[0] < ttl:
+                    return hit[1]
+                waiter = self._inflight.get(key)
+                if waiter is None:
+                    self._inflight[key] = threading.Event()
+                    break
+            # Someone else is fetching this key: wait for their answer, then
+            # re-read. A bounded wait so a hung upstream cannot pin every
+            # caller; the re-read either hits or takes the fetch itself.
+            waiter.wait(timeout=30)
+        try:
+            val = fn()
+        except BaseException:
+            with self._lock:
+                self._inflight.pop(key, None).set()
+            raise
         with self._lock:
             self._d[key] = (now, val)
             self._dirty = True
@@ -64,6 +82,9 @@ class _Cache:
                     self._d.pop(k, None)
             if self._path and now - self._last_flush > 30:
                 self._flush(now)
+            ev = self._inflight.pop(key, None)
+            if ev is not None:
+                ev.set()
         return val
 
     def _flush(self, now: float) -> None:
