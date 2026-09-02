@@ -189,6 +189,52 @@
     ctx.restore();
   }
 
+  // ── hodograph ─────────────────────────────────────────────────────────
+  // winds: [{p, kt, dir, label}] with dir the direction the wind blows FROM.
+  // Draws a `size` px square at (x, y); returns the ring scale and the
+  // surface → 500 hPa bulk shear, or null with fewer than three levels.
+  function hodoColour(p, P) { return p >= 800 ? P.warm : p >= 450 ? P.good : P.rain; }
+  function hodograph(ctx, winds, x, y, size, P) {
+    const pts = (winds || []).filter((w) => w.kt != null && w.dir != null).slice().sort((a, b) => b.p - a.p);
+    if (pts.length < 3) return null;
+    const vec = (w) => { const a = w.dir * Math.PI / 180; return [-w.kt * Math.sin(a), -w.kt * Math.cos(a)]; };
+    const maxKt = Math.max(20, ...pts.map((w) => w.kt));
+    const ring = maxKt <= 40 ? 10 : maxKt <= 80 ? 20 : 40;             // kt per ring
+    const top = Math.ceil(maxKt / ring) * ring;
+    const cx = x + size / 2, cy = y + size / 2, r = size / 2 - 12, scale = r / top;
+    ctx.save();
+    ctx.globalAlpha = 0.82; ctx.fillStyle = P.panel; ctx.fillRect(x, y, size, size);
+    ctx.globalAlpha = 0.35; ctx.strokeStyle = P.fg; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+    // rings and axes
+    ctx.globalAlpha = 0.28; ctx.strokeStyle = P.dim; ctx.lineWidth = 1;
+    for (let k = ring; k <= top; k += ring) { ctx.beginPath(); ctx.arc(cx, cy, k * scale, 0, Math.PI * 2); ctx.stroke(); }
+    polyline(ctx, [[cx - r, cy], [cx + r, cy]]); polyline(ctx, [[cx, cy - r], [cx, cy + r]]);
+    ctx.globalAlpha = 0.7; ctx.fillStyle = P.dim; ctx.font = `600 8px ${P.mono}`; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillText(`${top} kt`, cx + 2, cy - r);
+    ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText("hodograph", x + 5, y + size - 3);
+    // the curve, one colour per layer
+    ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.lineCap = "round";
+    for (let k = 0; k < pts.length - 1; k++) {
+      const [u0, v0] = vec(pts[k]), [u1, v1] = vec(pts[k + 1]);
+      ctx.strokeStyle = hodoColour(pts[k].p, P);
+      polyline(ctx, [[cx + u0 * scale, cy - v0 * scale], [cx + u1 * scale, cy - v1 * scale]]);
+    }
+    // dots and a few labels; the surface point is the hollow one
+    ctx.font = `600 7.5px ${P.mono}`; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+    for (const w of pts) {
+      const [u, v] = vec(w), px = cx + u * scale, py = cy - v * scale;
+      ctx.beginPath(); ctx.arc(px, py, w.label === "sfc" ? 3.2 : 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = hodoColour(w.p, P); ctx.strokeStyle = hodoColour(w.p, P); ctx.lineWidth = 1.4;
+      if (w.label === "sfc") { ctx.fillStyle = P.panel; ctx.fill(); ctx.stroke(); } else ctx.fill();
+      if (["sfc", "850", "700", "500", "300", "200"].includes(w.label)) { ctx.fillStyle = P.fg2; ctx.fillText(w.label, px + 4, py); }
+    }
+    ctx.restore();
+    const sfc = pts[0], mid = pts.find((w) => w.label === "500") || pts.reduce((a, b) => Math.abs(b.p - 500) < Math.abs(a.p - 500) ? b : a);
+    let shear = null;
+    if (mid && mid !== sfc) { const [u0, v0] = vec(sfc), [u1, v1] = vec(mid); shear = Math.hypot(u1 - u0, v1 - v0); }
+    return { ring, top, shear };
+  }
+
   // ── profile assembly ──────────────────────────────────────────────────
   // The aloft dew point: only drawn if a run actually carries humidity aloft.
   // None of the models wxgrid ingests do today, so this is the hook, not a
@@ -432,6 +478,15 @@
       ctx.fillStyle = k.startsWith("CAPE") && parseFloat(v) > 1000 ? P.bad : P.fg;
       ctx.textAlign = "right"; ctx.fillText(v, bxx + bw - 6, y);
     });
+
+    // ── hodograph ───────────────────────────────────────────────────────
+    // The wind profile as a curve: each level's wind vector from the origin,
+    // joined bottom to top. Shape is the point — a straight line is speed
+    // shear only, a curve is directional shear, a clockwise low-level hook is
+    // the supercell signature. Coloured by layer the way forecasters read it:
+    // warm near the ground, green through the middle, cool aloft.
+    const hodo = hodograph(ctx, prof.winds, bxx, byy + bh + 8, 150, P);
+    if (hodo && hodo.shear != null) notes.push(`Hodograph: bulk shear surface → 500 hPa ${Math.round(hodo.shear)} kt.`);
 
     // ── caption ─────────────────────────────────────────────────────────
     if (!prof.hasDewAloft) notes.push("No humidity aloft in this run. Green is the surface dew point only.");
