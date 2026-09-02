@@ -415,7 +415,7 @@ button:focus:not(:focus-visible) { outline: none; }
 /* Away: the slab is gone. What stays is the grip and one pill at the foot of
    the map saying what time the map shows, which is also the way back. */
 #timebar.tape-away { height: 38px !important; min-height: 0; padding: 0; overflow: visible; background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none;
-  display: flex; align-items: flex-end; justify-content: center; }
+  display: flex; flex-direction: row; align-items: flex-end; justify-content: center; }
 #timebar.tape-away > *:not(.tape-resize-handle):not(#tape-pill) { display: none; }
 .tape-pill { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px 0 10px; border-radius: 999px; border: 1px solid var(--line-strong);
   background: var(--panel-solid); color: var(--fg); font: 700 12.5px var(--font-display); cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.35);

@@ -46,7 +46,7 @@ def test_catalogue_caches_each_provider_and_survives_a_dead_feed():
     webcams.catalogue(get_json=get_json, cache_get=cache_get)
     assert [c.id for c in cams] == ["drivebc:1"]
     assert len(calls) == len(webcams.PROVIDERS)          # one fetch per provider, then cached
-    assert sorted(store) == sorted(f"webcams:{p[0]}" for p in webcams.PROVIDERS)
+    assert sorted(store) == sorted(f"webcams:{p[0]}:{webcams.CATALOG_VERSION}" for p in webcams.PROVIDERS)
 
 
 def test_near_point_shape():

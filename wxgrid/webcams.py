@@ -21,6 +21,9 @@ from typing import Any, Callable, Iterable
 log = logging.getLogger("wxgrid.webcams")
 
 CATALOG_TTL_S = 20 * 60
+# Bump when a parser changes what it stores: the shared cache is mirrored to
+# disk and would otherwise serve the old records for a TTL after a deploy.
+CATALOG_VERSION = "v2"
 MAX_KM = 120.0
 
 
@@ -130,7 +133,7 @@ def catalogue(*, get_json: Callable[..., Any], cache_get: Callable[..., Any]) ->
             except Exception as exc:              # the card just has fewer cams; the health dot notices
                 log.warning("webcam catalogue %s failed: %s", key, exc)
                 return []
-        rows = cache_get(f"webcams:{key}", CATALOG_TTL_S, fetch) or []
+        rows = cache_get(f"webcams:{key}:{CATALOG_VERSION}", CATALOG_TTL_S, fetch) or []
         cams.extend(Cam(**r) for r in rows)
     return cams
 
