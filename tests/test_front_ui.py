@@ -342,3 +342,38 @@ def test_overlays_module_does_not_read_consts_before_they_exist():
     assert "const SAT_LAYERS = () => [" in ov
     assert "const SAT_LAYERS = [" not in ov
     assert "of SAT_LAYERS()" in ov and "SAT_LAYERS().forEach" in ov
+
+
+def test_now_pane_readings_are_stat_tiles_and_the_card_carries_webcams():
+    # 2026-09-02: pills → stat tiles (label over number, like the wind box);
+    # a webcams strip slotted in once per pin from /api/webcams (DriveBC first).
+    panes = _read("panes.js")
+    css = _read("styles.css")
+    assert "const stat = (k, v, unit, color, extra = \"\", title = \"\") =>" in panes
+    assert 'normal.push(stat("Rain 6 h"' in panes and 'normal.push(stat("Pressure"' in panes
+    assert 'class="chipv" style="color:#71b8ff"' not in panes            # the old pill is gone
+    assert '<div id="cams-slot" class="cams" hidden></div>' in panes
+    assert "function fetchCams(pt)" in panes and "function openCam(c)" in panes
+    assert ".meta:has(.stat) { display: grid;" in css
+    assert ".cam-view::backdrop" in css
+
+
+def test_winter_tab_stays_for_winter_sport_country_all_year():
+    panes = _read("panes.js")
+    assert "const SKI_LAT = 33;" in panes
+    assert "return Math.abs(pt.lat) >= SKI_LAT || elev >= 1000;" in panes
+
+
+def test_locate_sits_at_the_foot_of_the_tool_strip():
+    app = _read("app.js")
+    assert 'st.insertAdjacentHTML("beforeend", `<button class="strip-locate"' in app
+
+
+def test_tape_control_walks_all_three_states_and_every_change_glides():
+    # 2026-09-02: full → header → away → full from one button (and a grip
+    # tap); away is a pill, not a black slab; the glide runs for every pair.
+    app = _read("app.js"); css = _read("styles.css"); html = _read("index.html")
+    assert 'const nextTapeState = () => ({ full: "mini", mini: "away", away: "full" })[tapeState] || "full";' in app
+    assert "const animatable = prev !== s && !matchMedia(\"(prefers-reduced-motion: reduce)\").matches;" in app
+    assert 'id="tape-pill"' in html
+    assert "#timebar.tape-away { height: 38px !important;" in css and "@keyframes pill-in" in css

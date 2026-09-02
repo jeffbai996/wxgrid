@@ -970,28 +970,41 @@
       // The fold used to CUT between heights. Glide instead: measure both
       // ends, clip the box, and slide — the row swap happens at the short
       // end of the glide where the eye is on motion, not content.
-      const animatable = prev !== s && !tb.classList.contains("user-sized") &&
-        !matchMedia("(prefers-reduced-motion: reduce)").matches && (prev === "mini" || prev === "full") && (s === "mini" || s === "full");
+      // Every change of state glides, away included (it used to cut for
+      // anything but full<->mini, and cut again whenever the tape had been
+      // hand-sized — the "major transitions" that still jumped, Jeff
+      // 2026-09-02). Measure both ends, run the height, swap the pinned class
+      // in at the end. A hand-set height is kept as an inline style and comes
+      // back when the tape returns to full.
+      const animatable = prev !== s && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const pinned = s === "mini" || s === "away";
       if (animatable) {
         clearTimeout(tapeAnim);
-        const from = tb.offsetHeight;
+        const from = tb.getBoundingClientRect().height;
+        const sized = tb.style.height;           // a hand-set height, if any
+        tb.style.height = "";
         apply();
-        const to = tb.offsetHeight;
-        // .mini pins height with !important, so the glide runs WITHOUT the
-        // class and swaps it in at the end; going to full the class state is
-        // already right and the box just opens onto the real rows.
+        const to = tb.getBoundingClientRect().height;
+        // .mini/.tape-away pin height with !important, so the glide runs
+        // WITHOUT the class and swaps it in at the end; going to full the
+        // class state is already right and the box just opens onto the rows.
         if (s === "mini") tb.classList.remove("mini");
+        if (s === "away") tb.classList.remove("tape-away");
         tb.classList.add("tape-anim");
+        tb.classList.toggle("tape-anim-away", s === "away");
         tb.style.height = from + "px";
         tb.getBoundingClientRect();
-        tb.style.height = to + "px";
+        tb.style.height = (s === "full" && sized ? parseFloat(sized) : to) + "px";
         tapeAnim = setTimeout(() => {
-          tb.classList.remove("tape-anim");
-          tb.style.height = "";
+          tb.classList.remove("tape-anim", "tape-anim-away");
+          if (!(s === "full" && sized)) tb.style.height = "";
           if (s === "mini") tb.classList.add("mini");
+          if (s === "away") tb.classList.add("tape-away");
           document.documentElement.style.setProperty("--tb-h", tb.offsetHeight + "px");
-        }, 240);
+        }, 320);
       } else apply();
+      const pill = $("#tape-pill");
+      if (pill) pill.hidden = s !== "away";
       if (persist) localStorage.setItem("wxgrid.tapeState", s);
       tmin.title = s === "full" ? "Collapse the forecast table" : "Show the forecast table";
       requestAnimationFrame(() => document.documentElement.style.setProperty("--tb-h", tb.offsetHeight + "px"));
@@ -999,7 +1012,13 @@
     const savedState = localStorage.getItem("wxgrid.tapeState")
       || (localStorage.getItem("wxgrid.tapeMini") === "1" ? "mini" : "full");
     setTapeState(["full", "mini", "away"].includes(savedState) ? savedState : "full", false);
-    tmin.onclick = () => setTapeState(tapeState === "full" ? "mini" : "full");
+    // One control walks the three states: full → header → away → full.
+    // "Collapse completely" was only reachable by dragging the grip past a
+    // hidden threshold, which read as broken (Jeff 2026-09-02).
+    const nextTapeState = () => ({ full: "mini", mini: "away", away: "full" })[tapeState] || "full";
+    tmin.onclick = () => setTapeState(nextTapeState());
+    const pillBtn = $("#tape-pill");
+    if (pillBtn) pillBtn.onclick = () => setTapeState("full");
     // the crosshair button map apps have: centre here and open the card
     const goToMe = () => {
       if (!navigator.geolocation) { toast("This browser has no location service", 4000, "error"); return; }
@@ -1157,7 +1176,10 @@
     // the overflow exiled, so "my location" lived in the ⋮ flyout on every
     // screen where the strip did not fit (Jeff 2026-08-25: "pin to my location
     // should be on the outside rather than hiding in the three-dot menu").
-    st.insertAdjacentHTML("afterbegin", `<button class="strip-locate" data-tip="My location" aria-label="My location">${$("#locate-btn").innerHTML}</button>`);
+    // At the foot of the strip with settings, not the head: a locate button
+    // above twenty overlay toggles read as one of them and went unfound
+    // (Jeff 2026-09-02: "kinda hiding up there").
+    st.insertAdjacentHTML("beforeend", `<button class="strip-locate" data-tip="My location" aria-label="My location">${$("#locate-btn").innerHTML}</button>`);
     st.querySelector(".strip-locate").onclick = () => $("#locate-btn").click();
     // Reading a value off the map is the other thing people come to a weather
     // map to do, and its switch was buried in the same flyout — the feature
@@ -1348,7 +1370,7 @@
       const tap = Math.abs(tapeDrag.want - tapeDrag.height) < 5;
       tapeDrag = null; tb.classList.remove("is-resizing"); document.body.classList.remove("resizing-tape");
       restoreSheetHeight();                    // the card re-budgets around the new tape
-      if (tap) setTapeState(tapeState === "full" ? "mini" : "full");     // a tap on the grip cycles
+      if (tap) setTapeState(nextTapeState());                              // a tap on the grip cycles
       else {
         // A release below the rows snaps to mini rather than parking on a
         // clipped table (vertical scroll is locked, so clipped rows — the
@@ -1581,6 +1603,8 @@
     const narrow = matchMedia("(max-width: 820px)").matches;
     $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts(narrow ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
+    const pillT = $("#tape-pill .t");
+    if (pillT) pillT.textContent = v.toLocaleString(undefined, WX.units.timeOpts({ weekday: "short", hour: "numeric", minute: "2-digit" }));
     const atNow = state.stepIdx === currentStepIdx() && !state.frac;
     $("#lead").textContent = atNow ? "current" : `+${Math.round(shownHours())}h`;
     $("#tape-now").classList.toggle("on", atNow);

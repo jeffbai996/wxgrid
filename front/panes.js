@@ -334,23 +334,31 @@
     // land-only ones step aside.
     const sea = !!(pt.local && pt.local.place && pt.local.place.water);
     const marine = [], normal = [];
+    // One shape for every reading, the wind box's shape: a small label over
+    // the number, unit in the numeral face, the colour as a tint and a ring.
+    // Pills read as tags; a grid of these reads as an instrument panel
+    // (Jeff 2026-09-02: "think of something better to replace the pills").
+    const stat = (k, v, unit, color, extra = "", title = "") =>
+      `<div class="stat" style="--c:${color}"${title ? ` title="${title}"` : ""}><small>${k}</small><b>${v}${unit ? `<i>${unit}</i>` : ""}</b>${extra}</div>`;
     if (sea && s.wind && s.wind[i] != null) { const bf = beaufort(s.wind[i]);
-      marine.push(`<span class="chipv" style="color:#8ec5f0">force <b>${bf}</b> ${BEAUFORT_NAME[bf]}</span>`); }
+      marine.push(stat("Beaufort", bf, BEAUFORT_NAME[bf], "#8ec5f0")); }
     if (sea && s.swh && s.swh[i] != null) { const ds = douglas(s.swh[i]);
-      marine.push(`<span class="chipv" style="color:#7dd3fc">sea <b>${ds}</b> ${DOUGLAS_NAME[ds]}</span>`); }
-    if (s.swh && s.swh[i] != null) marine.push(`<span class="chipv" style="color:#7dd3fc">〜 <b>${W().units.alt(s.swh[i], 1).v}</b> ${W().units.altUnit}${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` · ${arrow((s.mwd[i] + 180) % 360)}` : ""}</span>`);
-    if (s.tp6 && s.tp6[i] > 0.05) normal.push(`<span class="chipv" style="color:var(--rain)"><b>${W().units.precip(s.tp6[i]).v}</b> ${W().units.precipUnit}/6h</span>`);
+      marine.push(stat("Sea state", ds, DOUGLAS_NAME[ds], "#7dd3fc")); }
+    if (s.swh && s.swh[i] != null) marine.push(stat("Waves", W().units.alt(s.swh[i], 1).v, W().units.altUnit, "#7dd3fc",
+      `<em>${s.mwp && s.mwp[i] != null ? `${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` ${arrow((s.mwd[i] + 180) % 360)}` : ""}</em>`));
+    if (s.tp6 && s.tp6[i] > 0.05) normal.push(stat("Rain 6 h", W().units.precip(s.tp6[i]).v, W().units.precipUnit, "var(--rain)"));
     // Chance, from the GEFS members, whichever model the card is reading:
     // the max over the next 24 h from the selected time, only when it says
     // something (a 3 % chance is not a pill).
     const chance = probMax(pt, d, i, "prob_rain", 24);
-    if (chance != null && chance >= 10) normal.push(`<span class="chipv" style="color:#71b8ff" title="Share of the 30 GEFS members giving rain in the next 24 h">rain chance <b>${chance}%</b></span>`);
+    if (chance != null && chance >= 10) normal.push(stat("Rain chance", chance, "%", "#71b8ff", "", "Share of the 30 GEFS members giving rain in the next 24 h"));
     const gustChance = probMax(pt, d, i, "prob_gust", 24);
-    if (gustChance != null && gustChance >= 20) normal.push(`<span class="chipv" style="color:#ffb454" title="Share of members with gusts over 50 km/h in the next 24 h">gale chance <b>${gustChance}%</b></span>`);
-    if (s.sf6 && s.sf6[i] > 0.05) normal.push(`<span class="chipv" style="color:#cfe8ff"><b>${W().units.snow(s.sf6[i]).v}</b> ${W().units.snowUnit} snow</span>`);
-    if (!sea && s.sd_cm && s.sd_cm[i] >= 0.5) normal.push(`<span class="chipv" style="color:#9fd3ff">depth <b>${W().units.snow(s.sd_cm[i]).v}</b> ${W().units.snowUnit}</span>`);
-    if (s.tcc && s.tcc[i] != null) normal.push(`<span class="chipv" style="color:#9fb0c8">☁ <b>${(s.tcc[i] * 100).toFixed(0)}</b>%</span>`);
-    if (s.d2m) normal.push(`<span class="chipv" style="color:#6cd7c4">dew <b>${f(s.d2m[i], (v) => W().units.temp(v).v)}°</b>${s.t2m && s.t2m[i] != null && s.d2m[i] != null ? ` · RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%` : ""}</span>`);
+    if (gustChance != null && gustChance >= 20) normal.push(stat("Gale chance", gustChance, "%", "#ffb454", "", "Share of members with gusts over 50 km/h in the next 24 h"));
+    if (s.sf6 && s.sf6[i] > 0.05) normal.push(stat("New snow", W().units.snow(s.sf6[i]).v, W().units.snowUnit, "#cfe8ff"));
+    if (!sea && s.sd_cm && s.sd_cm[i] >= 0.5) normal.push(stat("Snow depth", W().units.snow(s.sd_cm[i]).v, W().units.snowUnit, "#9fd3ff"));
+    if (s.tcc && s.tcc[i] != null) normal.push(stat("Cloud", (s.tcc[i] * 100).toFixed(0), "%", "#9fb0c8"));
+    if (s.d2m) normal.push(stat("Dew point", `${f(s.d2m[i], (v) => W().units.temp(v).v)}°`, "", "#6cd7c4",
+      s.t2m && s.t2m[i] != null && s.d2m[i] != null ? `<em>RH ${Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)))}%</em>` : ""));
     // Pressure with its direction: the number alone says nothing, the trend is
     // the whole reason a barometer is on the wall.
     if (s.msl) {
@@ -366,7 +374,7 @@
         const pts = win.map((v, k) => `${(k / (win.length - 1) * 44).toFixed(1)},${(11 - (v - mn) / span * 10).toFixed(1)}`).join(" ");
         spark = `<svg class="pspark" viewBox="0 0 44 12" aria-hidden="true"><polyline points="${pts}"/></svg>`;
       }
-      normal.push(`<span class="chipv" style="color:#b7a6f0"><b>${f(s.msl[i], (v) => W().units.press(v).v)}</b> ${W().units.pressUnit}${trend}${spark}</span>`);
+      normal.push(stat("Pressure", f(s.msl[i], (v) => W().units.press(v).v), W().units.pressUnit + trend, "#b7a6f0", spark));
     }
     // What it feels like, when that is not what the thermometer says.
     if (t != null) {
@@ -375,17 +383,17 @@
       if (w != null && c <= 10 && w * 3.6 >= 4.8) { const q = Math.pow(w * 3.6, 0.16); feels = 13.12 + 0.6215 * c - 11.37 * q + 0.3965 * c * q; }
       else if (dpK != null && c >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / dpK)); feels = c + 0.5555 * (e - 10); }
       if (Math.abs(Math.round(feels) - Math.round(c)) >= 2)
-        normal.push(`<span class="chipv" style="color:${tempColor(feels)}">feels <b>${W().units.tempC(feels).v}°</b></span>`);
+        normal.push(stat("Feels like", `${W().units.tempC(feels).v}°`, "", tempColor(feels)));
     }
     // Cloud base from the temperature/dew-point spread: ~125 m per °C. Only
     // worth saying when there is cloud to have a base.
     if (!sea && s.tcc && s.tcc[i] > 0.2 && s.d2m && s.d2m[i] != null && t != null) {
       const spread = (t - s.d2m[i]);
-      if (spread > 0.3 && spread < 25) normal.push(`<span class="chipv" style="color:#a9c4d8">base ≈ <b>${W().units.alt(Math.round(spread * 125 / 50) * 50).v}</b> ${W().units.altUnit}</span>`);
+      if (spread > 0.3 && spread < 25) normal.push(stat("Cloud base ≈", W().units.alt(Math.round(spread * 125 / 50) * 50).v, W().units.altUnit, "#a9c4d8"));
     }
-    if (s.cape && s.cape[i] >= 100) normal.push(`<span class="chipv" style="color:${s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)"}">CAPE <b>${s.cape[i].toFixed(0)}</b> J/kg</span>`);
+    if (s.cape && s.cape[i] >= 100) normal.push(stat("CAPE", s.cape[i].toFixed(0), "J/kg", s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)"));
     const freezing = d.derived && d.derived.freezing_level_m && d.derived.freezing_level_m[i];
-    if (!sea && freezing != null) normal.push(`<span class="chipv" style="color:#7fd8e8">freezing <b>${W().units.alt(freezing).v}</b> ${W().units.altUnit}</span>`);
+    if (!sea && freezing != null) normal.push(stat("Freezing lvl", W().units.alt(freezing).v, W().units.altUnit, "#7fd8e8"));
     chips.push(...(sea ? [...marine, ...normal] : [...normal, ...marine]));
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
     const moon = moonPhase(W().validDate);
@@ -402,8 +410,10 @@
       ${contextCues(pt, d, i)}
       ${daysStrip(pt, d, i)}
       ${contextCards(pt, d, i)}
+      ${window.WXStatic ? "" : `<div id="cams-slot" class="cams" hidden></div>`}
       ${alertsHtml(pt)}${airHtml(pt)}`;
     fetchNearStorm(pt);
+    fetchCams(pt);
     // local context
     const loc = pt.local || {};
     const bits = [];
@@ -649,6 +659,7 @@
   // fortnight either way changes nothing.
   const isWinterHalf = (lat, date) => { const m = date.getMonth(); return lat >= 0 ? (m >= 10 || m <= 2) : (m >= 4 && m <= 8); };
   const HIGH_LAT = 55;
+  const SKI_LAT = 33;                  // winter tab shown poleward of this, any season
 
   // Near the coast? Two cheap signals, both already on the card. Marine fields
   // are NaN over land, so a wave height or a sea-surface temperature at this
@@ -695,8 +706,13 @@
     if (s.sf6 && s.sf6.some((v) => v != null && v > 0.5)) return true;
     if (s.sd_cm && s.sd_cm.some((v) => v != null && v > 1)) return true;
     if (s.t2m && s.t2m.some((v) => v != null && v < K + 1)) return true;
+    // Winter-sport country stays a winter place all year: the tab is where
+    // the snow depth, freezing level and resort bands live even when this
+    // week's forecast is dry (Jeff 2026-09-02, snow-forecast.com as the
+    // model). Latitude 33° reaches the Andes, Japan and the Rockies' south;
+    // 1000 m catches the lower resorts inside that.
     const elev = (pt.local && pt.local.elevation_m) || 0;
-    return (Math.abs(pt.lat) >= HIGH_LAT || elev >= 1200) && isWinterHalf(pt.lat, W().validDate);
+    return Math.abs(pt.lat) >= SKI_LAT || elev >= 1000;
   }
 
   // Minutes of unprotected sun before a fair skin burns. One UV index unit is
@@ -968,6 +984,48 @@
   // A cyclone within reach of the pin earns a chip on the hero card: the
   // storm's name, its basin-correct category, range and bearing. Tapping it
   // turns the storms layer on and flies to the eye (Jeff 2026-08-21).
+  // ── nearby webcams ─────────────────────────────────────────────────────
+  // What the sky actually looks like from the nearest pass or shore road.
+  // Public DOT cams today (DriveBC); more providers are a server-side list.
+  // Fetched once per pin and slotted in, never re-rendered with the step:
+  // the pictures do not change with the forecast hour.
+  let camsFetch = 0;
+  const camBust = () => Math.floor(Date.now() / 3e5);          // fresh still every 5 min, cached in between
+  function fetchCams(pt) {
+    if (window.WXStatic) return;
+    const my = ++camsFetch;
+    const paint = (cams) => {
+      if (my !== camsFetch) return;
+      const el = document.getElementById("cams-slot");
+      if (!el) return;
+      if (!cams || !cams.length) { el.hidden = true; return; }
+      el.hidden = false;
+      el.innerHTML = `<div class="cams-head"><small>Webcams nearby</small><span>${cams.length} · ${cams[0].provider}</span></div>
+        <div class="cams-strip">${cams.map((c, k) => `<button class="cam${c.stale ? " stale" : ""}" data-cam="${k}" type="button" title="${esc(c.caption || c.name)}">
+          <img src="${esc(c.image)}?t=${camBust()}" alt="" loading="lazy">
+          <span class="cam-name">${esc(c.name)}</span>
+          <span class="cam-dist">${c.distance_km} km ${compass(c.bearing_deg)}${c.elevation_m != null ? ` · ${W().units.alt(c.elevation_m).v} ${W().units.altUnit}` : ""}</span>
+        </button>`).join("")}</div>`;
+      el.querySelectorAll(".cam").forEach((b) => b.onclick = () => openCam(cams[+b.dataset.cam]));
+    };
+    if (pt.cams) { paint(pt.cams); return; }
+    W().api(`${W().API}/webcams?lat=${pt.lat.toFixed(3)}&lon=${pt.lon.toFixed(3)}&n=8`)
+      .then((r) => { pt.cams = (r && r.cams) || []; paint(pt.cams); })
+      .catch(() => { pt.cams = []; paint(pt.cams); });
+  }
+  function openCam(c) {
+    let dlg = document.getElementById("cam-view");
+    if (!dlg) {
+      dlg = document.createElement("dialog"); dlg.id = "cam-view"; dlg.className = "cam-view";
+      document.body.appendChild(dlg);
+      dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+    }
+    dlg.innerHTML = `<div class="cam-view-head"><b>${esc(c.name)}</b><span>${esc(c.caption || "")}</span><button class="icon" type="button" aria-label="Close">×</button></div>
+      <img src="${esc(c.image)}?t=${camBust()}" alt="${esc(c.name)}">
+      <div class="cam-view-foot"><span>${c.updated ? `updated ${new Date(c.updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ` : ""}${esc(c.credit)}</span><a href="${esc(c.page)}" target="_blank" rel="noopener">open at ${esc(c.provider)} ↗</a></div>`;
+    dlg.querySelector("button.icon").onclick = () => dlg.close();
+    dlg.showModal();
+  }
   let stormFetch = 0;
   // The meteorological tropical-cyclone symbol, not an emoji: a core with
   // two trailing arms, drawn in whatever colour the category earned.

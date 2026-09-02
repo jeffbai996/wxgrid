@@ -408,11 +408,23 @@ button:focus:not(:focus-visible) { outline: none; }
 @media (max-width: 820px) { #timebar.user-sized table.wtape { min-height: 0; } }
 #timebar.mini { height: auto !important; }
 /* the fold glide: an explicit height + clip while sliding between states */
-#timebar.tape-anim { transition: height .22s cubic-bezier(.4,0,.2,1); overflow: hidden; }
+#timebar.tape-anim { transition: height .32s cubic-bezier(.32,.72,.24,1), background-color .32s ease, border-color .32s ease, box-shadow .32s ease; overflow: hidden; }
 #timebar.tape-anim #step { display: none; }
+#timebar.tape-anim-away { background: transparent; border-color: transparent; }
 /* out of the way entirely: only the grip is left to pull it back */
-#timebar.tape-away { height: 14px !important; min-height: 0; padding: 0; overflow: hidden; }
-#timebar.tape-away > *:not(.tape-resize-handle) { display: none; }
+/* Away: the slab is gone. What stays is the grip and one pill at the foot of
+   the map saying what time the map shows, which is also the way back. */
+#timebar.tape-away { height: 38px !important; min-height: 0; padding: 0; overflow: visible; background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none;
+  display: flex; align-items: flex-end; justify-content: center; }
+#timebar.tape-away > *:not(.tape-resize-handle):not(#tape-pill) { display: none; }
+.tape-pill { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px 0 10px; border-radius: 999px; border: 1px solid var(--line-strong);
+  background: var(--panel-solid); color: var(--fg); font: 700 12.5px var(--font-display); cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  animation: pill-in .28s cubic-bezier(.32,.72,.24,1) both; }
+.tape-pill svg { width: 15px; height: 15px; color: var(--accent); }
+.tape-pill .t { font: 600 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.tape-pill .l { color: var(--fg-2); font-weight: 600; }
+.tape-pill:hover { border-color: var(--accent); }
+@keyframes pill-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 #timebar.tape-away .tape-resize-handle, #timebar.mini .tape-resize-handle { display: grid; }
 .tape-head { display: flex; align-items: center; gap: 10px; padding: 0 2px 2px; }
 .tape-head .icon { flex: 0 0 auto; }
@@ -773,8 +785,6 @@ table.bandtape .nil { color: var(--line-strong); }
   #legend .legend-ticks { display: flex; font-size: 9px; margin-top: 2px; }
   #legend .legend-ticks span:nth-child(2), #legend .legend-ticks span:nth-child(4) { display: none; }
   #timebar.tape-away { overflow: visible; }
-  #timebar.tape-away .tape-head { display: flex; }
-  #timebar.tape-away .tape-head > *:not(#legend) { display: none; }
   #point { left: 8px; right: 8px; width: auto; }
   /* the place line wraps rather than losing the elevation off its end */
   #point-local { white-space: normal; line-height: 1.35; }
@@ -1411,7 +1421,7 @@ body.no-map #particles { display: none; }
 /* ── embed mode: map, legend, clock; the rest of the chrome stays home ── */
 #embed-brand { display: none; }
 body.embed #topbar, body.embed #tstrip, body.embed #side, body.embed .locate-btn, body.embed #centre-mark, body.embed #provider,
-body.embed #tape, body.embed #step, body.embed .tape-resize-handle, body.embed #tape-min, body.embed #tape-res, body.embed #tape-where, body.embed #variant { display: none !important; }
+body.embed #tape, body.embed #step, body.embed .tape-resize-handle, body.embed #tape-min, body.embed #tape-res, body.embed #tape-where, body.embed #variant, body.embed #tape-pill { display: none !important; }
 body.embed #timebar { height: auto !important; padding-bottom: 6px; }
 body.embed #embed-brand { position: absolute; z-index: 6; top: 8px; left: 8px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px 5px 6px; border-radius: 9px;
   background: var(--panel); border: 1px solid var(--line); color: var(--fg); text-decoration: none; font: 700 12.5px var(--font-display); backdrop-filter: blur(8px); }
@@ -1419,3 +1429,43 @@ body.embed #embed-brand:hover { border-color: var(--line-strong); }
 #settings textarea.embed-code { width: 100%; min-height: 64px; resize: vertical; font: 500 11px var(--font-mono, ui-monospace, monospace); color: var(--fg); background: var(--panel-solid); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 #settings .embed-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 #settings .embed-row button { border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 8px; padding: 5px 11px; font: 700 12px var(--font-display); cursor: pointer; }
+
+/* ── stat tiles: the card's readings as an instrument panel, not tags ───── */
+/* Same shape as the wind box: small label, the number in the numeral face,
+   the reading's colour as a tint and a ring. A grid that fills the width. */
+.meta:has(.stat) { display: grid; width: 100%; flex: 1 0 100%; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; align-items: stretch; }
+.meta:has(.stat) .wind-readout { grid-column: 1 / -1; }
+.meta .stat { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; padding: 8px 10px 7px; border-radius: 11px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--c) 15%, transparent), rgba(127,127,127,.035));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 32%, var(--line)); color: var(--fg); }
+.meta .stat small { font: 700 8.5px var(--font-display); letter-spacing: .09em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta .stat b { font: 650 17px/1 var(--font-num); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--fg); display: flex; align-items: baseline; gap: 4px; }
+.meta .stat b i { font: 550 10px var(--font-mono); color: var(--fg-2); font-style: normal; }
+.meta .stat em { font: 500 10.5px var(--font-mono); color: var(--fg-2); font-style: normal; }
+.meta .stat .pspark { width: 100%; height: 12px; margin: 2px 0 0; }
+.meta .stat .pspark polyline { fill: none; stroke: var(--c); stroke-width: 1.4; opacity: .8; }
+@media (max-width: 520px) { .meta:has(.stat) { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } }
+
+/* ── webcams nearby ──────────────────────────────────────────────────── */
+.cams { margin: 8px 0 4px; }
+.cams-head { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 6px; }
+.cams-head small { font: 700 8.5px var(--font-display); letter-spacing: .09em; text-transform: uppercase; color: var(--dim); }
+.cams-head span { font: 500 10.5px var(--font-mono); color: var(--fg-2); }
+.cams-strip { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 4px; scrollbar-width: thin; }
+.cam { flex: 0 0 168px; scroll-snap-align: start; position: relative; padding: 0; border: 0; border-radius: 11px; overflow: hidden; cursor: pointer;
+  background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); color: var(--fg); text-align: left; font: inherit; }
+.cam img { display: block; width: 168px; height: 100px; object-fit: cover; background: #0b0d10; }
+.cam .cam-name, .cam .cam-dist { position: absolute; left: 0; right: 0; padding: 0 8px; pointer-events: none; }
+.cam .cam-name { bottom: 18px; font: 700 11px/1.2 var(--font-display); color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cam .cam-dist { bottom: 5px; font: 500 9.5px var(--font-mono); color: #d7dde6; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+.cam::after { content: ""; position: absolute; inset: 40% 0 0; background: linear-gradient(to bottom, transparent, rgba(0,0,0,.72)); pointer-events: none; }
+.cam.stale img { filter: grayscale(.6) brightness(.7); }
+.cam:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+.cam-view { border: 1px solid var(--line-strong); border-radius: 14px; padding: 0; background: var(--panel-solid); color: var(--fg); max-width: min(96vw, 1100px); box-shadow: 0 24px 80px rgba(0,0,0,.6); }
+.cam-view::backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(4px); }
+.cam-view-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.cam-view-head b { font: 700 14px var(--font-display); }
+.cam-view-head span { flex: 1; font: 500 11.5px var(--font-mono); color: var(--fg-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cam-view img { display: block; max-width: 96vw; max-height: 78vh; width: auto; height: auto; }
+.cam-view-foot { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px 10px; font: 500 11px var(--font-mono); color: var(--fg-2); }
+.cam-view-foot a { color: var(--accent); text-decoration: none; }
