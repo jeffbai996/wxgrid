@@ -339,14 +339,17 @@
           <polygon class="a" points="0,24 ${pts(win)} 100,24"/><polyline class="w" points="${pts(win)}"/></svg>`;
       }
       const peakG = gwin.length ? Math.max(...gwin) : null;
-      const rose = `<span class="wind-rose" style="--rot:${dir == null ? 0 : (dir + 180) % 360}deg" title="${dir == null ? "" : `from ${Math.round(dir)}°`}">
-        <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18"/><path class="n" d="M20 3v4"/><path d="M37 20h-4M20 37v-4M3 20h4"/>
-        <g class="ar"><path d="M20 9l5 12-5-3-5 3z"/><path d="M20 18v13"/></g></svg><i>N</i></span>`;
+      // The dial: a thin ring, four cardinal ticks, one slim needle pointing
+      // the way the air is going, nothing else.
+      const dial = `<span class="wind-dial" style="--rot:${dir == null ? 0 : (dir + 180) % 360}deg" title="${dir == null ? "" : `from ${Math.round(dir)}°`}">
+        <svg viewBox="0 0 40 40" aria-hidden="true"><circle class="ring" cx="20" cy="20" r="17"/>
+        <path class="tick" d="M20 2.5v3M37.5 20h-3M20 37.5v-3M2.5 20h3"/>
+        <g class="needle"><path d="M20 5.5 L23.2 20 L20 23 L16.8 20 Z"/></g><circle class="hub" cx="20" cy="20" r="2"/></svg></span>`;
       chips.push(`<span class="wind-readout" style="--wind-color:${windColor(w || 0)}">
-        ${rose}
-        <span class="wind-main"><small>Wind ${compass(dir)}${dir != null ? ` <em>${Math.round(dir)}°</em>` : ""}</small><b>${f(w, (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b>${bf != null ? `<em>F${bf} · ${BEAUFORT_NAME[bf]}</em>` : ""}</span>
+        <span class="wind-main"><small>Wind</small><b>${f(w, (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b><em>${compass(dir)}${dir != null ? ` ${Math.round(dir)}°` : ""}${bf != null ? ` · ${BEAUFORT_NAME[bf]}` : ""}</em></span>
+        ${dial}
         <span class="wind-trend">${spark}<small>next 24 h${peakG != null ? ` · gusts to ${speed(peakG).toFixed(0)}` : ""}</small></span>
-        ${g != null ? `<span class="wind-gust"><small>Gusts</small><b>${speed(g).toFixed(0)} <i>${speedUnit()}</i></b>${w > 0.5 ? `<em>×${(g / w).toFixed(1)} gust factor</em>` : ""}</span>` : ""}
+        ${g != null ? `<span class="wind-gust"><small>Gusts</small><b>${speed(g).toFixed(0)} <i>${speedUnit()}</i></b></span>` : ""}
         <span class="wind-storm" id="storm-slot"></span>
       </span>`);
     }
@@ -357,6 +360,7 @@
     // land-only ones step aside.
     const sea = !!(pt.local && pt.local.place && pt.local.place.water);
     const marine = [], normal = [];
+    let pressureCurve = "";
     // One shape for every reading, the wind box's shape: a small label over
     // the number, unit in the numeral face, the colour as a tint and a ring.
     // Pills read as tags; a grid of these reads as an instrument panel
@@ -407,7 +411,9 @@
         const pts = win.map((v, k) => `${(k / (win.length - 1) * 44).toFixed(1)},${(11 - (v - mn) / span * 10).toFixed(1)}`).join(" ");
         spark = `<svg class="pspark" viewBox="0 0 44 12" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}"/></svg>`;
       }
-      normal.push(stat("Pressure", f(s.msl[i], (v) => W().units.press(v).v), W().units.pressUnit + trend, "#b7a6f0", spark));
+      pressureCurve = spark;
+      normal.push(stat("Pressure", f(s.msl[i], (v) => W().units.press(v).v), W().units.pressUnit, "#b7a6f0",
+        `<em class="trend" title="${dP > 0 ? "rising" : dP < 0 ? "falling" : "steady"} ${Math.abs(dP).toFixed(1)} hPa / 6 h">${dP >= 1 ? "↑" : dP <= -1 ? "↓" : "→"}</em>`));
     }
     // What it feels like, when that is not what the thermometer says.
     if (t != null) {
@@ -445,6 +451,7 @@
       ${contextCards(pt, d, i)}
       ${window.WXStatic ? "" : `<div id="cams-slot" class="cams" hidden></div>`}
       ${alertsHtml(pt)}${airHtml(pt)}`;
+    pt.pressureCurve = pressureCurve;
     fetchNearStorm(pt);
     fetchCams(pt);
     // local context
@@ -870,7 +877,7 @@
         ["Freezing level", fl != null ? W().units.alt(fl).txt : (d.levels && d.levels.length ? "below 925 hPa or above 250" : "—"), "", "flake"],
         ["Total cloud", f(s.tcc && s.tcc[i], (v) => (v * 100).toFixed(0) + "%"), "", "cloud", s.tcc && s.tcc[i] != null ? s.tcc[i] : null],
         ["CAPE", `${f(s.cape && s.cape[i], (v) => v.toFixed(0) + " J/kg")}${s.cape ? "" : " <span class=dim>(model has none)</span>"}`, capeClass(s.cape && s.cape[i]), "bolt"],
-        ["QNH (MSL)", f(s.msl && s.msl[i], (v) => W().units.press(v, W().units.pressUnit === "hPa" ? 1 : undefined).txt), "", "baro"],
+        ["QNH (MSL)", f(s.msl && s.msl[i], (v) => W().units.press(v, W().units.pressUnit === "hPa" ? 1 : undefined).txt) + (W().state.point && W().state.point.pressureCurve ? `<span class="baro-curve" title="24 h of pressure from this step">${W().state.point.pressureCurve}</span>` : ""), "", "baro"],
         ["Dew point spread", s.d2m && s.t2m && s.t2m[i] != null && s.d2m[i] != null ? W().units.tempDelta(s.t2m[i] - s.d2m[i]).toFixed(1) + " " + W().units.tempUnit : "—", "", "drop"],
       ], "aloft-kv")}
       ${tafHtml()}

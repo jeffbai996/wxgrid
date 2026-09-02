@@ -1041,18 +1041,16 @@ table.wtape tr.r-dir td { height: 20px; }
   align-items: center; gap: 10px; padding: 9px 11px; border-radius: 11px;
   background: linear-gradient(100deg, color-mix(in srgb, var(--wind-color) 22%, transparent), rgba(127,127,127,.035));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wind-color) 45%, var(--line)); color: var(--fg);
-  grid-template-columns: 44px auto minmax(90px, 1fr) auto auto; }
-.wind-rose { position: relative; width: 44px; height: 44px; display: block; }
-.wind-rose svg { width: 44px; height: 44px; display: block; }
-.wind-rose circle { fill: color-mix(in srgb, var(--wind-color) 18%, transparent); stroke: color-mix(in srgb, var(--wind-color) 70%, var(--fg)); stroke-width: 1.2; }
-.wind-rose path { stroke: var(--fg-2); stroke-width: 1.4; stroke-linecap: round; fill: none; }
-.wind-rose path.n { stroke: var(--fg); stroke-width: 2; }
-.wind-rose .ar { transform-origin: 20px 20px; transform: rotate(var(--rot)); transition: transform .3s cubic-bezier(.32,.72,.24,1); }
-.wind-rose .ar path { stroke: var(--wind-color); stroke-width: 2.2; }
-.wind-rose .ar path:first-child { fill: var(--wind-color); }
-.wind-rose i { position: absolute; top: -1px; left: 50%; transform: translateX(-50%); font: 700 6.5px var(--font-display); color: var(--fg); font-style: normal; background: var(--panel-solid); padding: 0 2px; border-radius: 3px; }
-.wind-main em, .wind-gust em { font: 600 9px var(--font-display); color: var(--fg-2); font-style: normal; letter-spacing: 0; text-transform: none; }
-.wind-main small em { font: 500 8.5px var(--font-mono); color: var(--fg-2); letter-spacing: 0; text-transform: none; }
+  grid-template-columns: auto 40px minmax(90px, 1fr) auto auto; }
+.wind-main b { font-size: 22px !important; }
+.wind-dial { width: 40px; height: 40px; display: block; }
+.wind-dial svg { width: 40px; height: 40px; display: block; }
+.wind-dial .ring { fill: none; stroke: color-mix(in srgb, var(--fg-2) 45%, transparent); stroke-width: 1; }
+.wind-dial .tick { stroke: color-mix(in srgb, var(--fg-2) 70%, transparent); stroke-width: 1.2; stroke-linecap: round; fill: none; }
+.wind-dial .needle { transform-origin: 20px 20px; transform: rotate(var(--rot)); transition: transform .3s cubic-bezier(.32,.72,.24,1); }
+.wind-dial .needle path { fill: var(--wind-color); stroke: none; }
+.wind-dial .hub { fill: var(--fg); }
+.wind-main em, .wind-gust em { font: 600 9px var(--font-display); color: var(--fg-2); font-style: normal; letter-spacing: 0; text-transform: none; white-space: nowrap; }
 .wind-trend { display: flex; flex-direction: column; min-width: 0; gap: 2px; align-self: stretch; justify-content: center; }
 .wind-trend small { font: 600 8px var(--font-display); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wspark { width: 100%; height: 24px; display: block; }
@@ -1460,9 +1458,11 @@ body.embed #embed-brand:hover { border-color: var(--line-strong); }
 .meta .stat b i { font: 550 8.5px var(--font-mono); color: var(--fg-2); font-style: normal; }
 /* a second line would break the one-height rule: extras ride the number line */
 .meta .stat em { font: 500 8.5px var(--font-mono); color: var(--fg-2); font-style: normal; position: absolute; right: 7px; bottom: 5px; }
-/* the sparkline lives under the text, edge to edge, so the tile stays 42 px */
-.meta .stat .pspark { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 16px; margin: 0; display: block; opacity: .9; }
-.meta .stat .pspark polyline { fill: none; stroke: var(--c); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.meta .stat em.trend { font: 700 15px/1 var(--font-num); color: var(--c); bottom: 9px; }
+/* the pressure curve lives on the Aloft pane's QNH card, under the reading */
+.aloft-kv .baro-curve { display: block; width: 100%; margin-top: 4px; }
+.aloft-kv .baro-curve .pspark { width: 100%; height: 14px; display: block; }
+.aloft-kv .baro-curve polyline { fill: none; stroke: #b7a6f0; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
 @media (max-width: 520px) { .meta:has(.stat) { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); } }
 
 /* ── webcams nearby ──────────────────────────────────────────────────── */
