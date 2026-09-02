@@ -84,6 +84,9 @@ def derive_swell(got: dict) -> None:
 def _resolve_run(model: Model, run: str | None) -> datetime:
     if run and run != "auto":
         return datetime.strptime(run, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
+    if model.source == "weathernext":
+        from wxgrid import wn2
+        return wn2.resolve_latest(model)
     if model.source == "ecmwf":
         from ecmwf.opendata import Client
         client = Client(source="ecmwf", model=model.ecmwf_model, resol="0p25")
@@ -151,6 +154,9 @@ def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
     if rid in list_runs(model.key, store_root):
         log.info("%s %s already in store, skipping", model.key, rid)
         return {"model": model.key, "run": rid, "skipped": True}
+    if model.source == "weathernext":
+        from wxgrid import wn2
+        return wn2.ingest_wn2(model, run, store_root)
     # One writer per run: the timer and a hand-run ingest of the same run
     # would otherwise rmtree each other's half-written group (seen 2026-08-18).
     # The same lock guards the maintenance writers (store.run_lock, #4vd6x).

@@ -69,7 +69,11 @@ class Model:
     key: str                 # store key + API name
     label: str               # UI label
     short: str               # tiny label for segmented controls
-    source: str              # "ecmwf" | "nomads" | "nomads-gefs" | "datamart"
+    source: str              # "ecmwf" | "nomads" | "nomads-gefs" | "datamart" | "weathernext"
+    # An optional model is one this install may not have access to (gated
+    # data). The catalog leaves it out until a run exists, so the model row
+    # never shows a pill nobody can press.
+    optional: bool = False
     steps: list[int] = field(default_factory=lambda: STEPS_6H)
     ecmwf_model: str = ""    # opendata client model id
     # source-native surface shortName → canonical name
@@ -218,6 +222,17 @@ MODELS: dict[str, Model] = {
         precip_mode="bucket6",
         snow_depth_factor=100.0,
         attribution="NOAA NCEP GFS via NOMADS, public domain",
+    ),
+    "wn2": Model(
+        key="wn2", label="Google WeatherNext 2 (AI ensemble mean)", short="WN2", grid="28km", source="weathernext",
+        steps=list(range(0, 361, 6)), optional=True,
+        # WeatherNext names → canonical; the adapter (wxgrid/wn2.py) maps them,
+        # this table only declares what the store carries.
+        sfc_params={"2m_temperature": "t2m", "10m_u_component_of_wind": "u10", "10m_v_component_of_wind": "v10",
+                    "mean_sea_level_pressure": "msl", "total_precipitation_6hr": "tp", "sea_surface_temperature": "sst"},
+        pl_params={"temperature": "t", "u_component_of_wind": "u", "v_component_of_wind": "v", "geopotential": "gh"},
+        precip_mode="per_step",
+        attribution="Google DeepMind WeatherNext 2, experimental; © DeepMind Technologies Limited",
     ),
     "aigfs": Model(
         key="aigfs", label="NOAA AI-GFS", short="AI-GFS", grid="25km", source="aws-aigfs", steps=STEPS_AI,

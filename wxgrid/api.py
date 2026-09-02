@@ -391,6 +391,8 @@ def api_models() -> dict:
 def _build_models(summary: dict) -> dict:
     out = []
     for key, m in MODELS.items():
+        if m.optional and not summary.get(key):
+            continue
         entry = {"key": key, "label": m.label, "short": m.short, "grid": m.grid,
                  "attribution": m.attribution, "domain": list(m.domain),
                  "grid_shape": list(m.grid_shape), "regional": m.regional,

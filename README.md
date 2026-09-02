@@ -207,6 +207,7 @@ advertises only what a run actually contains.
 | `aigfs` | NOAA AI-GFS (AI) | AWS Open Data | 0.25° | 6 h to 384 h | u10 v10 t2m d2m msl tp | all 10 levels |
 | `gem` | ECCC GEM GDPS | MSC Datamart | 0.15° → | 3 h to 240 h | u10 v10 t2m d2m msl tp sf sd gust tcc cape | all 10 levels |
 | `gefs` | NOAA GEFS mean | NOMADS filter CGI | 0.25° / 0.5° → | 3 h to 240 h | u10 v10 t2m d2m msl tp sf(derived) sd gust tcc cape | 1000 925 850 700 500 250 200 |
+| `wn2` | Google WeatherNext 2 (AI ensemble mean) | GCS Zarr (gated) | 0.25° | 6 h to 360 h | t2m u10 v10 msl tp sst | t u v gh at all 10 levels |
 | `hrdps` | ECCC HRDPS | MSC Datamart | 2.5 km → 0.025° regional | hourly to 48 h | u10 v10 t2m d2m msl tp sf sd gust tcc | surface only |
 | `hrrr` | NOAA HRRR | AWS Open Data | 3 km → 0.025° regional | hourly to 48 h | u10 v10 t2m d2m msl tp sf sd gust tcc | surface only |
 
@@ -244,6 +245,15 @@ index on AWS and fetches only the byte ranges it stores. It publishes no cloud,
 CAPE, gust, snow or snow-depth fields, so those layers are absent rather than
 inferred. When a shorter physics run ends, the card's later daily outlook can
 continue on AI-GFS; every continuation day is labelled `AI`.
+
+**WeatherNext 2** is Google DeepMind's FGN ensemble (64 members, 15 days,
+~2 h after init). Google gates the data behind a GCP project and a data-request
+form; once approved, `WXGRID_WN2_ZARR=gs://weathernext/weathernext_2_0_0_mean/zarr`
+(with `gcsfs` installed and credentials on the box) makes `wxgrid/wn2.py` read
+the Zarr straight into the store, no GRIB involved. The model is `optional`:
+the catalog omits it until a run exists. Historic data is CC BY 4.0; real-time
+data carries Google's separate experimental terms — check them before serving
+it publicly.
 
 **GEFS** is the `geavg` ensemble-mean member. Surface comes from the 0.25°
 `pgrb2s` product; pressure levels come from the 0.5° `pgrb2a` product and are
@@ -386,6 +396,7 @@ Everything is an environment variable with a working default.
 | `WXGRID_PUBLIC` | unset | `1` hides `front/private/` |
 | `WXGRID_WRITE_MBPS` | `60` | ingest write pacing |
 | `WXGRID_DOWNLOAD_MBPS` | `20` | ingest download pacing |
+| `WXGRID_WN2_ZARR` | unset | WeatherNext 2 Zarr URL (`gs://…` or a local path); unset = model not ingested |
 | `WXGRID_STEP_GATE_COMMAND` | unset | optional host-pressure gate run between ingest steps; non-zero exit aborts the pass, completed downloads stay reusable |
 
 ## Front end
@@ -498,8 +509,9 @@ explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
 
 ## Roadmap
 
-- WeatherNext 2 (DeepMind FGN ensemble) via BigQuery once the data-request
-  form clears. AIFS-ENS member columns for true plumes.
+- WeatherNext 2 member spread into the Spread pane (the adapter ingests the
+  mean today; members need the full dataset). AIFS-ENS member columns for
+  true plumes.
 - ICON (needs icosahedral regrid weights), hourly GFS surface tier, GFS waves
   (WW3).
 - Self-hosted AI model via ECMWF `ai-models` (Aurora / GraphCast-small).
