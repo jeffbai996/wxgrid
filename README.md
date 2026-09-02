@@ -53,11 +53,6 @@ data on the model's own grid; the browser colours it on the GPU, mixes the two
 steps the scrubber sits between, and reads the cursor value out of the same
 bytes. Unit and level changes cost nothing on the wire.
 
-**Two models, one map.** Split the map and drag the divider: one model on the
-left, another on the right, same layer, same legend, same valid time, each
-resolved on its own run and step spacing. The probe reads whichever side the
-cursor is on. Permalinks carry the split.
-
 **Observations on the forecast.** The Stations overlay puts every METAR in
 view on the map: flight-category pins, temperature, wind with an arrow the way
 the air is going, and the decoded report on tap. The check on the forecast,
@@ -523,8 +518,7 @@ explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
 
 Short version; the commit log is the long one.
 
-- **2026-09-01** — split-screen: two models side by side on one layer and
-  valid time. Station observations (METAR) as a map overlay. Embed mode and
+- **2026-09-01** — station observations (METAR) as a map overlay. Embed mode and
   the iframe snippet. Hodograph on the Skew-T. Meteosat discs in the satellite
   overlay. Swell, wind sea and peak period wave layers. Test suite offline by
   default with a socket guard and per-test timeout; orphaned GRIB scratch swept.

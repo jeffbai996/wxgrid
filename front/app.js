@@ -79,9 +79,6 @@
   if (EMBED) document.body.classList.add("embed");
   const state = {
     model: null, run: null, layer: "wind", level: 0, stepIdx: 0,
-    // split-screen: the right-hand model's key (null = one model) and where
-    // the divider sits, as a fraction of the map width
-    vs: null, splitX: 0.5,
     // where the map sits BETWEEN stepIdx and the next step, 0..1. Only the
     // GPU field path can draw it; the raster path rounds it away.
     frac: 0,
@@ -226,7 +223,7 @@
     state.layer = localStorage.getItem("wxgrid.layer") || "wind";
     if (!runEntry().layers.includes(state.layer)) state.layer = runEntry().layers[0];
 
-    if (hash) { if (hash.model && catalog.models.some((m) => m.key === hash.model && m.runs.length)) state.model = hash.model; if (hash.layer && LAYERS.includes(hash.layer)) state.layer = hash.layer; state.level = hash.level || 0; state.run = modelEntry().runs[0].run; if (hash.step != null) state.stepIdx = Math.min(hash.step, steps().length - 1); state.vs = vsFromHash(hash); if (hash.splitX) state.splitX = hash.splitX; }
+    if (hash) { if (hash.model && catalog.models.some((m) => m.key === hash.model && m.runs.length)) state.model = hash.model; if (hash.layer && LAYERS.includes(hash.layer)) state.layer = hash.layer; state.level = hash.level || 0; state.run = modelEntry().runs[0].run; if (hash.step != null) state.stepIdx = Math.min(hash.step, steps().length - 1); }
     // A fresh load opens at the current hour, whatever the link said — the
     // map should show now, not the run's first frame (Jeff 2026-08-22).
     state.stepIdx = currentStepIdx();
@@ -443,11 +440,9 @@
   function readHash() {
     const h = location.hash.replace(/^#/, "");
     if (!h) return null;
-    const m = h.match(/^(-?[\d.]+),(-?[\d.]+),([\d.]+)(?:;([a-z]+))?(?:;([a-z_0-9]+)(?:\/(\d+))?)?(?:;s(\d+))?(?:;v([a-z]+)(?:@(\d+))?)?(?:;p(-?[\d.]+),(-?[\d.]+))?/);
+    const m = h.match(/^(-?[\d.]+),(-?[\d.]+),([\d.]+)(?:;([a-z]+))?(?:;([a-z_0-9]+)(?:\/(\d+))?)?(?:;s(\d+))?(?:;p(-?[\d.]+),(-?[\d.]+))?/);
     if (!m) return null;
-    return { lat: +m[1], lon: +m[2], zoom: +m[3], model: m[4], layer: m[5], level: m[6] ? +m[6] : 0, step: m[7] != null ? +m[7] : null,
-             vs: m[8] || null, splitX: m[9] ? Math.max(0.08, Math.min(0.92, +m[9] / 100)) : null,
-             pt: m[10] ? [+m[10], +m[11]] : null };
+    return { lat: +m[1], lon: +m[2], zoom: +m[3], model: m[4], layer: m[5], level: m[6] ? +m[6] : 0, step: m[7] != null ? +m[7] : null, pt: m[8] ? [+m[8], +m[9]] : null };
   }
   let hashTimer = null, ownHash = "";
   // Paste a permalink into an already-open tab and the view should move. The
@@ -465,8 +460,6 @@
     if (h.layer && LAYERS.includes(h.layer) && runEntry().layers.includes(h.layer)) state.layer = h.layer;
     state.level = h.level || 0;
     if (h.step != null) state.stepIdx = Math.min(h.step, steps().length - 1);
-    state.vs = vsFromHash(h);
-    if (h.splitX) state.splitX = h.splitX;
     map.jumpTo({ center: [h.lon, h.lat], zoom: h.zoom });
     renderControls(); applyStep(); loadWind();
     if (h.pt) openPoint(h.pt[0], h.pt[1]); else closePoint();
@@ -479,7 +472,6 @@
       if (!map) return;
       const c = map.getCenter();
       let h = `${c.lat.toFixed(3)},${c.lng.toFixed(3)},${map.getZoom().toFixed(2)};${state.model};${state.layer}${state.level ? "/" + state.level : ""};s${state.stepIdx}`;
-      if (state.vs) h += `;v${state.vs}@${Math.round(state.splitX * 100)}`;
       if (state.point) h += `;p${state.point.lat.toFixed(3)},${state.point.lon.toFixed(3)}`;
       ownHash = "#" + h;
       const brand = $("#embed-brand");
@@ -539,85 +531,6 @@
   }
   const windUrl = (h = stepHours()) => U(`${API}/wind/${state.model}/${state.run}/${h}.json${isWaves() ? "?field=waves" : state.level ? `?level=${state.level}` : ""}`);
 
-  // ── split-screen: two models, one layer, one valid time ─────────────────
-  // The right-hand model's frame for the CURRENT valid time, from its own
-  // newest run on its own step spacing, mixed between the two steps the
-  // moment falls between exactly as the left side is. Null past its horizon
-  // or when it has no such layer: the right side then says so and draws
-  // nothing rather than a stale frame.
-  function fieldSpecFor(key) {
-    const m = catalog.models.find((x) => x.key === key);
-    if (!m || !m.runs.length) return null;
-    const r = m.runs[0];
-    if (!r.layers.includes(state.layer)) return null;
-    const target = validDate().getTime(), base = new Date(r.valid_from).getTime(), st = r.steps;
-    if (!st.length || target > base + st[st.length - 1] * 3600e3 + 1) return null;
-    let i = 0;
-    while (i + 1 < st.length && base + st[i + 1] * 3600e3 <= target) i++;
-    const next = i + 1 < st.length ? st[i + 1] : null;
-    const t = next == null ? 0 : Math.max(0, Math.min(1, (target - (base + st[i] * 3600e3)) / ((next - st[i]) * 3600e3)));
-    const url = (h) => U(`${API}/field/${key}/${r.run}/${h}/${state.layer}.png${levelQ()}`);
-    return { a: url(st[i]), b: next == null ? null : url(next), t, layer: state.layer, level: hasLevel() ? state.level : 0, model: m };
-  }
-  const vsFromHash = (h) => h && h.vs && h.vs !== state.model && catalog.models.some((m) => m.key === h.vs && m.runs.length) ? h.vs : null;
-  const splitOn = () => !!(state.vs && fieldLive());
-  // Everything the split touches, in one place: the GPU layer's second side,
-  // the divider, its labels, and the particle canvas (the particles belong to
-  // the left model, so the canvas is clipped at the divider).
-  function syncSplit() {
-    const bar = $("#split-bar"), pc = $("#particles");
-    if (!splitOn()) {
-      if (WX.field) WX.field.setSplit(null);
-      if (bar) bar.hidden = true;
-      if (pc) pc.style.clipPath = "";
-      return;
-    }
-    const x = state.splitX, spec = fieldSpecFor(state.vs);
-    if (spec) WX.field.show(spec, 1);
-    WX.field.setSplit(spec ? x : null);
-    if (bar) {
-      const vsm = catalog.models.find((m) => m.key === state.vs);
-      bar.hidden = false; bar.style.left = (x * 100) + "%";
-      bar.querySelector(".l").textContent = modelEntry().short;
-      bar.querySelector(".r").textContent = (vsm ? vsm.short : state.vs) + (spec ? "" : " · nothing at this time");
-    }
-    if (pc) pc.style.clipPath = `inset(0 ${((1 - x) * 100).toFixed(2)}% 0 0)`;
-  }
-  function toggleSplit() {
-    if (state.vs) state.vs = null;
-    else {
-      const pick = catalog.models.find((m) => m.key !== state.model && m.runs.length && modelInView(m) && m.runs[0].layers.includes(state.layer));
-      if (!pick) { toast("No second model covers this view", 3000, "warn"); return; }
-      state.vs = pick.key;
-    }
-    renderControls(); syncSplit(); pushHash();
-  }
-  function pickVs(key) { state.vs = key; renderControls(); syncSplit(); pushHash(); }
-  // Swap sides: the right model becomes the map's model (the one the card,
-  // tape, particles and isolines read), the old one moves right.
-  function swapSplit() {
-    const left = state.model, right = state.vs;
-    state.vs = null; switchModel(right); state.vs = left;
-    renderControls(); syncSplit(); pushHash();
-  }
-  let splitWired = false;
-  function wireSplit() {
-    if (splitWired) return;
-    const bar = $("#split-bar"), vs = $("#vs");
-    if (!bar || !vs) return;
-    splitWired = true;
-    vs.onclick = toggleSplit;
-    let dragging = false;
-    bar.addEventListener("pointerdown", (e) => { dragging = true; bar.setPointerCapture(e.pointerId); bar.classList.add("drag"); e.preventDefault(); });
-    bar.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      const w = $("#map").clientWidth || 1;
-      state.splitX = Math.max(0.08, Math.min(0.92, e.clientX / w));
-      syncSplit();
-    });
-    const stop = () => { if (!dragging) return; dragging = false; bar.classList.remove("drag"); pushHash(); };
-    bar.addEventListener("pointerup", stop); bar.addEventListener("pointercancel", stop);
-  }
   const modelCoords = (m = modelEntry()) => {
     if (!m || !m.regional) return WORLD;
     const [w, s, e, n] = m.domain;
@@ -774,20 +687,9 @@
       const inView = modelInView(m);
       const enabled = m.runs.length && inView;
       const why = !m.runs.length ? "no ingested run" : !inView ? "map centre outside forecast domain" : "";
-      const right = state.vs === m.key;
-      return `<button data-model="${m.key}" class="${on ? "on" : right ? "vs" : ""}" ${enabled ? "" : "disabled"} title="${m.label}${m.grid ? ` · ${m.grid}` : ""}${why ? ` · ${why}` : ""}${right ? " · right side of the split" : ""}">${m.short}${on && m.grid ? `<i class="grid">${m.grid}</i>` : ""}</button>`;
+      return `<button data-model="${m.key}" class="${on ? "on" : ""}" ${enabled ? "" : "disabled"} title="${m.label}${m.grid ? ` · ${m.grid}` : ""}${why ? ` · ${why}` : ""}">${m.short}${on && m.grid ? `<i class="grid">${m.grid}</i>` : ""}</button>`;
     }).join(""));
-    // With the map split, the row picks the RIGHT side; the left stays the
-    // map's model. Tapping the left model swaps the two.
-    ms.querySelectorAll("button").forEach((b) => b.onclick = () => {
-      const key = b.dataset.model;
-      if (!splitOn()) return switchModel(key);
-      if (key === state.model) return swapSplit();
-      pickVs(key);
-    });
-    const vsBtn = $("#vs");
-    if (vsBtn) { vsBtn.hidden = !fieldLive(); vsBtn.classList.toggle("on", !!state.vs); vsBtn.setAttribute("aria-pressed", state.vs ? "true" : "false"); }
-    wireSplit();
+    ms.querySelectorAll("button").forEach((b) => b.onclick = () => switchModel(b.dataset.model));
 
     // The run dropdown is retired (Jeff 2026-08-21: switching it "doesn't
     // seem to change anything" — the honest answer is that two runs six
@@ -1547,7 +1449,6 @@
     // Keep the VALID time, not the step index: comparing models means the same moment.
     if (WX.tape) WX.tape.clearFineSelection();
     state.model = key; localStorage.setItem("wxgrid.model", key);
-    if (state.vs === key) state.vs = null;
     state.run = modelEntry().runs[0].run;
     if (!runEntry().layers.includes(state.layer)) state.layer = runEntry().layers[0];
     const base = runDate().getTime();
@@ -1617,7 +1518,6 @@
     pushHash();
     if (fieldLive()) {
       WX.field.show(fieldSpec());
-      syncSplit();
     } else {
       const src = map.getSource("wx");
       if (src) { try { src.updateImage({ url: layerUrl(), coordinates: modelCoords() }); } catch (e) { /* superseded */ } }
