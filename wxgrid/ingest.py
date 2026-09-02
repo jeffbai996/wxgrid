@@ -94,6 +94,36 @@ def _resolve_run(model: Model, run: str | None) -> datetime:
     raise ValueError(model.source)
 
 
+def sweep_orphan_gribs(grib_root: Path, max_age_hours: int = 24,
+                       now: datetime | None = None) -> list[Path]:
+    """Remove run dirs under grib_root/<model>/<run> older than max_age_hours.
+
+    Catches the GRIBs an interrupted ingest_run left behind (see the
+    try/finally in _ingest_locked): a run dir this stale was never going to
+    be resumed, so it is safe to reclaim. Missing/empty grib_root is fine.
+    Returns the dirs removed.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = now.timestamp() - max_age_hours * 3600
+    removed: list[Path] = []
+    if not grib_root.exists():
+        return removed
+    for model_dir in sorted(grib_root.iterdir()):
+        if not model_dir.is_dir():
+            continue
+        for run_dir in sorted(model_dir.iterdir()):
+            if not run_dir.is_dir():
+                continue
+            try:
+                mtime = run_dir.stat().st_mtime
+            except OSError:
+                continue
+            if mtime < cutoff:
+                shutil.rmtree(run_dir, ignore_errors=True)
+                removed.append(run_dir)
+    return removed
+
+
 def ingest_run(model: Model, run: datetime, grib_root: Path = GRIB_DIR,
                store_root: Path = STORE_DIR, keep_grib: bool = False) -> dict:
     rid = run_id(run)
@@ -253,25 +283,33 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
     fetcher = {"ecmwf": fetch.fetch_ecmwf, "nomads": fetch.fetch_gfs, "aws-aigfs": fetch.fetch_aigfs,
                "nomads-gefs": fetch.fetch_gefs, "datamart": fetch.fetch_gem,
                "hrdps": fetch.fetch_hrdps, "aws-hrrr": fetch.fetch_hrrr}[model.source]
-    got = fetcher(model, run, grib_root, on_step=on_step)
-
-    counts = writer.finish()
-    if model.key == "gefs":
-        # Member probabilities ride the same ingest, before the point cube is
-        # cut so the prob_* series reach the card. Never fatal: a cycle whose
-        # members lag just ships without the chance row until the next pass.
-        try:
-            from wxgrid.prob import ingest_probability
-            log.info("gefs %s probability: %s", rid, ingest_probability(rid, store_root))
-            wait_for_step_gate()
-        except Exception:
-            log.exception("gefs %s probability failed (run ships without it)", rid)
+    # The rmtree below used to run only after a clean pass through this whole
+    # block. An exception, OOM, or timeout kill anywhere in fetch/write/cube
+    # build then skipped it and left the run's GRIBs on disk forever (grib
+    # dirs are keyed by run id, so nothing later ever revisits or cleans
+    # them). try/finally makes the cleanup unconditional; keep_grib still
+    # opts a run out of it either way.
     try:
-        build_point_cube(model.key, rid, store_root, step_gate=wait_for_step_gate)
-    except Exception:
-        log.exception("%s %s point cube failed (point reads fall back to the step layout)", model.key, rid)
-    if not keep_grib:
-        shutil.rmtree(grib_root / model.key / run.strftime("%Y%m%dT%H"), ignore_errors=True)
+        got = fetcher(model, run, grib_root, on_step=on_step)
+
+        counts = writer.finish()
+        if model.key == "gefs":
+            # Member probabilities ride the same ingest, before the point cube is
+            # cut so the prob_* series reach the card. Never fatal: a cycle whose
+            # members lag just ships without the chance row until the next pass.
+            try:
+                from wxgrid.prob import ingest_probability
+                log.info("gefs %s probability: %s", rid, ingest_probability(rid, store_root))
+                wait_for_step_gate()
+            except Exception:
+                log.exception("gefs %s probability failed (run ships without it)", rid)
+        try:
+            build_point_cube(model.key, rid, store_root, step_gate=wait_for_step_gate)
+        except Exception:
+            log.exception("%s %s point cube failed (point reads fall back to the step layout)", model.key, rid)
+    finally:
+        if not keep_grib:
+            shutil.rmtree(grib_root / model.key / run.strftime("%Y%m%dT%H"), ignore_errors=True)
     removed = prune(model.key, root=store_root)
     log.info("%s %s done: %d/%d steps, coverage %s, pruned %s",
              model.key, rid, len(got), len(model.steps), counts, removed)
@@ -452,6 +490,9 @@ def main(argv: list[str] | None = None) -> int:
         keys = [args.model] if args.model else []
     if not keys:
         ap.error("--model, --group or --all")
+    swept = sweep_orphan_gribs(GRIB_DIR)
+    if swept:
+        log.info("swept %d orphan grib run dir(s)", len(swept))
     rc = 0
     for key in keys:
         model = get_model(key)
