@@ -133,6 +133,18 @@ def api_obs(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-
     return {"metar": m, "taf": ext.taf(m["station"]) if (m and taf) else None}
 
 
+@router.get("/obs/layer")
+def api_obs_layer(s: float = Query(..., ge=-90, le=90), w: float = Query(..., ge=-180, le=180),
+                  n: float = Query(..., ge=-90, le=90), e: float = Query(..., ge=-180, le=180)):
+    """METAR stations in a view as GeoJSON; 204 when the view is too wide."""
+    from fastapi import Response
+    from wxgrid import obs
+    out = obs.metar_layer(s, w, n, e, get_json=ext._get_json, cache_get=ext.cache.get)
+    if out is None:
+        return Response(status_code=204)
+    return out
+
+
 @router.get("/avy/layer")
 def api_avy_layer():
     return ext.avy_layer()
