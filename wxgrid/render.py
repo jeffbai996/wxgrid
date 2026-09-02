@@ -657,13 +657,26 @@ def field_range(layer: str, level: int | None = None) -> tuple[float, float]:
     return (lo - 0.5 * span, hi + 0.5 * span)
 
 
-def field_cache_name(step: int, tag: str) -> str:
-    return f"{step:03d}-field-v{FIELD_VERSION}-{tag}.png"
+# Field frames: lossless WebP where the client takes it, PNG otherwise. At
+# the grid's native size (1440x721) lossless WebP method 4 is ~30 % smaller
+# than PNG for ~0.5 s of encode against 0.2 s (measured 2026-09-02); the
+# ingest pre-encodes the common layers so a visit rarely pays it. The bytes
+# decode identically — the mask channel check in field.js still applies.
+FIELD_FORMATS = {"png": "image/png", "webp": "image/webp"}
 
 
-def encode_field(field_display: np.ndarray, layer: str, level: int | None = None) -> bytes:
-    """RGB PNG of a grid in display units: R/G the 16-bit value over
-    field_range(), B the validity mask. Missing pixels are (0, 0, 0)."""
+def field_format(accept: str | None) -> str:
+    return "webp" if accept and "image/webp" in accept else "png"
+
+
+def field_cache_name(step: int, tag: str, fmt: str = "png") -> str:
+    return f"{step:03d}-field-v{FIELD_VERSION}-{tag}.{fmt}"
+
+
+def encode_field(field_display: np.ndarray, layer: str, level: int | None = None, fmt: str = "png") -> bytes:
+    """RGB image of a grid in display units: R/G the 16-bit value over
+    field_range(), B the validity mask. Missing pixels are (0, 0, 0).
+    Lossless in either format, so the decoder gets the same bytes back."""
     lo, hi = field_range(layer, level)
     step = 1 << (16 - _FIELD_BITS.get(layer, FIELD_BITS))
     x = np.asarray(field_display, dtype=np.float32)
@@ -678,7 +691,10 @@ def encode_field(field_display: np.ndarray, layer: str, level: int | None = None
     rgb[..., 1] = q & 255
     rgb[..., 2] = np.where(good, 255, 0).astype(np.uint8)
     buf = io.BytesIO()
-    Image.fromarray(rgb, "RGB").save(buf, format="PNG", optimize=False, compress_level=6)
+    if fmt == "webp":
+        Image.fromarray(rgb, "RGB").save(buf, format="WEBP", lossless=True, quality=100, method=4)
+    else:
+        Image.fromarray(rgb, "RGB").save(buf, format="PNG", optimize=False, compress_level=6)
     return buf.getvalue()
 
 

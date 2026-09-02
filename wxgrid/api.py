@@ -464,7 +464,8 @@ def api_field(request: Request, model: str, run: str, step: int, layer: str, lev
     cloud_from_levels = layer in _CLOUD_BANDS and _CLOUD_BANDS[layer][0] not in r.variables
     step = _level_step(r, step, level is not None or layer in _SIX_HOURLY or cloud_from_levels)
     tag = f"{layer}{'' if level is None else '-' + str(level)}"
-    path = CACHE_DIR / model / r.rid / render.field_cache_name(step, tag)
+    fmt = render.field_format(request.headers.get("accept"))
+    path = CACHE_DIR / model / r.rid / render.field_cache_name(step, tag, fmt)
     request.state.cache = "hit" if path.exists() else "miss"
     if not path.exists():
         with _cache_lock(path), _render_slots:
@@ -472,10 +473,12 @@ def api_field(request: Request, model: str, run: str, step: int, layer: str, lev
                 path.parent.mkdir(parents=True, exist_ok=True)
                 tmp = _tmp_for(path)
                 tmp.write_bytes(render.encode_field(
-                    render.DISPLAY[layer](field_for(r, layer, level, step)), layer, level=level))
+                    render.DISPLAY[layer](field_for(r, layer, level, step)), layer, level=level, fmt=fmt))
                 tmp.replace(path)
-    return FileResponse(path, media_type="image/png",
-                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    # `Vary: Accept` is load-bearing: a shared cache must not hand a WebP to a
+    # client that only asked for PNG.
+    return FileResponse(path, media_type=render.FIELD_FORMATS[fmt],
+                        headers={"Cache-Control": "public, max-age=31536000, immutable", "Vary": "Accept"})
 
 
 @app.get("/api/wind/{model}/{run}/{step}.json")

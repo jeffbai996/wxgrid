@@ -94,7 +94,10 @@
     if (e) { e.used = ++serial; return e; }
     e = { url, img: null, tex: null, bytes: 0, used: ++serial, failed: false, promise: null };
     e.promise = (async () => {
-      const res = await fetch(url);
+      // fetch() sends Accept */*, which says nothing; ask for WebP outright
+      // (~30 % fewer bytes, same lossless values) and let the server fall
+      // back to PNG.
+      const res = await fetch(url, { headers: { Accept: "image/webp,image/png;q=0.9,*/*;q=0.5" } });
       if (!res.ok) { const err = new Error(String(res.status)); err.status = res.status; throw err; }
       const img = await decodeBlob(await res.blob());
       e.img = img; e.bytes = img.data.byteLength;

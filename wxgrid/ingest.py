@@ -378,12 +378,14 @@ def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
         # names collide (that is the point) and a six-hourly layer is not
         # encoded twice
         for step in sorted({_level_step(r, st, layer in _SIX_HOURLY) for st in r.steps}):
-            path = CACHE_DIR / model_key / rid / render.field_cache_name(step, layer)
+            # WebP is what the app's field.js asks for; PNG stays on-demand for
+            # the odd client without it.
+            path = CACHE_DIR / model_key / rid / render.field_cache_name(step, layer, "webp")
             if path.exists():
                 continue
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix(path.suffix + ".tmp")
-            tmp.write_bytes(render.encode_field(render.DISPLAY[layer](field_for(r, layer, None, step)), layer))
+            tmp.write_bytes(render.encode_field(render.DISPLAY[layer](field_for(r, layer, None, step)), layer, fmt="webp"))
             tmp.replace(path)
             done += 1
     log.info("%s %s warmed %d fields", model_key, rid, done)
