@@ -154,6 +154,15 @@ RAMPS: dict[str, dict] = {
     "wperiod": {"units": "s", "lo": 0, "hi": 20, "stops": [
         (0, (40, 40, 80)), (5, (60, 100, 190)), (8, (60, 180, 170)), (11, (150, 210, 90)),
         (14, (240, 200, 60)), (17, (240, 120, 40)), (20, (200, 30, 60))]},
+    "swell": {"units": "m", "lo": 0, "hi": 8, "stops": [
+        (0, (40, 60, 120)), (1, (40, 120, 200)), (2, (40, 190, 190)), (3, (90, 210, 110)),
+        (4.5, (230, 220, 60)), (6, (240, 130, 40)), (8, (220, 50, 40)), (10, (150, 0, 80))]},
+    "windsea": {"units": "m", "lo": 0, "hi": 6, "stops": [
+        (0, (40, 60, 120)), (1, (40, 120, 200)), (2, (40, 190, 190)), (3, (90, 210, 110)),
+        (4.5, (230, 220, 60)), (6, (240, 130, 40)), (8, (220, 50, 40)), (10, (150, 0, 80))]},
+    "pp1d": {"units": "s", "lo": 0, "hi": 25, "stops": [
+        (0, (40, 40, 80)), (5, (60, 100, 190)), (8, (60, 180, 170)), (11, (150, 210, 90)),
+        (14, (240, 200, 60)), (17, (240, 120, 40)), (20, (200, 30, 60))]},
     "feels": {"units": "°C", "lo": -70, "hi": 45, "stops": [
         (-70, (40, 10, 70)), (-55, (90, 20, 130)), (-40, (130, 22, 146)), (-30, (75, 42, 180)),
         (-20, (35, 90, 200)), (-10, (40, 150, 220)), (0, (100, 200, 200)), (10, (110, 210, 110)),
@@ -263,6 +272,9 @@ DISPLAY = {
     "waves": lambda m: m,
     "wperiod": lambda s: s,
     "wavepower": lambda kwm: kwm,
+    "swell": lambda m: m,
+    "windsea": lambda m: m,
+    "pp1d": lambda s: s,
     "uvi": lambda u: u,
     "feels": lambda k: k - 273.15,
     "prob_rain": lambda pct: pct,
@@ -336,6 +348,12 @@ def solar_power(tcc: np.ndarray, when, *, lat0: float = 90.0, lon0: float = -180
     return (1100.0 * mu * attenuation).astype(np.float32)
 
 
+def wind_sea(total_m: np.ndarray, swell_m: np.ndarray) -> np.ndarray:
+    """Wind-sea height: what is left of the total significant height once
+    the swell (periods ≥ 10 s) is taken out, energies adding in quadrature."""
+    return np.sqrt(np.clip(np.square(total_m) - np.square(swell_m), 0.0, None)).astype(np.float32)
+
+
 def wave_power(height_m: np.ndarray, period_s: np.ndarray) -> np.ndarray:
     """Deep-water wave-energy flux in kW per metre of wave crest."""
     return (0.49 * np.square(height_m) * period_s).astype(np.float32)
@@ -404,6 +422,7 @@ ALPHA_RULES: dict[str, dict] = {
     "tp6": {"kind": "ramp", "k": 1.0}, "tp24": {"kind": "ramp", "k": 2.0}, "tp72": {"kind": "ramp", "k": 4.0},
     "sf6": {"kind": "ramp", "k": 0.5}, "sf24": {"kind": "ramp", "k": 1.0}, "sf72": {"kind": "ramp", "k": 2.0},
     "waves": {"kind": "mask"}, "wperiod": {"kind": "mask"}, "wavepower": {"kind": "mask"}, "sst": {"kind": "mask"},
+    "swell": {"kind": "mask"}, "windsea": {"kind": "mask"}, "pp1d": {"kind": "mask"},
     "solar": {"kind": "ramp", "k": 120.0},        # night is the bare map
     "uvi": {"kind": "ramp", "k": 1.0},            # night is transparent
     "sd_cm": {"kind": "ramp", "k": 2.0},
@@ -621,6 +640,7 @@ FIELD_RANGE: dict[str, tuple[float, float]] = {
     "solar": (0.0, 1400.0), "uvi": (0.0, 20.0), "cape": (0.0, 10000.0),
     "frz": (-500.0, 8000.0), "cbase": (0.0, 20000.0), "vis": (0.0, 100.0),
     "waves": (0.0, 30.0), "wperiod": (0.0, 40.0), "wavepower": (0.0, 2000.0),
+    "swell": (0.0, 30.0), "windsea": (0.0, 30.0), "pp1d": (0.0, 40.0),
     "ptype": (0.0, 3.0), "vort500": (-100.0, 100.0),
 }
 

@@ -39,7 +39,7 @@ log = logging.getLogger("wxgrid.api")
 app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=2048)   # wind JSON shrinks ~5x
 
-LAYERS = ("wind", "temp", "feels", "wbt", "dt24", "gust", "msl", "ptend", "gh", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "wavepower", "prob_rain", "prob_gust", "gfactor", "vis", "sst", "ptype", "vort500")
+LAYERS = ("wind", "temp", "feels", "wbt", "dt24", "gust", "msl", "ptend", "gh", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "wavepower", "swell", "windsea", "pp1d", "prob_rain", "prob_gust", "gfactor", "vis", "sst", "ptype", "vort500")
 LEVEL_LAYERS = ("wind", "temp", "gh")
 _ALIAS = {"t2m": "temp", "snow": "sf6", "snowdepth": "sd_cm", "dewpt": "d2m", "swh": "waves", "mwp": "wperiod"}
 # Layers computed from several store variables at request time.
@@ -50,14 +50,14 @@ _DERIVED = {"frz": tuple(f"{p}_{l}" for l in LEVELS for p in ("t", "gh")),
             "ptype": ("tp6", "t2m"), "vort500": ("u_500", "v_500"),
             "ptend": ("msl",), "cbase": ("t2m", "d2m"), "gfactor": ("gust", "u10", "v10"),
             "wbt": ("t2m", "d2m"), "dt24": ("t2m",), "solar": ("tcc",),
-            "wavepower": ("swh", "mwp")}
+            "wavepower": ("swh", "mwp"), "windsea": ("swh", "swell")}
 _CLOUD_BANDS = {"cloudlow": ("lcc", (1000, 925, 850)),
                 "cloudmid": ("mcc", (700, 600, 500)),
                 "cloudhigh": ("hcc", (400, 300, 250, 200))}
 # Accumulation windows (hours) for the derived precip/snow layers.
 _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72": ("sf6", 72)}
 # Layers that live only on LEVEL_EVERY steps (like the pressure levels).
-_SIX_HOURLY = ("frz", "waves", "wperiod", "prob_rain", "prob_gust", "vort500", "gh")
+_SIX_HOURLY = ("frz", "waves", "wperiod", "wavepower", "swell", "windsea", "pp1d", "prob_rain", "prob_gust", "vort500", "gh")
 _readers: dict[tuple[str, str], tuple[float, RunReader]] = {}
 _pool = ThreadPoolExecutor(max_workers=8)
 # Striped, not per-key: a lock per distinct cache path lived for the life of
@@ -192,6 +192,8 @@ def field_for(r: RunReader, layer: str, level: int | None, step: int) -> np.ndar
                                   lat0=r.lat0, lon0=r.lon0, dlat=r.dlat, dlon=r.dlon)
     if layer == "wavepower":
         return render.wave_power(r.slab("swh", step), r.slab("mwp", step))
+    if layer == "windsea":
+        return render.wind_sea(r.slab("swh", step), r.slab("swell", step))
     if layer in _ACCUM:
         var, hours = _ACCUM[layer]
         return _accumulate(r, var, step, hours)

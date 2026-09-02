@@ -145,6 +145,14 @@ class Model:
             return self.spread_params.get(short_name)
         return None
 
+    def wave_variables(self) -> list[str]:
+        """Wave variables the store carries: the published ones minus the
+        `_`-prefixed inputs, plus the swell height derived from the bands."""
+        out = [v for v in self.wave_params.values() if not v.startswith("_")]
+        if any(v in WAVE_BAND_INPUTS for v in self.wave_params.values()):
+            out.append(SWELL_VAR)
+        return out
+
     def store_variables(self) -> list[str]:
         out = []
         for canon in self.sfc_params.values():
@@ -157,7 +165,7 @@ class Model:
             out.append("sst")
         for prefix in self.pl_params.values():
             out.extend(f"{prefix}_{lvl}" for lvl in self.levels)
-        out.extend(self.wave_params.values())
+        out.extend(self.wave_variables())
         spread = list(self.spread_params.values())
         # u10_sd/v10_sd are only inputs: what is stored is the wind SPEED spread.
         if "u10_sd" in spread and "v10_sd" in spread:
@@ -169,6 +177,13 @@ class Model:
 _ECMWF_PL = {"u": "u", "v": "v", "t": "t", "gh": "gh"}
 _NCEP_PL = {"u": "u", "v": "v", "t": "t", "gh": "gh", "tcc": "cc"}
 
+# Period-band wave heights from the ECMWF wave stream, longest period last.
+# Everything at or above a 10 s period is swell by any surfer's or mariner's
+# definition; their root-sum-square is the swell height, and what is left of
+# the total is the wind sea.
+WAVE_BAND_INPUTS: tuple[str, ...] = ("_wb1012", "_wb1214", "_wb1417", "_wb1721", "_wb2125", "_wb2530")
+SWELL_VAR = "swell"
+
 MODELS: dict[str, Model] = {
     "ifs": Model(
         key="ifs", label="ECMWF IFS", short="IFS", grid="9km", source="ecmwf", ecmwf_model="ifs", steps=STEPS_IFS,
@@ -177,7 +192,13 @@ MODELS: dict[str, Model] = {
         pl_params=_ECMWF_PL,
         precip_mode="since_start",
         attribution="ECMWF open data, CC BY 4.0",
-        wave_params={"swh": "swh", "mwd": "mwd", "mwp": "mwp"},
+        # swh/mwd/mwp are stored as-is; pp1d is the peak period; the h#### bands
+        # (significant height of waves with periods 10–12 … 25–30 s) are inputs
+        # only — the ingest folds them into one `swell` height (see
+        # ingest.swell_from_bands). ECMWF open data has no shww/shts split.
+        wave_params={"swh": "swh", "mwd": "mwd", "mwp": "mwp", "pp1d": "pp1d",
+                     "h1012": "_wb1012", "h1214": "_wb1214", "h1417": "_wb1417",
+                     "h1721": "_wb1721", "h2125": "_wb2125", "h2530": "_wb2530"},
     ),
     "aifs": Model(
         key="aifs", label="ECMWF AIFS (AI)", short="AIFS", grid="28km", source="ecmwf", ecmwf_model="aifs-single",

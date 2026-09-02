@@ -25,7 +25,7 @@ from wxgrid import fetch
 from wxgrid.config import GRIB_DIR, STORE_DIR
 from wxgrid.ens import wind_speed_spread
 from wxgrid.grib import iter_fields
-from wxgrid.models import MODELS, Model, get_model
+from wxgrid.models import MODELS, SWELL_VAR, WAVE_BAND_INPUTS, Model, get_model
 from wxgrid.store import RunWriter, build_point_cube, list_runs, prune, run_id, run_lock, run_path
 
 log = logging.getLogger("wxgrid.ingest")
@@ -58,6 +58,27 @@ def accumulation_bucket(mode: str, step: int, start_step: int, accum: np.ndarray
     if previous:
         return np.clip(accum - previous[2], 0.0, None)
     return accum
+
+
+def swell_from_bands(bands: list[np.ndarray]) -> np.ndarray | None:
+    """Root-sum-square of the period-band significant heights: the height of
+    the swell (periods ≥ 10 s) as one number. NaN where every band is NaN
+    (land), 0 where the bands are present and empty."""
+    if not bands:
+        return None
+    stack = np.stack([np.asarray(b, dtype=np.float32) for b in bands])
+    any_valid = np.isfinite(stack).any(axis=0)
+    out = np.sqrt(np.nansum(np.square(stack), axis=0)).astype(np.float32)
+    out[~any_valid] = np.nan
+    return out
+
+
+def derive_swell(got: dict) -> None:
+    """In place: replace the `_wb…` band inputs in `got` with `swell`."""
+    bands = [got.pop(k) for k in WAVE_BAND_INPUTS if k in got]
+    sw = swell_from_bands(bands)
+    if sw is not None:
+        got[SWELL_VAR] = sw
 
 
 def _resolve_run(model: Model, run: str | None) -> datetime:
@@ -239,6 +260,7 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
             if canon in ("tp", "sf") and f.units.strip().startswith("m"):      # "m" or "m of water equivalent"
                 vals = vals * 1000.0                                       # IFS tp/sf in metres → mm
             got[canon] = vals
+        derive_swell(got)
         # accumulations → amount since the previous stored step
         starts = {c: st for c, st in got_start.items()}
         buckets: dict[str, np.ndarray] = {}
@@ -387,7 +409,7 @@ def _augment_waves_locked(model: Model, rid: str, grib_root: Path, store_root: P
     path = run_path(model.key, rid, store_root)
     g = zarr.open_group(path, mode="r+")
     have = list(g.attrs.get("variables", []))
-    want = [v for v in model.wave_params.values() if v not in have]
+    want = [v for v in model.wave_variables() if v not in have]
     if not want:
         return {"model": model.key, "run": rid, "skipped": "already has waves"}
     steps = list(g.attrs["steps"])
@@ -410,10 +432,15 @@ def _augment_waves_locked(model: Model, rid: str, grib_root: Path, store_root: P
         wv = fetch.fetch_ecmwf_wave(client, model, run, step, out_dir)
         if not wv:
             continue
+        got: dict[str, np.ndarray] = {}
         for f in iter_fields(wv):
             canon = model.wave_params.get(f.short_name)
             if canon:
-                g[canon][steps.index(step)] = np.asarray(f.values, dtype=np.float32)
+                got[canon] = np.asarray(f.values, dtype=np.float32)
+        derive_swell(got)
+        for canon, vals in got.items():
+            if canon in want:
+                g[canon][steps.index(step)] = vals
                 written += 1
         wv.unlink(missing_ok=True)
     cov = dict(g.attrs.get("coverage", {}))

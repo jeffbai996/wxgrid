@@ -223,7 +223,7 @@ def _reference_alpha(layer, x, nan):
         a = np.clip(x / {"tp6": 1.0, "tp24": 2.0, "tp72": 4.0}[layer], 0, 1)
     elif layer in ("sf6", "sf24", "sf72"):
         a = np.clip(x / {"sf6": 0.5, "sf24": 1.0, "sf72": 2.0}[layer], 0, 1)
-    elif layer in ("waves", "wperiod", "wavepower", "sst"):
+    elif layer in ("waves", "wperiod", "wavepower", "sst", "swell", "windsea", "pp1d"):
         a = np.where(nan, 0.0, 1.0)
     elif layer == "solar":
         a = np.clip(x / 120.0, 0, 1)

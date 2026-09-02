@@ -114,9 +114,9 @@
                    msl: () => U.press(v * 100), frz: () => U.alt(v), cbase: () => U.alt(v), gh: () => U.alt(v),
                    tp6: () => U.precip(v), tp24: () => U.precip(v), tp72: () => U.precip(v),
                    sf6: () => U.snow(v), sf24: () => U.snow(v), sf72: () => U.snow(v), sd_cm: () => U.snow(v),
-                   waves: () => U.alt(v, 1) }[layer];
+                   waves: () => U.alt(v, 1), swell: () => U.alt(v, 1), windsea: () => U.alt(v, 1) }[layer];
     if (conv) { const c = conv(); return { text: c.txt, sub: WX.state.level && ["temp", "gh"].includes(layer) ? `${WX.state.level} hPa` : "" }; }
-    const nd = ["tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "wavepower", "cape", "rh", "wperiod", "uvi"].includes(layer) ? 0 : 1;
+    const nd = ["tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "wavepower", "cape", "rh", "wperiod", "pp1d", "uvi"].includes(layer) ? 0 : 1;
     return { text: `${v.toFixed(nd)} ${r.lg.units}`, sub: WX.state.level && ["temp", "gh"].includes(layer) ? `${WX.state.level} hPa` : "" };
   }
 
