@@ -145,6 +145,14 @@ def api_obs_layer(s: float = Query(..., ge=-90, le=90), w: float = Query(..., ge
     return out
 
 
+@router.get("/webcams")
+def api_webcams(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180),
+                n: int = Query(6, ge=1, le=24)):
+    """Nearest public webcams to a point (DriveBC, 511 feeds), nearest first."""
+    from wxgrid import webcams
+    return webcams.near_point(lat, lon, n, get_json=ext._get_json, cache_get=ext.cache.get)
+
+
 @router.get("/avy/layer")
 def api_avy_layer():
     return ext.avy_layer()
