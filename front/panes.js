@@ -321,12 +321,35 @@
     const todays = d.valid.map((v, k) => k).filter((k) => new Date(d.valid[k]).toDateString() === day && s.t2m && s.t2m[k] != null);
     const hi = todays.length ? Math.max(...todays.map((k) => s.t2m[k])) - K : null, lo = todays.length ? Math.min(...todays.map((k) => s.t2m[k])) - K : null;
     const chips = [];
-    if (s.wind) chips.push(`<span class="wind-readout" style="--wind-color:${windColor(s.wind[i] || 0)}">
-      <span class="wind-arrow">${f(s.wdir && s.wdir[i], arrow)}</span>
-      <span class="wind-main"><small>Wind ${compass(s.wdir && s.wdir[i])}</small><b>${f(s.wind[i], (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b></span>
-      ${s.gust && s.gust[i] != null ? `<span class="wind-gust"><small>Gusts</small><b>${speed(s.gust[i]).toFixed(0)} <i>${speedUnit()}</i></b></span>` : ""}
-      <span class="wind-storm" id="storm-slot"></span>
-    </span>`);
+    if (s.wind) {
+      // The wind box carries the story, not just the number: a compass rose
+      // with the arrow on it and the bearing in degrees, the Beaufort word,
+      // the next 24 h of speed as a curve, and the gusts with how gusty they
+      // are relative to the mean (Jeff 2026-09-02: "a bit sparse").
+      const w = s.wind[i], dir = s.wdir ? s.wdir[i] : null, g = s.gust ? s.gust[i] : null;
+      const bf = w != null ? beaufort(w) : null;
+      const win = [], gwin = [];
+      for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) { if (s.wind[k] != null) win.push(s.wind[k]); if (s.gust && s.gust[k] != null) gwin.push(s.gust[k]); }
+      let spark = "";
+      if (win.length >= 3) {
+        const top = Math.max(1, ...win, ...gwin);
+        const pts = (arr) => arr.map((v, k) => `${(k / (arr.length - 1) * 100).toFixed(1)},${(22 - v / top * 20).toFixed(1)}`).join(" ");
+        spark = `<svg class="wspark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
+          ${gwin.length === win.length ? `<polyline class="g" points="${pts(gwin)}"/>` : ""}
+          <polygon class="a" points="0,24 ${pts(win)} 100,24"/><polyline class="w" points="${pts(win)}"/></svg>`;
+      }
+      const peakG = gwin.length ? Math.max(...gwin) : null;
+      const rose = `<span class="wind-rose" style="--rot:${dir == null ? 0 : (dir + 180) % 360}deg" title="${dir == null ? "" : `from ${Math.round(dir)}°`}">
+        <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18"/><path class="n" d="M20 3v4"/><path d="M37 20h-4M20 37v-4M3 20h4"/>
+        <g class="ar"><path d="M20 9l5 12-5-3-5 3z"/><path d="M20 18v13"/></g></svg><i>N</i></span>`;
+      chips.push(`<span class="wind-readout" style="--wind-color:${windColor(w || 0)}">
+        ${rose}
+        <span class="wind-main"><small>Wind ${compass(dir)}${dir != null ? ` <em>${Math.round(dir)}°</em>` : ""}</small><b>${f(w, (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b>${bf != null ? `<em>F${bf} · ${BEAUFORT_NAME[bf]}</em>` : ""}</span>
+        <span class="wind-trend">${spark}<small>next 24 h${peakG != null ? ` · gusts to ${speed(peakG).toFixed(0)}` : ""}</small></span>
+        ${g != null ? `<span class="wind-gust"><small>Gusts</small><b>${speed(g).toFixed(0)} <i>${speedUnit()}</i></b>${w > 0.5 ? `<em>×${(g / w).toFixed(1)} gust factor</em>` : ""}</span>` : ""}
+        <span class="wind-storm" id="storm-slot"></span>
+      </span>`);
+    }
     // Which readings are worth the space depends on where the pin landed. A
     // snow depth of zero in August tells you nothing; wave height does, if you
     // clicked the sea. So: a value that is only news when it is non-zero stays
@@ -1012,7 +1035,7 @@
       el.hidden = false;
       el.innerHTML = `<div class="cams-head"><small>Webcams nearby</small><span>${cams.length} · ${cams[0].provider}</span></div>
         <div class="cams-strip">${cams.map((c, k) => `<button class="cam${c.stale ? " stale" : ""}" data-cam="${k}" type="button" title="${esc(c.caption || c.name)}">
-          <img src="${esc(c.image)}?t=${camBust()}" alt="" loading="lazy">
+          <img src="${esc(c.image)}${c.image.includes("?") ? "&" : "?"}t=${camBust()}" alt="" loading="lazy">
           <span class="cam-name">${esc(c.name)}</span>
           <span class="cam-dist">${c.distance_km} km ${compass(c.bearing_deg)}${c.elevation_m != null ? ` · ${W().units.alt(c.elevation_m).v} ${W().units.altUnit}` : ""}</span>
         </button>`).join("")}</div>`;
@@ -1031,7 +1054,7 @@
       dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
     }
     dlg.innerHTML = `<div class="cam-view-head"><b>${esc(c.name)}</b><span>${esc(c.caption || "")}</span><button class="icon" type="button" aria-label="Close">×</button></div>
-      <img src="${esc(c.image)}?t=${camBust()}" alt="${esc(c.name)}">
+      <img src="${esc(c.image)}${c.image.includes("?") ? "&" : "?"}t=${camBust()}" alt="${esc(c.name)}">
       <div class="cam-view-foot"><span>${c.updated ? `updated ${new Date(c.updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ` : ""}${esc(c.credit)}</span><a href="${esc(c.page)}" target="_blank" rel="noopener">open at ${esc(c.provider)} ↗</a></div>`;
     dlg.querySelector("button.icon").onclick = () => dlg.close();
     dlg.showModal();
