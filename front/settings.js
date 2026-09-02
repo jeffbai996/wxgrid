@@ -115,11 +115,20 @@
           <div class="krow"><span>Layer menu</span><span><kbd>L</kbd></span></div>
           <div class="krow"><span>Close card or menu</span><span><kbd>esc</kbd></span></div>
         </div>
+        <div class="grp"><h4>Embed</h4>
+          <textarea class="embed-code" id="embed-code" readonly spellcheck="false" aria-label="Embed code"></textarea>
+          <div class="embed-row"><button type="button" id="embed-copy">Copy</button><span class="note">This view — model, layer, time, split — as an iframe. The frame shows the map, legend and clock; its wordmark opens the full app here.</span></div>
+        </div>
         <p class="note">Units apply everywhere: the tape, the card, the legend, the cursor readout and the cross-section.</p>
       </div>`;
     document.body.appendChild(scrim); document.body.appendChild(el);
     scrim.onclick = close;
     $("#settings-close").onclick = close;
+    $("#embed-copy").onclick = async () => {
+      const ta = $("#embed-code");
+      try { await navigator.clipboard.writeText(ta.value); WX.toast("Embed code copied", 2500); }
+      catch (e) { ta.focus(); ta.select(); WX.toast("Select and copy the code", 3000); }
+    };
     el.querySelectorAll(".preset").forEach((button) => button.onclick = () => {
       WX.units.setMany(PRESETS[button.dataset.preset].values);
       paint();
@@ -156,7 +165,12 @@
     if (!active) el.querySelector("details.advanced").open = true;
   }
 
-  function open() { build(); const el = $("#settings"), s = $("#settings-scrim"); el.hidden = false; s.hidden = false; paint(); requestAnimationFrame(() => { el.classList.add("on"); s.classList.add("on"); }); }
+  // The iframe snippet for the current view: same hash the permalink carries.
+  function embedCode() {
+    const src = `${location.origin}${location.pathname}?embed=1${location.hash}`;
+    return `<iframe src="${src}" width="800" height="450" style="border:0;border-radius:12px" loading="lazy" allow="fullscreen" title="wxgrid"></iframe>`;
+  }
+  function open() { build(); const el = $("#settings"), s = $("#settings-scrim"); el.hidden = false; s.hidden = false; paint(); const code = $("#embed-code"); if (code) code.value = embedCode(); requestAnimationFrame(() => { el.classList.add("on"); s.classList.add("on"); }); }
   function close() { const el = $("#settings"), s = $("#settings-scrim"); if (!el) return; el.classList.remove("on"); s.classList.remove("on"); setTimeout(() => { el.hidden = true; s.hidden = true; }, 220); }
   // The desktop strip is rebuilt by app.js as controls change. Delegate its
   // settings action here, where the drawer lifecycle lives, so render order

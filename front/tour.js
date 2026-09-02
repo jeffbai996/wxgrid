@@ -77,7 +77,7 @@
   function done() { localStorage.setItem(KEY, "1"); if (ring) ring.remove(); if (box) box.remove(); ring = box = null; }
 
   function start(force) {
-    if (!force && (localStorage.getItem(KEY) || ARRIVED_WITH_VIEW)) return;
+    if (!force && (localStorage.getItem(KEY) || ARRIVED_WITH_VIEW || document.body.classList.contains("embed"))) return;
     ring = document.createElement("div"); ring.id = "tour-ring";
     box = document.createElement("div"); box.id = "tour-box";
     box.innerHTML = `<h5></h5><p></p><div class="row"><div class="dots">${STEPS.map(() => "<i></i>").join("")}</div>
