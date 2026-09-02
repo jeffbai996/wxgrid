@@ -481,7 +481,7 @@ body.resizing-point, body.resizing-point * { cursor: nwse-resize !important; }
    Winter pane grows downward inside the card instead of pushing the title
    off the top of the screen */
 #point[hidden] { display: none; }
-#point-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin: 0 -6px; padding: 0 6px; }
+#point-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; margin: 0 -6px; padding: 0 6px; }
 #point-foot { flex: 0 0 auto; }
 .point-head { display: flex; align-items: flex-start; gap: 8px; }
 .sheet-grip { display: none; }
@@ -1454,11 +1454,12 @@ body.embed #embed-brand:hover { border-color: var(--line-strong); }
 @media (max-width: 520px) { .meta:has(.stat) { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); } }
 
 /* ── webcams nearby ──────────────────────────────────────────────────── */
-.cams { margin: 8px 0 4px; }
+/* the strip scrolls inside itself; it must never widen the card (Jeff 2026-09-02) */
+.cams { margin: 8px 0 4px; min-width: 0; max-width: 100%; }
 .cams-head { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 6px; }
 .cams-head small { font: 700 8.5px var(--font-display); letter-spacing: .09em; text-transform: uppercase; color: var(--dim); }
 .cams-head span { font: 500 10.5px var(--font-mono); color: var(--fg-2); }
-.cams-strip { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 4px; scrollbar-width: thin; }
+.cams-strip { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; padding-bottom: 4px; scrollbar-width: thin; }
 .cam { flex: 0 0 168px; scroll-snap-align: start; position: relative; padding: 0; border: 0; border-radius: 11px; overflow: hidden; cursor: pointer;
   background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); color: var(--fg); text-align: left; font: inherit; }
 .cam img { display: block; width: 168px; height: 100px; object-fit: cover; background: #0b0d10; }
