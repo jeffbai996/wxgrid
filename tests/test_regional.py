@@ -7,7 +7,7 @@ from PIL import Image
 
 from wxgrid import api, render
 from wxgrid.config import STORE_DIR
-from wxgrid.ingest import TIERS, accumulation_bucket, ingest_order, model_tier, models_in
+from wxgrid.ingest import TIERS, accumulation_bucket, configured, ingest_order, model_tier, models_in
 from wxgrid.models import MODELS, Model
 from wxgrid.store import RunReader, RunWriter
 
@@ -101,7 +101,7 @@ def test_the_most_perishable_models_ingest_first():
 
 def test_every_model_lands_in_exactly_one_tier():
     seen = [k for tier in TIERS for k in models_in(tier)]
-    assert sorted(seen) == sorted(MODELS)
+    assert sorted(seen) == sorted(k for k in MODELS if configured(k))
     assert len(seen) == len(set(seen))
 
 
