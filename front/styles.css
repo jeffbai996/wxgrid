@@ -243,6 +243,7 @@ body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 70
 .rail button.on svg { opacity: 1; }
 .rail button:disabled { opacity: .3; cursor: default; }
 .rail button:disabled:hover { background: transparent; }
+.rail-label-phone { display: none; }
 /* the active family's options (Rain 6 h / 24 h / 72 h, Temp Air / Feels …) */
 .rail .rail-vars { display: flex; margin: 2px 10px 6px 42px; }
 .rail .rail-vars button { flex: 1 1 0; justify-content: center; padding: 4px 6px; font-size: 11.5px; border-radius: 7px; }
@@ -431,6 +432,7 @@ button:focus:not(:focus-visible) { outline: none; }
 #valid-utc { white-space: nowrap; }
 #valid-utc { font-size: 10.5px; }
 #lead { font-size: 11.5px; min-width: 46px; }
+#lead:empty { display: none; }
 #tape-where { font: 650 11.5px var(--font-display); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30%; }
 .tape-min { width: 26px; height: 26px; flex: 0 0 auto; margin-left: 6px; }
 .tape-min svg { width: 15px; height: 15px; transition: transform .2s cubic-bezier(.4,0,.2,1); }
@@ -685,6 +687,11 @@ table.bandtape .nil { color: var(--line-strong); }
   .rowbreak { display: block; flex: 0 0 100%; height: 0; margin: 0; }
   .rowbreak:first-of-type { order: 5; }
   #models { order: 6; flex: 1 1 120px; min-width: 90px; overflow-x: auto; scrollbar-width: none; }
+  /* The model row and layer rail are navigation, not billboard copy. Keep
+     the pressure row at its original size; these two shed only a few pixels. */
+  #models { padding: 2px; gap: 1px; }
+  #models button { padding: 4px 9px; font-size: 11.5px; line-height: 1.15; }
+  #models button .grid { font-size: 9px; margin-left: 2px; }
   #models::-webkit-scrollbar { display: none; }
   select.run { order: 7; flex: 0 0 auto; padding: 5px 22px 5px 8px; font-size: 11.5px; }
   #tuck { order: 7; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; flex: 0 0 auto; }
@@ -713,7 +720,7 @@ table.bandtape .nil { color: var(--line-strong); }
   /* the card owns the left side on a phone, so the crosshair moves right */
   .cams-legend { left: 8px; right: 8px; }
   .locate-btn { display: grid; left: auto; right: 8px; width: 38px; height: 38px; bottom: calc(var(--tb-h) + 14px + env(safe-area-inset-bottom)); }
-  .rail { flex: 1; min-width: 0; flex-direction: row; overflow-x: auto; scrollbar-width: none; border-radius: 999px; padding: 3px; }
+  .rail { flex: 1; min-width: 0; flex-direction: row; overflow-x: auto; scrollbar-width: none; border-radius: 999px; padding: 2px; }
   .rail::-webkit-scrollbar { display: none; }
   .side-resize-handle { display: none; }
   /* one thin row of chips, not a second toolbar: the sliders and the motion
@@ -722,10 +729,12 @@ table.bandtape .nil { color: var(--line-strong); }
   .rail { align-items: center; }
   .rail .rail-seg, .rail .rail-opacity { display: none; }
   .rail .rail-flat { width: auto; flex: 0 0 auto; gap: 6px; }
-  .rail button { padding: 4px 9px; border-radius: 999px; box-shadow: none; font-size: 12px; line-height: 1.2; }
+  .rail button { padding: 3px 8px; border-radius: 999px; box-shadow: none; font-size: 11.5px; line-height: 1.15; }
   .rail button svg { display: none; }
   .rail .rail-sec { display: none; }
   .rail button .var { display: none; }
+  .rail-label-full { display: none; }
+  .rail-label-phone { display: inline; }
   /* inline in the chip row: symmetric margins, so the options sit on the
      row's centre line like every other chip (Jeff 2026-08-23) */
   .rail .rail-vars { margin: 0 4px; padding: 2px; align-self: center; }
@@ -743,8 +752,6 @@ table.bandtape .nil { color: var(--line-strong); }
   body.has-resort #point { width: auto;
     max-height: min(72dvh, calc(100dvh - max(var(--top-h), 48px) - max(var(--tb-h), 96px) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
   body.has-resort #point-title { font-size: 22px; }
-  .resort-overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .resort-columns { grid-template-columns: 1fr; }
   .resort-head { align-items: center; }
   .resort-head small { max-width: 210px; }
   /* max(--top-h, 48px): a stale or mid-transition topbar measurement must
@@ -914,6 +921,9 @@ table.cmp td .r { color: var(--rain); }
 .resort-grade > b { text-align: right; font: 650 10.5px var(--font-num); color: var(--fg-2); }
 .resort-grade > em { grid-column: 1 / -1; height: 2px; border-radius: 2px; overflow: hidden; background: rgba(127,140,160,.14); }
 .resort-grade > em i { display: block; height: 100%; border-radius: inherit; }
+.resort-grade svg { width: 14px; height: 14px; flex: 0 0 14px; overflow: visible; }
+.resort-grade svg.double { width: 20px; flex-basis: 20px; }
+.resort-grade-foot { margin: 6px 0 0; font: 500 9.5px/1.35 var(--font-body); color: var(--dim); }
 .resort-type { margin: 0 0 7px; font: 500 10.5px/1.4 var(--font-body); color: var(--fg-2); }
 .resort-lift-list { display: flex; flex-wrap: wrap; gap: 4px; }
 .resort-lift-list span, .resort-groom > div span { padding: 3px 6px; border-radius: 6px; background: rgba(127,140,160,.1); font: 600 9.5px var(--font-body); color: var(--fg-2); }
@@ -924,6 +934,15 @@ table.cmp td .r { color: var(--rain); }
 .resort-groom p { margin: 6px 0 0; font: 500 10px/1.35 var(--font-body); color: var(--dim); }
 .resort-forecast-title { margin: 10px 0 4px; padding-top: 9px; border-top: 1px solid var(--line); }
 .resort-note { margin-top: 9px; }
+/* These must follow the desktop resort rules above. The earlier phone block
+   used to lose the cascade and leave six ellipsised metric cards in one row. */
+@media (max-width: 820px) {
+  .resort-overview { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-bottom: 8px; }
+  .resort-overview > div { padding: 6px 6px 5px; }
+  .resort-overview b { font-size: 15px; }
+  .resort-columns { grid-template-columns: 1fr; }
+  .resort-columns section, .resort-groom { padding: 8px 9px; }
+}
 
 table.bands { width: 100%; border-collapse: collapse; font: 500 11.5px var(--font-mono); margin: 6px 0 2px; }
 table.bands th { text-align: left; font: 700 10px var(--font-display); color: var(--dim); padding: 3px 5px; border-bottom: 1px solid var(--line); text-transform: uppercase; letter-spacing: .04em; }
@@ -1446,6 +1465,9 @@ body.no-map #particles { display: none; }
 .modcard.marine, .modcard.touring { border-left: 3px solid var(--line-strong); }
 .modcard.good { border-left-color: var(--good); } .modcard.meh { border-left-color: var(--warm); } .modcard.bad { border-left-color: var(--bad); }
 .modcard.marine .hstrip { margin-top: 10px; }
+.touring-remark { margin: 8px 0 0; padding-top: 7px; border-top: 1px solid var(--line);
+  font: 500 11px/1.42 var(--font-body); color: var(--fg-2); }
+.touring-remark a { color: var(--accent); font-weight: 700; text-decoration: none; white-space: nowrap; }
 .modcard .mod-stats b.avy-0 { color: #52b788; } .modcard .mod-stats b.avy-1 { color: #f2c94c; } .modcard .mod-stats b.avy-2 { color: #f2994a; }
 .modcard .mod-stats b.avy-3 { color: #eb5757; } .modcard .mod-stats b.avy-4 { color: #111; background: #eb5757; padding: 0 5px; border-radius: 4px; }
 
@@ -1528,6 +1550,9 @@ body.embed #embed-brand:hover { border-color: var(--line-strong); }
 .cam-view-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
 .cam-view-head b { font: 700 14px var(--font-display); }
 .cam-view-head span { flex: 1; font: 500 11.5px var(--font-mono); color: var(--fg-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cam-view-close { width: 32px !important; height: 32px !important; min-width: 32px; flex: 0 0 32px; aspect-ratio: 1;
+  padding: 0 !important; border-radius: 50% !important; display: grid !important; place-items: center; line-height: 0; }
+.cam-view-close svg { display: block; width: 14px; height: 14px; }
 .cam-view img { display: block; max-width: 96vw; max-height: 78vh; width: auto; height: auto; }
 .cam-view-foot { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px 10px; font: 500 11px var(--font-mono); color: var(--fg-2); }
 .cam-view-foot a { color: var(--accent); text-decoration: none; }

@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v52";   // v52: first-class Winter mode and phone-safe resort workspace
+const VERSION = "wxgrid-v53";   // v53: denser phone controls, bounded tape, clearer resort cards
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

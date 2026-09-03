@@ -267,6 +267,7 @@
       state.resort = d;
       document.body.classList.add("has-resort");
       const r = d.resort;
+      const northAmerican = ["CA", "US", "MX"].includes(String(r.country || "").toUpperCase());
       // lifts + boundary on the M()
       const lifts = d.lifts || { type: "FeatureCollection", features: [] };
       if (M().getSource("lifts")) M().getSource("lifts").setData(lifts);
@@ -275,21 +276,28 @@
         M().addLayer({ id: "lifts-line", type: "line", source: "lifts", paint: { "line-color": "#ffb454", "line-width": 2, "line-opacity": 0.9 } });
         M().addLayer({ id: "lifts-lbl", type: "symbol", source: "lifts", minzoom: 11, layout: { "symbol-placement": "line", "text-field": ["get", "name"], "text-size": 10, "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1 } });
       }
-      // The runs, coloured the way a trail map colours them. Black diamonds are
-      // drawn near-white here: this basemap is dark, and a black line on it is
-      // an absent line. Every run gets a dark casing so it reads over snow,
-      // forest and the weather field alike.
+      // OSM difficulty names map to the local signed scheme. North America is
+      // green / blue / black / double black; elsewhere keeps the European
+      // palette. Black trails get a light casing so black still exists on a
+      // dark weather map instead of becoming an impressively accurate void.
       const pistes = d.pistes || { type: "FeatureCollection", features: [] };
-      const gradeColour = ["match", ["get", "grade"],
+      const gradeColour = northAmerican ? ["match", ["get", "grade"],
+        "novice", "#50d36b", "easy", "#50d36b", "intermediate", "#3d8bff",
+        "advanced", "#111318", "expert", "#111318", "extreme", "#111318", "freeride", "#ffb454",
+        "#9aa5b4"] : ["match", ["get", "grade"],
         "novice", "#5ad469", "easy", "#3d8bff", "intermediate", "#ff4d4d",
         "advanced", "#f2f2f2", "expert", "#c56bff", "freeride", "#ffb454", "extreme", "#ff7a2f",
         "#9aa5b4"];
+      const caseColour = northAmerican ? ["match", ["get", "grade"], ["advanced", "expert", "extreme"], "rgba(245,247,250,.88)", "rgba(0,0,0,.65)"] : "rgba(0,0,0,.65)";
+      const trailLabel = northAmerican ? ["concat",
+        ["match", ["get", "grade"], "novice", "● ", "easy", "● ", "intermediate", "■ ", "advanced", "◆ ", "expert", "◆◆ ", "extreme", "◆◆ ", ""],
+        ["coalesce", ["get", "name"], ["get", "ref"], ""]] : ["coalesce", ["get", "name"], ["get", "ref"]];
       if (M().getSource("pistes")) M().getSource("pistes").setData(pistes);
       else {
         M().addSource("pistes", { type: "geojson", data: pistes });
         M().addLayer({ id: "pistes-case", type: "line", source: "pistes", minzoom: 9,
           layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": "rgba(0,0,0,.65)", "line-width": ["interpolate", ["linear"], ["zoom"], 9, 2.6, 13, 6.5], "line-opacity": 0.9 } });
+          paint: { "line-color": caseColour, "line-width": ["interpolate", ["linear"], ["zoom"], 9, 2.6, 13, 6.5], "line-opacity": 0.9 } });
         // line-dasharray takes no data expression, so ungroomed runs get their
         // own layer rather than a condition MapLibre would reject silently.
         const pisteWidth = ["interpolate", ["linear"], ["zoom"], 9, 1.3, 13, 4];
@@ -308,7 +316,7 @@
           layout: { "line-cap": "round", "line-join": "round" },
           paint: { "line-color": "rgba(255,255,255,.86)", "line-width": ["interpolate", ["linear"], ["zoom"], 10.5, 0.8, 14, 1.4], "line-dasharray": [0.6, 1.8], "line-opacity": 0.9 } });
         M().addLayer({ id: "pistes-lbl", type: "symbol", source: "pistes", minzoom: 12.5,
-          layout: { "symbol-placement": "line", "text-field": ["coalesce", ["get", "name"], ["get", "ref"]], "text-size": 10, "text-font": ["Noto Sans Regular"] },
+          layout: { "symbol-placement": "line", "text-field": trailLabel, "text-size": 10, "text-font": ["Noto Sans Regular"] },
           paint: { "text-color": "#eef1f5", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.2 } });
       }
       const bnd = d.boundary ? { type: "FeatureCollection", features: [d.boundary] } : { type: "FeatureCollection", features: [] };

@@ -815,11 +815,14 @@
       ? WINTER_FAMILY_ORDER.map((key) => FAMILIES.find((f) => f.key === key)).filter(Boolean)
       : FAMILIES;
     const winterSections = { snow: "Snow season", temp: "Mountain weather", tcc: "Cloud" };
-    rail.innerHTML = `<button class="rail-flat rail-winter ${state.winterMode ? "on" : ""}" data-rail="winter" aria-pressed="${state.winterMode ? "true" : "false"}" title="Show the snow-season map">${LAYER_ICON.sd_cm}<span>Winter mode</span></button>` + shownFamilies.map((f) => {
+    const railLabel = (full, phone = "") => phone
+      ? `<span class="rail-label"><span class="rail-label-full">${full}</span><span class="rail-label-phone" aria-hidden="true">${phone}</span></span>`
+      : `<span>${full}</span>`;
+    rail.innerHTML = `<button class="rail-flat rail-winter ${state.winterMode ? "on" : ""}" data-rail="winter" aria-label="Winter mode" aria-pressed="${state.winterMode ? "true" : "false"}" title="Show the snow-season map">${LAYER_ICON.sd_cm}${railLabel("Winter mode", "Winter")}</button>` + shownFamilies.map((f) => {
       const ok = f.layers.some((l) => avail.includes(l));
       const on = f.key === fam.key;
       const section = state.winterMode ? winterSections[f.key] : f.section;
-      return `${section ? `<div class="rail-sec">${section}</div>` : ""}<button class="${on ? "on" : ""}" data-family="${f.key}" ${ok ? "" : "disabled"} title="${f.label}${ok ? "" : " (not in this model)"}">${LAYER_ICON[FAMILY_ICON[f.key]]}<span>${f.label}</span>${f.variants ? `<i class="var">${f.variants[on ? state.layer : f.layers.find((l) => avail.includes(l)) || f.layers[0]] || ""}</i>` : ""}</button>${on && f.variants ? `<div class="rail-vars seg small" role="group" aria-label="${f.label} options">${f.layers.map((l) => `<button data-layer="${l}" class="${l === state.layer ? "on" : ""}" ${avail.includes(l) ? "" : "disabled"}>${f.variants[l]}</button>`).join("")}</div>` : ""}`;
+      return `${section ? `<div class="rail-sec">${section}</div>` : ""}<button class="${on ? "on" : ""}" data-family="${f.key}" aria-label="${f.label}" ${ok ? "" : "disabled"} title="${f.label}${ok ? "" : " (not in this model)"}">${LAYER_ICON[FAMILY_ICON[f.key]]}${railLabel(f.label, f.key === "ptype" ? "Precip" : "")}${f.variants ? `<i class="var">${f.variants[on ? state.layer : f.layers.find((l) => avail.includes(l)) || f.layers[0]] || ""}</i>` : ""}</button>${on && f.variants ? `<div class="rail-vars seg small" role="group" aria-label="${f.label} options">${f.layers.map((l) => `<button data-layer="${l}" class="${l === state.layer ? "on" : ""}" ${avail.includes(l) ? "" : "disabled"}>${f.variants[l]}</button>`).join("")}</div>` : ""}`;
     }).join("") + `<div class="rail-sec">Field</div>
       <div class="rail-seg" role="group" aria-label="Wind animation">
         <span>Motion</span>
@@ -1348,7 +1351,7 @@
     // tall box and lets every drag ratchet the maximum higher.
     const tapeContentMax = () => {
       const t = tb.querySelector(".tape");
-      if (!t || !t.firstElementChild) return Infinity;
+      if (!t || !t.firstElementChild || t.querySelector(".tape-empty")) return Infinity;
       const classes = tb.className, style = tb.getAttribute("style");
       const pill = $("#tape-pill"), pillHidden = pill ? pill.hidden : true;
       tb.classList.remove("mini", "tape-away", "user-sized", "tape-dragging", "tape-anim", "tape-anim-away");
@@ -1725,7 +1728,7 @@
       $("#tape-pill").setAttribute("aria-label", `Show forecast timeline for ${pillTime}`);
     }
     const atNow = state.stepIdx === currentStepIdx() && !state.frac;
-    $("#lead").textContent = atNow ? "current" : `+${Math.round(shownHours())}h`;
+    $("#lead").textContent = atNow ? "" : `+${Math.round(shownHours())}h`;
     $("#tape-now").classList.toggle("on", atNow);
     $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
   }
