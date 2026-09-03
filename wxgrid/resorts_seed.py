@@ -51,3 +51,68 @@ SEED_RESORTS: list[dict] = [
     {"name": "Killington", "country": "US", "region": "VT", "lat": 43.6045, "lon": -72.8201, "ele_base_m": 396, "ele_summit_m": 1293},
     {"name": "Tremblant", "country": "CA", "region": "QC", "lat": 46.2093, "lon": -74.5844, "ele_base_m": 265, "ele_summit_m": 875},
 ]
+
+# Resort-owned camera pages, plus a small preview set where the operator
+# publishes a stable still-image endpoint. Streams without a still remain a
+# direct Cams link; loading a dozen third-party video players into the panel
+# would be a heroic way to turn a weather app into a space heater.
+_CAM_META: dict[str, dict] = {
+    "Whistler Blackcomb": {
+        "cams_url": "https://www.whistlerblackcomb.com/the-mountain/mountain-conditions/mountain-cams.aspx",
+        "mountain_cams": [
+            {"name": "Roundhouse", "image": "https://player.brownrice.com/snapshot/whistlerroundhouse", "page": "https://www.whistlerblackcomb.com/the-mountain/mountain-conditions/mountain-cams.aspx", "provider": "Whistler Blackcomb", "credit": "Whistler Blackcomb · Brownrice Internet", "elevation_m": 1850},
+            {"name": "Whistler Peak", "image": "https://player.brownrice.com/snapshot/whistlerpeak", "page": "https://www.whistlerblackcomb.com/the-mountain/mountain-conditions/mountain-cams.aspx", "provider": "Whistler Blackcomb", "credit": "Whistler Blackcomb · Brownrice Internet", "elevation_m": 2182},
+            {"name": "7th Heaven", "image": "https://player.brownrice.com/snapshot/whistler7thheaven", "page": "https://www.whistlerblackcomb.com/the-mountain/mountain-conditions/mountain-cams.aspx", "provider": "Whistler Blackcomb", "credit": "Whistler Blackcomb · Brownrice Internet", "elevation_m": 2284},
+        ],
+    },
+    "Big White": {
+        "cams_url": "https://www.bigwhite.com/mountain-conditions/webcams",
+        "mountain_cams": [
+            {"name": "Village Centre", "image": "https://www.bigwhite.com/sites/default/files/village_404.jpg", "page": "https://www.bigwhite.com/mountain-conditions/webcams", "provider": "Big White", "credit": "Big White Ski Resort"},
+            {"name": "The Cliff", "image": "https://www.bigwhite.com/sites/default/files/cliff_399.jpg", "page": "https://www.bigwhite.com/mountain-conditions/webcams", "provider": "Big White", "credit": "Big White Ski Resort"},
+            {"name": "Gem Lake", "image": "https://www.bigwhite.com/sites/default/files/gemlake_405.jpg", "page": "https://www.bigwhite.com/mountain-conditions/webcams", "provider": "Big White", "credit": "Big White Ski Resort"},
+        ],
+    },
+    "Sun Peaks": {
+        "cams_url": "https://www.sunpeaksresort.com/bike-hike/weather-webcams/webcams",
+        "mountain_cams": [
+            {"name": "Valley", "image": "https://www.sunpeaksresort.com/sites/default/files/spr_website_data/webcams/Valley.jpg", "page": "https://www.sunpeaksresort.com/bike-hike/weather-webcams/webcams", "provider": "Sun Peaks", "credit": "Sun Peaks Resort", "elevation_m": 1255},
+            {"name": "Sundance", "image": "https://www.sunpeaksresort.com/sites/default/files/spr_website_data/webcams/sundance.jpg", "page": "https://www.sunpeaksresort.com/bike-hike/weather-webcams/webcams", "provider": "Sun Peaks", "credit": "Sun Peaks Resort", "elevation_m": 1731},
+            {"name": "Top of the World", "image": "https://www.sunpeaksresort.com/sites/default/files/spr_website_data/webcams/westbowl-totw.jpg", "page": "https://www.sunpeaksresort.com/bike-hike/weather-webcams/webcams", "provider": "Sun Peaks", "credit": "Sun Peaks Resort", "elevation_m": 2093},
+        ],
+    },
+    "Revelstoke": {"cams_url": "https://www.revelstokemountainresort.com/mountain/conditions/webcams/"},
+    "Kicking Horse": {"cams_url": "https://kickinghorseresort.com/conditions/summer-mountain-cams/"},
+    "Lake Louise": {
+        "cams_url": "https://cams.skilouise.com/",
+        "mountain_cams": [
+            {"name": "Gondola Top", "image": "https://cams.skilouise.com/cam1sm.jpg", "page": "https://cams.skilouise.com/", "provider": "Lake Louise", "credit": "Lake Louise Ski Resort"},
+            {"name": "Ptarmigan", "image": "https://cams.skilouise.com/cam3sm.jpg", "page": "https://cams.skilouise.com/", "provider": "Lake Louise", "credit": "Lake Louise Ski Resort"},
+            {"name": "Paradise", "image": "https://cams.skilouise.com/cam8sm.jpg", "page": "https://cams.skilouise.com/", "provider": "Lake Louise", "credit": "Lake Louise Ski Resort"},
+        ],
+    },
+    "Sunshine Village": {
+        "cams_url": "https://www.skibanff.com/conditions/#webcams",
+        "mountain_cams": [
+            {"name": "Standish", "image": "https://cameras.skibanff.com/dynamic/15m", "page": "https://www.skibanff.com/conditions/#webcams", "provider": "Sunshine Village", "credit": "Banff Sunshine Village", "elevation_m": 2400},
+            {"name": "Aurora", "image": "https://cameras.skibanff.com/dynamic/10m", "page": "https://www.skibanff.com/conditions/#webcams", "provider": "Sunshine Village", "credit": "Banff Sunshine Village", "elevation_m": 2330},
+            {"name": "Mount Assiniboine", "image": "https://cameras.skibanff.com/dynamic/17m", "page": "https://www.skibanff.com/conditions/#webcams", "provider": "Sunshine Village", "credit": "Banff Sunshine Village", "elevation_m": 3618},
+        ],
+    },
+    "Cypress Mountain": {"cams_url": "https://www.cypressmountain.com/webcams"},
+    "Grouse Mountain": {"cams_url": "https://www.grousemountain.com/web-cams/"},
+    "Mt Seymour": {"cams_url": "https://mtseymour.ca/the-mountain/todays-conditions-hours#webcams"},
+    "Stevens Pass": {
+        "cams_url": "https://www.stevenspass.com/the-mountain/mountain-conditions/mountain-cams.aspx",
+        "mountain_cams": [
+            {"name": "Snow Stake", "image": "https://player.brownrice.com/snapshot/stevenspasssnowstake", "page": "https://www.stevenspass.com/the-mountain/mountain-conditions/mountain-cams.aspx", "provider": "Stevens Pass", "credit": "Stevens Pass · Brownrice Internet"},
+            {"name": "Jupiter", "image": "https://player.brownrice.com/snapshot/stevenspassjupiter", "page": "https://www.stevenspass.com/the-mountain/mountain-conditions/mountain-cams.aspx", "provider": "Stevens Pass", "credit": "Stevens Pass · Brownrice Internet"},
+            {"name": "Skyline", "image": "https://player.brownrice.com/snapshot/stevenspassskyline", "page": "https://www.stevenspass.com/the-mountain/mountain-conditions/mountain-cams.aspx", "provider": "Stevens Pass", "credit": "Stevens Pass · Brownrice Internet"},
+        ],
+    },
+}
+
+for _resort in SEED_RESORTS:
+    _resort.update(_CAM_META.get(_resort["name"], {}))
+
+del _resort

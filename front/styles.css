@@ -446,7 +446,7 @@ button:focus:not(:focus-visible) { outline: none; }
 #timebar.mini table.wtape tr.r-hour td, #timebar.mini table.wtape tr.r-hour th { font-size: 9px; padding-top: 1px; }
 #timebar.mini table.wtape tr.r-icon td { height: 18px; }
 #timebar.mini table.wtape tr.r-icon .tape-glyph { width: 18px; height: 13px; }
-#timebar.mini table.wtape th.day { padding-top: 2px; font-size: 10.5px; }
+#timebar.mini table.wtape th.day { padding-top: 2px; font-size: 11px; }
 #timebar.mini .tape { padding-top: 1px; }
 #timebar.mini { padding-bottom: 4px; }
 #timebar.mini .tape-head { padding-bottom: 0; }
@@ -516,7 +516,7 @@ table.aloft th { text-align: left; font: 700 10.5px var(--font-display); color: 
 table.aloft td { padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 table.aloft td.lvl { font: 600 12px var(--font-display); color: var(--fg); }
 table.aloft td.lvl i.u { font: 600 9px var(--font-display); font-style: normal; color: var(--dim); margin-left: 1px; }
-table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-left: 1.5px solid currentColor; border-top: 1.5px solid currentColor; margin-right: 5px; transform-origin: center; }
+table.aloft td.dir .dirarrow { width: 11px; height: 11px; margin-right: 5px; }
 /* readings as small tiles: label over value, two per row, so the eye can scan
    down the values instead of reading a list */
 /* readings as small tiles: label over value, so the eye scans the values */
@@ -605,7 +605,7 @@ table.aloft td.dir i { display: inline-block; width: 9px; height: 9px; border-le
 table.bandtape { border-collapse: separate; border-spacing: 0; width: 100%; font: 500 11.5px var(--font-num); color: var(--fg-2); }
 table.bandtape th.lab { position: sticky; left: 0; z-index: 2; background: var(--panel-solid); text-align: left;
   font: 600 10px var(--font-display); color: var(--dim); padding: 0 9px 0 9px; min-width: 78px; white-space: nowrap; }
-table.bandtape th.lab small { display: block; font: 500 8.5px var(--font-mono); opacity: .7; }
+table.bandtape th.lab small { display: inline; margin-left: 4px; font: 500 8.5px var(--font-mono); opacity: .7; }
 table.bandtape th.corner { background: var(--panel-solid); }
 table.bandtape th.day { text-align: left; font: 700 11px var(--font-display); color: var(--fg); padding: 5px 8px 3px;
   border-left: 1px solid var(--line-strong); white-space: nowrap; }
@@ -614,7 +614,7 @@ table.bandtape th.slot { font: 600 9px var(--font-display); letter-spacing: .06e
 table.bandtape th.slot.nite { color: color-mix(in srgb, var(--rain) 62%, var(--dim)); }
 /* the band's own row: a full-width rule with its height on the right */
 table.bandtape th.band { position: sticky; left: 0; background: color-mix(in srgb, var(--fg) 7%, var(--panel-solid));
-  border-top: 1px solid var(--line-strong); padding: 5px 10px 4px; }
+  border-top: 1px solid var(--line-strong); padding: 6px 10px 5px; }
 table.bandtape th.band span { font: 700 11px var(--font-display); letter-spacing: .04em; text-transform: uppercase; color: var(--fg); }
 table.bandtape th.band i { font: 600 10px var(--font-mono); font-style: normal; color: var(--dim); margin-left: 8px; }
 table.bandtape td { text-align: center; padding: 2px 3px; border-left: 1px solid var(--line); height: 21px; }
@@ -626,12 +626,13 @@ table.bandtape .nil { color: var(--line-strong); }
 .bandtape .fall.snow { background: rgba(150, 200, 255, calc(var(--w) * .82)); }
 .bandtape .fall.rain { background: rgba(72, 140, 220, calc(var(--w) * .78)); }
 .bandtape .wv { display: inline-block; min-width: 22px; padding: 1px 4px; border-radius: 5px; font-weight: 700; }
-/* the arrow always sits under its pill: left inline, a wide column kept it
-   beside the pill and read as a different layout from its neighbours */
-.bandtape .dirarrow { display: block; width: 9px; height: 9px; margin: 1px auto 0; }
+/* the direction needle sits under the speed pill without becoming a second
+   oversized glyph */
+.bandtape .dirarrow { display: block; width: 11px; height: 11px; margin: 1px auto 0; }
 @media (max-width: 820px) {
   #tape-where .tape-region { display: none; }
   table.bandtape th.lab { min-width: 66px; font-size: 9.5px; padding: 0 6px; }
+  table.bandtape th.band { padding: 6px 10px 5px; }
   table.bandtape th.slot, table.bandtape td { min-width: 38px; }
 }
 @media (max-width: 820px) { .kv { grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); } }
@@ -904,9 +905,13 @@ table.cmp td .r { color: var(--rain); }
 .resort-head > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .resort-head > div > span { font: 700 12px var(--font-display); color: var(--fg-2); }
 .resort-head small { font: 500 10.5px var(--font-body); color: var(--dim); }
+.resort-actions { flex: 0 0 auto; display: flex !important; flex-direction: row !important; align-items: center; gap: 5px !important; }
 .resort-live { flex: 0 0 auto; display: inline-flex; align-items: center; padding: 7px 10px; border-radius: 9px;
   background: var(--accent); color: var(--accent-ink); font: 750 11px var(--font-display); text-decoration: none; }
 .resort-live:hover { filter: brightness(1.08); }
+.resort-cams-link { display: inline-flex; align-items: center; padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 9px;
+  color: var(--fg-2); font: 700 11px var(--font-display); text-decoration: none; }
+.resort-cams-link:hover { color: var(--fg); border-color: var(--accent); }
 .resort-overview { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; margin-bottom: 11px; }
 .resort-overview > div { min-width: 0; padding: 8px 8px 7px; border: 1px solid var(--line); border-radius: 9px; background: rgba(127,140,160,.06); }
 .resort-overview b { display: block; overflow: hidden; text-overflow: ellipsis; font: 750 17px/1.1 var(--font-display); color: var(--fg); white-space: nowrap; }
@@ -933,7 +938,8 @@ table.cmp td .r { color: var(--rain); }
 .resort-groom > div span b { color: var(--fg); }
 .resort-groom p { margin: 6px 0 0; font: 500 10px/1.35 var(--font-body); color: var(--dim); }
 .resort-forecast-title { margin: 10px 0 4px; padding-top: 9px; border-top: 1px solid var(--line); }
-.resort-note { margin-top: 9px; }
+.resort-cams { margin: 9px 0 8px; }
+.resort-cams .cams-head a { color: var(--accent); font: 650 10.5px var(--font-display); text-decoration: none; }
 /* These must follow the desktop resort rules above. The earlier phone block
    used to lose the cascade and leave six ellipsised metric cards in one row. */
 @media (max-width: 820px) {
@@ -949,6 +955,7 @@ table.bands th { text-align: left; font: 700 10px var(--font-display); color: va
 table.bands td { padding: 4px 5px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 table.bands td.name { font: 700 12px var(--font-display); color: var(--fg); }
 table.bands td.name small { display: block; font: 500 10px var(--font-mono); color: var(--dim); }
+table.bands .dirarrow { width: 11px; height: 11px; margin-right: 4px; }
 .snowline { display: flex; gap: 14px; margin: 6px 0; font: 500 12px var(--font-mono); flex-wrap: wrap; }
 .snowline b { font: 700 15px var(--font-display); }
 .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font: 700 10px var(--font-display); background: rgba(255,255,255,.08); color: var(--fg-2); }
@@ -969,7 +976,8 @@ table.wtape th, table.wtape td { padding: 0; text-align: center; white-space: no
 table.wtape th.lab { position: sticky; left: 0; z-index: 2; background: var(--panel-solid); text-align: left; font: 500 10.5px var(--font-body); color: var(--dim); padding: 0 10px 0 4px; min-width: 84px; }
 table.wtape th.lab small { color: var(--dim); opacity: .7; margin-left: 4px; font: 500 9.5px var(--font-mono); }
 table.wtape th.corner { background: transparent; }
-table.wtape th.day { text-align: left; font: 700 12px var(--font-display); color: var(--fg); padding: 2px 8px 3px; border-left: 1px solid var(--line-strong); letter-spacing: .01em; cursor: pointer; }
+table.wtape th.day { text-align: left; font: 700 12.5px var(--font-display); color: var(--fg); padding: 2px 8px 3px; border-left: 1px solid var(--line-strong); letter-spacing: .01em; cursor: pointer;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 table.wtape th.day[data-first]:hover { color: var(--accent); }
 table.wtape th.day.wknd { color: color-mix(in srgb, var(--warm) 60%, var(--fg)); }
 table.wtape th.day:first-of-type { border-left: 0; }
@@ -997,12 +1005,12 @@ table.wtape tr.r-prob td { color: #71b8ff; font-weight: 600; font-size: 11px; }
 table.wtape tr.r-wind td span { display: inline-flex; align-items: center; justify-content: center; min-width: 26px;
   padding: 1px 4px; border-radius: 5px; color: var(--fg); font: 700 12px/1.35 var(--font-display); }
 table.wtape tr.r-dir td { height: 20px; }
-/* a real arrow, not a corner of a box: readable at 11 px and unambiguous
-   about which way the wind is going */
+/* A compact needle with a shaft, not the fat caret that used to cosplay as
+   wind direction. The source SVG points north; arrowRot turns it downwind. */
 .dirarrow { display: inline-block; width: 11px; height: 11px; transform-origin: center; color: var(--fg-2);
   background: currentColor; vertical-align: -1px;
   -webkit-mask: var(--arrow-mask) center/contain no-repeat; mask: var(--arrow-mask) center/contain no-repeat; }
-:root { --arrow-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 19 20 12 16 5 20Z' fill='black'/%3E%3C/svg%3E"); }
+:root { --arrow-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21V4M5.5 10.5 12 4l6.5 6.5' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 /* tape resolution picker, in the tape's own header */
 #tape-res { display: inline-flex; gap: 2px; margin-left: 8px; padding: 2px; border-radius: 8px;
   background: rgba(127,127,127,.12); }

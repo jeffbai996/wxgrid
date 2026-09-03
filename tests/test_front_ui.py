@@ -44,7 +44,11 @@ def test_winter_mode_is_a_reversible_workspace_with_featured_resort_details():
     assert 'state.base = "topo"' in app and "state.resorts = true" in app and "state.avy = true" in app
     assert 'id: "resort-icon"' in overlays and '["get", "featured"]' in overlays
     assert "function clearResortDetail()" in overlays and "pistes-groomed" in overlays
-    assert "Live conditions ↗" in panes and "North American ratings" in panes and '"Double black"' in panes
+    assert "Live conditions ↗" in panes and '"North America"' in panes
+    for label in ('"Easy"', '"Intermediate"', '"Difficult"', '"Expert"'):
+        assert label in panes
+    assert 'CA: "Canada"' in panes and "Mountain cams" in panes
+    assert "Band weather is model-estimated" not in panes
     assert 'const northAmerican = ["CA", "US", "MX"].includes' in overlays
     assert '"expert", "◆◆ "' in overlays
     assert 'return { resort, boundary: null, lifts: [], pistes: [] }' in static_api
@@ -52,6 +56,22 @@ def test_winter_mode_is_a_reversible_workspace_with_featured_resort_details():
     resort_blocks = [part.split("}", 1)[0] for part in css.split("body.has-resort #point {")[1:]]
     assert any("max(var(--top-h), 48px)" in block and "max(var(--tb-h), 96px)" in block
                for block in resort_blocks)
+
+
+def test_wind_tables_use_a_shafted_downwind_needle_and_tape_dates_do_not_autosize():
+    app = _read("app.js")
+    panes = _read("panes.js")
+    tape = _read("tape.js")
+    route = _read("route.js")
+    css = _read("styles.css")
+    assert "(deg + 180) % 360" in app and "180 + 45" not in app
+    assert "M12 21V4M5.5 10.5 12 4l6.5 6.5" in css
+    assert "border-left:1.5px solid currentColor" not in panes
+    assert panes.count('class="dirarrow"') >= 4
+    assert 'class="dirarrow"' in tape and 'class="dirarrow"' in route
+    assert "font-size: 11px" in css
+    assert "-webkit-text-size-adjust: 100%" in css
+    assert "table.bandtape th.band { padding: 6px 10px 5px; }" in css
 
 
 def test_particles_settle_on_real_cold_boot_lifecycle_and_bound_polar_steps():

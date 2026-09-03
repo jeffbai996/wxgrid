@@ -866,13 +866,13 @@
       const a = d.aloft[String(lvl)];
       const gh = a.gh && a.gh[i] != null ? a.gh[i] : null;
       return `<tr><td class="lvl">${lvl} <i class="u">hPa</i></td><td>${gh != null ? W().units.alt(gh).txt : (W().units.altUnit === "ft" ? LEVEL_FT[lvl] : LEVEL_M[lvl])}</td>
-        <td class="dir">${a.wdir[i] != null ? `<i style="${arrowRot(a.wdir[i])}"></i>${String(a.wdir[i]).padStart(3, "0")}°` : "—"}</td>
+        <td class="dir">${a.wdir[i] != null ? `<i class="dirarrow" style="${arrowRot(a.wdir[i])}"></i>${String(a.wdir[i]).padStart(3, "0")}°` : "—"}</td>
         <td><span class="wchip" style="background:${windColor(a.wind[i] || 0)}">${f(a.wind[i], (v) => speed(v).toFixed(0))}</span> ${speedUnit()}</td>
         <td class="tempc" style="color:${a.temp[i] != null ? tempColor(a.temp[i] - K) : "inherit"}">${f(a.temp[i], (v) => W().units.temp(v).v)}°</td></tr>`;
     }).join("");
     const s = d.series;
     const fl = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[i] : null;
-    const sfc = s.wind ? `<tr><td class="mono">sfc</td><td>${W().units.alt(10).txt}</td><td class="dir">${s.wdir[i] != null ? `<i style="${arrowRot(s.wdir[i])}"></i>${String(s.wdir[i]).padStart(3, "0")}°` : "—"}</td><td><span class="wchip" style="background:${windColor(s.wind[i] || 0)}">${f(s.wind[i], (v) => speed(v).toFixed(0))}</span> ${speedUnit()}${s.gust ? ` <span class="dim">gusts ${f(s.gust[i], (v) => speed(v).toFixed(0))}</span>` : ""}</td><td class="tempc" style="color:${s.t2m && s.t2m[i] != null ? tempColor(s.t2m[i] - K) : "inherit"}">${f(s.t2m && s.t2m[i], (v) => W().units.temp(v).v)}°</td></tr>` : "";
+    const sfc = s.wind ? `<tr><td class="mono">sfc</td><td>${W().units.alt(10).txt}</td><td class="dir">${s.wdir[i] != null ? `<i class="dirarrow" style="${arrowRot(s.wdir[i])}"></i>${String(s.wdir[i]).padStart(3, "0")}°` : "—"}</td><td><span class="wchip" style="background:${windColor(s.wind[i] || 0)}">${f(s.wind[i], (v) => speed(v).toFixed(0))}</span> ${speedUnit()}${s.gust ? ` <span class="dim">gusts ${f(s.gust[i], (v) => speed(v).toFixed(0))}</span>` : ""}</td><td class="tempc" style="color:${s.t2m && s.t2m[i] != null ? tempColor(s.t2m[i] - K) : "inherit"}">${f(s.t2m && s.t2m[i], (v) => W().units.temp(v).v)}°</td></tr>` : "";
     $("#aloft").innerHTML = `<table class="aloft"><thead><tr><th>Level</th><th>Height</th><th>Dir</th><th>Speed</th><th>Temp</th></tr></thead><tbody>${rows}${sfc}</tbody></table>
       ${statCards([
         ["Freezing level", fl != null ? W().units.alt(fl).txt : (d.levels && d.levels.length ? "below 925 hPa or above 250" : "—"), "", "flake"],
@@ -1759,10 +1759,10 @@
       if (groom) { const key = groom === "no" || groom === "backcountry" ? "ungroomed" : groom; grooming[key] = (grooming[key] || 0) + 1; }
     });
     const gradeMeta = northAmerican ? [
-      [["novice", "easy"], "Green", "#50d36b", "circle"],
-      [["intermediate"], "Blue", "#3d8bff", "square"],
-      [["advanced"], "Black", "#111318", "diamond"],
-      [["expert", "extreme"], "Double black", "#111318", "double"],
+      [["novice", "easy"], "Easy", "#50d36b", "circle"],
+      [["intermediate"], "Intermediate", "#3d8bff", "square"],
+      [["advanced"], "Difficult", "#111318", "diamond"],
+      [["expert", "extreme"], "Expert", "#111318", "double"],
     ] : [
       [["novice"], "Novice", "#5ad469"], [["easy"], "Easy", "#3d8bff"], [["intermediate"], "Intermediate", "#ff4d4d"],
       [["advanced"], "Advanced", "#f2f2f2"], [["expert"], "Expert", "#c56bff"], [["freeride"], "Freeride", "#ffb454"],
@@ -1789,6 +1789,10 @@
     const liftEntries = Object.entries(liftTypes).sort((a, b) => b[1] - a[1]);
     const liftTypeLine = liftEntries.slice(0, 4).map(([kind, n]) => { const words = liftWords[kind] || [kind.replaceAll("_", " "), `${kind.replaceAll("_", " ")}s`]; return `${n} ${esc(words[n === 1 ? 0 : 1])}`; }).join(" · ") + (liftEntries.length > 4 ? ` · +${liftEntries.length - 4} types` : "");
     const official = r.conditions_url || r.website;
+    const camsUrl = r.cams_url || "";
+    const mountainCams = Array.isArray(r.mountain_cams) ? r.mountain_cams.filter((c) => c && c.image).slice(0, 4) : [];
+    const country = ({ CA: "Canada", US: "United States", MX: "Mexico" })[String(r.country || "").toUpperCase()] || r.country;
+    const place = [r.region, country].filter(Boolean).join(" · ");
     if (!pt.profile) {
       const bands = [];
       if (base != null && summit != null && summit > base) {
@@ -1811,7 +1815,7 @@
         // snow at this band over next 24 h: precip that falls as snow at the band's temperature
         let snow24 = 0, rain24 = 0;
         for (let q = k + 1; q < p.steps.length && p.steps[q] <= p.steps[k] + 24; q++) { const amt = (p.tp6 && p.tp6[q]) || 0; if (b.ptype[q] === "snow") snow24 += amt; else if (b.ptype[q] === "mixed") { snow24 += amt / 2; rain24 += amt / 2; } else rain24 += amt; }
-        return `<tr><td class="name">${name}<small>${W().units.alt(z).txt}</small></td><td><b>${t == null ? "—" : W().units.temp(t).v + "°"}</b></td><td>${w == null ? "—" : `<i style="display:inline-block;width:8px;height:8px;border-left:1.5px solid currentColor;border-top:1.5px solid currentColor;${W().arrowRot(dir)};margin-right:4px"></i>${Math.round(speed(w))} ${speedUnit()}`}</td><td>${pty ? `<span class="pill ${pty}">${pty}</span>` : "<span class=dim>—</span>"}</td><td>${snow24 >= 0.5 ? `<span class="pill snow">${W().units.snow(snow24).txt}</span>` : rain24 >= 0.5 ? `<span class="pill rain">${W().units.precip(rain24).txt}</span>` : "<span class=dim>·</span>"}</td></tr>`;
+        return `<tr><td class="name">${name}<small>${W().units.alt(z).txt}</small></td><td><b>${t == null ? "—" : W().units.temp(t).v + "°"}</b></td><td>${w == null ? "—" : `<i class="dirarrow" style="${W().arrowRot(dir)}"></i>${Math.round(speed(w))} ${speedUnit()}`}</td><td>${pty ? `<span class="pill ${pty}">${pty}</span>` : "<span class=dim>—</span>"}</td><td>${snow24 >= 0.5 ? `<span class="pill snow">${W().units.snow(snow24).txt}</span>` : rain24 >= 0.5 ? `<span class="pill rain">${W().units.precip(rain24).txt}</span>` : "<span class=dim>·</span>"}</td></tr>`;
       }).join("");
       const fl = p.freezing_level_m ? p.freezing_level_m[k] : null;
       const snow72 = (() => { let s3 = 0; const b = p.bands[p.bands.length - 1]; for (let q = k + 1; q < p.steps.length && p.steps[q] <= p.steps[k] + 72; q++) if (b.ptype[q] === "snow") s3 += (p.tp6 && p.tp6[q]) || 0; return s3; })();
@@ -1820,23 +1824,30 @@
         <div class="board-head"><span>Morning / afternoon / night</span></div>${bandTable(p, P.bands.slice().reverse())}`;
     }
     const liftNames = namedLifts.slice(0, 6).map((name) => `<span>${esc(name)}</span>`).join("");
-    $("#resort").innerHTML = `<div class="resort-head"><div><span>${esc([r.region, r.country].filter(Boolean).join(" · "))}</span><small>Model forecast · OpenStreetMap trails</small></div>${official ? `<a class="resort-live" href="${esc(official)}" target="_blank" rel="noopener">Live conditions ↗</a>` : ""}</div>
+    const camCards = mountainCams.map((c, k) => `<button class="cam resort-cam" data-resort-cam="${k}" type="button" title="${esc(c.caption || c.name)}">
+      <img src="${esc(c.image)}${c.image.includes("?") ? "&" : "?"}t=${camBust()}" alt="" loading="lazy">
+      <span class="cam-name">${esc(c.name)}</span>
+      <span class="cam-dist">${c.elevation_m != null ? W().units.alt(c.elevation_m).txt : esc(c.caption || "Live view")}</span>
+    </button>`).join("");
+    const camsHtml = camCards ? `<section class="cams resort-cams"><div class="cams-head"><small>Mountain cams</small>${camsUrl ? `<a href="${esc(camsUrl)}" target="_blank" rel="noopener">All cams ↗</a>` : ""}</div><div class="cams-strip">${camCards}</div></section>` : "";
+    $("#resort").innerHTML = `<div class="resort-head"><div><span>${esc(place)}</span><small>Model forecast · OpenStreetMap</small></div><div class="resort-actions">${official ? `<a class="resort-live" href="${esc(official)}" target="_blank" rel="noopener">Live conditions ↗</a>` : ""}${camsUrl ? `<a class="resort-cams-link" href="${esc(camsUrl)}" target="_blank" rel="noopener">Cams ↗</a>` : ""}</div></div>
       <div class="resort-overview">
         <div><b>${vertical == null ? "—" : W().units.alt(vertical).txt}</b><span>vertical</span></div>
         <div><b>${base == null ? "—" : W().units.alt(base).txt}</b><span>base</span></div>
         <div><b>${summit == null ? "—" : W().units.alt(summit).txt}</b><span>summit</span></div>
         <div><b>${lifts}</b><span>lifts</span></div>
-        <div><b>${segments}</b><span>segments</span></div>
-        <div><b>${groomingTagged}</b><span>groom data</span></div>
+        <div><b>${segments}</b><span>run segments</span></div>
+        <div><b>${groomingTagged}</b><span>groom tags</span></div>
       </div>
       <div class="resort-columns">
-        <section><h4>Runs <small>${northAmerican ? "North American ratings" : "mapped ratings"}</small></h4>${gradeBars}${gradeFoot}</section>
-        <section><h4>Lifts <small>map inventory · not live</small></h4><p class="resort-type">${liftTypeLine || "No lift types mapped."}</p><div class="resort-lift-list">${liftNames || `<span>No named lifts mapped</span>`}${namedLifts.length > 6 ? `<span class="more">+${namedLifts.length - 6} more</span>` : ""}</div></section>
+        <section><h4>Runs <small>${northAmerican ? "North America" : "mapped"}</small></h4>${gradeBars}${gradeFoot}</section>
+        <section><h4>Lifts</h4><p class="resort-type">${liftTypeLine || "No lift types mapped."}</p><div class="resort-lift-list">${liftNames || `<span>No named lifts mapped</span>`}${namedLifts.length > 6 ? `<span class="more">+${namedLifts.length - 6} more</span>` : ""}</div></section>
       </div>
-      <section class="resort-groom"><h4>Grooming <small>map dots · not live</small></h4><div>${groomingPills || `<span>no mapped grooming style</span>`}</div></section>
-      <h4 class="resort-forecast-title">Mountain forecast <small>at map time</small></h4>
-      ${bandsHtml}
-      <div class="note resort-note">Band weather is model-estimated. Runs, lifts and grooming are static map data; use ${official ? "Live conditions" : "the resort report"} for operating status.</div>`;
+      <section class="resort-groom"><h4>Grooming</h4><div>${groomingPills || `<span>no grooming tags</span>`}</div></section>
+      ${camsHtml}
+      <h4 class="resort-forecast-title">Mountain forecast</h4>
+      ${bandsHtml}`;
+    $("#resort").querySelectorAll("[data-resort-cam]").forEach((b) => b.onclick = () => openCam(mountainCams[+b.dataset.resortCam]));
   }
 
   // ── meteogram (Now pane) ─────────────────────────────────────────────

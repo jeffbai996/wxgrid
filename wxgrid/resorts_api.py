@@ -41,7 +41,8 @@ def all_resorts() -> dict:
                          "country": r.get("country"), "region": r.get("region"),
                          "ele_base_m": r.get("ele_base_m"), "ele_summit_m": r.get("ele_summit_m"),
                          "featured": bool(r.get("featured")), "website": r.get("website"),
-                         "conditions_url": r.get("conditions_url")}
+                         "conditions_url": r.get("conditions_url"), "cams_url": r.get("cams_url"),
+                         "mountain_cams": r.get("mountain_cams", [])}
                         for r in resorts.load_catalog()]}
 
 
