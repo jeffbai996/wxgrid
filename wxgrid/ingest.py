@@ -474,7 +474,21 @@ def ingest_order() -> list[str]:
 
     Each group stays sorted by key so the pass is deterministic.
     """
-    return sorted(MODELS, key=lambda key: (TIERS.index(model_tier(key)), key))
+    return sorted((k for k in MODELS if configured(k)), key=lambda key: (TIERS.index(model_tier(key)), key))
+
+
+def configured(key: str) -> bool:
+    """False for an optional model this box has no access to. Such a model
+    stays out of the timer passes entirely (asking for it is what
+    `--model <key>` is for); it used to fail the whole global pass with
+    exit 1 every three hours (2026-09-03)."""
+    m = MODELS[key]
+    if not m.optional:
+        return True
+    if m.source == "weathernext":
+        from wxgrid import wn2
+        return wn2.zarr_url() is not None
+    return True
 
 
 # How perishable a model is, and therefore how often it is worth fetching.

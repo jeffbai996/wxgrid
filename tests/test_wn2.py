@@ -80,3 +80,11 @@ def test_optional_model_stays_out_of_the_catalog_until_it_has_a_run():
     from wxgrid import api
     keys = [m["key"] for m in api._build_models({"ifs": []})["models"]]
     assert "wn2" not in keys and "ifs" in keys
+
+
+def test_unconfigured_optional_model_stays_out_of_the_timer_passes(monkeypatch):
+    from wxgrid import ingest
+    monkeypatch.delenv(wn2.ENV_ZARR, raising=False)
+    assert "wn2" not in ingest.ingest_order() and "wn2" not in ingest.models_in("global")
+    monkeypatch.setenv(wn2.ENV_ZARR, "/tmp/some.zarr")
+    assert "wn2" in ingest.models_in("global")
