@@ -21,6 +21,17 @@ def test_model_row_is_flat_and_hides_nothing():
     assert "#models { flex: 0 1 auto; min-width: 132px; overflow-x: auto;" in css
 
 
+def test_phone_model_and_layer_rows_are_denser_without_shrinking_levels():
+    app = _read("app.js")
+    css = _read("styles.css")
+    assert 'railLabel("Winter mode", "Winter")' in app
+    assert 'f.key === "ptype" ? "Precip" : ""' in app
+    assert ".rail-label-phone { display: none; }" in css
+    assert "#models button { padding: 4px 9px; font-size: 11.5px;" in css
+    assert ".rail button { padding: 3px 8px;" in css
+    assert "#levels button { padding: 4px 9px" not in css
+
+
 def test_winter_mode_is_a_reversible_workspace_with_featured_resort_details():
     html = _read("index.html")
     app = _read("app.js")
@@ -33,7 +44,10 @@ def test_winter_mode_is_a_reversible_workspace_with_featured_resort_details():
     assert 'state.base = "topo"' in app and "state.resorts = true" in app and "state.avy = true" in app
     assert 'id: "resort-icon"' in overlays and '["get", "featured"]' in overlays
     assert "function clearResortDetail()" in overlays and "pistes-groomed" in overlays
-    assert "Live conditions ↗" in panes and "grooming tags" in panes
+    assert "Live conditions ↗" in panes
+    assert "North American ratings" in overlays and '"Double black"' in overlays
+    assert 'pisteGrade("black", "Black diamond", "#111318"' in overlays
+    assert "local_case: local.caseColor" in overlays
     assert 'return { resort, boundary: null, lifts: [], pistes: [] }' in static_api
     assert "body.has-resort #point" in css and "body.winter-mode .rail" in css
     resort_blocks = [part.split("}", 1)[0] for part in css.split("body.has-resort #point {")[1:]]
@@ -300,7 +314,8 @@ def test_the_marine_touring_and_leave_at_cards_exist_and_make_one_call_each():
     m = panes.split("function marineCard")[1].split("function hourStrip")[0]
     assert '"offshore"' in m and '"onshore"' in m and "Blown out" in m and "Clean" in m
     assert "const touringHtml" in panes and "${touringHtml}${powderHtml}" in panes
-    assert "Stay low" in panes and "Pick your aspects" in panes and "Go touring" in panes
+    assert "High concern" in panes and "Caution" in panes and "Lower concern" in panes
+    assert "touring-remark" in panes and ".touring-remark" in css
     assert "async function bestDepartures()" in route and "function scoreSummary(s, thr)" in route
     assert "[0, 3, 6, 9, 12, 15, 18, 21, 24]" in route            # nine departures over a day
     assert ".modcard.marine, .modcard.touring" in css
@@ -344,6 +359,8 @@ def test_now_pane_readings_are_stat_tiles_and_the_card_carries_webcams():
     assert ".meta .stat::before" in css and "background: var(--c); opacity: .85;" in css
     assert "color: var(--fg); display: flex; align-items: baseline" in css
     assert ".cam-view::backdrop" in css
+    assert 'class="icon cam-view-close"' in panes
+    assert ".cam-view-close { width: 32px !important; height: 32px !important;" in css
 
 
 def test_now_wind_compass_uses_a_hubless_open_needle():
@@ -389,6 +406,7 @@ def test_tape_control_walks_all_three_states_and_every_change_glides():
     assert "#timebar.tape-away { height: 38px !important;" in css and "@keyframes pill-in" in css
     assert "const TAPE_AWAY_HEIGHT = 38, TAPE_TAP_SLOP = 14;" in app
     assert 'tb.classList.add("is-resizing", "tape-dragging");' in app
+    assert '$("#lead").textContent = atNow ? "" :' in app
     assert 'tapeGrip.addEventListener("click",' in app
     assert "#timebar.tape-dragging { height: var(--tape-drag-height) !important;" in css
 

@@ -1061,7 +1061,7 @@
       document.body.appendChild(dlg);
       dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
     }
-    dlg.innerHTML = `<div class="cam-view-head"><b>${esc(c.name)}</b><span>${esc(c.caption || "")}</span><button class="icon" type="button" aria-label="Close">×</button></div>
+    dlg.innerHTML = `<div class="cam-view-head"><b>${esc(c.name)}</b><span>${esc(c.caption || "")}</span><button class="icon cam-view-close" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button></div>
       <img src="${esc(c.image)}${c.image.includes("?") ? "&" : "?"}t=${camBust()}" alt="${esc(c.name)}">
       <div class="cam-view-foot"><span>${c.updated ? `updated ${new Date(c.updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ` : ""}${esc(c.credit)}</span><a href="${esc(c.page)}" target="_blank" rel="noopener">open at ${esc(c.provider)} ↗</a></div>`;
     dlg.querySelector("button.icon").onclick = () => dlg.close();
@@ -1216,18 +1216,26 @@
       const lvlName = ["Low", "Moderate", "Considerable", "High", "Extreme"][lvl] || null;
       const loading = w850 != null && speed(w850) > (W().state.units === "kt" ? 15 : W().state.units === "ms" ? 8 : W().state.units === "mph" ? 17 : 28);
       const worries = [];
-      if (lvl >= 3) worries.push(`${lvlName.toLowerCase()} danger`);
+      if (lvl >= 2) worries.push(`${lvlName.toLowerCase()} danger`);
+      if (!lvlName) worries.push("avalanche rating unavailable");
       if (rainOnSnow) worries.push("rain on snow");
       if (loading) worries.push(`${lee} aspects loading`);
       if (flTrend === " ↑") worries.push("freezing level rising");
-      const call = lvl >= 3 || rainOnSnow ? ["Stay low", "bad"] : lvl === 2 || loading ? ["Pick your aspects", "meh"] : ["Go touring", "good"];
+      const call = lvl >= 3 || rainOnSnow ? ["High concern", "bad"] : lvl === 2 || loading || !lvlName ? ["Caution", "meh"] : ["Lower concern", "good"];
+      const concern = worries.length ? esc(worries.join(", ")) : "no major flag in this screen";
+      const remark = call[1] === "bad"
+        ? `This quick screen flags ${concern}. Start with conservative terrain; the full bulletin and local observations decide the route.`
+        : call[1] === "meh"
+          ? `This quick screen flags ${concern}. Choose terrain that avoids the problem, then verify it against the full bulletin and local observations.`
+          : "Weather and bulletin inputs do not raise a major flag here. Confirm the full bulletin and local observations before choosing terrain.";
+      const bulletin = pt.avy && pt.avy.url ? ` <a href="${esc(pt.avy.url)}" target="_blank" rel="noopener">Read bulletin ↗</a>` : "";
       const stats = [
         `<div><small>New snow 24 h</small><b>${newCm == null ? "—" : U.snow(sn24we * slr / 10).v}<i>${esc(U.snowUnit)}</i></b><em>${newCm == null ? "" : `${slr}:1`}</em></div>`,
         `<div><small>Freezing level</small><b>${fl == null ? "—" : U.alt(Math.round(fl / 50) * 50).v}<i>${esc(U.altUnit)}</i></b><em>${flTrend === " ↓" ? "falling" : flTrend === " ↑" ? "rising" : "steady"}</em></div>`,
         `<div><small>Wind loading</small><b>${loading ? lee : "light"}</b><em>${w850 != null ? `<i class="lvl">850 hPa</i>${speed(w850).toFixed(0)} ${esc(speedUnit())}` : ""}</em></div>`,
         lvlName ? `<div><small>Danger</small><b class="avy-${lvl}">${lvlName}</b><em>${esc((avyDay.label || avyDay.date || "today").toString().slice(0, 9))}</em></div>` : "",
       ].filter(Boolean).join("");
-      return `<div class="modcard touring ${call[1]}"><div class="mod-head"><span class="call">${call[0]}</span><span class="dim">${worries.length ? worries.join(" · ") : "nothing flagged"}</span></div><div class="mod-stats">${stats}</div></div>`;
+      return `<div class="modcard touring ${call[1]}"><div class="mod-head"><span class="call">${call[0]}</span><span class="dim">${worries.length ? worries.join(" · ") : "quick terrain screen"}</span></div><div class="mod-stats">${stats}</div><p class="touring-remark">${remark}${bulletin}</p></div>`;
     })();
     $("#winter").innerHTML = `${touringHtml}${powderHtml}${resortHtml}${boardHtml}<div class="kv">${rows.map(([k, v, cls]) => `<div class="stat ${cls || ""}"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}</div>${avyHtml}
       <div class="note">Board: the model column interpolated to each height, so snow and rain are what falls THERE. Depth ratios come from the band temperature. Without a ski area nearby the bands are this point's elevation and 450/900 m above it — the gridpoint does not know what the terrain does. Snow depth is the model snowpack, not a station.</div>`;
@@ -1747,23 +1755,36 @@
     const vertical = base != null && summit != null && summit > base ? summit - base : null;
     const namedLifts = [...new Set(liftFeatures.map((f) => f.properties && f.properties.name).filter(Boolean))];
     const liftTypes = {};
-    liftFeatures.forEach((f) => { const kind = (f.properties && f.properties.aerialway || "unknown").replaceAll("_", " "); liftTypes[kind] = (liftTypes[kind] || 0) + 1; });
-    const fallbackGrade = { bucket: "unknown", label: "Unrated", color: "#9aa5b4", mark: "·" };
-    const scheme = W().pisteScheme ? W().pisteScheme(r.country) : { label: "OSM difficulty", order: [fallbackGrade], grade: () => fallbackGrade };
+    liftFeatures.forEach((f) => { const kind = f.properties && f.properties.aerialway || "other"; liftTypes[kind] = (liftTypes[kind] || 0) + 1; });
+    const fallbackGrade = { bucket: "unknown", label: "Unrated", color: "#9aa5b4", mark: "·", shape: "dot" };
+    const fallbackScheme = ["CA", "US", "MX"].includes(String(r.country || "").toUpperCase()) ? "North American ratings" : "OSM difficulty";
+    const scheme = W().pisteScheme ? W().pisteScheme(r.country) : { label: fallbackScheme, order: [fallbackGrade], grade: () => fallbackGrade };
     const grades = {};
     const grooming = {};
     pisteFeatures.forEach((f) => {
       const p = f.properties || {}, local = scheme.grade(p.grade), groom = p.grooming;
       grades[local.bucket] = (grades[local.bucket] || 0) + 1;
-      if (groom) grooming[groom] = (grooming[groom] || 0) + 1;
+      if (groom) { const key = groom === "no" || groom === "backcountry" ? "ungroomed" : groom; grooming[key] = (grooming[key] || 0) + 1; }
     });
-    const gradeBars = scheme.order.filter(({ bucket }) => grades[bucket]).map(({ bucket, label, color, mark }) => {
+    const gradeMark = (shape, color, mark) => {
+      if (shape === "circle") return `<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="${color}"/></svg>`;
+      if (shape === "square") return `<svg viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="2" width="10" height="10" rx="1" fill="${color}"/></svg>`;
+      if (shape === "diamond") return `<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1.5 12.5 7 7 12.5 1.5 7Z" fill="${color}" stroke="#eef1f5" stroke-width="1"/></svg>`;
+      if (shape === "double") return `<svg class="double" viewBox="0 0 20 14" aria-hidden="true"><path d="M5.5 1.5 10.5 7l-5 5.5L.5 7Z M14.5 1.5l5 5.5-5 5.5-5-5.5Z" fill="${color}" stroke="#eef1f5" stroke-width="1"/></svg>`;
+      if (shape === "oval") return `<svg viewBox="0 0 18 14" aria-hidden="true"><ellipse cx="9" cy="7" rx="7" ry="4.5" fill="none" stroke="${color}" stroke-width="2"/></svg>`;
+      if (shape === "dash") return `<svg viewBox="0 0 18 14" aria-hidden="true"><path d="M2 7h14" stroke="${color}" stroke-width="2" stroke-dasharray="3 2"/></svg>`;
+      return `<i style="color:${color}">${esc(mark)}</i>`;
+    };
+    const gradeBars = scheme.order.filter(({ bucket }) => grades[bucket]).map(({ bucket, label, color, mark, shape }) => {
       const n = grades[bucket], pct = segments ? n / segments * 100 : 0;
-      return `<div class="resort-grade"><span><i style="color:${color}">${esc(mark)}</i>${esc(label)}</span><b>${n}</b><em><i style="width:${pct.toFixed(1)}%;background:${color}"></i></em></div>`;
+      return `<div class="resort-grade"><span>${gradeMark(shape, color, mark)}${esc(label)}</span><b>${n}</b><em><i style="width:${pct.toFixed(1)}%;background:${color};box-shadow:inset 0 0 0 1px rgba(238,241,245,.42)"></i></em></div>`;
     }).join("") || `<div class="note">No mapped difficulty tags.</div>`;
-    const groomingPills = Object.entries(grooming).sort((a, b) => b[1] - a[1]).map(([kind, n]) => `<span>${esc(kind.replaceAll("_", " "))} <b>${n}</b></span>`).join("");
+    const groomingName = { classic: "Machine-groomed", mogul: "Moguls", ungroomed: "Ungroomed", skating: "Skate", "classic+skating": "Classic + skate", "classic;skating": "Classic + skate", scooter: "Snowmobile", skicross: "Skicross" };
+    const groomingPills = Object.entries(grooming).sort((a, b) => b[1] - a[1]).map(([kind, n]) => `<span>${esc(groomingName[kind] || kind.replaceAll("_", " "))} <b>${n}</b></span>`).join("");
     const groomingTagged = Object.values(grooming).reduce((a, b) => a + b, 0);
-    const liftTypeLine = Object.entries(liftTypes).sort((a, b) => b[1] - a[1]).map(([kind, n]) => `${n} ${esc(kind)}`).join(" · ");
+    const liftWords = { chair_lift: ["chair", "chairs"], gondola: ["gondola", "gondolas"], magic_carpet: ["carpet", "carpets"], t_bar: ["T-bar", "T-bars"], platter: ["platter", "platters"], drag_lift: ["drag lift", "drag lifts"], rope_tow: ["rope tow", "rope tows"], station: ["station", "stations"], cable_car: ["cable car", "cable cars"], mixed_lift: ["mixed lift", "mixed lifts"], zip_line: ["zip line", "zip lines"] };
+    const liftEntries = Object.entries(liftTypes).sort((a, b) => b[1] - a[1]);
+    const liftTypeLine = liftEntries.slice(0, 4).map(([kind, n]) => { const words = liftWords[kind] || [kind.replaceAll("_", " "), `${kind.replaceAll("_", " ")}s`]; return `${n} ${esc(words[n === 1 ? 0 : 1])}`; }).join(" · ") + (liftEntries.length > 4 ? ` · +${liftEntries.length - 4} types` : "");
     const official = r.conditions_url || r.website;
     if (!pt.profile) {
       const bands = [];
@@ -1795,24 +1816,24 @@
         <table class="bands"><thead><tr><th>Band</th><th>Temp</th><th>Wind</th><th>Precip type</th><th>Next 24 h</th></tr></thead><tbody>${rows}</tbody></table>
         <div class="board-head"><span>Morning / afternoon / night</span></div>${bandTable(p, P.bands.slice().reverse())}`;
     }
-    const liftNames = namedLifts.slice(0, 10).map((name) => `<span>${esc(name)}</span>`).join("");
-    $("#resort").innerHTML = `<div class="resort-head"><div><span>${esc([r.region, r.country].filter(Boolean).join(" · "))}</span><small>Forecast by wxgrid · terrain from OpenStreetMap</small></div>${official ? `<a class="resort-live" href="${esc(official)}" target="_blank" rel="noopener">Live conditions ↗</a>` : ""}</div>
+    const liftNames = namedLifts.slice(0, 6).map((name) => `<span>${esc(name)}</span>`).join("");
+    $("#resort").innerHTML = `<div class="resort-head"><div><span>${esc([r.region, r.country].filter(Boolean).join(" · "))}</span><small>Model forecast · OpenStreetMap trails</small></div>${official ? `<a class="resort-live" href="${esc(official)}" target="_blank" rel="noopener">Live conditions ↗</a>` : ""}</div>
       <div class="resort-overview">
         <div><b>${vertical == null ? "—" : W().units.alt(vertical).txt}</b><span>vertical</span></div>
         <div><b>${base == null ? "—" : W().units.alt(base).txt}</b><span>base</span></div>
         <div><b>${summit == null ? "—" : W().units.alt(summit).txt}</b><span>summit</span></div>
-        <div><b>${lifts}</b><span>mapped lifts</span></div>
-        <div><b>${segments}</b><span>trail segments</span></div>
-        <div><b>${groomingTagged}</b><span>grooming tags</span></div>
+        <div><b>${lifts}</b><span>lifts</span></div>
+        <div><b>${segments}</b><span>segments</span></div>
+        <div><b>${groomingTagged}</b><span>groom data</span></div>
       </div>
       <div class="resort-columns">
-        <section><h4>Terrain mix <small>${esc(scheme.label)} · mapped segments</small></h4>${gradeBars}</section>
-        <section><h4>Lift network <small>mapped, not status</small></h4><p class="resort-type">${liftTypeLine || "No lift types mapped."}</p><div class="resort-lift-list">${liftNames || `<span>No named lifts mapped</span>`}${namedLifts.length > 10 ? `<span class="more">+${namedLifts.length - 10} more</span>` : ""}</div></section>
+        <section><h4>Runs <small>${esc(scheme.label)}</small></h4>${gradeBars}</section>
+        <section><h4>Lifts <small>map inventory · not live</small></h4><p class="resort-type">${liftTypeLine || "No lift types mapped."}</p><div class="resort-lift-list">${liftNames || `<span>No named lifts mapped</span>`}${namedLifts.length > 6 ? `<span class="more">+${namedLifts.length - 6} more</span>` : ""}</div></section>
       </div>
-      <section class="resort-groom"><h4>Grooming map <small>OSM style tags, not today's grooming report</small></h4><div>${groomingPills || `<span>no grooming metadata mapped</span>`}</div><p>White dots on the trail map mark segments with a mapped grooming style.</p></section>
-      <h4 class="resort-forecast-title">Mountain forecast <small>at the selected map time</small></h4>
+      <section class="resort-groom"><h4>Grooming <small>map dots · not live</small></h4><div>${groomingPills || `<span>no mapped grooming style</span>`}</div></section>
+      <h4 class="resort-forecast-title">Mountain forecast <small>at map time</small></h4>
       ${bandsHtml}
-      <div class="note resort-note">Elevation-band temperature and wind are interpolated from the selected forecast model; snowfall uses a 10:1 snow-to-water ratio. Trail difficulty uses ${esc(scheme.label)} over static OpenStreetMap tags; lift geometry and grooming style are static too. Open/closed and groomed-today status stay with the resort's official report${official ? " above" : ""}.</div>`;
+      <div class="note resort-note">Band weather is model-estimated. Run ratings use ${esc(scheme.label)}; runs, lifts and grooming are static OpenStreetMap data. Use ${official ? "Live conditions" : "the resort report"} for operating status.</div>`;
   }
 
   // ── meteogram (Now pane) ─────────────────────────────────────────────

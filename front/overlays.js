@@ -262,7 +262,9 @@
   // actually see are local. Translate only where the country identifies a
   // published convention; an unknown country keeps the OSM grade labels
   // instead of borrowing somebody else's trail map.
-  const pisteGrade = (bucket, label, color, mark) => ({ bucket, label, color, mark });
+  const pisteGrade = (bucket, label, color, mark, shape = "dot", caseColor = "rgba(0,0,0,.65)") => ({
+    bucket, label, color, mark, shape, caseColor,
+  });
   function pisteScheme(country) {
     const code = String(country || "").trim().toUpperCase();
     const northAmerica = new Set(["US", "USA", "UNITED STATES", "CA", "CAN", "CANADA", "MX", "MEX", "MEXICO"]);
@@ -275,56 +277,56 @@
       id = northAmerica.has(code) ? "north-america" : "oceania";
       label = northAmerica.has(code) ? "North American ratings" : "Oceania ratings";
       grades = {
-        novice: pisteGrade("bunny", "Bunny hill", "#49c96d", "●"),
-        easy: pisteGrade("green", "Green circle", "#49c96d", "●"),
-        intermediate: pisteGrade("blue", "Blue square", "#438cff", "■"),
-        advanced: pisteGrade("black", "Black diamond", "#f1f3f5", "◆"),
-        expert: pisteGrade("double-black", "Double black", "#ffffff", "◆◆"),
-        freeride: pisteGrade("freeride", "Freeride", "#ffad45", "⬭"),
-        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!"),
+        novice: pisteGrade("bunny", "Bunny hill", "#50d36b", "●", "circle"),
+        easy: pisteGrade("green", "Green circle", "#50d36b", "●", "circle"),
+        intermediate: pisteGrade("blue", "Blue square", "#3d8bff", "■", "square"),
+        advanced: pisteGrade("black", "Black diamond", "#111318", "◆", "diamond", "rgba(245,247,250,.88)"),
+        expert: pisteGrade("double-black", "Double black", "#111318", "◆◆", "double", "rgba(245,247,250,.88)"),
+        freeride: pisteGrade("freeride", "Freeride", "#ffb454", "⬭", "oval"),
+        extreme: pisteGrade("double-black", "Double black", "#111318", "◆◆", "double", "rgba(245,247,250,.88)"),
       };
     } else if (japan.has(code)) {
       id = "japan"; label = "Japanese ratings";
       grades = {
-        novice: pisteGrade("beginner", "Beginner", "#49c96d", "●"),
-        easy: pisteGrade("beginner", "Beginner", "#49c96d", "●"),
-        intermediate: pisteGrade("intermediate", "Intermediate", "#ff565d", "●"),
-        advanced: pisteGrade("advanced", "Advanced", "#f1f3f5", "◆"),
-        expert: pisteGrade("expert", "Expert", "#9aa5b4", "◆◆"),
-        freeride: pisteGrade("freeride", "Freeride", "#9aa5b4", "—"),
-        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!"),
+        novice: pisteGrade("beginner", "Beginner", "#50d36b", "●", "circle"),
+        easy: pisteGrade("beginner", "Beginner", "#50d36b", "●", "circle"),
+        intermediate: pisteGrade("intermediate", "Intermediate", "#ff565d", "●", "circle"),
+        advanced: pisteGrade("advanced", "Advanced", "#111318", "◆", "diamond", "rgba(245,247,250,.88)"),
+        expert: pisteGrade("advanced", "Advanced", "#111318", "◆", "diamond", "rgba(245,247,250,.88)"),
+        freeride: pisteGrade("freeride", "Freeride", "#9aa5b4", "—", "dash"),
+        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!", "alert"),
       };
     } else if (code && scandinavia.has(code)) {
       id = "scandinavia"; label = "Scandinavian ratings";
       grades = {
-        novice: pisteGrade("green", "Green", "#49c96d", "●"),
-        easy: pisteGrade("blue", "Blue", "#438cff", "●"),
-        intermediate: pisteGrade("red", "Red", "#ff565d", "●"),
-        advanced: pisteGrade("black", "Black", "#f1f3f5", "◆"),
-        expert: pisteGrade("double-black", "Double black", "#ffffff", "◆◆"),
-        freeride: pisteGrade("freeride", "Ski route", "#ffd34e", "—"),
-        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!"),
+        novice: pisteGrade("green", "Green", "#50d36b", "●", "circle"),
+        easy: pisteGrade("blue", "Blue", "#3d8bff", "●", "circle"),
+        intermediate: pisteGrade("red", "Red", "#ff565d", "●", "circle"),
+        advanced: pisteGrade("black", "Black", "#111318", "◆", "diamond", "rgba(245,247,250,.88)"),
+        expert: pisteGrade("double-black", "Double black", "#111318", "◆◆", "double", "rgba(245,247,250,.88)"),
+        freeride: pisteGrade("freeride", "Ski route", "#ffd34e", "—", "dash"),
+        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!", "alert"),
       };
     } else if (europe.has(code)) {
       id = "europe"; label = "European ratings";
       grades = {
-        novice: pisteGrade("green", "Green", "#49c96d", "●"),
-        easy: pisteGrade("blue", "Blue", "#438cff", "●"),
-        intermediate: pisteGrade("red", "Red", "#ff565d", "●"),
-        advanced: pisteGrade("black", "Black", "#f1f3f5", "◆"),
-        expert: pisteGrade("expert", "Expert", "#ff9f43", "◆◆"),
-        freeride: pisteGrade("freeride", "Ski route", "#ffd34e", "—"),
-        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!"),
+        novice: pisteGrade("green", "Green", "#50d36b", "●", "circle"),
+        easy: pisteGrade("blue", "Blue", "#3d8bff", "●", "circle"),
+        intermediate: pisteGrade("red", "Red", "#ff565d", "●", "circle"),
+        advanced: pisteGrade("black", "Black", "#111318", "◆", "diamond", "rgba(245,247,250,.88)"),
+        expert: pisteGrade("expert", "Expert", "#ff9f43", "◆◆", "double"),
+        freeride: pisteGrade("freeride", "Ski route", "#ffd34e", "—", "dash"),
+        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!", "alert"),
       };
     } else {
       grades = {
-        novice: pisteGrade("novice", "Novice", "#49c96d", "●"), easy: pisteGrade("easy", "Easy", "#438cff", "●"),
-        intermediate: pisteGrade("intermediate", "Intermediate", "#ff565d", "●"), advanced: pisteGrade("advanced", "Advanced", "#f1f3f5", "◆"),
-        expert: pisteGrade("expert", "Expert", "#c78cff", "◆◆"), freeride: pisteGrade("freeride", "Freeride", "#ffad45", "—"),
-        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!"),
+        novice: pisteGrade("novice", "Novice", "#50d36b", "●", "circle"), easy: pisteGrade("easy", "Easy", "#3d8bff", "●", "circle"),
+        intermediate: pisteGrade("intermediate", "Intermediate", "#ff565d", "●", "circle"), advanced: pisteGrade("advanced", "Advanced", "#f1f3f5", "◆", "diamond"),
+        expert: pisteGrade("expert", "Expert", "#c78cff", "◆◆", "double"), freeride: pisteGrade("freeride", "Freeride", "#ffb454", "—", "dash"),
+        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!", "alert"),
       };
     }
-    const unknown = pisteGrade("unknown", "Unrated", "#9aa5b4", "·");
+    const unknown = pisteGrade("unknown", "Unrated", "#9aa5b4", "·", "dot");
     const grade = (key) => grades[String(key || "").toLowerCase()] || unknown;
     const order = [...new Map(Object.values(grades).concat(unknown).map((g) => [g.bucket, g])).values()];
     return { id, label, order, grade };
@@ -348,23 +350,23 @@
         M().addLayer({ id: "lifts-line", type: "line", source: "lifts", paint: { "line-color": "#ffb454", "line-width": 2, "line-opacity": 0.9 } });
         M().addLayer({ id: "lifts-lbl", type: "symbol", source: "lifts", minzoom: 11, layout: { "symbol-placement": "line", "text-field": ["get", "name"], "text-size": 10, "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1 } });
       }
-      // The runs, coloured the way a trail map colours them. Black diamonds are
-      // drawn near-white here: this basemap is dark, and a black line on it is
-      // an absent line. Every run gets a dark casing so it reads over snow,
-      // forest and the weather field alike.
+      // OSM stores one difficulty vocabulary; the map translates it to the
+      // signs used where the resort is. Black trails keep their actual black
+      // centre and get a pale casing so they remain visible on the dark map.
       const rawPistes = d.pistes || { type: "FeatureCollection", features: [] };
       const scheme = pisteScheme(r.country);
       const pistes = { ...rawPistes, features: (rawPistes.features || []).map((f) => {
         const local = scheme.grade(f.properties && f.properties.grade);
         return { ...f, properties: { ...(f.properties || {}), local_color: local.color,
-          local_mark: local.mark, local_label: local.label, local_bucket: local.bucket } };
+          local_case: local.caseColor, local_mark: local.mark, local_label: local.label,
+          local_bucket: local.bucket } };
       }) };
       if (M().getSource("pistes")) M().getSource("pistes").setData(pistes);
       else {
         M().addSource("pistes", { type: "geojson", data: pistes });
         M().addLayer({ id: "pistes-case", type: "line", source: "pistes", minzoom: 9,
           layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": "rgba(0,0,0,.65)", "line-width": ["interpolate", ["linear"], ["zoom"], 9, 2.6, 13, 6.5], "line-opacity": 0.9 } });
+          paint: { "line-color": ["get", "local_case"], "line-width": ["interpolate", ["linear"], ["zoom"], 9, 2.6, 13, 6.5], "line-opacity": 0.9 } });
         // line-dasharray takes no data expression, so ungroomed runs get their
         // own layer rather than a condition MapLibre would reject silently.
         const pisteWidth = ["interpolate", ["linear"], ["zoom"], 9, 1.3, 13, 4];
