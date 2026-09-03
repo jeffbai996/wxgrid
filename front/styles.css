@@ -997,10 +997,16 @@ table.wtape tr.r-hour td .hr small { font-size: 8.5px; margin-left: 1px; color: 
 table.wtape tr.r-icon td { height: 24px; }
 table.wtape tr.r-icon svg { width: 22px; height: 16px; vertical-align: middle; }
 table.wtape tr.r-temp td { font: 700 13px var(--font-num); font-variant-numeric: tabular-nums; color: var(--fg); height: 22px; }
-table.wtape tr.r-feels td { color: var(--fg-2); }
-table.wtape tr.r-rain td { color: var(--rain); font-weight: 600; position: relative; }
-table.wtape tr.r-rain td span { position: relative; }
-table.wtape tr.r-rain td .bar { position: absolute; left: 1px; right: 1px; bottom: 0; background: var(--rain); opacity: .16; border-radius: 2px 2px 0 0; pointer-events: none; }
+table.wtape tr.r-feels td { color: var(--dim); font-size: 10.5px; border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  background-image: linear-gradient(to bottom, rgba(127,140,160,.035), transparent); }
+table.wtape tr.r-feels th.lab { border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
+table.wtape tr.r-feels td .hi { color: var(--fg-2); font-weight: 650; }
+table.wtape tr.r-rain td { color: var(--rain); font-weight: 650; position: relative; overflow: hidden; height: 24px; }
+table.wtape tr.r-rain td span { position: relative; z-index: 1; text-shadow: 0 1px 3px var(--panel-solid); }
+table.wtape tr.r-rain td .precip-area { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+table.wtape tr.r-rain td .precip-area .fill { fill: currentColor; opacity: .17; }
+table.wtape tr.r-rain td .precip-area .line { fill: none; stroke: currentColor; stroke-width: 1.35; vector-effect: non-scaling-stroke; opacity: .72; }
+table.wtape tr.r-rain td.snowy { color: #cfe8ff; }
 /* sunrise and sunset: thin amber notches at the top of their columns */
 table.wtape td.sun-rise, table.wtape td.sun-set { position: relative; }
 table.wtape tr.r-hour td.sun-rise::after, table.wtape tr.r-hour td.sun-set::after {
@@ -1018,8 +1024,11 @@ table.wtape tr.r-dir td { height: 20px; }
   background: currentColor; vertical-align: -1px;
   -webkit-mask: var(--arrow-mask) center/contain no-repeat; mask: var(--arrow-mask) center/contain no-repeat; }
 :root { --arrow-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21V4M5.5 10.5 12 4l6.5 6.5' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-/* tape resolution picker, in the tape's own header */
-#tape-slice { margin-left: 12px; margin-right: -8px; color: var(--dim); font: 600 10.5px var(--font-display); letter-spacing: .025em; }
+/* tape resolution picker, in the tape's own header. "slice" is metadata, not
+   another control label, and matches the map-centre text exactly. */
+#tape-slice { margin-left: 12px; margin-right: -8px; }
+#tape-slice, #tape-where { color: var(--dim); font: 650 11.5px var(--font-display); letter-spacing: .01em;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 #tape-res { display: inline-flex; gap: 2px; margin-left: 0; padding: 2px; border-radius: 8px;
   background: rgba(127,127,127,.12); }
 #tape-res button { border: 0; background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap;
@@ -1253,12 +1262,24 @@ table.wtape tr.r-hour td.now .hr, table.wtape tbody tr:first-child td.now .hr {
   box-shadow: inset 0 0 0 1px var(--accent); border-radius: 5px; padding: 1px 5px; color: var(--accent); }
 table.wtape tr.r-hour td.now.on .hr { box-shadow: none; }
 table.wtape th.day { padding-top: 3px; }
-/* the cold end of an aggregated column, beside the warm one */
-table.wtape .lo { color: var(--fg-2); font-weight: 600; font-size: .82em; margin-left: 5px; }
+/* The two temperature stories have separate voices: air is prominent, while
+   feels-like is smaller, ruled and quieter. A real slash stops high/low pairs
+   from collapsing into one mutant number. */
+table.wtape .hi { font: inherit; }
+table.wtape .pair-sep { margin: 0 3px; color: var(--dim); opacity: .58; font: 600 .74em var(--font-display); font-style: normal; }
+table.wtape .lo { color: var(--fg-2); font-weight: 600; font-size: .82em; margin-left: 0; }
 /* High/low pairs need a wider column and air at the edges, or "25° 25°"
    runs into the next cell's "25°" (Jeff 2026-08-22). */
 table.wtape.agg td { min-width: 60px; padding: 0 5px; }
 table.wtape.agg tr.r-temp td, table.wtape.agg tr.r-feels td { letter-spacing: -.01em; }
+table.wtape.slice-6 tr.r-hour td { height: 18px; color: var(--dim); font: 750 8.5px var(--font-display); letter-spacing: .075em; }
+/* Long-range handoff: a blue seam, a quiet wash, and one source chip at the
+   first AI-GFS day. The map itself remains on the selected model until an AI
+   column is clicked. */
+table.wtape th.day.ai-tail, table.wtape td.ai-tail { background-image: linear-gradient(#65a8ff0a, #65a8ff0a); }
+table.wtape th.day.ai-start, table.wtape td.ai-start { box-shadow: inset 2px 0 0 #65a8ff; }
+table.wtape th.day .model-handoff { display: inline-flex; margin-left: 6px; padding: 1px 4px; border-radius: 4px;
+  background: #65a8ff1f; color: #83bcff; font: 750 8px var(--font-display); letter-spacing: .055em; vertical-align: 1px; }
 @media (max-width: 820px) { table.wtape.agg td { min-width: 60px; } }
 
 /* ensemble spread pane */
@@ -1468,13 +1489,23 @@ body.no-map #particles { display: none; }
 .nomap span { max-width: 360px; font: 500 12.5px/1.5 var(--font-body); }
 
 /* ── the tape's column card ──────────────────────────────────────────── */
-#tape-card { position: fixed; z-index: 40; pointer-events: none; display: grid; grid-template-columns: auto auto; gap: 2px 12px; padding: 8px 10px 9px; border-radius: 10px;
-  background: var(--panel-solid); border: 1px solid var(--line-strong); box-shadow: 0 8px 24px rgba(0,0,0,.18); font: 500 11.5px var(--font-num); color: var(--fg-2); }
-#tape-card .when { grid-column: 1 / -1; font: 700 12px var(--font-display); color: var(--fg); margin-bottom: 3px; }
-#tape-card span { display: contents; }
-#tape-card span i { font-style: normal; color: var(--dim); }
-#tape-card span b { font: 700 12px var(--font-num); color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; }
-#tape-card span b small { font: 600 10px var(--font-num); color: var(--dim); }
+#tape-card { position: fixed; z-index: 40; pointer-events: none; width: min(238px, calc(100vw - 12px)); padding: 10px; border-radius: 15px;
+  background: color-mix(in srgb, var(--panel-solid) 92%, transparent); border: 1px solid var(--line-strong); box-shadow: 0 18px 52px rgba(0,0,0,.36);
+  backdrop-filter: blur(16px) saturate(1.12); font: 500 11.5px var(--font-num); color: var(--fg-2); }
+#tape-card .card-head { display: flex; align-items: center; gap: 9px; padding: 1px 1px 8px; }
+#tape-card .when { min-width: 0; flex: 1; font: 750 12.5px var(--font-display); color: var(--fg); letter-spacing: -.005em; }
+#tape-card .source { flex: 0 0 auto; padding: 2px 6px; border-radius: 6px; background: rgba(127,140,160,.12);
+  color: var(--fg-2); font: 750 8.5px var(--font-display); letter-spacing: .055em; text-transform: uppercase; }
+#tape-card .source.ai { background: #65a8ff20; color: #83bcff; }
+#tape-card .card-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+#tape-card .metric { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 6px 7px 7px; border: 1px solid var(--line);
+  border-radius: 9px; background: rgba(127,140,160,.055); }
+#tape-card .metric i { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 650 8.5px var(--font-display); font-style: normal; color: var(--dim); letter-spacing: .02em; }
+#tape-card .metric b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 720 12.5px var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; }
+#tape-card .metric b small { font: 600 9px var(--font-num); color: var(--dim); }
+#tape-card .metric.feels { background: rgba(127,140,160,.025); }
+#tape-card .metric.feels b { color: var(--fg-2); font-size: 11.5px; }
+#tape-card .metric.precip b { color: var(--rain); }
 
 /* ── marine and touring cards: one call, then the numbers ────────────── */
 .modcard .mod-head .call { font: 800 15px var(--font-display) !important; letter-spacing: -.01em; }

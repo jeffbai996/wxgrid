@@ -7,6 +7,7 @@
   const M = () => WX.map;
   // ── weather tape ──────────────────────────────────────────────────────
   let tapeReq = 0, tapeKey = "";
+  let tapeAIReq = 0, tapeAIKey = "", tapeAI = null;
   async function refreshTapePoint() {
     const c = M().getCenter();
     const key = `${c.lat.toFixed(2)},${WX.wlon(c.lng).toFixed(2)};${state.model};${state.run}`;
@@ -28,6 +29,48 @@
     }
   }
   function tapeData() { return state.point && state.point.outside ? null : (state.point && state.point.data) || state.tapePoint; }
+
+  // The map can stay on the selected model while the one-day tape continues
+  // past that model's horizon with NOAA AI-GFS. Point cards already fetch the
+  // same continuation for their week strip; the map-centre tape owns one
+  // small, keyed copy for the no-card case.
+  const aiRun = () => {
+    const m = WX.catalog && WX.catalog.models.find((x) => x.key === "aigfs" && x.runs.length);
+    return m && m.runs[0];
+  };
+  function tapeAIData() {
+    if (state.point) return state.point.ai || null;
+    const run = aiRun(); if (!run || !M()) return null;
+    const c = M().getCenter();
+    const key = `${c.lat.toFixed(2)},${WX.wlon(c.lng).toFixed(2)};${run.run}`;
+    return key === tapeAIKey ? tapeAI : null;
+  }
+  function queueTapeAI() {
+    if (tapeRes === 24) setTimeout(refreshTapeAI, 0);
+  }
+  async function refreshTapeAI() {
+    // A selected point owns its AI continuation in app.js, where the daily
+    // card also consumes it. Avoid asking for the same 16-day series twice.
+    if (tapeRes !== 24 || state.model === "aigfs" || state.point) return;
+    const primary = tapeData(), run = aiRun();
+    if (!primary || !primary.valid || !primary.valid.length || !run) return;
+    const primaryEnd = new Date(primary.valid[primary.valid.length - 1]).getTime();
+    const aiEnd = new Date(run.valid_from).getTime() + Math.max(...run.steps) * 3600e3;
+    if (aiEnd <= primaryEnd + 3600e3) return;
+    const c = M().getCenter();
+    const key = `${c.lat.toFixed(2)},${WX.wlon(c.lng).toFixed(2)};${run.run}`;
+    if (key === tapeAIKey) return;
+    tapeAIKey = key; tapeAI = null;
+    const my = ++tapeAIReq;
+    try {
+      const d = await WX.api(`${API}/point?lat=${c.lat.toFixed(2)}&lon=${WX.wlon(c.lng).toFixed(2)}&model=aigfs&run=${run.run}`);
+      if (my !== tapeAIReq || key !== tapeAIKey) return;
+      tapeAI = d.available === false ? null : d;
+      renderTape();
+    } catch (_) {
+      if (my === tapeAIReq && key === tapeAIKey) tapeAIKey = "";
+    }
+  }
   function renderTapePlace() {
     const el = $("#tape-where");
     el.replaceChildren();
@@ -58,7 +101,7 @@
     const opts = [[1, "1 h"], [2, "2 h"], [0, `${native} h`], [6, "6 h"], [12, "12 h"], [24, "24 h"]]
       .filter(([v]) => v === 0 || (v < native ? v : v > native));
     box.innerHTML = opts.map(([v, t]) => `<button data-v="${v}" class="${v === tapeRes ? "on" : ""}">${t}</button>`).join("");
-    box.querySelectorAll("button").forEach((b) => b.onclick = () => { tapeRes = Number(b.dataset.v); localStorage.setItem("wxgrid.tapeRes", tapeRes); renderTape(); renderTapeSelection(); });
+    box.querySelectorAll("button").forEach((b) => b.onclick = () => { tapeRes = Number(b.dataset.v); localStorage.setItem("wxgrid.tapeRes", tapeRes); renderTape(); renderTapeSelection(); queueTapeAI(); });
   }
 
   // ── column resolution ────────────────────────────────────────────────
@@ -160,6 +203,58 @@
     return tapeRes < native ? interpolate(d0, tapeRes) : aggregate(d0, tapeRes);
   }
 
+  const columnsFor = (sample, model, ai = false) => sample.d.valid.map((valid, i) => ({
+    model, valid, native: sample.keep ? sample.keep[i] : i, ai, aiStart: false,
+  }));
+
+  function appendSeries(primary, tail, tailIdx, primaryN) {
+    const out = {};
+    const names = new Set([...Object.keys(primary || {}), ...Object.keys(tail || {})]);
+    names.forEach((name) => {
+      const a = primary && primary[name], b = tail && tail[name];
+      if (Array.isArray(a) || Array.isArray(b)) {
+        const left = Array.isArray(a) ? a.slice(0, primaryN) : Array(primaryN).fill(null);
+        out[name] = left.concat(tailIdx.map((i) => Array.isArray(b) ? b[i] : null));
+      } else out[name] = a != null ? a : b;
+    });
+    return out;
+  }
+
+  // Build the tape's displayed columns. Only the 24-hour view crosses model
+  // boundaries; finer slices retain one model because those columns imply a
+  // precision the long-range continuation should not borrow.
+  function tapeView(d0) {
+    const primary = resample(d0);
+    const columns = columnsFor(primary, state.model);
+    if (tapeRes !== 24 || state.model === "aigfs") return { ...primary, columns };
+    const tail = tapeAIData();
+    if (!tail || tail.model !== "aigfs" || !tail.valid || !tail.valid.length) return { ...primary, columns };
+    const ai = aggregate(tail, 24);
+    if (!ai.agg) return { ...primary, columns };
+
+    const zk = zoner();
+    const primaryDays = new Set(primary.d.valid.map((v) => zk(new Date(v)).day));
+    const primaryEnd = new Date(d0.valid[d0.valid.length - 1]).getTime();
+    const tailIdx = ai.d.valid.map((v, i) => ({ v, i }))
+      .filter(({ v }) => new Date(v).getTime() > primaryEnd && !primaryDays.has(zk(new Date(v)).day))
+      .map(({ i }) => i);
+    if (!tailIdx.length) return { ...primary, columns };
+
+    const valid = primary.d.valid.concat(tailIdx.map((i) => ai.d.valid[i]));
+    const base = new Date(valid[0]).getTime();
+    const d = {
+      ...primary.d,
+      valid,
+      steps: valid.map((v) => (new Date(v).getTime() - base) / 3600e3),
+      series: appendSeries(primary.d.series, ai.d.series, tailIdx, primary.d.valid.length),
+    };
+    const tailColumns = tailIdx.map((i) => ({
+      model: "aigfs", valid: ai.d.valid[i], native: ai.keep ? ai.keep[i] : i, ai: true, aiStart: false,
+    }));
+    tailColumns[0].aiStart = true;
+    return { d, keep: null, agg: true, res: 24, columns: columns.concat(tailColumns) };
+  }
+
   function renderTape() {
     const tape = $("#tape");
     tape.classList.toggle("radar", state.radar && state.radarFrames.length > 0);
@@ -180,20 +275,23 @@
     // An empty tape under a live scrubber reads as broken. Say what is happening.
     if (!d0) { tape.innerHTML = `<div class="tape-empty">${tapeKey ? "loading the forecast for the map centre…" : "forecast unavailable here"}</div>`; return; }
     renderRes(d0);
+    queueTapeAI();
     // resampling maps every series onto the chosen columns, so the rest of the
     // renderer never has to know whether it is showing model steps, columns
     // between them, or whole periods
-    const { d, keep, agg, res: aggRes } = resample(d0);
+    const { d, columns, agg, res: aggRes } = tapeView(d0);
     const s = d.series, n = d.steps.length;
     const dates = d.valid.map((iso) => new Date(iso));
     const zk = zoner();
     // day header cells: colspan per day, grouped in the zone the times are
     // shown in so the header cannot disagree with the columns under it
     const days = [];
-    dates.forEach((dt, i) => { const k = zk(dt).day; if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, first: i, span: 0 }); days[days.length - 1].span++; });
+    dates.forEach((dt, i) => { const k = zk(dt).day; if (!days.length || days[days.length - 1].key !== k) days.push({ key: k, start: dt, first: i, span: 0, ai: columns[i].ai, aiStart: columns[i].aiStart }); days[days.length - 1].span++; });
     // a day header is a jump: sixteen days of tape is a long way to scrub
     const dayRow = days.map((dy) => { const wd = dy.start.getDay();
-      return `<th colspan="${dy.span}" class="day${wd === 0 || wd === 6 ? " wknd" : ""}" data-first="${dy.first}" title="Jump to this day">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}</th>`; }).join("");
+      const source = dy.aiStart ? `<small class="model-handoff">AI-GFS</small>` : "";
+      const title = dy.ai ? "NOAA AI-GFS continuation · jump to this day" : "Jump to this day";
+      return `<th colspan="${dy.span}" class="day${wd === 0 || wd === 6 ? " wknd" : ""}${dy.ai ? " ai-tail" : ""}${dy.aiStart ? " ai-start" : ""}" data-first="${dy.first}" title="${title}">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}${source}</th>`; }).join("");
     // sunrise/sunset as thin amber notches on the hour row: compute each
     // day's events once, then find the column whose span holds them
     const sunCols = new Map();   // shown index -> "rise"|"set"
@@ -215,30 +313,38 @@
     // the column whose interval holds the current wall-clock time gets a mark
     const nowMs = Date.now();
     const nowIdx = dates.findIndex((dt, i) => nowMs >= dt.getTime() && (i + 1 >= n || nowMs < dates[i + 1].getTime()));
-    const cell = (i, inner, cls = "") => `<td class="${cls} ${dates[i].getHours() < 6 || dates[i].getHours() >= 21 ? "night" : ""}${i === nowIdx ? " now" : ""}${sunCols.has(i) ? ` sun-${sunCols.get(i)}` : ""}" data-i="${i}">${inner}</td>`;
+    const cell = (i, inner, cls = "") => `<td class="${cls} ${dates[i].getHours() < 6 || dates[i].getHours() >= 21 ? "night" : ""}${i === nowIdx ? " now" : ""}${sunCols.has(i) ? ` sun-${sunCols.get(i)}` : ""}${columns[i].ai ? " ai-tail" : ""}${columns[i].aiStart ? " ai-start" : ""}" data-i="${i}" data-model="${columns[i].model}" data-valid="${columns[i].valid}">${inner}</td>`;
     // A column that covers half a day is named for that half, not for whichever
     // hour its sample landed on; a column that covers a whole day is named by
     // the date above it and needs no clock at all.
     const hourTxt = (dt) => dt.toLocaleTimeString(undefined, WX.units.timeOpts({ hour: "numeric" }));
     const halfTxt = (dt) => (zk(dt).hour < 12 ? "AM" : "PM");
+    const periodTxt = (dt) => ["NITE", "MORN", "NOON", "EVE"][Math.floor(zk(dt).hour / 6)];
     const showHours = !(agg && aggRes >= 24);
-    const colTxt = (dt) => (agg && aggRes === 12 ? halfTxt(dt)
+    const colTxt = (dt) => (agg && aggRes === 6 ? periodTxt(dt) : agg && aggRes === 12 ? halfTxt(dt)
       : `${hourTxt(dt).replace(":00", "").replace(/\s/, "<small>")}${/[ap]m/i.test(hourTxt(dt)) ? "</small>" : ""}`);
     const hourRow = dates.map((dt, i) => cell(i, `<span class="hr">${colTxt(dt)}</span>`, "hour")).join("");
     const iconRow = dates.map((_, i) => cell(i, glyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), s.t2m ? s.t2m[i] : null, dates[i].getHours() < 6 || dates[i].getHours() >= 21), "ico")).join("");
-    const pair = (hi, lo, fmt) => (hi == null ? "—" : `${fmt(hi)}${lo == null ? "" : `<span class="lo">${fmt(lo)}</span>`}`);
+    const pair = (hi, lo, fmt) => (hi == null ? "—" : `<strong class="hi">${fmt(hi)}</strong>${lo == null ? "" : `<i class="pair-sep">/</i><span class="lo">${fmt(lo)}</span>`}`);
     const degC = (v) => `${WX.units.tempC(v).v}°`, degK = (v) => `${WX.units.temp(v).v}°`;
     const tempRow = dates.map((_, i) => cell(i, agg ? pair(s.t2m && s.t2m[i], s.t2m_lo && s.t2m_lo[i], degK)
       : s.t2m && s.t2m[i] != null ? degK(s.t2m[i]) : "—", "temp")).join("");
     const feelsRow = dates.map((_, i) => { const v = agg ? null : feelsAt(s, i);
       return cell(i, agg ? pair(s.feels_hi && s.feels_hi[i], s.feels_lo && s.feels_lo[i], degC) : v == null ? "—" : degC(v), "feels"); }).join("");
-    // The amount is also a bar BEHIND the number, the way Windy shades its
-    // rain row: no extra row (a separate bar row was cut 2026-08-20 for the
-    // space it took), the magnitude reads at a glance across the tape. The
-    // scale is square-root so a drizzle still shows and a deluge does not
-    // flood the cell: 10 mm fills it.
-    const bar = (mm) => (mm > 0.05 ? `<b class="bar" style="height:${Math.min(100, Math.round(Math.sqrt(mm / 10) * 100))}%"></b>` : "");
-    const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, "", "rain"); if (sn >= 0.3) return cell(i, `${bar(sn / 10)}<span class="snow">${WX.units.snow(sn).v}</span>`, "rain"); return cell(i, r >= 0.1 ? `${bar(r)}<span>${WX.units.precip(r).v}</span>` : bar(r), "rain"); }).join("");
+    // A continuous filled trace makes the precipitation SHAPE visible across
+    // time. Each cell draws half of the lines to its neighbours, so the SVGs
+    // meet cleanly while the exact amount remains printed above the area.
+    const rainAmount = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; return r == null ? 0 : sn >= 0.3 ? sn / 10 : r; });
+    const rainScale = Math.max(10, ...rainAmount);
+    const rainY = (mm) => 96 - Math.min(90, Math.sqrt(Math.max(0, mm) / rainScale) * 90);
+    const rainArea = (i) => {
+      const here = rainAmount[i], left = i ? (rainAmount[i - 1] + here) / 2 : here;
+      const right = i + 1 < rainAmount.length ? (here + rainAmount[i + 1]) / 2 : here;
+      if (Math.max(left, here, right) <= 0.05) return "";
+      const path = `M0 ${rainY(left).toFixed(1)} L50 ${rainY(here).toFixed(1)} L100 ${rainY(right).toFixed(1)}`;
+      return `<svg class="precip-area" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="fill" d="${path} L100 100 L0 100 Z"></path><path class="line" d="${path}"></path></svg>`;
+    };
+    const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, rainArea(i), "rain"); if (sn >= 0.3) return cell(i, `${rainArea(i)}<span class="snow">${WX.units.snow(sn).v}</span>`, "rain snowy"); return cell(i, `${rainArea(i)}${r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : ""}`, "rain"); }).join("");
     // Chance of rain, from the members, only where it says something —
     // a row of zeros is noise dressed as information
     const probRow = s.prob_rain && s.prob_rain.some((v) => v >= 10)
@@ -253,12 +359,12 @@
     };
     const windRow = dates.map((_, i) => { const v = s.wind ? s.wind[i] : null; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("");
     const gustRow = s.gust ? dates.map((_, i) => { const v = s.gust[i]; return cell(i, v == null ? "—" : `<span style="${windCol(v)}">${Math.round(speed(v))}</span>`, "wind"); }).join("") : "";
-    const dirRow = dates.map((_, i) => cell(i, s.wdir && s.wdir[i] != null ? `<i class="dirarrow" style="${arrowRot(s.wdir[i])}"></i>` : "", "dir")).join("");
+    const dirRow = dates.map((_, i) => cell(i, s.wdir && s.wdir[i] != null ? `<i class="dirarrow" style="${arrowRot(s.wdir[i])}" title="${String(Math.round(s.wdir[i])).padStart(3, "0")}°"></i>` : "", "dir")).join("");
     const label = (t, u) => `<th class="lab">${t}${u ? `<small>${u}</small>` : ""}</th>`;
-    tape.innerHTML = `<table class="wtape${agg ? " agg" : ""}"><thead><tr><th class="lab corner"></th>${dayRow}</tr></thead><tbody>
+    tape.innerHTML = `<table class="wtape${agg ? " agg" : ""}${aggRes ? ` slice-${aggRes}` : ""}"><thead><tr><th class="lab corner"></th>${dayRow}</tr></thead><tbody>
       ${showHours ? `<tr class="r-hour">${label("Time")}${hourRow}</tr>` : ""}
       <tr class="r-icon">${label("")}${iconRow}</tr>
-      <tr class="r-temp">${label(agg ? "Temp high / low" : "Temp", WX.units.tempUnit)}${tempRow}</tr>
+      <tr class="r-temp">${label(agg ? "Air high / low" : "Air temp", WX.units.tempUnit)}${tempRow}</tr>
       <tr class="r-feels">${label(agg ? "Feels high / low" : "Feels like", WX.units.tempUnit)}${feelsRow}</tr>
       <tr class="r-rain">${label("Precip", `${WX.units.precipUnit} · ${WX.units.snowUnit}`)}${rainRow}</tr>
       ${probRow ? `<tr class="r-prob">${label("Chance", "%")}${probRow}</tr>` : ""}
@@ -267,9 +373,10 @@
       <tr class="r-dir">${label("Direction")}${dirRow}</tr>
     </tbody></table>`;
     const pick = (shown) => {
-      const native = keep ? keep[shown] : shown;
-      WX.fn.setStep(native);
-      fineSelectedValid = d.valid[shown];
+      const col = columns[shown];
+      if (col.model !== state.model) WX.fn.jumpModelTime(col.model, col.valid);
+      else WX.fn.setStep(col.native);
+      fineSelectedValid = col.valid;
       renderTapeSelection();
     };
     tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => pick(Number(c.dataset.i)));
@@ -296,21 +403,30 @@
       if (shownFor === i) return;
       shownFor = i;
       const table = td.closest("table");
-      const rows = [];
-      let day = "";
-      table.querySelectorAll("th.day[data-first]").forEach((th) => { if (Number(th.dataset.first) <= Number(i)) day = th.textContent; });
+      const metrics = [];
+      let day = "", when = "";
+      table.querySelectorAll("th.day[data-first]").forEach((th) => { if (Number(th.dataset.first) <= Number(i)) day = ((th.childNodes[0] || {}).textContent || th.textContent).trim(); });
       table.querySelectorAll("tr").forEach((tr) => {
         const lab = tr.querySelector("th.lab"); const cell = tr.querySelector(`td[data-i="${i}"]`);
         if (!lab || !cell) return;
-        const name = (lab.childNodes[0] && lab.childNodes[0].textContent || "").trim(), unit = (lab.querySelector("small") || {}).textContent || "";
+        let name = (lab.childNodes[0] && lab.childNodes[0].textContent || "").trim(), unit = (lab.querySelector("small") || {}).textContent || "";
         let val = cell.textContent.trim();
         if (tr.classList.contains("r-icon")) return;
-        if (tr.classList.contains("r-hour")) { rows.unshift(`<b class="when">${day ? `${day} · ` : ""}${val}</b>`); return; }
+        if (tr.classList.contains("r-hour")) { when = `${day ? `${day} · ` : ""}${val}`; return; }
         if (tr.classList.contains("r-dir")) { const g = cell.querySelector("[title]"); val = g ? g.title : val; }
+        if (tr.classList.contains("r-rain") && cell.classList.contains("snowy")) {
+          name = "Snow"; unit = (unit.split("·")[1] || unit).trim();
+        }
         if (!val || val === "—") return;
-        rows.push(`<span><i>${name}</i><b>${val}${unit && !/[a-z°%]/.test(val) ? ` <small>${unit.split("·")[0].trim()}</small>` : ""}</b></span>`);
+        const kind = tr.classList.contains("r-temp") ? "temp" : tr.classList.contains("r-feels") ? "feels"
+          : tr.classList.contains("r-rain") ? "precip" : tr.classList.contains("r-wind") ? "wind"
+          : tr.classList.contains("r-dir") ? "direction" : "other";
+        metrics.push(`<span class="metric ${kind}"><i>${name}</i><b>${val.replace("/", " / ")}${unit && !/[a-z°%]/.test(val) ? ` <small>${unit.split("·")[0].trim()}</small>` : ""}</b></span>`);
       });
-      card.innerHTML = rows.join("");
+      const model = td.dataset.model || state.model;
+      const entry = WX.catalog && WX.catalog.models.find((m) => m.key === model);
+      const source = model === "aigfs" ? "AI-GFS" : (entry && entry.short) || model.toUpperCase();
+      card.innerHTML = `<div class="card-head"><b class="when">${when || day}</b><span class="source${model === "aigfs" ? " ai" : ""}">${source}</span></div><div class="card-metrics">${metrics.join("")}</div>`;
       card.hidden = false;
       const r = td.getBoundingClientRect(), cw = card.offsetWidth, ch = card.offsetHeight;
       const left = Math.max(6, Math.min(innerWidth - cw - 6, r.left + r.width / 2 - cw / 2));
@@ -329,13 +445,17 @@
     const tape = $("#tape");
     const radar = state.radar && state.radarFrames.length;
     const d0 = tapeData();
-    const keep = d0 ? resample(d0).keep : null;
-    // the shown column for a step: exact when the tape is at full resolution,
-    // otherwise the nearest kept column
-    const sampled = d0 ? resample(d0).d : null;
-    const shown = fineSelectedValid && sampled
-      ? sampled.valid.reduce((best, iso, k, vals) => Math.abs(new Date(iso) - new Date(fineSelectedValid)) < Math.abs(new Date(vals[best]) - new Date(fineSelectedValid)) ? k : best, 0)
-      : !keep ? state.stepIdx : keep.reduce((best, idx, k) => Math.abs(idx - state.stepIdx) < Math.abs(keep[best] - state.stepIdx) ? k : best, 0);
+    const view = d0 ? tapeView(d0) : null;
+    const columns = view ? view.columns : [];
+    // Only columns from the model currently painted on the map can be "on".
+    // AI tail columns become selectable by switching the map to AI-GFS first.
+    const own = columns.map((c, i) => ({ ...c, i })).filter((c) => c.model === state.model);
+    const pool = own.length ? own : columns.map((c, i) => ({ ...c, i }));
+    const shown = !pool.length ? state.stepIdx : pool.reduce((best, col) => {
+      const err = fineSelectedValid ? Math.abs(new Date(col.valid) - new Date(fineSelectedValid)) : Math.abs(col.native - state.stepIdx);
+      const bestErr = fineSelectedValid ? Math.abs(new Date(best.valid) - new Date(fineSelectedValid)) : Math.abs(best.native - state.stepIdx);
+      return err < bestErr ? col : best;
+    }, pool[0]).i;
     let on = null;
     tape.querySelectorAll(radar ? ".tape-col" : "td[data-i]").forEach((c) => {
       const isOn = radar ? Number(c.dataset.radar) === state.radarIdx : Number(c.dataset.i) === shown;

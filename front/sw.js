@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v55";   // v55: resort cams, compact band labels, stable tape dates and wind needles
+const VERSION = "wxgrid-v56";   // v56: AI-GFS daily tail, period labels, precip trace and modern tape card
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

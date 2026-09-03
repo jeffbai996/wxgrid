@@ -1959,7 +1959,7 @@
         const primaryEnd = new Date(d.valid[d.valid.length - 1]).getTime();
         if (aiEnd > primaryEnd + 3600e3) {
           WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}&model=aigfs&run=${aiRun.run}`)
-            .then((r) => { if (my === pointReq && r.available !== false) { state.point.ai = r; renderPoint(); } })
+            .then((r) => { if (my === pointReq && r.available !== false) { state.point.ai = r; renderPoint(); WX.tape.renderTape(); } })
             .catch(() => {});
         }
       }

@@ -277,9 +277,12 @@ def test_the_outdoors_verdict_carries_a_briefing_and_the_tape_shades_its_rain():
     summ = panes.split("function story(d, sel)")[1].split("const BEAUFORT")[0]
     assert "Clouding over" in summ and "Clearing" in summ and "from the ${compass(" in summ
     assert "rest.slice(0, 4)" in summ
-    # rain amount as a bar behind the number, square-root scaled, 10 mm full
-    assert "Math.sqrt(mm / 10)" in tape and 'class="bar"' in tape
-    assert "table.wtape tr.r-rain td .bar" in css
+    # Rain is a continuous, filled trace behind the exact amount. The scale
+    # keeps 10 mm as the minimum ceiling but expands for genuinely wet days.
+    assert "Math.max(10, ...rainAmount)" in tape
+    assert "Math.sqrt(Math.max(0, mm) / rainScale)" in tape
+    assert 'class="precip-area"' in tape and 'class="bar"' not in tape
+    assert ".precip-area .fill" in css and ".precip-area .line" in css
 
 
 def test_outdoors_cards_lead_with_the_number_and_keep_green_quiet():
@@ -326,6 +329,10 @@ def test_the_hero_and_the_outdoors_verdict_read_one_story_and_the_tape_has_a_col
     assert "function wireTapeHover(tape)" in tape and "wireTapeHover(tape);" in tape
     assert 'if (e.pointerType === "touch") return;' in tape
     assert "#tape-card" in css
+    assert 'class="card-head"' in tape and 'class="card-metrics"' in tape
+    assert 'class="metric ${kind}"' in tape
+    assert 'name = "Snow"' in tape
+    assert "#tape-card .source.ai" in css and "#tape-card .metric.feels" in css
 
 
 def test_the_marine_touring_and_leave_at_cards_exist_and_make_one_call_each():
@@ -460,7 +467,29 @@ def test_tape_slice_label_sits_with_resolution_controls():
     assert html.index('id="tape-now"') < html.index('id="tape-slice"') < html.index('id="tape-res"')
     assert '<span id="tape-slice">slice</span>' in html
     assert '#tape-slice { margin-left: 12px; margin-right: -8px;' in css
-    assert 'font: 600 10.5px var(--font-display)' in css
+    assert '#tape-slice, #tape-where { color: var(--dim); font: 650 11.5px var(--font-display);' in css
+    assert "-webkit-text-size-adjust: 100%" in css
+
+
+def test_daily_tape_continues_with_aigfs_and_marks_the_model_handoff():
+    app = _read("app.js"); tape = _read("tape.js"); css = _read("styles.css")
+    assert "state.point.ai = r; renderPoint(); WX.tape.renderTape();" in app
+    assert "function refreshTapeAI()" in tape and "function tapeView(d0)" in tape
+    assert 'tapeRes !== 24 || state.model === "aigfs"' in tape
+    assert 'model: "aigfs"' in tape and 'class="model-handoff">AI-GFS' in tape
+    assert "!primaryDays.has(zk(new Date(v)).day)" in tape
+    assert "WX.fn.jumpModelTime(col.model, col.valid)" in tape
+    assert "table.wtape th.day.ai-start, table.wtape td.ai-start" in css
+
+
+def test_six_hour_tape_uses_named_local_day_periods_and_separates_temperature_rows():
+    tape = _read("tape.js"); css = _read("styles.css")
+    assert '["NITE", "MORN", "NOON", "EVE"]' in tape
+    assert "agg && aggRes === 6 ? periodTxt(dt)" in tape
+    assert 'label(agg ? "Air high / low" : "Air temp"' in tape
+    assert 'class="pair-sep"' in tape
+    assert "table.wtape tr.r-feels td" in css and "table.wtape .pair-sep" in css
+    assert "table.wtape.slice-6 tr.r-hour td" in css
 
 
 def test_cursor_probe_accepts_ipad_trackpad_but_ignores_touch_mouse_events():
