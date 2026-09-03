@@ -321,7 +321,18 @@ def test_now_pane_readings_are_stat_tiles_and_the_card_carries_webcams():
     assert '<div id="cams-slot" class="cams" hidden></div>' in panes
     assert "function fetchCams(pt)" in panes and "function openCam(c)" in panes
     assert ".meta:has(.stat) { display: grid;" in css
+    assert ".meta .stat::before" in css and "background: var(--c); opacity: .85;" in css
+    assert "color: var(--fg); display: flex; align-items: baseline" in css
     assert ".cam-view::backdrop" in css
+
+
+def test_now_wind_compass_uses_a_hubless_open_needle():
+    panes = _read("panes.js")
+    css = _read("styles.css")
+    assert 'path class="needle" d="M24 32 L24 12 M19.5 17 L24 12 L28.5 17"' in panes
+    assert 'class="hub"' not in panes
+    assert ".wind-dial text.card { font: 600 5.25px" in css
+    assert ".wind-dial .needle { fill: none;" in css and "stroke-width: 1.35" in css
 
 
 def test_winter_tab_stays_for_winter_sport_country_all_year():

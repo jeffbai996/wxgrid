@@ -339,17 +339,13 @@
           <polygon class="a" points="0,24 ${pts(win)} 100,24"/><polyline class="w" points="${pts(win)}"/></svg>`;
       }
       const peakG = gwin.length ? Math.max(...gwin) : null;
-      // The dial: a thin ring, four cardinal ticks, one slim needle pointing
-      // the way the air is going, nothing else.
-      // A labelled rose: N E S W at the rim, eight fine ticks between, one
-      // slim needle the colour of the wind pointing the way the air goes,
-      // a ghost tail behind it so the FROM side reads too.
+      // A labelled rose with one open, unbroken needle. The line crosses the
+      // centre by itself; a hub only makes this tiny dial look mechanical.
       const dial = `<span class="wind-dial" style="--rot:${dir == null ? 0 : (dir + 180) % 360}deg" title="${dir == null ? "" : `from ${Math.round(dir)}°`}">
         <svg viewBox="0 0 48 48" aria-hidden="true"><circle class="ring" cx="24" cy="24" r="21"/>
         <text class="card" x="24" y="10.2" text-anchor="middle">N</text><text class="card" x="41.2" y="26.6" text-anchor="middle">E</text>
         <text class="card" x="24" y="43.2" text-anchor="middle">S</text><text class="card" x="6.8" y="26.6" text-anchor="middle">W</text>
-        <g class="needle"><path class="shaft" d="M24 24 V13"/><path class="head" d="M20.5 16.5 L24 12 L27.5 16.5"/></g>
-        <circle class="hub" cx="24" cy="24" r="1.6"/></svg></span>`;
+        <path class="needle" d="M24 32 L24 12 M19.5 17 L24 12 L28.5 17"/></svg></span>`;
       chips.push(`<span class="wind-readout" style="--wind-color:${windColor(w || 0)}">
         <span class="wind-main"><small>Wind</small><b>${f(w, (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b><em>${compass(dir)}${dir != null ? ` ${Math.round(dir)}°` : ""}${bf != null ? ` · ${BEAUFORT_NAME[bf]}` : ""}</em></span>
         ${dial}
