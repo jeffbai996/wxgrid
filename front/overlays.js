@@ -277,13 +277,13 @@
       id = northAmerica.has(code) ? "north-america" : "oceania";
       label = northAmerica.has(code) ? "North American ratings" : "Oceania ratings";
       grades = {
-        novice: pisteGrade("bunny", "Bunny hill", "#50d36b", "●", "circle"),
-        easy: pisteGrade("green", "Green circle", "#50d36b", "●", "circle"),
-        intermediate: pisteGrade("blue", "Blue square", "#3d8bff", "■", "square"),
-        advanced: pisteGrade("black", "Black diamond", "#111318", "◆", "diamond", "rgba(245,247,250,.88)"),
-        expert: pisteGrade("double-black", "Double black", "#111318", "◆◆", "double", "rgba(245,247,250,.88)"),
+        novice: pisteGrade("green", "Easy", "#50d36b", "●", "circle"),
+        easy: pisteGrade("green", "Easy", "#50d36b", "●", "circle"),
+        intermediate: pisteGrade("blue", "Intermediate", "#3d8bff", "■", "square"),
+        advanced: pisteGrade("black", "Difficult", "#111318", "◆", "diamond", "rgba(245,247,250,.88)"),
+        expert: pisteGrade("double-black", "Expert", "#111318", "◆◆", "double", "rgba(245,247,250,.88)"),
         freeride: pisteGrade("freeride", "Freeride", "#ffb454", "⬭", "oval"),
-        extreme: pisteGrade("double-black", "Double black", "#111318", "◆◆", "double", "rgba(245,247,250,.88)"),
+        extreme: pisteGrade("double-black", "Expert", "#111318", "◆◆", "double", "rgba(245,247,250,.88)"),
       };
     } else if (japan.has(code)) {
       id = "japan"; label = "Japanese ratings";

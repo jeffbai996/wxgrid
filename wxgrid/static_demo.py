@@ -218,7 +218,7 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2, fields: b
         entries = entries.get("resorts", entries) if isinstance(entries, dict) else entries
         entries = resort_catalog._merge_seed(entries)
         public_fields = ("id", "name", "lat", "lon", "country", "region", "ele_base_m", "ele_summit_m",
-                         "featured", "website", "conditions_url")
+                         "featured", "website", "conditions_url", "cams_url", "mountain_cams")
         (rdir / "all.json").write_text(json.dumps({"resorts": [{k: e.get(k) for k in public_fields} for e in entries]}))
         entries_by_id = {e["id"]: e for e in entries}
         for det in (DATA_DIR / "resorts").glob("*.json"):

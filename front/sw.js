@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v53";   // v53: denser phone controls, bounded tape, clearer resort cards
+const VERSION = "wxgrid-v55";   // v55: resort cams, compact band labels, stable tape dates and wind needles
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

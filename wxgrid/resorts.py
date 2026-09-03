@@ -222,8 +222,9 @@ def _merge_seed(resorts: list[dict]) -> list[dict]:
             # conditions link is likewise curated: it points at the resort's
             # own operational report rather than pretending OSM is live.
             match["featured"] = bool(seed.get("featured"))
-            if seed.get("conditions_url"):
-                match["conditions_url"] = seed["conditions_url"]
+            for key in ("conditions_url", "cams_url", "mountain_cams"):
+                if seed.get(key):
+                    match[key] = seed[key]
             continue
         sid = _slug(seed["name"], seed["lat"], seed["lon"])
         if sid in by_id:
@@ -232,6 +233,7 @@ def _merge_seed(resorts: list[dict]) -> list[dict]:
             "id": sid, "name": seed["name"], "lat": seed["lat"], "lon": seed["lon"],
             "country": seed["country"], "region": seed.get("region"), "website": seed.get("website"),
             "featured": bool(seed.get("featured")), "conditions_url": seed.get("conditions_url"),
+            "cams_url": seed.get("cams_url"), "mountain_cams": seed.get("mountain_cams", []),
             "ele_base_m": seed["ele_base_m"], "ele_summit_m": seed["ele_summit_m"],
             "osm_type": None, "osm_id": None,
         }

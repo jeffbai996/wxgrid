@@ -101,6 +101,15 @@ def test_winter_mode_featured_resorts_are_the_requested_twelve_with_official_rep
     assert {r["name"] for r in featured} == FEATURED_NAMES
     assert all(r.get("website", "").startswith("https://") for r in featured)
     assert all(r.get("conditions_url", "").startswith("https://") for r in featured)
+    cams = [r for r in featured if r.get("cams_url")]
+    assert len(cams) == 11                 # Mt Baker does not publish a resort cam
+    assert all(r["cams_url"].startswith("https://") for r in cams)
+    previewed = [r for r in cams if r.get("mountain_cams")]
+    assert {r["name"] for r in previewed} == {
+        "Whistler Blackcomb", "Big White", "Sun Peaks", "Lake Louise", "Sunshine Village", "Stevens Pass",
+    }
+    assert all(c["image"].startswith("https://") and c["page"].startswith("https://")
+               for r in previewed for c in r["mountain_cams"])
 
 
 def test_merge_seed_fills_missing_elevation_on_near_match_without_duplicating():
@@ -115,6 +124,7 @@ def test_merge_seed_fills_missing_elevation_on_near_match_without_duplicating():
     assert hits[0]["osm_type"] == "relation"        # OSM identity kept; only elevation was filled
     assert hits[0]["featured"] is True
     assert "whistlerblackcomb.com" in hits[0]["conditions_url"]
+    assert len(hits[0]["mountain_cams"]) == 3
 
 
 # ── search / nearest ────────────────────────────────────────────────────
@@ -161,6 +171,8 @@ def test_api_resorts_search_and_nearest_and_400():
     assert pin["featured"] is True
     assert pin["region"] == "BC"
     assert pin["conditions_url"].startswith("https://")
+    assert pin["cams_url"].startswith("https://")
+    assert len(pin["mountain_cams"]) == 3
 
     assert c.get("/api/resorts").status_code == 400
 

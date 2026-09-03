@@ -112,7 +112,10 @@
   // ── shared helpers (used by panes.js) ────────────────────────────────
   const speed = (ms) => ms == null ? null : state.units === "kt" ? ms * 1.943844 : state.units === "ms" ? ms : state.units === "mph" ? ms * 2.236936 : ms * 3.6;
   const speedUnit = () => ({ kmh: "km/h", kt: "kt", ms: "m/s", mph: "mph" }[state.units]);
-  const arrowRot = (deg) => `transform: rotate(${(deg + 180 + 45) % 360}deg)`;   // chevron points TO where wind goes
+  // Forecast direction is where the wind comes FROM; the needle points where
+  // it is going.  Its SVG points north before rotation, so no mystery 45°
+  // compensation belongs here.
+  const arrowRot = (deg) => `transform: rotate(${(deg + 180) % 360}deg)`;
   const f = (v, fn) => (v == null ? "—" : fn(v));
   const arrow = (deg) => "↓↙←↖↑↗→↘"[Math.round(((deg % 360) / 45)) % 8];
   // The map renders world copies, so a click east of the antimeridian gives
