@@ -65,6 +65,14 @@ by side on the same valid times.
 
 ![point card](docs/img/02-card.jpg)
 
+**Winter mode.** One switch turns the map into a mountain-weather workspace:
+new snow, snow depth, freezing level, precipitation type, terrain and avalanche
+regions, plus featured ski resorts. Pick a mountain for its elevation-band
+forecast, mapped lift network, trail difficulty and grooming metadata, with a
+direct hand-off to the resort's official live conditions report.
+
+![wxgrid Winter mode showing Whistler Blackcomb](docs/img/17-winter.jpg)
+
 **Cross-sections.** Drag a line, get the atmosphere between the two ends:
 temperature, the 0 °C line, wind barbs at every level, precipitation along the
 bottom.
