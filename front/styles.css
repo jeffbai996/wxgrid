@@ -285,6 +285,9 @@ body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 70
 .rail-flat svg { width: 20px; height: 20px; flex: 0 0 20px; opacity: .8; }
 .rail-flat:hover { background: rgba(255,255,255,.06); color: var(--fg); }
 .rail-flat.on { background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 18px var(--accent-glow); }
+.rail-winter { margin-bottom: 2px; }
+.rail-winter + .rail-sec { border-top-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+body.winter-mode .rail { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); }
 :root[data-theme="light"] .rail-flat:hover { background: rgba(0,0,0,.05); }
 .rail-opacity { display: flex; align-items: center; gap: 9px; padding: 6px 11px 8px; }
 .rail-opacity span { font: 600 12px var(--font-display); color: var(--fg-2); }
@@ -496,6 +499,11 @@ body.resizing-point, body.resizing-point * { cursor: nwse-resize !important; }
 /* ten tabs when a resort is selected: the same strip, a notch tighter, so the
    pill neither overflows nor shrinks into the middle of the card */
 #point .point-tabs:has(button[data-tab="resort"]:not([hidden])) button { padding: 6px 4px; font-size: 10.5px; }
+/* A resort is a workspace, not a tenth cramped tab.  The same card grows
+   into a large map-side panel and the ordinary forecast tabs step aside. */
+body.has-resort #point { width: min(720px, calc(100vw - 292px)); }
+body.has-resort #point .point-tabs { display: none; }
+body.has-resort #point-title { font-size: 26px; }
 .point-head .icon { width: 26px; height: 26px; font-size: 13px; }
 #point-now { display: flex; gap: 14px; margin: 8px 0 4px; font: 500 12px var(--font-num); flex-wrap: wrap; align-items: baseline; }
 #point-now b { font-size: 17px; color: var(--fg); font-family: var(--font-display); font-weight: 700; }
@@ -729,6 +737,16 @@ table.bandtape .nil { color: var(--line-strong); }
     bottom: calc(var(--tb-h) + 10px + env(safe-area-inset-bottom));
     max-height: min(56dvh, calc(100dvh - var(--top-h) - var(--tb-h) - 40px));
     transition: bottom .22s cubic-bezier(.4,0,.2,1), max-height .22s cubic-bezier(.4,0,.2,1); }
+  /* The richer resort sheet is taller, but at its resting snap it still has
+     to fit between the live top bar and forecast tape. Ignoring the tape here
+     pushed the title and close button above short phone viewports. */
+  body.has-resort #point { width: auto;
+    max-height: min(72dvh, calc(100dvh - max(var(--top-h), 48px) - max(var(--tb-h), 96px) - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom))); }
+  body.has-resort #point-title { font-size: 22px; }
+  .resort-overview { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .resort-columns { grid-template-columns: 1fr; }
+  .resort-head { align-items: center; }
+  .resort-head small { max-width: 210px; }
   /* max(--top-h, 48px): a stale or mid-transition topbar measurement must
      never let the card climb past the screen top and take its × with it */
   #point.sheet-full { bottom: calc(6px + env(safe-area-inset-bottom)); max-height: calc(100dvh - max(var(--top-h), 48px) - 20px - env(safe-area-inset-top)); }
@@ -873,6 +891,39 @@ table.cmp td .r { color: var(--rain); }
 .avy-prob { margin-top: 6px; font-size: 11.5px; }
 .avy-prob b { color: var(--fg-2); }
 .avy-note { margin-top: 5px; font-size: 11px; color: var(--fg-2); line-height: 1.4; }
+
+/* ── resort workspace ─────────────────────────────────────────────── */
+.resort-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 7px 0 10px; }
+.resort-head > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.resort-head > div > span { font: 700 12px var(--font-display); color: var(--fg-2); }
+.resort-head small { font: 500 10.5px var(--font-body); color: var(--dim); }
+.resort-live { flex: 0 0 auto; display: inline-flex; align-items: center; padding: 7px 10px; border-radius: 9px;
+  background: var(--accent); color: var(--accent-ink); font: 750 11px var(--font-display); text-decoration: none; }
+.resort-live:hover { filter: brightness(1.08); }
+.resort-overview { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; margin-bottom: 11px; }
+.resort-overview > div { min-width: 0; padding: 8px 8px 7px; border: 1px solid var(--line); border-radius: 9px; background: rgba(127,140,160,.06); }
+.resort-overview b { display: block; overflow: hidden; text-overflow: ellipsis; font: 750 17px/1.1 var(--font-display); color: var(--fg); white-space: nowrap; }
+.resort-overview span { display: block; margin-top: 2px; font: 500 9.5px var(--font-body); color: var(--dim); white-space: nowrap; }
+.resort-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 8px; }
+.resort-columns section, .resort-groom { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; background: rgba(127,140,160,.045); }
+.resort-columns h4, .resort-groom h4, .resort-forecast-title { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 7px; font: 750 12.5px var(--font-display); color: var(--fg); }
+.resort-columns h4 small, .resort-groom h4 small, .resort-forecast-title small { font: 500 9.5px var(--font-body); color: var(--dim); text-align: right; }
+.resort-grade { display: grid; grid-template-columns: minmax(82px, 1fr) 30px; gap: 2px 6px; align-items: center; margin: 4px 0; }
+.resort-grade > span { display: flex; align-items: center; gap: 5px; min-width: 0; font: 600 10.5px var(--font-body); color: var(--fg-2); }
+.resort-grade > span i { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 1px rgba(0,0,0,.45); }
+.resort-grade > b { text-align: right; font: 650 10.5px var(--font-num); color: var(--fg-2); }
+.resort-grade > em { grid-column: 1 / -1; height: 2px; border-radius: 2px; overflow: hidden; background: rgba(127,140,160,.14); }
+.resort-grade > em i { display: block; height: 100%; border-radius: inherit; }
+.resort-type { margin: 0 0 7px; font: 500 10.5px/1.4 var(--font-body); color: var(--fg-2); }
+.resort-lift-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.resort-lift-list span, .resort-groom > div span { padding: 3px 6px; border-radius: 6px; background: rgba(127,140,160,.1); font: 600 9.5px var(--font-body); color: var(--fg-2); }
+.resort-lift-list span.more { color: var(--accent); }
+.resort-groom { margin-bottom: 10px; }
+.resort-groom > div { display: flex; flex-wrap: wrap; gap: 4px; }
+.resort-groom > div span b { color: var(--fg); }
+.resort-groom p { margin: 6px 0 0; font: 500 10px/1.35 var(--font-body); color: var(--dim); }
+.resort-forecast-title { margin: 10px 0 4px; padding-top: 9px; border-top: 1px solid var(--line); }
+.resort-note { margin-top: 9px; }
 
 table.bands { width: 100%; border-collapse: collapse; font: 500 11.5px var(--font-mono); margin: 6px 0 2px; }
 table.bands th { text-align: left; font: 700 10px var(--font-display); color: var(--dim); padding: 3px 5px; border-bottom: 1px solid var(--line); text-transform: uppercase; letter-spacing: .04em; }

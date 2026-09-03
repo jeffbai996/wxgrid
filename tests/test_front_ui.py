@@ -21,6 +21,26 @@ def test_model_row_is_flat_and_hides_nothing():
     assert "#models { flex: 0 1 auto; min-width: 132px; overflow-x: auto;" in css
 
 
+def test_winter_mode_is_a_reversible_workspace_with_featured_resort_details():
+    html = _read("index.html")
+    app = _read("app.js")
+    overlays = _read("overlays.js")
+    panes = _read("panes.js")
+    static_api = _read("static-api.js")
+    css = _read("styles.css")
+    assert 'id="winter-toggle"' in html and "Winter mode" in html
+    assert "WINTER_FAMILY_ORDER" in app and 'wxgrid.winterReturn' in app
+    assert 'state.base = "topo"' in app and "state.resorts = true" in app and "state.avy = true" in app
+    assert 'id: "resort-icon"' in overlays and '["get", "featured"]' in overlays
+    assert "function clearResortDetail()" in overlays and "pistes-groomed" in overlays
+    assert "Live conditions ↗" in panes and "grooming tags" in panes
+    assert 'return { resort, boundary: null, lifts: [], pistes: [] }' in static_api
+    assert "body.has-resort #point" in css and "body.winter-mode .rail" in css
+    resort_blocks = [part.split("}", 1)[0] for part in css.split("body.has-resort #point {")[1:]]
+    assert any("max(var(--top-h), 48px)" in block and "max(var(--tb-h), 96px)" in block
+               for block in resort_blocks)
+
+
 def test_particles_settle_on_real_cold_boot_lifecycle_and_bound_polar_steps():
     source = _read("particles.js")
     for event in ('map.on("style.load", this._settle)',

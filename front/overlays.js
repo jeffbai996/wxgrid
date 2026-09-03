@@ -176,6 +176,18 @@
   // time (the OpenSnow map), with the amount as its label.
   let resortsCatalog = null, resortSnow = null, resortSnowKey = "", pendingSnow = null;
   const SNOW_STOPS = [0, "#8a8f98", 5, "#9dd3ff", 15, "#6cb6ff", 30, "#8b7cff", 60, "#e05bd0", 100, "#ff5c8a"];
+  function resortIcon() {
+    const c = document.createElement("canvas"); c.width = 48; c.height = 48;
+    const x = c.getContext("2d");
+    x.lineJoin = "round"; x.lineCap = "round";
+    x.beginPath(); x.moveTo(6, 37); x.lineTo(19, 16); x.lineTo(26, 27); x.lineTo(31, 20); x.lineTo(42, 37); x.closePath();
+    x.lineWidth = 5; x.strokeStyle = "rgba(8,12,18,.86)"; x.stroke();
+    x.lineWidth = 2.5; x.strokeStyle = "#f7fbff"; x.stroke();
+    x.beginPath(); x.moveTo(30, 21); x.lineTo(30, 9); x.lineTo(40, 13); x.lineTo(30, 17);
+    x.lineWidth = 4; x.strokeStyle = "rgba(8,12,18,.86)"; x.stroke();
+    x.lineWidth = 2; x.strokeStyle = "#ffb454"; x.stroke();
+    return x.getImageData(0, 0, 48, 48);
+  }
   async function loadResorts() {
     try {
       if (!resortsCatalog) resortsCatalog = (await WX.api(`${API}/resorts/all`)).resorts;
@@ -188,32 +200,72 @@
           .then((r) => { resortSnow = r.snow_cm; resortSnowKey = key; }).catch(() => { resortSnow = null; })
           .finally(() => { pendingSnow = null; if (state.resorts) loadResorts(); });
       }
-      const gj = { type: "FeatureCollection", features: resortsCatalog.map((r) => { const sn = snowMode && resortSnow && resortSnowKey === key ? resortSnow[r.id] : null; return { type: "Feature", properties: { id: r.id, name: r.name, snow: sn == null ? -1 : sn, label: sn == null ? r.name : (sn >= 1 ? `${Math.round(sn)} cm` : "") }, geometry: { type: "Point", coordinates: [r.lon, r.lat] } }; }) };
+      const gj = { type: "FeatureCollection", features: resortsCatalog.map((r) => {
+        const sn = snowMode && resortSnow && resortSnowKey === key ? resortSnow[r.id] : null;
+        const amount = sn != null && sn >= 1 ? `${Math.round(sn)} cm` : "";
+        return { type: "Feature", properties: {
+          id: r.id, name: r.name, region: r.region || "", country: r.country || "",
+          featured: r.featured ? 1 : 0, snow: sn == null ? -1 : sn,
+          label: sn == null ? r.name : amount,
+          featured_label: amount ? `${r.name} · ${amount}` : r.name,
+        }, geometry: { type: "Point", coordinates: [r.lon, r.lat] } };
+      }) };
       if (M().getSource("resorts")) M().getSource("resorts").setData(gj);
       else {
         M().addSource("resorts", { type: "geojson", data: gj });
-        M().addLayer({ id: "resort-pts", type: "circle", source: "resorts", paint: {} });
-        M().addLayer({ id: "resort-lbl", type: "symbol", source: "resorts", layout: { "text-field": ["get", "label"], "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top", "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1.2 } });
+        M().addLayer({ id: "resort-all-pts", type: "circle", source: "resorts", minzoom: 7,
+          filter: ["==", ["get", "featured"], 0], paint: {} });
+        M().addLayer({ id: "resort-pts", type: "circle", source: "resorts",
+          filter: ["==", ["get", "featured"], 1], paint: {} });
+        if (!M().hasImage("resort-mountain")) M().addImage("resort-mountain", resortIcon(), { pixelRatio: 2 });
+        M().addLayer({ id: "resort-icon", type: "symbol", source: "resorts",
+          filter: ["==", ["get", "featured"], 1],
+          layout: { "icon-image": "resort-mountain", "icon-size": ["interpolate", ["linear"], ["zoom"], 3, 0.72, 8, 1], "icon-allow-overlap": true, "icon-ignore-placement": true } });
+        M().addLayer({ id: "resort-lbl", type: "symbol", source: "resorts", minzoom: 7,
+          filter: ["==", ["get", "featured"], 0],
+          layout: { "text-field": ["get", "label"], "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top", "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#ffd39a", "text-halo-color": "rgba(0,0,0,.75)", "text-halo-width": 1.2 } });
+        M().addLayer({ id: "resort-featured-lbl", type: "symbol", source: "resorts", minzoom: 3,
+          filter: ["==", ["get", "featured"], 1],
+          layout: { "text-field": ["get", "featured_label"], "text-size": ["interpolate", ["linear"], ["zoom"], 3, 10.5, 8, 12], "text-offset": [0, 1.5], "text-anchor": "top", "text-font": ["Noto Sans Regular"], "text-optional": true },
+          paint: { "text-color": "#f4f7fb", "text-halo-color": "rgba(0,0,0,.82)", "text-halo-width": 1.4 } });
       }
       // paint by mode
       const snowColor = ["case", ["<", ["get", "snow"], 0], "#ffb454", ["interpolate", ["linear"], ["get", "snow"], ...SNOW_STOPS]];
-      M().setPaintProperty("resort-pts", "circle-color", snowMode ? snowColor : "#ffb454");
-      M().setPaintProperty("resort-pts", "circle-radius", snowMode
-        ? ["interpolate", ["linear"], ["zoom"], 3, ["+", 2, ["*", 0.05, ["max", 0, ["get", "snow"]]]], 8, ["+", 4, ["*", 0.12, ["max", 0, ["get", "snow"]]]]]
-        : ["interpolate", ["linear"], ["zoom"], 3, 2.5, 8, 6]);
-      M().setPaintProperty("resort-pts", "circle-stroke-color", "#0b0d10");
-      M().setPaintProperty("resort-pts", "circle-stroke-width", 1.2);
-      M().setPaintProperty("resort-pts", "circle-opacity", 0.92);
-      M().setLayerZoomRange("resort-lbl", snowMode ? 4 : 7, 24);
+      for (const id of ["resort-pts", "resort-all-pts"]) {
+        M().setPaintProperty(id, "circle-color", snowMode ? snowColor : "#ffb454");
+        M().setPaintProperty(id, "circle-radius", snowMode
+          ? ["interpolate", ["linear"], ["zoom"], 3, ["+", 3, ["*", 0.05, ["max", 0, ["get", "snow"]]]], 8, ["+", 5, ["*", 0.12, ["max", 0, ["get", "snow"]]]]]
+          : ["interpolate", ["linear"], ["zoom"], 3, 3.5, 8, 7]);
+        M().setPaintProperty(id, "circle-stroke-color", "#0b0d10");
+        M().setPaintProperty(id, "circle-stroke-width", 1.2);
+        M().setPaintProperty(id, "circle-opacity", 0.92);
+      }
+      M().setLayerZoomRange("resort-lbl", 7, 24);
       M().setPaintProperty("resort-lbl", "text-color", snowMode ? "#dfe8ff" : "#ffd39a");
     } catch (e) { WX.fn.toast("Resort catalog unavailable", 4000, "error"); }
   }
-  function clearResorts() { ["resort-lbl", "resort-pts"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("resorts")) M().removeSource("resorts"); }
+  function clearResorts() { ["resort-featured-lbl", "resort-lbl", "resort-icon", "resort-pts", "resort-all-pts"].forEach((l) => M().getLayer(l) && M().removeLayer(l)); if (M().getSource("resorts")) M().removeSource("resorts"); }
+
+  let resortReq = 0;
+  function removeResortDetailLayers() {
+    ["pistes-lbl", "pistes-groomed", "pistes-free", "pistes-line", "pistes-case", "lifts-lbl", "lifts-line", "bnd-line"].forEach((l) => M().getLayer(l) && M().removeLayer(l));
+    ["pistes", "lifts", "bnd"].forEach((s) => M().getSource(s) && M().removeSource(s));
+  }
+  function clearResortDetail() {
+    resortReq++;
+    removeResortDetailLayers();
+    state.resort = null;
+    document.body.classList.remove("has-resort");
+  }
 
   async function selectResort(id) {
+    const my = ++resortReq;
     try {
       const d = await WX.api(`${API}/resorts/${id}`);
+      if (my !== resortReq) return;
+      removeResortDetailLayers();
       state.resort = d;
+      document.body.classList.add("has-resort");
       const r = d.resort;
       // lifts + boundary on the M()
       const lifts = d.lifts || { type: "FeatureCollection", features: [] };
@@ -249,6 +301,12 @@
           filter: ["==", ["get", "grade"], "freeride"],
           layout: { "line-cap": "butt", "line-join": "round" },
           paint: { "line-color": "#ffb454", "line-width": pisteWidth, "line-opacity": 0.95, "line-dasharray": [2, 1.4] } });
+        // A fine dotted highlight marks runs whose OSM record names a
+        // grooming style.  It is static map metadata, not tonight's report.
+        M().addLayer({ id: "pistes-groomed", type: "line", source: "pistes", minzoom: 10.5,
+          filter: ["match", ["get", "grooming"], ["classic", "mogul", "skating", "scooter", "skicross"], true, false],
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "rgba(255,255,255,.86)", "line-width": ["interpolate", ["linear"], ["zoom"], 10.5, 0.8, 14, 1.4], "line-dasharray": [0.6, 1.8], "line-opacity": 0.9 } });
         M().addLayer({ id: "pistes-lbl", type: "symbol", source: "pistes", minzoom: 12.5,
           layout: { "symbol-placement": "line", "text-field": ["coalesce", ["get", "name"], ["get", "ref"]], "text-size": 10, "text-font": ["Noto Sans Regular"] },
           paint: { "text-color": "#eef1f5", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.2 } });
@@ -259,7 +317,7 @@
       M().flyTo({ center: [r.lon, r.lat], zoom: Math.max(M().getZoom(), 10.5), duration: 900 });
       state.tab = "resort";
       WX.fn.openPoint(r.lat, r.lon, r.name);
-    } catch (e) { WX.fn.toast("Resort detail unavailable", 4000, "error"); }
+    } catch (e) { if (my === resortReq) WX.fn.toast("Resort detail unavailable", 4000, "error"); }
   }
   WX.selectResort = selectResort;
 
@@ -932,6 +990,6 @@
 
   function clearQuakes() { if (M().getLayer("quakes")) M().removeLayer("quakes"); if (M().getSource("quakes")) M().removeSource("quakes"); }
 
-  WX.ov = { loadObs, clearObs, refreshObs, loadImagery, clearImagery, setBase, loadTerrain, clearTerrain, updateNight, clearNight, loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
+  WX.ov = { loadObs, clearObs, refreshObs, loadImagery, clearImagery, setBase, loadTerrain, clearTerrain, updateNight, clearNight, loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, clearResortDetail, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
              loadRadar, clearRadar, refreshRadarSource, badge };
 })();

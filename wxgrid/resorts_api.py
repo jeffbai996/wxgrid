@@ -38,7 +38,10 @@ def list_resorts(
 def all_resorts() -> dict:
     """The whole catalog, minimal fields — for the map's resort pins."""
     return {"resorts": [{"id": r["id"], "name": r["name"], "lat": r["lat"], "lon": r["lon"],
-                         "country": r.get("country"), "ele_summit_m": r.get("ele_summit_m")}
+                         "country": r.get("country"), "region": r.get("region"),
+                         "ele_base_m": r.get("ele_base_m"), "ele_summit_m": r.get("ele_summit_m"),
+                         "featured": bool(r.get("featured")), "website": r.get("website"),
+                         "conditions_url": r.get("conditions_url")}
                         for r in resorts.load_catalog()]}
 
 

@@ -10,6 +10,12 @@ from wxgrid import api, resorts
 from wxgrid.config import DATA_DIR
 from wxgrid.resorts_seed import SEED_RESORTS
 
+FEATURED_NAMES = {
+    "Cypress Mountain", "Grouse Mountain", "Mt Seymour", "Mt Baker", "Stevens Pass",
+    "Whistler Blackcomb", "Big White", "Revelstoke", "Sun Peaks", "Kicking Horse",
+    "Lake Louise", "Sunshine Village",
+}
+
 FAKE_ELEMENT = {
     "type": "way",
     "id": 123456789,
@@ -90,6 +96,13 @@ def test_merge_seed_appends_unmatched_curated_resorts():
     assert whistler["osm_type"] is None    # seed-only entry, no OSM identity
 
 
+def test_winter_mode_featured_resorts_are_the_requested_twelve_with_official_reports():
+    featured = [r for r in SEED_RESORTS if r.get("featured")]
+    assert {r["name"] for r in featured} == FEATURED_NAMES
+    assert all(r.get("website", "").startswith("https://") for r in featured)
+    assert all(r.get("conditions_url", "").startswith("https://") for r in featured)
+
+
 def test_merge_seed_fills_missing_elevation_on_near_match_without_duplicating():
     osm_entry = _resort("whistler-blackcomb-mountain-resort-5012-n12296",
                          "Whistler Blackcomb Mountain Resort", 50.1163, -122.9574,
@@ -100,6 +113,8 @@ def test_merge_seed_fills_missing_elevation_on_near_match_without_duplicating():
     assert hits[0]["ele_base_m"] == 675
     assert hits[0]["ele_summit_m"] == 2284
     assert hits[0]["osm_type"] == "relation"        # OSM identity kept; only elevation was filled
+    assert hits[0]["featured"] is True
+    assert "whistlerblackcomb.com" in hits[0]["conditions_url"]
 
 
 # ── search / nearest ────────────────────────────────────────────────────
@@ -117,10 +132,12 @@ def test_search_prefix_then_substring_case_insensitive():
 
 def test_nearest_sorts_by_distance_and_respects_max_km():
     _write_catalog([
-        _resort("near", "Near Resort", 50.10, -122.95),
+        # Deliberately away from the curated resort list, which is merged into
+        # every loaded catalog so Winter mode can always show its core set.
+        _resort("near", "Near Resort", 42.00, -100.00),
         _resort("far", "Far Resort", 51.5, -114.0),
     ])
-    hits = resorts.nearest(50.1163, -122.9574, max_km=60)
+    hits = resorts.nearest(42.01, -100.00, max_km=60)
     assert [r["id"] for r in hits] == ["near"]
     assert "distance_km" in hits[0]
 
@@ -139,6 +156,11 @@ def test_api_resorts_search_and_nearest_and_400():
 
     r = c.get("/api/resorts", params={"lat": 50.12, "lon": -122.95})
     assert r.json()["mode"] == "nearest"
+
+    pin = c.get("/api/resorts/all").json()["resorts"][0]
+    assert pin["featured"] is True
+    assert pin["region"] == "BC"
+    assert pin["conditions_url"].startswith("https://")
 
     assert c.get("/api/resorts").status_code == 400
 

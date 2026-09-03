@@ -164,7 +164,18 @@
     const all = (await getJson("api/resorts/all.json")).resorts;
     if (path === "api/resorts/all") return { resorts: all };
     const m = path.match(/^api\/resorts\/(.+)$/);
-    if (m) return getJson(`api/resorts/${m[1]}.json`);          // only prebuilt details exist
+    if (m) {
+      // A static build may not have a freshly warmed Overpass detail file for
+      // every curated mountain. Still open the winter workspace so forecast,
+      // elevation and the official conditions hand-off remain useful; cached
+      // OSM lift/run geometry drops in automatically whenever it exists.
+      try { return await getJson(`api/resorts/${m[1]}.json`); }
+      catch (_) {
+        const resort = all.find((r) => String(r.id) === decodeURIComponent(m[1]));
+        if (!resort) throw new Error("resort not found");
+        return { resort, boundary: null, lifts: [], pistes: [] };
+      }
+    }
     if (q.get("q")) { const t = q.get("q").toLowerCase(); return { mode: "search", resorts: all.filter((r) => r.name.toLowerCase().includes(t)).slice(0, Number(q.get("limit") || 8)) }; }
     if (q.get("lat")) { const lat = parseFloat(q.get("lat")), lon = parseFloat(q.get("lon")); return { mode: "nearest", resorts: all.map((r) => ({ ...r, distance_km: 111 * Math.hypot(r.lat - lat, (r.lon - lon) * Math.cos(lat * Math.PI / 180)) })).filter((r) => r.distance_km < 60).sort((a, b) => a.distance_km - b.distance_km).slice(0, 5) }; }
     return { resorts: [] };

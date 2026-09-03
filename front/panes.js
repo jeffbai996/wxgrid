@@ -1735,6 +1735,33 @@
     const { speed, speedUnit, state, API, api } = W();
     const R = state.resort; if (!R) { $("#resort").innerHTML = ""; return; }
     const r = R.resort, base = R.elevation.base_m, summit = R.elevation.summit_m;
+    const liftFeatures = (R.lifts && R.lifts.features) || [];
+    const pisteFeatures = (R.pistes && R.pistes.features) || [];
+    const lifts = liftFeatures.length, segments = pisteFeatures.length;
+    const vertical = base != null && summit != null && summit > base ? summit - base : null;
+    const namedLifts = [...new Set(liftFeatures.map((f) => f.properties && f.properties.name).filter(Boolean))];
+    const liftTypes = {};
+    liftFeatures.forEach((f) => { const kind = (f.properties && f.properties.aerialway || "unknown").replaceAll("_", " "); liftTypes[kind] = (liftTypes[kind] || 0) + 1; });
+    const grades = {};
+    const grooming = {};
+    pisteFeatures.forEach((f) => {
+      const p = f.properties || {}, grade = p.grade || "unknown", groom = p.grooming;
+      grades[grade] = (grades[grade] || 0) + 1;
+      if (groom) grooming[groom] = (grooming[groom] || 0) + 1;
+    });
+    const gradeMeta = [
+      ["novice", "Novice", "#5ad469"], ["easy", "Easy", "#3d8bff"], ["intermediate", "Intermediate", "#ff4d4d"],
+      ["advanced", "Advanced", "#f2f2f2"], ["expert", "Expert", "#c56bff"], ["freeride", "Freeride", "#ffb454"],
+      ["extreme", "Extreme", "#ff7a2f"], ["unknown", "Unrated", "#9aa5b4"],
+    ];
+    const gradeBars = gradeMeta.filter(([key]) => grades[key]).map(([key, label, color]) => {
+      const n = grades[key], pct = segments ? n / segments * 100 : 0;
+      return `<div class="resort-grade"><span><i style="background:${color}"></i>${label}</span><b>${n}</b><em><i style="width:${pct.toFixed(1)}%;background:${color}"></i></em></div>`;
+    }).join("") || `<div class="note">No mapped difficulty tags.</div>`;
+    const groomingPills = Object.entries(grooming).sort((a, b) => b[1] - a[1]).map(([kind, n]) => `<span>${esc(kind.replaceAll("_", " "))} <b>${n}</b></span>`).join("");
+    const groomingTagged = Object.values(grooming).reduce((a, b) => a + b, 0);
+    const liftTypeLine = Object.entries(liftTypes).sort((a, b) => b[1] - a[1]).map(([kind, n]) => `${n} ${esc(kind)}`).join(" · ");
+    const official = r.conditions_url || r.website;
     if (!pt.profile) {
       const bands = [];
       if (base != null && summit != null && summit > base) {
@@ -1745,7 +1772,6 @@
       api(`${API}/profile?lat=${r.lat.toFixed(3)}&lon=${r.lon.toFixed(3)}&model=${state.model}&elevs=${bands.map((b) => b[1]).join(",")}`).then((p) => { pt.profile.data = p; pt.profile.loading = false; if (state.point === pt) W().renderPoint(); }).catch(() => { pt.profile.loading = false; pt.profile.error = true; if (state.point === pt) W().renderPoint(); });
     }
     const P = pt.profile;
-    const lifts = (R.lifts && R.lifts.features || []).length;
     let bandsHtml = `<div class="note">loading elevation bands…</div>`;
     if (P.error) bandsHtml = `<div class="note">profile unavailable</div>`;
     else if (P.data) {
@@ -1762,13 +1788,28 @@
       }).join("");
       const fl = p.freezing_level_m ? p.freezing_level_m[k] : null;
       const snow72 = (() => { let s3 = 0; const b = p.bands[p.bands.length - 1]; for (let q = k + 1; q < p.steps.length && p.steps[q] <= p.steps[k] + 72; q++) if (b.ptype[q] === "snow") s3 += (p.tp6 && p.tp6[q]) || 0; return s3; })();
-      bandsHtml = `<div class="snowline"><span>freezing level <b>${fl != null ? W().units.alt(fl).txt : "—"}</b></span><span>peak snow 72 h <b>${W().units.snow(snow72).txt}</b></span><span>lifts mapped <b>${lifts}</b></span></div>
+      bandsHtml = `<div class="snowline"><span>freezing level <b>${fl != null ? W().units.alt(fl).txt : "—"}</b></span><span>peak snow 72 h <b>${W().units.snow(snow72).txt}</b></span></div>
         <table class="bands"><thead><tr><th>Band</th><th>Temp</th><th>Wind</th><th>Precip type</th><th>Next 24 h</th></tr></thead><tbody>${rows}</tbody></table>
         <div class="board-head"><span>Morning / afternoon / night</span></div>${bandTable(p, P.bands.slice().reverse())}`;
     }
-    $("#resort").innerHTML = `<div class="avy-head" style="margin-top:6px"><span>${esc(r.name)} <span class="dim">· ${esc(r.region || "")} ${esc(r.country || "")}</span></span>${r.website ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">site ↗</a>` : ""}</div>
+    const liftNames = namedLifts.slice(0, 10).map((name) => `<span>${esc(name)}</span>`).join("");
+    $("#resort").innerHTML = `<div class="resort-head"><div><span>${esc([r.region, r.country].filter(Boolean).join(" · "))}</span><small>Forecast by wxgrid · terrain from OpenStreetMap</small></div>${official ? `<a class="resort-live" href="${esc(official)}" target="_blank" rel="noopener">Live conditions ↗</a>` : ""}</div>
+      <div class="resort-overview">
+        <div><b>${vertical == null ? "—" : W().units.alt(vertical).txt}</b><span>vertical</span></div>
+        <div><b>${base == null ? "—" : W().units.alt(base).txt}</b><span>base</span></div>
+        <div><b>${summit == null ? "—" : W().units.alt(summit).txt}</b><span>summit</span></div>
+        <div><b>${lifts}</b><span>mapped lifts</span></div>
+        <div><b>${segments}</b><span>trail segments</span></div>
+        <div><b>${groomingTagged}</b><span>grooming tags</span></div>
+      </div>
+      <div class="resort-columns">
+        <section><h4>Terrain mix <small>mapped segments</small></h4>${gradeBars}</section>
+        <section><h4>Lift network <small>mapped, not status</small></h4><p class="resort-type">${liftTypeLine || "No lift types mapped."}</p><div class="resort-lift-list">${liftNames || `<span>No named lifts mapped</span>`}${namedLifts.length > 10 ? `<span class="more">+${namedLifts.length - 10} more</span>` : ""}</div></section>
+      </div>
+      <section class="resort-groom"><h4>Grooming map <small>OSM style tags, not today's grooming report</small></h4><div>${groomingPills || `<span>no grooming metadata mapped</span>`}</div><p>White dots on the trail map mark segments with a mapped grooming style.</p></section>
+      <h4 class="resort-forecast-title">Mountain forecast <small>at the selected map time</small></h4>
       ${bandsHtml}
-      <div class="note">Whistler-Peak-style read for any resort: temperature and wind at each elevation band come from the model's pressure levels interpolated to that height; precip type per band from the band temperature; snowfall uses a 10:1 ratio. Base/summit from OSM tags, our seed list, or a DEM at the lift ends. Lifts drawn from OpenStreetMap; live lift status and webcams are per-resort feeds we don't have.</div>`;
+      <div class="note resort-note">Elevation-band temperature and wind are interpolated from the selected forecast model; snowfall uses a 10:1 snow-to-water ratio. Trail difficulty, lift geometry and grooming style are static OpenStreetMap data. Open/closed and groomed-today status stay with the resort's official report${official ? " above" : ""}.</div>`;
   }
 
   // ── meteogram (Now pane) ─────────────────────────────────────────────

@@ -216,13 +216,22 @@ def _merge_seed(resorts: list[dict]) -> list[dict]:
                 match["ele_summit_m"] = seed["ele_summit_m"]
             if not match.get("region"):
                 match["region"] = seed.get("region")
+            if not match.get("website"):
+                match["website"] = seed.get("website")
+            # `featured` is our product decision, not an OSM tag.  The
+            # conditions link is likewise curated: it points at the resort's
+            # own operational report rather than pretending OSM is live.
+            match["featured"] = bool(seed.get("featured"))
+            if seed.get("conditions_url"):
+                match["conditions_url"] = seed["conditions_url"]
             continue
         sid = _slug(seed["name"], seed["lat"], seed["lon"])
         if sid in by_id:
             continue
         entry = {
             "id": sid, "name": seed["name"], "lat": seed["lat"], "lon": seed["lon"],
-            "country": seed["country"], "region": seed.get("region"), "website": None,
+            "country": seed["country"], "region": seed.get("region"), "website": seed.get("website"),
+            "featured": bool(seed.get("featured")), "conditions_url": seed.get("conditions_url"),
             "ele_base_m": seed["ele_base_m"], "ele_summit_m": seed["ele_summit_m"],
             "osm_type": None, "osm_id": None,
         }
@@ -292,7 +301,11 @@ def load_catalog() -> list[dict]:
             data = json.loads(path.read_text())
             resorts = data.get("resorts") or []
             if resorts:
-                return resorts
+                # Old catalogs remain valid after the curated list gains
+                # metadata such as featured pins or official conditions URLs.
+                # No expensive rebuild is required just to teach the UI which
+                # mountains belong in its Winter mode.
+                return _merge_seed(resorts)
         except (json.JSONDecodeError, OSError) as exc:
             log.warning("catalog.json unreadable (%s); falling back to seed", exc)
     # Never built, or built empty/corrupt.
@@ -489,6 +502,12 @@ def resort_detail(resort_id: str, session: requests.Session | None = None) -> di
     if cached is not None and "pistes" not in cached:
         cached = None                    # written before runs were mapped
     if cached is not None:
+        # Geometry is deliberately long-lived; catalog metadata is cheap and
+        # may have changed since the detail was cached.  Refresh the latter so
+        # a new official report link does not wait 30 days to appear.
+        current = _find_resort(resort_id)
+        if current is not None:
+            cached["resort"] = {**(cached.get("resort") or {}), **current}
         return cached
 
     resort = _find_resort(resort_id)

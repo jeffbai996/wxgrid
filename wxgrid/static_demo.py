@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from wxgrid import render
+from wxgrid import render, resorts as resort_catalog
 from wxgrid.api import ISOLINE_SPECS, LAYERS, _available, _freezing_level_grid, _isoline_geojson, _levels_for, _vars_for, field_for
 from wxgrid.config import BASE_DIR, DATA_DIR, FRONT_DIR
 from wxgrid.models import LEVELS, MODELS
@@ -216,11 +216,21 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2, fields: b
     if cat.exists():
         entries = json.loads(cat.read_text())
         entries = entries.get("resorts", entries) if isinstance(entries, dict) else entries
-        (rdir / "all.json").write_text(json.dumps({"resorts": [{"id": e["id"], "name": e["name"], "lat": e["lat"], "lon": e["lon"], "country": e.get("country"), "region": e.get("region"), "ele_summit_m": e.get("ele_summit_m")} for e in entries]}))
+        entries = resort_catalog._merge_seed(entries)
+        public_fields = ("id", "name", "lat", "lon", "country", "region", "ele_base_m", "ele_summit_m",
+                         "featured", "website", "conditions_url")
+        (rdir / "all.json").write_text(json.dumps({"resorts": [{k: e.get(k) for k in public_fields} for e in entries]}))
+        entries_by_id = {e["id"]: e for e in entries}
         for det in (DATA_DIR / "resorts").glob("*.json"):
             if det.name == "catalog.json":
                 continue
-            shutil.copy2(det, rdir / det.name)
+            # Detail geometry may be weeks old, but the small catalog record
+            # inside it should carry today's curated metadata in a Pages build.
+            detail = json.loads(det.read_text())
+            rid = (detail.get("resort") or {}).get("id")
+            if rid in entries_by_id:
+                detail["resort"] = {**(detail.get("resort") or {}), **entries_by_id[rid]}
+            (rdir / det.name).write_text(json.dumps(detail))
             n_res += 1
     size_mb = sum(p.stat().st_size for p in out.rglob("*") if p.is_file()) / 1e6
     summary = {"model": model_key, "run": rid, "steps": steps, "layers": layers, "pngs": n_png, "point_tiles": n_tiles,

@@ -37,6 +37,11 @@
     { key: "chance", label: "Chance", layers: ["prob_rain", "prob_gust"], variants: { prob_rain: "Rain", prob_gust: "Gale" }, section: "Ensemble" },
   ];
   const familyOf = (layer) => FAMILIES.find((f) => f.layers.includes(layer)) || FAMILIES[0];
+  // Winter mode is a focused workspace, not another meteorological field.
+  // Keep the useful mountain layers in an intentional order and leave ocean,
+  // convection and ensemble furniture one tap away by turning the mode off.
+  const WINTER_FAMILY_ORDER = ["snow", "sd", "frz", "ptype", "rain", "temp", "wind", "gust", "tcc", "fog"];
+  const WINTER_LAYER_PREFERENCE = ["sf72", "sf24", "sf6", "sd_cm", "ptype", "frz", "temp"];
   // Every layer the rail can reach. Derived from FAMILIES rather than kept as
   // a second list: the hand-written one had gone stale, so a permalink to
   // visibility, sea temp, precip type or vorticity quietly landed on wind.
@@ -86,6 +91,7 @@
     point: null, tapePoint: null, tab: "now",
     radar: false, radarFrames: [], radarIdx: 0, radarHost: "",
     iso: false, avy: false, resorts: false, resort: null, measure: false,
+    winterMode: localStorage.getItem("wxgrid.winterMode") === "1",
     alerts: false, storms: false, sat: false, barbs: false, smoke: false, fires: false, quakes: false, aod: false, thunder: false, obs: false,
     sigmet: false, aurora: false, lightning: false, aq: false, route: false,
     probeChip: localStorage.getItem("wxgrid.probe") === "1",
@@ -222,9 +228,17 @@
     state.model = (withRuns.find((m) => m.key === pref) || withRuns[0]).key;
     state.run = modelEntry().runs[0].run;
     state.layer = localStorage.getItem("wxgrid.layer") || "wind";
-    if (!runEntry().layers.includes(state.layer)) state.layer = runEntry().layers[0];
+    if (!runEntry().layers.includes(state.layer)) state.layer = state.winterMode ? preferredWinterLayer(runEntry().layers) : runEntry().layers[0];
 
     if (hash) { if (hash.model && catalog.models.some((m) => m.key === hash.model && m.runs.length)) state.model = hash.model; if (hash.layer && LAYERS.includes(hash.layer)) state.layer = hash.layer; state.level = hash.level || 0; state.run = modelEntry().runs[0].run; if (hash.step != null) state.stepIdx = Math.min(hash.step, steps().length - 1); }
+    if (state.winterMode) {
+      const allowed = WINTER_FAMILY_ORDER.includes(familyOf(state.layer).key) && runEntry().layers.includes(state.layer);
+      if (!allowed) state.layer = preferredWinterLayer(runEntry().layers);
+      state.base = "topo";
+      state.terrain = true;
+      state.resorts = true;
+      state.avy = true;
+    }
     // A fresh load opens at the current hour, whatever the link said — the
     // map should show now, not the run's first frame (Jeff 2026-08-22).
     state.stepIdx = currentStepIdx();
@@ -260,8 +274,8 @@
       // this a fire report opened underneath a location card nobody asked for.
       const owned = ["fire-inc", "fire-perim-fill", "sigmet-fill", "quakes", "storm-pts", "storm-now", "storm-eye"].filter(has);
       if (owned.length && map.queryRenderedFeatures(e.point, { layers: owned }).length) return;
-      const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-pts", "avy-fill"].filter(has) });
-      const resort = feats.find((x) => x.layer.id === "resort-pts");
+      const feats = map.queryRenderedFeatures(e.point, { layers: ["resort-icon", "resort-pts", "resort-all-pts", "avy-fill"].filter(has) });
+      const resort = feats.find((x) => ["resort-icon", "resort-pts", "resort-all-pts"].includes(x.layer.id));
       if (resort) { WX.ov.selectResort(resort.properties.id); return; }
       openPoint(e.lngLat.lat, e.lngLat.lng);
       const avy = feats.find((x) => x.layer.id === "avy-fill");
@@ -272,6 +286,10 @@
     map.on("moveend", () => { if (WX.provider) WX.provider.refresh(); });
     map.on("mouseenter", "resort-pts", () => map.getCanvas().style.cursor = "pointer");
     map.on("mouseleave", "resort-pts", () => map.getCanvas().style.cursor = "");
+    map.on("mouseenter", "resort-all-pts", () => map.getCanvas().style.cursor = "pointer");
+    map.on("mouseleave", "resort-all-pts", () => map.getCanvas().style.cursor = "");
+    map.on("mouseenter", "resort-icon", () => map.getCanvas().style.cursor = "pointer");
+    map.on("mouseleave", "resort-icon", () => map.getCanvas().style.cursor = "");
 
     const loadInitialWeather = () => {
       // Add the selected image as soon as the style exists; `load` waits for
@@ -676,6 +694,84 @@
     }
   }
 
+  const preferredWinterLayer = (avail) => WINTER_LAYER_PREFERENCE.find((l) => avail.includes(l)) || avail[0];
+  function syncWinterUI() {
+    document.body.classList.toggle("winter-mode", state.winterMode);
+    const canonical = $("#winter-toggle");
+    if (canonical) {
+      canonical.classList.toggle("on", state.winterMode);
+      canonical.setAttribute("aria-pressed", state.winterMode ? "true" : "false");
+    }
+    const railButton = document.querySelector('[data-rail="winter"]');
+    if (railButton) {
+      railButton.classList.toggle("on", state.winterMode);
+      railButton.setAttribute("aria-pressed", state.winterMode ? "true" : "false");
+    }
+    $$(".base-row button").forEach((b) => b.classList.toggle("on", b.dataset.base === state.base));
+    const terrain = $("#terrain-toggle"), resorts = $("#resorts-toggle"), avy = $("#avy-toggle");
+    if (terrain) terrain.classList.toggle("on", state.terrain);
+    if (resorts) resorts.classList.toggle("on", state.resorts);
+    if (avy) avy.classList.toggle("on", state.avy);
+  }
+  function applyWinterMapState() {
+    const apply = () => {
+      WX.ov.setBase(state.base);
+      if (state.terrain) WX.ov.loadTerrain(); else WX.ov.clearTerrain();
+      if (state.resorts) WX.ov.loadResorts(); else WX.ov.clearResorts();
+      if (state.avy) WX.ov.loadAvy(); else WX.ov.clearAvy();
+    };
+    const styleExists = map && map.getStyle && (map.getStyle().layers || []).length;
+    if (styleExists || (map && map.noMap)) apply();
+    else if (map) map.once("style.load", apply);
+  }
+  function setWinterMode(on) {
+    on = !!on;
+    if (on === state.winterMode) return;
+    if (on) {
+      localStorage.setItem("wxgrid.winterReturn", JSON.stringify({
+        layer: state.layer, base: state.base, terrain: state.terrain,
+        resorts: state.resorts, avy: state.avy,
+      }));
+      state.winterMode = true;
+      state.layer = preferredWinterLayer(runEntry().layers);
+      state.base = "topo";
+      state.terrain = true;
+      state.resorts = true;
+      state.avy = true;
+    } else {
+      let back = null;
+      try { back = JSON.parse(localStorage.getItem("wxgrid.winterReturn") || "null"); } catch (_) { back = null; }
+      state.winterMode = false;
+      if (back) {
+        state.layer = runEntry().layers.includes(back.layer) ? back.layer : runEntry().layers[0];
+        state.base = ["", "topo", "sat"].includes(back.base) ? back.base : "";
+        state.terrain = !!back.terrain;
+        state.resorts = !!back.resorts;
+        state.avy = !!back.avy;
+      } else {
+        // Be deterministic if storage was partially cleared while Winter mode
+        // was active: returning to the normal map should actually return.
+        state.layer = runEntry().layers.includes("wind") ? "wind" : runEntry().layers[0];
+        state.base = "";
+        state.terrain = false;
+        state.resorts = false;
+        state.avy = false;
+      }
+      localStorage.removeItem("wxgrid.winterReturn");
+    }
+    localStorage.setItem("wxgrid.winterMode", state.winterMode ? "1" : "0");
+    localStorage.setItem("wxgrid.layer", state.layer);
+    localStorage.setItem("wxgrid.base", state.base);
+    localStorage.setItem("wxgrid.terrain", state.terrain ? "1" : "0");
+    syncWinterUI();
+    renderControls();
+    applyStep();
+    loadWind();
+    applyWinterMapState();
+    if (!state.resorts && state.resort) closePoint();
+    toast(state.winterMode ? "Winter mode · snow, terrain, avalanche regions and resorts" : "Back to the full weather map", 3500);
+  }
+
   function renderControls() {
     const ms = $("#models");
     // The selected model also says what it resolves. Only the selected one:
@@ -706,10 +802,15 @@
     const rail = $("#layers");
     const avail = runEntry().layers;
     const fam = familyOf(state.layer);
-    rail.innerHTML = FAMILIES.map((f) => {
+    const shownFamilies = state.winterMode
+      ? WINTER_FAMILY_ORDER.map((key) => FAMILIES.find((f) => f.key === key)).filter(Boolean)
+      : FAMILIES;
+    const winterSections = { snow: "Snow season", temp: "Mountain weather", tcc: "Cloud" };
+    rail.innerHTML = `<button class="rail-flat rail-winter ${state.winterMode ? "on" : ""}" data-rail="winter" aria-pressed="${state.winterMode ? "true" : "false"}" title="Show the snow-season map">${LAYER_ICON.sd_cm}<span>Winter mode</span></button>` + shownFamilies.map((f) => {
       const ok = f.layers.some((l) => avail.includes(l));
       const on = f.key === fam.key;
-      return `${f.section ? `<div class="rail-sec">${f.section}</div>` : ""}<button class="${on ? "on" : ""}" data-family="${f.key}" ${ok ? "" : "disabled"} title="${f.label}${ok ? "" : " (not in this model)"}">${LAYER_ICON[FAMILY_ICON[f.key]]}<span>${f.label}</span>${f.variants ? `<i class="var">${f.variants[on ? state.layer : f.layers.find((l) => avail.includes(l)) || f.layers[0]] || ""}</i>` : ""}</button>${on && f.variants ? `<div class="rail-vars seg small" role="group" aria-label="${f.label} options">${f.layers.map((l) => `<button data-layer="${l}" class="${l === state.layer ? "on" : ""}" ${avail.includes(l) ? "" : "disabled"}>${f.variants[l]}</button>`).join("")}</div>` : ""}`;
+      const section = state.winterMode ? winterSections[f.key] : f.section;
+      return `${section ? `<div class="rail-sec">${section}</div>` : ""}<button class="${on ? "on" : ""}" data-family="${f.key}" ${ok ? "" : "disabled"} title="${f.label}${ok ? "" : " (not in this model)"}">${LAYER_ICON[FAMILY_ICON[f.key]]}<span>${f.label}</span>${f.variants ? `<i class="var">${f.variants[on ? state.layer : f.layers.find((l) => avail.includes(l)) || f.layers[0]] || ""}</i>` : ""}</button>${on && f.variants ? `<div class="rail-vars seg small" role="group" aria-label="${f.label} options">${f.layers.map((l) => `<button data-layer="${l}" class="${l === state.layer ? "on" : ""}" ${avail.includes(l) ? "" : "disabled"}>${f.variants[l]}</button>`).join("")}</div>` : ""}`;
     }).join("") + `<div class="rail-sec">Field</div>
       <div class="rail-seg" role="group" aria-label="Wind animation">
         <span>Motion</span>
@@ -745,6 +846,8 @@
     });
     const railIso = rail.querySelector('[data-rail="iso"]');
     if (railIso) railIso.onclick = () => { $("#iso-toggle").click(); renderControls(); };
+    const railWinter = rail.querySelector('[data-rail="winter"]');
+    if (railWinter) railWinter.onclick = () => $("#winter-toggle").click();
     // Only the layer buttons: the rail also holds motion, isolines and opacity,
     // and this handler used to claim their clicks as well.
     rail.querySelectorAll("button[data-family]").forEach((b) => b.onclick = () => {
@@ -999,8 +1102,11 @@
     // to map load: loadIso adds a source, and the style may still be inbound.
     const restoreIso = () => { if (localStorage.getItem("wxgrid.iso") === "1" && !state.iso) $("#iso-toggle").click(); };
     if (map && map.isStyleLoaded && map.isStyleLoaded()) restoreIso(); else if (map) map.once("load", restoreIso);
+    $("#winter-toggle").onclick = () => setWinterMode(!state.winterMode);
     $("#avy-toggle").onclick = () => { state.avy = !state.avy; $("#avy-toggle").classList.toggle("on", state.avy); if (state.avy) WX.ov.loadAvy(); else WX.ov.clearAvy(); };
     $("#resorts-toggle").onclick = () => { state.resorts = !state.resorts; $("#resorts-toggle").classList.toggle("on", state.resorts); if (state.resorts) WX.ov.loadResorts(); else WX.ov.clearResorts(); };
+    syncWinterUI();
+    if (state.winterMode) applyWinterMapState();
     $("#locate").onclick = goToMe;
     $("#point-close").onclick = closePoint;
     wireSheet();
@@ -1045,6 +1151,7 @@
   // Desktop tool strip: icon proxies for the toggles that live in the topbar
   // menus. Clicking proxies the real button; the observer below mirrors state.
   const STRIP = [
+    ["winter", "Winter mode"], null,
     ["radar", "Radar"], ["sat", "Satellite"], ["aurora", "Aurora"], ["aod", "Aerosol"], ["iso", "Isolines"], null,
     ["alerts", "Alerts", "warn"], ["storms", "Storms", "warn"], ["thunder", "Thunder", "warn"], ["sigmet", "SIGMET", "warn"], null,
     ["fires", "Fires", "warn"], ["smoke", "Smoke"], null,
@@ -1514,7 +1621,7 @@
     if (WX.tape) WX.tape.clearFineSelection();
     state.model = key; localStorage.setItem("wxgrid.model", key);
     state.run = modelEntry().runs[0].run;
-    if (!runEntry().layers.includes(state.layer)) state.layer = runEntry().layers[0];
+    if (!runEntry().layers.includes(state.layer)) state.layer = state.winterMode ? preferredWinterLayer(runEntry().layers) : runEntry().layers[0];
     const base = runDate().getTime();
     let best = 0, bestErr = Infinity;
     steps().forEach((h, i) => { const err = Math.abs(base + h * 3600e3 - target); if (err < bestErr) { bestErr = err; best = i; } });
@@ -1729,7 +1836,8 @@
   async function openPoint(lat, lon, name) {
     const my = ++pointReq;
     const keepResort = state.resort && Math.abs(state.resort.resort.lat - lat) < 1e-4 && Math.abs(state.resort.resort.lon - lon) < 1e-4;
-    if (!keepResort) { state.resort = null; if (state.tab === "resort") state.tab = "now"; }
+    if (!keepResort) { if (WX.ov && WX.ov.clearResortDetail) WX.ov.clearResortDetail(); else state.resort = null; if (state.tab === "resort") state.tab = "now"; }
+    document.body.classList.toggle("has-resort", !!keepResort);
     state.point = { lat, lon, data: null, ai: null, prob: null, name: name || null, local: null, obs: null, avy: null, profile: null, cmp: null };
     $("#point").hidden = false;
     restorePointPanelSize(); restoreSheetHeight();
@@ -1847,7 +1955,7 @@
     WX.api(`${API}/prob?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.prob(r); }).catch(() => {});
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
-  function closePoint() { state.point = null; state.resort = null; $("#point").hidden = true; document.body.classList.remove("has-point");
+  function closePoint() { state.point = null; if (WX.ov && WX.ov.clearResortDetail) WX.ov.clearResortDetail(); else state.resort = null; $("#point").hidden = true; document.body.classList.remove("has-point", "has-resort");
     if (softTucked) { softTucked = false; setTucked(false, false); } if (WX.provider) WX.provider.refresh(); if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
   function placeMarker(lat, lon) {
     if (!marker) {
