@@ -214,9 +214,18 @@
     wind.setDensity(state.particleDensity);
     // A taller tape leaves less room for a hand-sized card, so re-clamp it —
     // but never mid-drag, where it would fight the pointer.
-    new ResizeObserver(() => { document.documentElement.style.setProperty("--tb-h", $("#timebar").offsetHeight + "px");
+    const liveTimebar = $("#timebar");
+    new ResizeObserver(() => {
+      const dragging = document.body.classList.contains("resizing-tape");
+      const animating = liveTimebar.classList.contains("tape-anim");
+      // Dragging writes the live height itself. During a state glide the
+      // observer only moves dependent panels; fitting the strip and
+      // reclamping the card on every animation frame was the remaining jank.
+      if (!dragging) document.documentElement.style.setProperty("--tb-h", liveTimebar.offsetHeight + "px");
+      if (dragging || animating) return;
       if (WX.fn.fitStrip) WX.fn.fitStrip();
-      if (!document.body.classList.contains("resizing-tape")) restorePointPanelSize(); }).observe($("#timebar"));
+      restorePointPanelSize();
+    }).observe(liveTimebar);
     new ResizeObserver(() => document.documentElement.style.setProperty("--top-h", $("#topbar").offsetHeight + "px")).observe($("#topbar"));
     wirePanelResizers();
 
@@ -966,6 +975,7 @@
     // Three states, because "collapsed" and "gone" are different wants: full
     // table, header only, or out of the way entirely with just its grip left.
     let tapeAnim = 0;
+    const TAPE_ANIM_MS = 380;
     setTapeState = (s, persist = true) => {
       const prev = tapeState;
       tapeState = s;
@@ -1007,7 +1017,10 @@
           if (s === "mini") tb.classList.add("mini");
           if (s === "away") tb.classList.add("tape-away");
           document.documentElement.style.setProperty("--tb-h", tb.offsetHeight + "px");
-        }, 320);
+          if (WX.fn.fitStrip) WX.fn.fitStrip();
+          restoreSheetHeight();
+          restorePointPanelSize();
+        }, TAPE_ANIM_MS);
       } else apply();
       const pill = $("#tape-pill");
       if (pill) pill.hidden = s !== "away";
@@ -1330,23 +1343,30 @@
     const topHeight = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
     const tapeBounds = () => ({ min: 118, max: Math.max(118, Math.min(480, Math.round(innerHeight * 0.58), innerHeight - topHeight() - 180)) });
     let tapeHeight = Number(localStorage.getItem("wxgrid.tapeHeight")) || null;
-    // The tallest height worth having: past the content there is only void —
-    // the stranded day-row screenshots were an over-dragged tape with its
-    // table stretched into the gap (Jeff 2026-08-20). Phones cap at content;
-    // desktop keeps the stretchy over-drag it always had.
+    // Measure the full, unsized tape itself. scrollHeight cannot answer this
+    // once flex has stretched the tape: it simply reports the already-wrong
+    // tall box and lets every drag ratchet the maximum higher.
     const tapeContentMax = () => {
       const t = tb.querySelector(".tape");
-      if (!t || !t.scrollHeight) return Infinity;
-      return Math.ceil(tb.getBoundingClientRect().height - t.clientHeight + t.scrollHeight) + 1;
+      if (!t || !t.firstElementChild) return Infinity;
+      const classes = tb.className, style = tb.getAttribute("style");
+      const pill = $("#tape-pill"), pillHidden = pill ? pill.hidden : true;
+      tb.classList.remove("mini", "tape-away", "user-sized", "tape-dragging", "tape-anim", "tape-anim-away");
+      tb.style.height = "auto"; tb.style.removeProperty("--tape-drag-height");
+      if (pill) pill.hidden = true;
+      const height = Math.ceil(tb.getBoundingClientRect().height) + 1;
+      tb.className = classes;
+      if (style == null) tb.removeAttribute("style"); else tb.setAttribute("style", style);
+      if (pill) pill.hidden = pillHidden;
+      return height;
     };
-    const setTapeHeight = (height, persist = false) => {
+    const tapeMaxHeight = (bounds = tapeBounds()) => Math.max(bounds.min, Math.min(bounds.max, tapeContentMax()));
+    const setTapeHeight = (height, persist = false, measuredMax = null) => {
       const bounds = tapeBounds();
-      // Never taller than the rows: a hand-stretched tape used to park dead
-      // panel between the table and the slider (Jeff 2026-09-02).
-      const maxH = Math.min(bounds.max, tapeContentMax());
-      tapeHeight = clamp(Math.round(height), bounds.min, Math.max(bounds.min, maxH));
+      const maxH = measuredMax == null ? tapeMaxHeight(bounds) : measuredMax;
+      tapeHeight = clamp(Math.round(height), bounds.min, maxH);
       tb.style.height = `${tapeHeight}px`; tb.classList.add("user-sized");
-      tapeGrip.setAttribute("aria-valuemin", bounds.min); tapeGrip.setAttribute("aria-valuemax", bounds.max); tapeGrip.setAttribute("aria-valuenow", tapeHeight);
+      tapeGrip.setAttribute("aria-valuemin", bounds.min); tapeGrip.setAttribute("aria-valuemax", Math.round(maxH)); tapeGrip.setAttribute("aria-valuenow", tapeHeight);
       if (persist) localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
     };
     const resetTapeHeight = () => {
@@ -1356,6 +1376,20 @@
     };
     if (tapeHeight) setTapeHeight(tapeHeight);
     else requestAnimationFrame(() => tapeGrip.setAttribute("aria-valuenow", Math.round(tb.getBoundingClientRect().height)));
+    // The tape is populated after these controls are wired. Clamp an old
+    // persisted over-height as soon as a forecast/radar render arrives.
+    let contentClampFrame = 0;
+    new MutationObserver(() => {
+      if (contentClampFrame) return;
+      contentClampFrame = requestAnimationFrame(() => {
+        contentClampFrame = 0;
+        if (tapeState !== "full" || document.body.classList.contains("resizing-tape") || tb.classList.contains("tape-anim")) return;
+        const maxH = tapeMaxHeight();
+        tapeGrip.setAttribute("aria-valuemax", Math.round(maxH));
+        if (!tapeHeight) tapeGrip.setAttribute("aria-valuenow", Math.round(tb.getBoundingClientRect().height));
+        else if (tapeHeight > maxH) setTapeHeight(tapeHeight, true, maxH);
+      });
+    }).observe(tb.querySelector(".tape"), { childList: true, subtree: true });
     let tapeDrag = null, suppressGripClickUntil = 0;
     const TAPE_AWAY_HEIGHT = 38, TAPE_TAP_SLOP = 14;
     const tapeTargetState = (height) => {
@@ -1370,14 +1404,15 @@
     const previewTapeDrag = (clientY) => {
       if (!tapeDrag) return;
       tapeDrag.lastY = clientY;
-      tapeDrag.want = clamp(tapeDrag.height + tapeDrag.y - clientY, TAPE_AWAY_HEIGHT, tapeBounds().max);
+      tapeDrag.want = clamp(tapeDrag.height + tapeDrag.y - clientY, TAPE_AWAY_HEIGHT, tapeDrag.max);
       if (tapeDrag.from === "away" && tapeDrag.want > TAPE_AWAY_HEIGHT + 4) {
         tb.classList.remove("tape-away"); tb.classList.add("mini");
         const pill = $("#tape-pill"); if (pill) pill.hidden = true;
       }
-      tb.style.setProperty("--tape-drag-height", `${Math.round(tapeDrag.want)}px`);
-      tb.classList.add("tape-dragging");
-      document.documentElement.style.setProperty("--tb-h", `${Math.round(tapeDrag.want)}px`);
+      const px = `${tapeDrag.want.toFixed(2)}px`;
+      tb.style.setProperty("--tape-drag-height", px);
+      document.documentElement.style.setProperty("--tb-h", px);
+      tapeGrip.setAttribute("aria-valuenow", Math.round(tapeDrag.want));
     };
     const trackTape = perFrame(previewTapeDrag);
     const restoreTapeDragStart = (drag) => {
@@ -1391,14 +1426,19 @@
     tapeGrip.addEventListener("pointerdown", (e) => {
       e.preventDefault(); e.stopPropagation();
       const h0 = tb.getBoundingClientRect().height;
+      const maxH = tapeMaxHeight();
+      tapeGrip.setAttribute("aria-valuemax", Math.round(maxH));
       tapeDrag = { id: e.pointerId, y: e.clientY, lastY: e.clientY, height: h0, want: h0,
-        distance: 0, from: tapeState, inlineHeight: tb.style.height };
-      tapeGrip.setPointerCapture(e.pointerId); tb.classList.add("is-resizing"); document.body.classList.add("resizing-tape");
+        max: maxH, distance: 0, from: tapeState, inlineHeight: tb.style.height };
+      tb.style.setProperty("--tape-drag-height", `${h0.toFixed(2)}px`);
+      tapeGrip.setPointerCapture(e.pointerId); tb.classList.add("is-resizing", "tape-dragging"); document.body.classList.add("resizing-tape");
     });
     tapeGrip.addEventListener("pointermove", (e) => {
       if (!tapeDrag || e.pointerId !== tapeDrag.id) return;
-      tapeDrag.distance = Math.max(tapeDrag.distance, Math.abs(e.clientY - tapeDrag.y));
-      tapeDrag.lastY = e.clientY; trackTape(e.clientY);
+      const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+      const sample = samples && samples.length ? samples[samples.length - 1] : e;
+      tapeDrag.distance = Math.max(tapeDrag.distance, Math.abs(sample.clientY - tapeDrag.y));
+      tapeDrag.lastY = sample.clientY; trackTape(sample.clientY);
     });
     const finishTape = (e, cancelled = false) => {
       if (!tapeDrag || (e && e.pointerId !== tapeDrag.id)) return;
@@ -1427,7 +1467,7 @@
         tb.style.height = `${visualHeight}px`;
         const pill = $("#tape-pill"); if (pill) pill.hidden = true;
         if (target === "full") {
-          setTapeHeight(drag.want, true);
+          setTapeHeight(drag.want, true, drag.max);
           setTapeState("full");
         } else {
           const unchanged = target === tapeState;
@@ -1436,6 +1476,7 @@
         }
       }
       if (tapeHeight && tapeState === "full") localStorage.setItem("wxgrid.tapeHeight", tapeHeight);
+      if (WX.fn.fitStrip) WX.fn.fitStrip();
       restoreSheetHeight();                    // the card re-budgets around the new tape
       restorePointPanelSize();
     };

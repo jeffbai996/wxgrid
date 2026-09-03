@@ -392,14 +392,14 @@ button:focus:not(:focus-visible) { outline: none; }
 .tape-resize-handle:hover i, .tape-resize-handle:focus-visible i, #timebar.is-resizing .tape-resize-handle i {
   width: 52px; background: var(--accent); box-shadow: 0 0 0 4px var(--panel), 0 0 16px var(--accent-glow); }
 #timebar.user-sized .tape { flex: 1 1 auto; min-height: 0; overflow-y: hidden; }
-#timebar.user-sized table.wtape { min-height: 100%; }
-/* phone: the table never stretches to fill an over-tall tape — that stretch
-   is what strands the day row over a void (2026-08-20 screenshots) */
-@media (max-width: 820px) { #timebar.user-sized table.wtape { min-height: 0; } }
+#timebar.user-sized table.wtape { min-height: 0; }
+/* Stretching every table row with the drag made one pointer move reflow the
+   entire forecast grid. The box now clips/reveals fixed rows and stops at
+   their natural full height. */
 #timebar.mini { height: auto !important; }
 /* the fold glide: an explicit height + clip while sliding between states */
-#timebar.tape-anim { transition: height .32s cubic-bezier(.32,.72,.24,1), background-color .32s ease, border-color .32s ease, box-shadow .32s ease; overflow: hidden; }
-#timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: hidden; transition: none !important; }
+#timebar.tape-anim { transition: height .38s cubic-bezier(.22,1,.36,1), background-color .3s ease, border-color .3s ease, box-shadow .3s ease; overflow: hidden; will-change: height; }
+#timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: hidden; transition: none !important; will-change: height; }
 #timebar.tape-anim #step { display: none; }
 #timebar.tape-anim-away { background: transparent; border-color: transparent; }
 /* out of the way entirely: only the grip is left to pull it back */

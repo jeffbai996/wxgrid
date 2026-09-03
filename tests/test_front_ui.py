@@ -387,6 +387,19 @@ def test_tape_control_walks_all_three_states_and_every_change_glides():
     assert '<span class="l">Show forecast</span>' in html
     assert "#timebar.tape-away { height: 38px !important;" in css and "@keyframes pill-in" in css
     assert "const TAPE_AWAY_HEIGHT = 38, TAPE_TAP_SLOP = 14;" in app
-    assert 'tb.classList.add("tape-dragging");' in app
+    assert 'tb.classList.add("is-resizing", "tape-dragging");' in app
     assert 'tapeGrip.addEventListener("click",' in app
     assert "#timebar.tape-dragging { height: var(--tape-drag-height) !important;" in css
+
+
+def test_tape_drag_is_frame_paced_and_stops_at_its_natural_content_height():
+    app = _read("app.js"); css = _read("styles.css")
+    assert 'const tapeMaxHeight = (bounds = tapeBounds())' in app
+    assert 'tapeDrag.want = clamp(tapeDrag.height + tapeDrag.y - clientY, TAPE_AWAY_HEIGHT, tapeDrag.max);' in app
+    assert 'max: maxH, distance: 0, from: tapeState' in app
+    assert 'tapeGrip.setAttribute("aria-valuemax", Math.round(maxH));' in app
+    assert 'const px = `${tapeDrag.want.toFixed(2)}px`;' in app
+    assert 'const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : null;' in app
+    assert 'if (dragging || animating) return;' in app
+    assert '#timebar.user-sized table.wtape { min-height: 0; }' in css
+    assert 'height .38s cubic-bezier(.22,1,.36,1)' in css
