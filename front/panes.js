@@ -1193,7 +1193,7 @@
     let resortHtml = "";
     if (pt.near === undefined) fetchNearestResort(pt);
     else if (pt.near) resortHtml = `<button class="resort-link" data-resort="${esc(pt.near.id)}">
-      <span class="k">Elevation bands</span><span class="v">${esc(pt.near.name)}<i>${W().units.dist(pt.near.distance_km).txt} away</i></span></button>`;
+      <span class="k">Ski area</span><span class="v">${esc(pt.near.name)}<i>${W().units.dist(pt.near.distance_km).txt} away</i></span></button>`;
     // The board: what falls at each height, morning by morning.
     if (pt.wbands === undefined && pt.near !== undefined && pt.local) fetchWinterBands(pt);
     const B = pt.wbands;
@@ -1673,11 +1673,16 @@
   }
 
   // ── Spread: how much the ensemble disagrees with itself ───────────────
-  const SPREAD_VARS = [["t2m", "Temp"], ["wind", "Wind"], ["tp6", "Rain"], ["msl", "Pressure"]];
+  const SPREAD_VARS = [
+    { key: "t2m", label: "Temp", color: "#ff9254" },
+    { key: "wind", label: "Wind", color: "#4fc6b2" },
+    { key: "tp6", label: "Rain", color: "#59a8ff" },
+    { key: "msl", label: "Pressure", color: "#b69cff" },
+  ];
   let spreadVar = localStorage.getItem("wxgrid.spreadVar") || "t2m";
   function renderSpread(pt, d, i) {
     const box = $("#spread-vars");
-    box.innerHTML = SPREAD_VARS.map(([v, t]) => `<button data-v="${v}" class="${v === spreadVar ? "on" : ""}">${t}</button>`).join("");
+    box.innerHTML = SPREAD_VARS.map(({ key, label, color }) => `<button data-v="${key}" style="--spread-color:${color}" class="${key === spreadVar ? "on" : ""}">${label}</button>`).join("");
     box.querySelectorAll("button").forEach((b) => b.onclick = () => { spreadVar = b.dataset.v; localStorage.setItem("wxgrid.spreadVar", spreadVar); pt.plume = undefined; renderSpread(pt, d, i); });
     const c = $("#plume"), note = $("#plume-note");
     const host = c.parentElement, w = Math.max(300, Math.round(host.clientWidth));
@@ -1694,7 +1699,8 @@
       note.textContent = "No ensemble in the store yet. Ingest a GEFS run and the spread appears here.";
       return;
     }
-    window.WXEns && window.WXEns.drawPlume(c, pt.plume, {});
+    const selected = SPREAD_VARS.find((v) => v.key === spreadVar) || SPREAD_VARS[0];
+    window.WXEns && window.WXEns.drawPlume(c, pt.plume, { color: selected.color });
     const basis = pt.plume.basis === "members" ? "51 members" : "mean ± spread, assumed Gaussian";
     note.textContent = `${pt.plume.label || spreadVar} · ${basis} · ${pt.plume.source || "GEFS"}. The band is where the ensemble puts the forecast; a wide band means the models are arguing with each other.`;
   }
@@ -1742,21 +1748,18 @@
     const namedLifts = [...new Set(liftFeatures.map((f) => f.properties && f.properties.name).filter(Boolean))];
     const liftTypes = {};
     liftFeatures.forEach((f) => { const kind = (f.properties && f.properties.aerialway || "unknown").replaceAll("_", " "); liftTypes[kind] = (liftTypes[kind] || 0) + 1; });
+    const fallbackGrade = { bucket: "unknown", label: "Unrated", color: "#9aa5b4", mark: "·" };
+    const scheme = W().pisteScheme ? W().pisteScheme(r.country) : { label: "OSM difficulty", order: [fallbackGrade], grade: () => fallbackGrade };
     const grades = {};
     const grooming = {};
     pisteFeatures.forEach((f) => {
-      const p = f.properties || {}, grade = p.grade || "unknown", groom = p.grooming;
-      grades[grade] = (grades[grade] || 0) + 1;
+      const p = f.properties || {}, local = scheme.grade(p.grade), groom = p.grooming;
+      grades[local.bucket] = (grades[local.bucket] || 0) + 1;
       if (groom) grooming[groom] = (grooming[groom] || 0) + 1;
     });
-    const gradeMeta = [
-      ["novice", "Novice", "#5ad469"], ["easy", "Easy", "#3d8bff"], ["intermediate", "Intermediate", "#ff4d4d"],
-      ["advanced", "Advanced", "#f2f2f2"], ["expert", "Expert", "#c56bff"], ["freeride", "Freeride", "#ffb454"],
-      ["extreme", "Extreme", "#ff7a2f"], ["unknown", "Unrated", "#9aa5b4"],
-    ];
-    const gradeBars = gradeMeta.filter(([key]) => grades[key]).map(([key, label, color]) => {
-      const n = grades[key], pct = segments ? n / segments * 100 : 0;
-      return `<div class="resort-grade"><span><i style="background:${color}"></i>${label}</span><b>${n}</b><em><i style="width:${pct.toFixed(1)}%;background:${color}"></i></em></div>`;
+    const gradeBars = scheme.order.filter(({ bucket }) => grades[bucket]).map(({ bucket, label, color, mark }) => {
+      const n = grades[bucket], pct = segments ? n / segments * 100 : 0;
+      return `<div class="resort-grade"><span><i style="color:${color}">${esc(mark)}</i>${esc(label)}</span><b>${n}</b><em><i style="width:${pct.toFixed(1)}%;background:${color}"></i></em></div>`;
     }).join("") || `<div class="note">No mapped difficulty tags.</div>`;
     const groomingPills = Object.entries(grooming).sort((a, b) => b[1] - a[1]).map(([kind, n]) => `<span>${esc(kind.replaceAll("_", " "))} <b>${n}</b></span>`).join("");
     const groomingTagged = Object.values(grooming).reduce((a, b) => a + b, 0);
@@ -1803,13 +1806,13 @@
         <div><b>${groomingTagged}</b><span>grooming tags</span></div>
       </div>
       <div class="resort-columns">
-        <section><h4>Terrain mix <small>mapped segments</small></h4>${gradeBars}</section>
+        <section><h4>Terrain mix <small>${esc(scheme.label)} · mapped segments</small></h4>${gradeBars}</section>
         <section><h4>Lift network <small>mapped, not status</small></h4><p class="resort-type">${liftTypeLine || "No lift types mapped."}</p><div class="resort-lift-list">${liftNames || `<span>No named lifts mapped</span>`}${namedLifts.length > 10 ? `<span class="more">+${namedLifts.length - 10} more</span>` : ""}</div></section>
       </div>
       <section class="resort-groom"><h4>Grooming map <small>OSM style tags, not today's grooming report</small></h4><div>${groomingPills || `<span>no grooming metadata mapped</span>`}</div><p>White dots on the trail map mark segments with a mapped grooming style.</p></section>
       <h4 class="resort-forecast-title">Mountain forecast <small>at the selected map time</small></h4>
       ${bandsHtml}
-      <div class="note resort-note">Elevation-band temperature and wind are interpolated from the selected forecast model; snowfall uses a 10:1 snow-to-water ratio. Trail difficulty, lift geometry and grooming style are static OpenStreetMap data. Open/closed and groomed-today status stay with the resort's official report${official ? " above" : ""}.</div>`;
+      <div class="note resort-note">Elevation-band temperature and wind are interpolated from the selected forecast model; snowfall uses a 10:1 snow-to-water ratio. Trail difficulty uses ${esc(scheme.label)} over static OpenStreetMap tags; lift geometry and grooming style are static too. Open/closed and groomed-today status stay with the resort's official report${official ? " above" : ""}.</div>`;
   }
 
   // ── meteogram (Now pane) ─────────────────────────────────────────────

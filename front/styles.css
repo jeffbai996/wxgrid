@@ -408,14 +408,21 @@ button:focus:not(:focus-visible) { outline: none; }
 #timebar.tape-away { height: 38px !important; min-height: 0; padding: 0; overflow: visible; background: transparent; border-color: transparent; box-shadow: none; backdrop-filter: none;
   display: flex; flex-direction: row; align-items: flex-end; justify-content: center; }
 #timebar.tape-away > *:not(.tape-resize-handle):not(#tape-pill) { display: none; }
-.tape-pill { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 14px 0 10px; border-radius: 999px; border: 1px solid var(--line-strong);
-  background: var(--panel-solid); color: var(--fg); font: 700 12.5px var(--font-display); cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.35);
+.tape-pill { display: inline-flex; align-items: center; gap: 6px; max-width: min(620px, calc(100vw - 40px)); height: 32px; padding: 0 13px 0 9px; overflow: hidden; white-space: nowrap; border-radius: 999px; border: 1px solid var(--line-strong);
+  background: var(--panel-solid); color: var(--fg); font: 700 12px var(--font-display); cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.35);
   animation: pill-in .28s cubic-bezier(.32,.72,.24,1) both; }
-.tape-pill svg { width: 15px; height: 15px; color: var(--accent); }
-.tape-pill .t { color: var(--fg-2); font: 600 12px var(--font-mono); font-variant-numeric: tabular-nums; }
-.tape-pill .l { color: var(--fg); font-weight: 700; }
+.tape-pill svg { width: 14px; height: 14px; flex: 0 0 auto; color: var(--accent); }
+.tape-pill .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); font: 600 11px var(--font-mono); font-variant-numeric: tabular-nums; }
+.tape-pill .status { flex: 0 0 auto; padding: 2px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: 750 9.5px var(--font-display); letter-spacing: .035em; text-transform: uppercase; }
 .tape-pill .dot { color: var(--dim); }
+.tape-pill .field { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); }
+.tape-pill .value { flex: 0 0 auto; color: var(--fg); font: 750 11.5px var(--font-mono); font-variant-numeric: tabular-nums; }
+.tape-pill .sub { flex: 0 0 auto; color: var(--dim); font: 550 10px var(--font-mono); }
 .tape-pill:hover { border-color: var(--accent); }
+@media (max-width: 520px) {
+  .tape-pill { max-width: calc(100vw - 24px); gap: 5px; padding-right: 10px; }
+  .tape-pill .sub { display: none; }
+}
 @keyframes pill-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 #timebar.tape-away .tape-resize-handle, #timebar.mini .tape-resize-handle { display: grid; }
 .tape-head { display: flex; align-items: center; gap: 10px; padding: 0 2px 2px; }
@@ -771,10 +778,10 @@ table.bandtape .nil { color: var(--line-strong); }
   .tape-head { flex-wrap: wrap; gap: 4px 6px; }
   #play { order: 1; } .time-meta { order: 2; min-width: 0; flex: 1 1 90px; overflow: hidden; }
   #lead { order: 3; min-width: 0; } #tape-now { order: 4; } .tape-min { order: 5; margin-left: 0; }
-  #tape-res { order: 6; } #variant { order: 7; }
+  #tape-slice { order: 6; } #tape-res { order: 7; } #variant { order: 8; }
   /* mini on a phone is one glance: the resolution picker and the row labels
      are full-view furniture, and the label gutter was costing two columns */
-  #timebar.mini #tape-res { display: none; }
+  #timebar.mini #tape-slice, #timebar.mini #tape-res { display: none; }
   #timebar.mini table.wtape .lab { display: none; }
   #timebar.mini .tape-head { gap: 4px; }
   #valid-local, #valid-utc { overflow: hidden; text-overflow: ellipsis; }
@@ -910,7 +917,7 @@ table.cmp td .r { color: var(--rain); }
 .resort-columns h4 small, .resort-groom h4 small, .resort-forecast-title small { font: 500 9.5px var(--font-body); color: var(--dim); text-align: right; }
 .resort-grade { display: grid; grid-template-columns: minmax(82px, 1fr) 30px; gap: 2px 6px; align-items: center; margin: 4px 0; }
 .resort-grade > span { display: flex; align-items: center; gap: 5px; min-width: 0; font: 600 10.5px var(--font-body); color: var(--fg-2); }
-.resort-grade > span i { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 1px rgba(0,0,0,.45); }
+.resort-grade > span i { width: 17px; flex: 0 0 17px; text-align: center; font: 800 9px/1 var(--font-display); font-style: normal; letter-spacing: -2px; text-shadow: 0 1px 2px rgba(0,0,0,.75); }
 .resort-grade > b { text-align: right; font: 650 10.5px var(--font-num); color: var(--fg-2); }
 .resort-grade > em { grid-column: 1 / -1; height: 2px; border-radius: 2px; overflow: hidden; background: rgba(127,140,160,.14); }
 .resort-grade > em i { display: block; height: 100%; border-radius: inherit; }
@@ -985,12 +992,13 @@ table.wtape tr.r-dir td { height: 20px; }
   -webkit-mask: var(--arrow-mask) center/contain no-repeat; mask: var(--arrow-mask) center/contain no-repeat; }
 :root { --arrow-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 19 20 12 16 5 20Z' fill='black'/%3E%3C/svg%3E"); }
 /* tape resolution picker, in the tape's own header */
-#tape-res { display: inline-flex; gap: 2px; margin-left: 8px; padding: 2px; border-radius: 8px;
+#tape-slice { margin-left: 12px; margin-right: -8px; color: var(--dim); font: 600 10.5px var(--font-display); letter-spacing: .025em; }
+#tape-res { display: inline-flex; gap: 2px; margin-left: 0; padding: 2px; border-radius: 8px;
   background: rgba(127,127,127,.12); }
 #tape-res button { border: 0; background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap;
   font: 700 10px var(--font-display); padding: 3px 7px; border-radius: 6px; letter-spacing: .02em; }
 #tape-res button.on { background: var(--accent); color: var(--accent-ink); }
-@media (max-width: 820px) { #tape-res { margin-left: 0; } #tape-res button { padding: 3px; } }
+@media (max-width: 820px) { #tape-slice { margin-left: 5px; margin-right: -4px; } #tape-res button { padding: 3px; } }
 @media (max-width: 820px) { table.wtape th.lab { min-width: 64px; font-size: 9.5px; } table.wtape td { width: 40px; min-width: 40px; } }
 
 /* ── card: hero + colour ─────────────────────────────────────────────── */
@@ -1227,10 +1235,11 @@ table.wtape.agg tr.r-temp td, table.wtape.agg tr.r-feels td { letter-spacing: -.
 @media (max-width: 820px) { table.wtape.agg td { min-width: 60px; } }
 
 /* ensemble spread pane */
-.spread-vars { display: flex; margin: 8px 0 6px; }
-.spread-vars button { flex: 1; border: 0; background: transparent; color: var(--fg-2); padding: 5px 6px; border-radius: 7px;
+.spread-vars { display: flex; gap: 3px; margin: 8px 0 6px; }
+.spread-vars button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; background: transparent; color: var(--fg-2); padding: 5px 6px; border-radius: 7px;
   font: 700 11.5px var(--font-display); cursor: pointer; }
-.spread-vars button.on { background: var(--accent); color: var(--accent-ink); }
+.spread-vars button::before { content: ""; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--spread-color); box-shadow: 0 0 0 1px color-mix(in srgb, var(--spread-color) 55%, transparent); }
+.spread-vars button.on { background: color-mix(in srgb, var(--spread-color) 16%, transparent); color: color-mix(in srgb, var(--spread-color) 76%, var(--fg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spread-color) 42%, transparent); }
 #plume { width: 100%; height: 220px; display: block; }
 
 /* strip overflow: a second column that animates out, so the bar itself never
@@ -1475,7 +1484,7 @@ body.no-map #particles { display: none; }
 /* ── embed mode: map, legend, clock; the rest of the chrome stays home ── */
 #embed-brand { display: none; }
 body.embed #topbar, body.embed #tstrip, body.embed #side, body.embed .locate-btn, body.embed #centre-mark, body.embed #provider,
-body.embed #tape, body.embed #step, body.embed .tape-resize-handle, body.embed #tape-min, body.embed #tape-res, body.embed #tape-where, body.embed #variant, body.embed #tape-pill { display: none !important; }
+body.embed #tape, body.embed #step, body.embed .tape-resize-handle, body.embed #tape-min, body.embed #tape-slice, body.embed #tape-res, body.embed #tape-where, body.embed #variant, body.embed #tape-pill { display: none !important; }
 body.embed #timebar { height: auto !important; padding-bottom: 6px; }
 body.embed #embed-brand { position: absolute; z-index: 6; top: 8px; left: 8px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px 5px 6px; border-radius: 9px;
   background: var(--panel); border: 1px solid var(--line); color: var(--fg); text-decoration: none; font: 700 12.5px var(--font-display); backdrop-filter: blur(8px); }

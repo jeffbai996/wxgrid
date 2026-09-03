@@ -384,7 +384,8 @@ def test_tape_control_walks_all_three_states_and_every_change_glides():
     assert app.index("const nextTapeState") < app.index("function wireOnce")
     assert "const animatable = prev !== s && !matchMedia(\"(prefers-reduced-motion: reduce)\").matches;" in app
     assert 'id="tape-pill"' in html
-    assert '<span class="l">Show forecast</span>' in html
+    for part in ('class="t"', 'class="status"', 'class="field"', 'class="value"', 'class="sub"'):
+        assert part in html
     assert "#timebar.tape-away { height: 38px !important;" in css and "@keyframes pill-in" in css
     assert "const TAPE_AWAY_HEIGHT = 38, TAPE_TAP_SLOP = 14;" in app
     assert 'tb.classList.add("is-resizing", "tape-dragging");' in app
@@ -403,3 +404,61 @@ def test_tape_drag_is_frame_paced_and_stops_at_its_natural_content_height():
     assert 'if (dragging || animating) return;' in app
     assert '#timebar.user-sized table.wtape { min-height: 0; }' in css
     assert 'height .38s cubic-bezier(.22,1,.36,1)' in css
+
+
+def test_collapsed_tape_pill_reports_time_slice_field_and_centre_value():
+    app = _read("app.js"); field = _read("field.js"); probe = _read("probe.js"); overlays = _read("overlays.js")
+    assert "function renderTapePill()" in app
+    assert "WX.probe.valueAt(c.lng, c.lat)" in app
+    assert 'reading = state.radarSource && state.radarSource.label' in app
+    assert 'put(".t", time); put(".status", status); put(".field", field);' in app
+    assert "if (WX.fn && WX.fn.renderTapePill) WX.fn.renderTapePill();" in field
+    assert "if (WX.fn && WX.fn.renderTapePill) WX.fn.renderTapePill();" in probe
+    assert "if (WX.fn.renderTapePill) WX.fn.renderTapePill();" in overlays
+
+
+def test_tape_slice_label_sits_with_resolution_controls():
+    html = _read("index.html"); css = _read("styles.css")
+    assert html.index('id="tape-now"') < html.index('id="tape-slice"') < html.index('id="tape-res"')
+    assert '<span id="tape-slice">slice</span>' in html
+    assert '#tape-slice { margin-left: 12px; margin-right: -8px;' in css
+    assert 'font: 600 10.5px var(--font-display)' in css
+
+
+def test_cursor_probe_accepts_ipad_trackpad_but_ignores_touch_mouse_events():
+    app = _read("app.js"); probe = _read("probe.js")
+    assert 'matchMedia("(hover: hover)")' not in probe
+    assert "oe.sourceCapabilities && oe.sourceCapabilities.firesTouchEvents" in app
+    assert 'WX.probe.hover(fromTouch ? null : e.lngLat)' in app
+    assert 'pt.setAttribute("aria-pressed", state.probeChip ? "true" : "false")' in app
+
+
+def test_spread_measures_keep_a_stable_four_colour_key_and_chart_colour():
+    panes = _read("panes.js"); ens = _read("ens.js"); css = _read("styles.css")
+    for color in ("#ff9254", "#4fc6b2", "#59a8ff", "#b69cff"):
+        assert color in panes
+    assert 'WXEns.drawPlume(c, pt.plume, { color: selected.color })' in panes
+    assert 'const accent = opts.color || css("--accent", "#ff8a3d");' in ens
+    assert '.spread-vars button::before' in css and 'var(--spread-color)' in css
+
+
+def test_resort_difficulty_uses_local_signage_without_rewriting_osm_data():
+    overlays = _read("overlays.js"); panes = _read("panes.js")
+    assert "function pisteScheme(country)" in overlays
+    assert 'label = northAmerica.has(code) ? "North American ratings" : "Oceania ratings"' in overlays
+    assert 'id = "japan"; label = "Japanese ratings"' in overlays
+    assert 'id = "scandinavia"; label = "Scandinavian ratings"' in overlays
+    assert 'local_color: local.color' in overlays and 'local_mark: local.mark' in overlays
+    assert '"line-color": ["get", "local_color"]' in overlays
+    assert '["get", "local_mark"], " ", ["coalesce", ["get", "name"], ["get", "ref"]]' in overlays
+    assert '<span class="k">Ski area</span>' in panes
+    assert '<div class="board-head"><span>Elevation bands</span>' in panes
+    assert "const scheme = W().pisteScheme" in panes
+
+
+def test_storms_tool_uses_a_distinct_cloud_and_lightning_icon():
+    html = _read("index.html")
+    storm = html.split('id="storms-toggle"', 1)[1].split("</button>", 1)[0]
+    assert 'M6.8 15.5h10.1' in storm
+    assert 'm13 13.5-2.4 4.2' in storm
+    assert 'M12 2a10 10' not in storm

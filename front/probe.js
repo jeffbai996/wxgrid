@@ -69,6 +69,7 @@
       if (last) show(last);
       pinUpdate(); updateCityValues();
       if (WX.fn && WX.fn.updateMarkerFlag) WX.fn.updateMarkerFlag();
+      if (WX.fn && WX.fn.renderTapePill) WX.fn.renderTapePill();
     };
     im.src = url;
   }
@@ -132,7 +133,6 @@
     chip.style.transform = `translate(${Math.round(p.x + 14)}px, ${Math.round(p.y + 14)}px)`;
   }
   function hover(ll) {
-    if (!matchMedia("(hover: hover)").matches) return;
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => show(ll));
   }

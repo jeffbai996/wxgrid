@@ -154,6 +154,7 @@
                    renderPoint: () => renderPoint(), refreshPoint: () => refreshPoint(), closePoint: () => closePoint(), placeMarker: (...a) => placeMarker(...a),
                    stepHours: () => stepHours(), steps: () => steps(), layerUrl: () => layerUrl(),
                    applyTheme: (t) => applyTheme(t), setMotion: (m) => setMotion(m), restartPlay: () => restartPlay(), fitStrip: () => fitStrip(), runEntry: () => runEntry(), modelEntry: () => modelEntry(), validDate: () => validDate(), pushHash: () => pushHash(), nudge: (d) => nudge(d), clearOtherCover: (k) => clearOtherCover(k), updateMarkerFlag: () => updateMarkerFlag(),
+                   renderTapePill: () => renderTapePill(),
                    setTapeState: (s, persist) => setTapeState(s, persist), getTapeState: () => tapeState,
                    jumpModelTime: (key, iso) => switchModel(key, new Date(iso).getTime()) };
 
@@ -203,6 +204,7 @@
       localStorage.setItem("wxgrid.view", JSON.stringify({ center: map.getCenter().toArray(), zoom: map.getZoom() }));
       if (catalog) renderControls();
       if (!state.point) WX.tape.refreshTapePoint();
+      renderTapePill();
       if (WX.provider) WX.provider.refresh();
       if (state.radar && WX.ov.refreshRadarSource) WX.ov.refreshRadarSource();
       if (state.obs && WX.ov.refreshObs) WX.ov.refreshObs();
@@ -290,7 +292,15 @@
       const avy = feats.find((x) => x.layer.id === "avy-fill");
       if (avy) { state.tab = "winter"; }
     });
-    map.on("mousemove", (e) => { if (WX.probe && state.probeChip) WX.probe.hover(e.lngLat); });
+    map.on("mousemove", (e) => {
+      // iPadOS reports its primary input as touch even while a trackpad is
+      // moving the MapLibre mouse cursor. Judge this event, not the device;
+      // only the synthetic mouse event emitted by an actual touch is ignored.
+      const oe = e.originalEvent;
+      const fromTouch = !!(oe && ((oe.pointerType && oe.pointerType !== "mouse")
+        || (oe.sourceCapabilities && oe.sourceCapabilities.firesTouchEvents)));
+      if (WX.probe && state.probeChip) WX.probe.hover(fromTouch ? null : e.lngLat);
+    });
     map.on("mouseout", () => { if (WX.probe) WX.probe.hover(null); });
     map.on("moveend", () => { if (WX.provider) WX.provider.refresh(); });
     map.on("mouseenter", "resort-pts", () => map.getCanvas().style.cursor = "pointer");
@@ -1087,7 +1097,8 @@
     const pt = $("#probe-toggle");
     if (pt) {
       pt.classList.toggle("on", state.probeChip);
-      pt.onclick = () => { state.probeChip = !state.probeChip; localStorage.setItem("wxgrid.probe", state.probeChip ? "1" : "0"); pt.classList.toggle("on", state.probeChip); if (!state.probeChip && WX.probe) WX.probe.hover(null);
+      pt.setAttribute("aria-pressed", state.probeChip ? "true" : "false");
+      pt.onclick = () => { state.probeChip = !state.probeChip; localStorage.setItem("wxgrid.probe", state.probeChip ? "1" : "0"); pt.classList.toggle("on", state.probeChip); pt.setAttribute("aria-pressed", state.probeChip ? "true" : "false"); if (!state.probeChip && WX.probe) WX.probe.hover(null);
         // the strip carries the same switch; toggling either must light both
         const sp = document.querySelector(".strip-probe");
         if (sp) { sp.classList.toggle("on", state.probeChip); sp.setAttribute("aria-pressed", state.probeChip ? "true" : "false"); } };
@@ -1712,22 +1723,42 @@
   // Valid time, lead time, and whether the map is sitting on the present.
   // Split out of applyStep because a glide between two steps redraws this
   // sixty times a second and nothing else.
+  const selectedLayerName = () => (LAYER_LABEL[state.layer] || state.layer)
+    + (state.level && hasLevel() ? ` ${state.level}${/^\d+$/.test(String(state.level)) ? " hPa" : ""}` : "");
+
+  function renderTapePill() {
+    const pill = $("#tape-pill"); if (!pill) return;
+    const local = $("#valid-local");
+    const time = local ? local.textContent.split(" · ")[0] : "";
+    const lead = $("#lead");
+    const status = lead && lead.textContent === "current" ? "Now" : (lead ? lead.textContent : "");
+    const field = state.radar ? "Radar" : selectedLayerName();
+    let reading = null;
+    if (state.radar) {
+      reading = state.radarSource && state.radarSource.label ? { text: state.radarSource.label, sub: "" } : null;
+    } else if (WX.probe && WX.probe.valueAt && map) {
+      try { const c = map.getCenter(); reading = WX.probe.valueAt(c.lng, c.lat); } catch (_) { reading = null; }
+    }
+    const put = (sel, value) => { const el = pill.querySelector(sel); if (el) el.textContent = value || ""; };
+    put(".t", time); put(".status", status); put(".field", field);
+    const value = pill.querySelector(".value"), sub = pill.querySelector(".sub");
+    if (value) { value.textContent = reading && reading.text || ""; value.hidden = !(reading && reading.text); }
+    if (sub) { sub.textContent = reading && reading.sub || ""; sub.hidden = !(reading && reading.sub); }
+    pill.setAttribute("aria-label", ["Show forecast timeline", time, status, field,
+      reading && reading.text, reading && reading.sub].filter(Boolean).join(", "));
+  }
+
   function renderClock() {
     const v = validDate();
     // the phone row has room for the weekday and the hour; the date is the UTC line under it
     const narrow = matchMedia("(max-width: 820px)").matches;
     $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts(narrow ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
-    const pillT = $("#tape-pill .t");
-    if (pillT) {
-      const pillTime = v.toLocaleString(undefined, WX.units.timeOpts({ weekday: "short", hour: "numeric", minute: "2-digit" }));
-      pillT.textContent = pillTime;
-      $("#tape-pill").setAttribute("aria-label", `Show forecast timeline for ${pillTime}`);
-    }
     const atNow = state.stepIdx === currentStepIdx() && !state.frac;
     $("#lead").textContent = atNow ? "current" : `+${Math.round(shownHours())}h`;
     $("#tape-now").classList.toggle("on", atNow);
     $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
+    renderTapePill();
   }
 
   function applyStep(prefetch = true) {
@@ -1827,6 +1858,7 @@
   function restartPlay() { if (state.playing) { togglePlay(); togglePlay(); } }
 
   function renderLegend() {
+    renderTapePill();
     const cat = catalog.layers.find((l) => l.layer === state.layer);
     if (!cat) { $("#legend").hidden = true; return; }
     // Geopotential height sits in a different band at every pressure level, so
@@ -1854,7 +1886,7 @@
     const ticks = [0, 0.25, 0.5, 0.75, 1].map((q) => lg.lo + (lg.hi - lg.lo) * q);
     // The layer's name belongs over the bar, not wedged into the middle tick
     // where it collided with the value under it. Ticks are numbers only.
-    const name = LAYER_LABEL[state.layer] + (state.level && hasLevel() ? ` ${state.level}${/^\d+$/.test(String(state.level)) ? " hPa" : ""}` : "");
+    const name = selectedLayerName();
     $("#legend .legend-head b").textContent = name;
     // "mm/6h": the window rides smaller and faded, set apart from the unit
     const um = /^([^/]+)(\/.+)$/.exec(unit || "");

@@ -58,7 +58,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
       <button id="terrain-toggle" class="row chip" title="Hillshade relief under the field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 18 5-8 4 6 3-4 6 6"/><path d="M3 18h18"/></svg><span>Terrain</span><i class="sw"></i></button>
       <button id="night-toggle" class="row chip" title="Day/night at the selected time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><span>Day/night</span><i class="sw"></i></button>
       <button id="alerts-toggle" class="row chip warn" title="Weather alerts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><span>Alerts</span><i class="sw"></i></button>
-      <button id="storms-toggle" class="row chip warn" title="Active tropical cyclones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6a6 6 0 1 0 6 6"/><path d="M12 10a2 2 0 1 0 2 2"/></svg><span>Storms</span><i class="sw"></i></button>
+      <button id="storms-toggle" class="row chip warn" title="Active tropical cyclones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 15.5h10.1a3.6 3.6 0 0 0 .5-7.2A5.7 5.7 0 0 0 6.6 7a4.3 4.3 0 0 0 .2 8.5Z"/><path d="m13 13.5-2.4 4.2h2.8l-1.5 3.8 4.1-5.6h-2.9l1.4-2.4"/></svg><span>Storms</span><i class="sw"></i></button>
       <button id="sigmet-toggle" class="row chip warn" title="Aviation hazard areas (SIGMET / AIRMET)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.6 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><span>SIGMET</span><i class="sw"></i></button>
       <button id="iso-toggle" class="row chip" title="Isolines (isobars / isotherms)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c5.5 0 8.9 3.5 8.4 8.5-.5 5-3.9 8.5-8.9 8.5S3.1 17 3.6 12 6.5 3.5 12 3.5z"/><path d="M12 8c3 0 5 1.5 4.7 4-.3 2.5-2.2 4-4.7 4s-4.7-1.5-4.4-4C7.9 9.5 9.5 8 12 8z"/><path d="M12 11.3a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg><span>Isolines</span><i class="sw"></i></button>
       <button id="aurora-toggle" class="row chip" title="Aurora nowcast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c0-6 2-12 5-12s2 6 4 6 2-6 4-6 3 6 3 12"/><path d="M2 20h20"/></svg><span>Aurora</span><i class="sw"></i></button>
@@ -113,6 +113,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
     </div>
     <span id="lead" class="mono dim"></span>
     <button id="tape-now" class="now-btn" title="Jump to the current hour">Now</button>
+    <span id="tape-slice">slice</span>
     <div id="tape-res" role="group" aria-label="Tape resolution"></div>
     <span id="tape-where" class="dim"></span>
     <button id="tape-min" class="icon tape-min" title="Hide the forecast table" aria-label="Hide the forecast table"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -123,7 +124,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
       <div class="legend-ticks"></div>
     </aside>
   </div>
-  <button id="tape-pill" class="tape-pill" type="button" hidden title="Show forecast timeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg><span class="l">Show forecast</span><span class="dot" aria-hidden="true">·</span><span class="t"></span></button>
+  <button id="tape-pill" class="tape-pill" type="button" hidden title="Show forecast timeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg><span class="t"></span><span class="status"></span><span class="dot" aria-hidden="true">·</span><span class="field"></span><span class="value" hidden></span><span class="sub" hidden></span></button>
   <div id="tape" class="tape" tabindex="0" aria-label="Forecast timeline"></div>
   <input id="step" type="range" min="0" max="0" value="0" step="1" aria-label="Forecast step">
 </footer>

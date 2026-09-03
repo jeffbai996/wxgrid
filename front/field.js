@@ -520,7 +520,7 @@ void main() {
   function show(spec) {
     if (!live) return;
     const gen = ++showSerial;
-    const repaint = () => { if (WX.map) WX.map.triggerRepaint(); if (WX.probe) { WX.probe.pinUpdate(); } if (WX.fn && WX.fn.updateMarkerFlag) WX.fn.updateMarkerFlag(); };
+    const repaint = () => { if (WX.map) WX.map.triggerRepaint(); if (WX.probe) { WX.probe.pinUpdate(); } if (WX.fn && WX.fn.updateMarkerFlag) WX.fn.updateMarkerFlag(); if (WX.fn && WX.fn.renderTapePill) WX.fn.renderTapePill(); };
     const lg = rampFor(spec.layer, spec.level);
     const snap = SNAP_LAYERS.has(spec.layer);
     let t = spec.t || 0;

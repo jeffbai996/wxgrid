@@ -171,7 +171,7 @@
     const xOf = (i) => padL + (n > 1 ? gw * i / (n - 1) : gw / 2);
     const yOf = (v) => padT + gh * (1 - (v - t.lo) / (t.hi - t.lo || 1));
 
-    const accent = css("--accent", "#ff8a3d");
+    const accent = opts.color || css("--accent", "#ff8a3d");
     const accentRGB = rgbTriplet(accent, "255,138,61");
     const fg = css("--fg", "#eef1f5");
     const dim = css("--dim", "#7c8492");

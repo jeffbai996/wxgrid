@@ -258,6 +258,79 @@
     document.body.classList.remove("has-resort");
   }
 
+  // OSM stores one progressive difficulty vocabulary, but the signs skiers
+  // actually see are local. Translate only where the country identifies a
+  // published convention; an unknown country keeps the OSM grade labels
+  // instead of borrowing somebody else's trail map.
+  const pisteGrade = (bucket, label, color, mark) => ({ bucket, label, color, mark });
+  function pisteScheme(country) {
+    const code = String(country || "").trim().toUpperCase();
+    const northAmerica = new Set(["US", "USA", "UNITED STATES", "CA", "CAN", "CANADA", "MX", "MEX", "MEXICO"]);
+    const oceania = new Set(["AU", "AUS", "AUSTRALIA", "NZ", "NZL", "NEW ZEALAND"]);
+    const scandinavia = new Set(["NO", "NOR", "NORWAY", "SE", "SWE", "SWEDEN", "FI", "FIN", "FINLAND", "IS", "ISL", "ICELAND"]);
+    const japan = new Set(["JP", "JPN", "JAPAN"]);
+    const europe = new Set(["AL", "AD", "AT", "BY", "BE", "BA", "BG", "HR", "CY", "CZ", "DK", "EE", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LI", "LT", "LU", "MD", "MC", "ME", "NL", "MK", "PL", "PT", "RO", "RU", "SM", "RS", "SK", "SI", "ES", "CH", "UA", "GB", "UK"]);
+    let id = "osm", label = "OSM difficulty", grades;
+    if (northAmerica.has(code) || oceania.has(code)) {
+      id = northAmerica.has(code) ? "north-america" : "oceania";
+      label = northAmerica.has(code) ? "North American ratings" : "Oceania ratings";
+      grades = {
+        novice: pisteGrade("bunny", "Bunny hill", "#49c96d", "●"),
+        easy: pisteGrade("green", "Green circle", "#49c96d", "●"),
+        intermediate: pisteGrade("blue", "Blue square", "#438cff", "■"),
+        advanced: pisteGrade("black", "Black diamond", "#f1f3f5", "◆"),
+        expert: pisteGrade("double-black", "Double black", "#ffffff", "◆◆"),
+        freeride: pisteGrade("freeride", "Freeride", "#ffad45", "⬭"),
+        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!"),
+      };
+    } else if (japan.has(code)) {
+      id = "japan"; label = "Japanese ratings";
+      grades = {
+        novice: pisteGrade("beginner", "Beginner", "#49c96d", "●"),
+        easy: pisteGrade("beginner", "Beginner", "#49c96d", "●"),
+        intermediate: pisteGrade("intermediate", "Intermediate", "#ff565d", "●"),
+        advanced: pisteGrade("advanced", "Advanced", "#f1f3f5", "◆"),
+        expert: pisteGrade("expert", "Expert", "#9aa5b4", "◆◆"),
+        freeride: pisteGrade("freeride", "Freeride", "#9aa5b4", "—"),
+        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!"),
+      };
+    } else if (code && scandinavia.has(code)) {
+      id = "scandinavia"; label = "Scandinavian ratings";
+      grades = {
+        novice: pisteGrade("green", "Green", "#49c96d", "●"),
+        easy: pisteGrade("blue", "Blue", "#438cff", "●"),
+        intermediate: pisteGrade("red", "Red", "#ff565d", "●"),
+        advanced: pisteGrade("black", "Black", "#f1f3f5", "◆"),
+        expert: pisteGrade("double-black", "Double black", "#ffffff", "◆◆"),
+        freeride: pisteGrade("freeride", "Ski route", "#ffd34e", "—"),
+        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!"),
+      };
+    } else if (europe.has(code)) {
+      id = "europe"; label = "European ratings";
+      grades = {
+        novice: pisteGrade("green", "Green", "#49c96d", "●"),
+        easy: pisteGrade("blue", "Blue", "#438cff", "●"),
+        intermediate: pisteGrade("red", "Red", "#ff565d", "●"),
+        advanced: pisteGrade("black", "Black", "#f1f3f5", "◆"),
+        expert: pisteGrade("expert", "Expert", "#ff9f43", "◆◆"),
+        freeride: pisteGrade("freeride", "Ski route", "#ffd34e", "—"),
+        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!"),
+      };
+    } else {
+      grades = {
+        novice: pisteGrade("novice", "Novice", "#49c96d", "●"), easy: pisteGrade("easy", "Easy", "#438cff", "●"),
+        intermediate: pisteGrade("intermediate", "Intermediate", "#ff565d", "●"), advanced: pisteGrade("advanced", "Advanced", "#f1f3f5", "◆"),
+        expert: pisteGrade("expert", "Expert", "#c78cff", "◆◆"), freeride: pisteGrade("freeride", "Freeride", "#ffad45", "—"),
+        extreme: pisteGrade("extreme", "Extreme", "#9aa5b4", "!"),
+      };
+    }
+    const unknown = pisteGrade("unknown", "Unrated", "#9aa5b4", "·");
+    const grade = (key) => grades[String(key || "").toLowerCase()] || unknown;
+    const order = [...new Map(Object.values(grades).concat(unknown).map((g) => [g.bucket, g])).values()];
+    return { id, label, order, grade };
+  }
+  WX.pisteScheme = pisteScheme;
+
   async function selectResort(id) {
     const my = ++resortReq;
     try {
@@ -279,11 +352,13 @@
       // drawn near-white here: this basemap is dark, and a black line on it is
       // an absent line. Every run gets a dark casing so it reads over snow,
       // forest and the weather field alike.
-      const pistes = d.pistes || { type: "FeatureCollection", features: [] };
-      const gradeColour = ["match", ["get", "grade"],
-        "novice", "#5ad469", "easy", "#3d8bff", "intermediate", "#ff4d4d",
-        "advanced", "#f2f2f2", "expert", "#c56bff", "freeride", "#ffb454", "extreme", "#ff7a2f",
-        "#9aa5b4"];
+      const rawPistes = d.pistes || { type: "FeatureCollection", features: [] };
+      const scheme = pisteScheme(r.country);
+      const pistes = { ...rawPistes, features: (rawPistes.features || []).map((f) => {
+        const local = scheme.grade(f.properties && f.properties.grade);
+        return { ...f, properties: { ...(f.properties || {}), local_color: local.color,
+          local_mark: local.mark, local_label: local.label, local_bucket: local.bucket } };
+      }) };
       if (M().getSource("pistes")) M().getSource("pistes").setData(pistes);
       else {
         M().addSource("pistes", { type: "geojson", data: pistes });
@@ -294,13 +369,13 @@
         // own layer rather than a condition MapLibre would reject silently.
         const pisteWidth = ["interpolate", ["linear"], ["zoom"], 9, 1.3, 13, 4];
         M().addLayer({ id: "pistes-line", type: "line", source: "pistes", minzoom: 9,
-          filter: ["!=", ["get", "grade"], "freeride"],
+          filter: ["!=", ["get", "local_bucket"], "freeride"],
           layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": gradeColour, "line-width": pisteWidth, "line-opacity": 0.95 } });
+          paint: { "line-color": ["get", "local_color"], "line-width": pisteWidth, "line-opacity": 0.95 } });
         M().addLayer({ id: "pistes-free", type: "line", source: "pistes", minzoom: 9,
-          filter: ["==", ["get", "grade"], "freeride"],
+          filter: ["==", ["get", "local_bucket"], "freeride"],
           layout: { "line-cap": "butt", "line-join": "round" },
-          paint: { "line-color": "#ffb454", "line-width": pisteWidth, "line-opacity": 0.95, "line-dasharray": [2, 1.4] } });
+          paint: { "line-color": ["get", "local_color"], "line-width": pisteWidth, "line-opacity": 0.95, "line-dasharray": [2, 1.4] } });
         // A fine dotted highlight marks runs whose OSM record names a
         // grooming style.  It is static map metadata, not tonight's report.
         M().addLayer({ id: "pistes-groomed", type: "line", source: "pistes", minzoom: 10.5,
@@ -308,7 +383,8 @@
           layout: { "line-cap": "round", "line-join": "round" },
           paint: { "line-color": "rgba(255,255,255,.86)", "line-width": ["interpolate", ["linear"], ["zoom"], 10.5, 0.8, 14, 1.4], "line-dasharray": [0.6, 1.8], "line-opacity": 0.9 } });
         M().addLayer({ id: "pistes-lbl", type: "symbol", source: "pistes", minzoom: 12.5,
-          layout: { "symbol-placement": "line", "text-field": ["coalesce", ["get", "name"], ["get", "ref"]], "text-size": 10, "text-font": ["Noto Sans Regular"] },
+          filter: ["any", ["has", "name"], ["has", "ref"]],
+          layout: { "symbol-placement": "line", "text-field": ["concat", ["get", "local_mark"], " ", ["coalesce", ["get", "name"], ["get", "ref"]]], "text-size": 10, "text-font": ["Noto Sans Regular"] },
           paint: { "text-color": "#eef1f5", "text-halo-color": "rgba(0,0,0,.8)", "text-halo-width": 1.2 } });
       }
       const bnd = d.boundary ? { type: "FeatureCollection", features: [d.boundary] } : { type: "FeatureCollection", features: [] };
@@ -769,6 +845,7 @@
     const ageMin = Math.round((Date.now() / 1000 - fr.time) / 60);
     $("#lead").textContent = ageMin >= 0 ? `−${ageMin}m` : `+${-ageMin}m`;
     badge("radar", `Radar <b>${src.label}</b> <small>${t.toISOString().slice(11, 16)}Z${fr.kind === "nowcast" ? " nowcast" : ""}</small>`, "var(--rain, #6cb6ff)");
+    if (WX.fn.renderTapePill) WX.fn.renderTapePill();
     WX.tape.renderTapeSelection();
   }
 
