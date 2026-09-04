@@ -281,14 +281,17 @@ def test_the_outdoors_verdict_carries_a_briefing_and_the_tape_shades_its_rain():
     assert "rest.slice(0, 4)" in summ
     # Rain is a continuous, filled trace behind the exact amount. The scale
     # keeps 10 mm as the minimum ceiling but expands for genuinely wet days.
-    assert "Math.max(10, ...rainAmount)" in tape
+    assert "Math.max(8, ...rainAmount)" in tape and "const crY = (x) =>" in tape   # one spline, sliced per cell (2026-09-04)
     assert "Math.sqrt(Math.max(0, mm) / rainScale)" in tape
     assert 'class="precip-area"' in tape and 'class="bar"' not in tape
     assert ".precip-area .fill" in css and ".precip-area .line" in css
     # Curves replace the angular midpoint polyline, and a dry bucket stays
     # empty even when the next forecast period is wet.
-    assert "if (here <= 0) return \"\"" in tape
-    assert "C15 ${startY.toFixed(1)}" in tape and "C65 ${peakY.toFixed(1)}" in tape
+    assert "if (here <= 0 && prev <= 0 && next <= 0) return \"\"" in tape
+    # Sunrise/sunset notches only at ≤3 h column spacing: in the 6 h and 12 h
+    # views the nearest column was hours off and every day wore an amber bar.
+    assert "colStep <= 3600e3 * 3" in tape and "bd <= colStep / 2" in tape
+    assert "Array.from({ length: N + 1 }" in tape and "crY(i + k / N)" in tape   # sampled, not bezier segments
     assert "L50 ${rainY(here)" not in tape
     assert "stroke-linecap: round" in css and "shape-rendering: geometricPrecision" in css
 

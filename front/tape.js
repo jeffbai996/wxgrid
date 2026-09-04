@@ -297,7 +297,10 @@
     // sunrise/sunset as thin amber notches on the hour row: compute each
     // day's events once, then find the column whose span holds them
     const sunCols = new Map();   // shown index -> "rise"|"set"
-    if (WXPanes && WXPanes.sunTimes && state.point) {
+    // Notches only make sense when a column is close to the event: at 6 h or
+    // 12 h spacing the nearest column is hours off and every day grew a bar.
+    const colStep = dates.length > 1 ? Math.min(...dates.slice(1).map((d, k) => d.getTime() - dates[k].getTime())) : Infinity;
+    if (WXPanes && WXPanes.sunTimes && state.point && colStep <= 3600e3 * 3) {
       const seen = new Set();
       dates.forEach((dt, k) => {
         const dk = dt.toISOString().slice(0, 10);
@@ -308,7 +311,7 @@
           const ev = Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()) + hUtc * 3600e3;
           let best = -1, bd = Infinity;
           dates.forEach((d2, k2) => { const diff = Math.abs(d2.getTime() - ev); if (diff < bd) { bd = diff; best = k2; } });
-          if (best >= 0 && bd < 3600e3 * 2) sunCols.set(best, which);
+          if (best >= 0 && bd <= colStep / 2) sunCols.set(best, which);
         }
       });
     }
@@ -341,19 +344,31 @@
       if (sn >= 0.3) return Math.max(0.1, sn / 10);
       return r != null && r >= 0.1 ? r : 0;
     });
-    const rainScale = Math.max(10, ...rainAmount);
-    const rainY = (mm) => 96 - Math.min(90, Math.sqrt(Math.max(0, mm) / rainScale) * 90);
+    // One curve through every bucket — a Catmull-Rom spline over the cell
+    // centres, so the trace is the same smooth function in every cell and
+    // the slices join with matching tangents instead of the old per-cell
+    // arcs that read as segments. It may overshoot the row a little at a
+    // peak; the cells let it spill (Jeff 2026-09-04: "curvier even if it
+    // means spilling over a bit").
+    const rainScale = Math.max(8, ...rainAmount);
+    // The trace box is 150% of the row (CSS), bottom-anchored: a wet cell may
+    // climb into the row above rather than flatten against a low ceiling.
+    const rainY = (mm) => 97 - Math.min(97, Math.sqrt(Math.max(0, mm) / rainScale) * 97);
+    const rainPts = rainAmount.map((mm) => rainY(mm));
+    const crY = (x) => {               // x in cell units; centres at k + 0.5
+      const u = x - 0.5, k = Math.floor(u), t = u - k, n = rainPts.length;
+      const P = (j) => rainPts[Math.max(0, Math.min(n - 1, j))];
+      const p0 = P(k - 1), p1 = P(k), p2 = P(k + 1), p3 = P(k + 2);
+      const y = 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
+      return Math.min(97, y);
+    };
     const rainArea = (i) => {
       const here = rainAmount[i];
-      if (here <= 0) return "";
-      const prev = i ? rainAmount[i - 1] : 0;
-      const next = i + 1 < rainAmount.length ? rainAmount[i + 1] : 0;
-      const startY = prev > 0 ? rainY((prev + here) / 2) : 96;
-      const peakY = rainY(here);
-      const endY = next > 0 ? rainY((here + next) / 2) : 96;
-      // Horizontal tangents at the cell edges and midpoint join neighbouring
-      // buckets without the old ruler-drawn triangles.
-      const path = `M0 ${startY.toFixed(1)} C15 ${startY.toFixed(1)} 35 ${peakY.toFixed(1)} 50 ${peakY.toFixed(1)} C65 ${peakY.toFixed(1)} 85 ${endY.toFixed(1)} 100 ${endY.toFixed(1)}`;
+      const prev = i ? rainAmount[i - 1] : 0, next = i + 1 < rainAmount.length ? rainAmount[i + 1] : 0;
+      if (here <= 0 && prev <= 0 && next <= 0) return "";
+      const N = 16;
+      const pts = Array.from({ length: N + 1 }, (_, k) => `${(k / N * 100).toFixed(1)} ${crY(i + k / N).toFixed(1)}`);
+      const path = `M${pts[0]} ${pts.slice(1).map((p) => `L${p}`).join(" ")}`;
       return `<svg class="precip-area" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="fill" d="${path} L100 100 L0 100 Z"></path><path class="line" d="${path}"></path></svg>`;
     };
     const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, rainArea(i), "rain"); if (sn >= 0.3) return cell(i, `${rainArea(i)}<span class="snow">${WX.units.snow(sn).v}</span>`, "rain snowy"); return cell(i, `${rainArea(i)}${r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : ""}`, "rain"); }).join("");
@@ -508,7 +523,7 @@
       const rich = richCard(Number(i), td);
       const iconCell = table.querySelector(`tr.r-icon td[data-i="${i}"]`);
       const ico = iconCell ? iconCell.innerHTML : "";
-      card.innerHTML = `<div class="card-head">${ico ? `<span class="ico">${ico}</span>` : ""}<div class="when-wrap"><b class="when">${when || day}</b>${rich && rich.phrase ? `<span class="phrase">${rich.phrase}</span>` : ""}</div><span class="source${model === "aigfs" ? " ai" : ""}">${source}</span></div>
+      card.innerHTML = `<div class="card-head">${ico ? `<span class="ico">${ico}</span>` : ""}<div class="when-wrap"><b class="when">${when || day}</b>${rich && rich.phrase ? `<span class="phrase">${rich.phrase}</span>` : ""}</div><span class="source" data-model="${model}">${source}</span></div>
         ${rich && rich.spark ? rich.spark : ""}
         <div class="card-metrics">${rich && rich.metrics.length ? rich.metrics.join("") : metrics.join("")}</div>
         ${rich && rich.foot ? `<div class="card-foot">${rich.foot}</div>` : ""}`;
