@@ -1512,6 +1512,8 @@ body.no-map #particles { display: none; }
   color: var(--fg-2); font: 750 8.5px var(--font-display); letter-spacing: .055em; text-transform: uppercase; }
 #tape-card .source.ai { background: #65a8ff20; color: #83bcff; }
 #tape-card .card-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+/* an odd last tile spans the row, so the two columns always end level */
+#tape-card .card-metrics .metric:last-child:nth-child(odd) { grid-column: 1 / -1; }
 #tape-card .metric { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 6px 7px 7px; border: 1px solid var(--line);
   border-radius: 9px; background: rgba(127,140,160,.055); }
 #tape-card .metric i { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 650 8.5px var(--font-display); font-style: normal; color: var(--dim); letter-spacing: .02em; }
