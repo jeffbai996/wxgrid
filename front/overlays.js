@@ -91,6 +91,47 @@
   const loadImagery = () => setBase(WX.state.base || "sat");   // legacy callers
   const clearImagery = () => setBase("");
 
+  // ── basemap contrast: roads and borders readable under any ramp ──────
+  // The vector style draws roads and admin lines UNDER the weather field
+  // (the field sits just below the first symbol layer), so a saturated
+  // temperature or rain ramp swallowed them. Lift the lines that carry
+  // orientation — motorways, major roads, borders — above the field, and
+  // give each a contrasting halo so they read on any colour. Idempotent:
+  // runs after every style swap and every wx-layer rebuild.
+  const LIFT_RE = /^(highway_(motorway|major|trunk_primary|secondary_tertiary|minor)(_inner|_casing)?|bridge_(motorway|trunk_primary|secondary_tertiary)(_inner|_casing)?|boundary_(2|3|state|country.*|disputed))$/;
+  const HALO_RE = /^(highway_(motorway|major|trunk_primary|secondary_tertiary)(_inner)?|bridge_(motorway|trunk_primary|secondary_tertiary)|boundary_(2|3|state|country.*))$/;
+  function boostBasemap() {
+    const m = M(); if (!m || !m.getStyle) return;
+    const style = m.getStyle(); if (!style || !style.layers) return;
+    const light = document.documentElement.dataset.theme === "light";
+    const anchor = WX.fn.firstSymbolId();
+    const lines = style.layers.filter((l) => l.type === "line" && LIFT_RE.test(l.id));
+    for (const l of lines) {
+      const border = /^boundary/.test(l.id);
+      const haloId = `${l.id}__halo`;
+      if (HALO_RE.test(l.id) && !m.getLayer(haloId)) {
+        // the halo is the same geometry, wider, in the colour the line is not
+        const spec = { id: haloId, type: "line", source: l.source, "source-layer": l["source-layer"], filter: l.filter,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": light ? "hsl(0,0%,18%)" : "hsl(0,0%,92%)", "line-opacity": border ? 0.32 : 0.28, "line-blur": 0.6,
+                   "line-width": ["interpolate", ["exponential", 1.3], ["zoom"], 5, border ? 2.2 : 1.6, 10, border ? 3.4 : 3.2, 16, border ? 6 : 12] } };
+        if (l.minzoom != null) spec.minzoom = l.minzoom; if (l.maxzoom != null) spec.maxzoom = l.maxzoom;
+        m.addLayer(spec, anchor);
+      }
+      // the line itself: above the field, a touch stronger than the style shipped it
+      if (anchor && m.getLayer(l.id)) { if (m.getLayer(haloId)) m.moveLayer(haloId, anchor); m.moveLayer(l.id, anchor); }
+      if (border) {
+        m.setPaintProperty(l.id, "line-color", light ? "hsl(0,0%,28%)" : "hsl(0,0%,80%)");
+        m.setPaintProperty(l.id, "line-opacity", 0.9);
+      } else if (/_inner$|highway_minor/.test(l.id)) {
+        m.setPaintProperty(l.id, "line-color", light ? "#ffffff" : "hsl(0,0%,74%)");
+        m.setPaintProperty(l.id, "line-opacity", /minor/.test(l.id) ? 0.7 : 0.92);
+      } else if (/_casing$/.test(l.id)) {
+        m.setPaintProperty(l.id, "line-color", light ? "hsl(0,0%,40%)" : "hsl(0,0%,25%)");
+      }
+    }
+  }
+
   // ── terrain hillshade ─────────────────────────────────────────────────
   // Relief under the weather: AWS's public terrarium DEM tiles through
   // MapLibre's own hillshade renderer. No key, no quota drama, and it sits
@@ -1069,6 +1110,6 @@
 
   function clearQuakes() { if (M().getLayer("quakes")) M().removeLayer("quakes"); if (M().getSource("quakes")) M().removeSource("quakes"); }
 
-  WX.ov = { loadObs, clearObs, refreshObs, loadImagery, clearImagery, setBase, loadTerrain, clearTerrain, updateNight, clearNight, loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, clearResortDetail, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
+  WX.ov = { boostBasemap, loadObs, clearObs, refreshObs, loadImagery, clearImagery, setBase, loadTerrain, clearTerrain, updateNight, clearNight, loadSmoke, clearSmoke, loadFires, clearFires, loadQuakes, clearQuakes, loadAod, clearAod, loadThunder, clearThunder, toggleRadar, loadIso, clearIso, isoVar, loadAvy, clearAvy, loadResorts, clearResorts, selectResort, clearResortDetail, loadAlerts, clearAlerts, loadStorms, clearStorms, loadSat, clearSat, applyRadarFrame, measureClick, clearMeasure, radarTiles,
              loadRadar, clearRadar, refreshRadarSource, badge };
 })();

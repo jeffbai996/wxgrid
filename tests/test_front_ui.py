@@ -402,7 +402,7 @@ def test_now_pane_readings_are_stat_tiles_and_the_card_carries_webcams():
 def test_now_wind_compass_uses_a_hubless_open_needle():
     panes = _read("panes.js")
     css = _read("styles.css")
-    assert 'path class="needle" d="M24 32 L24 12 M19.5 17 L24 12 L28.5 17"' in panes
+    assert 'path class="needle" d="M24 30 L24 14.5 M20.6 18 L24 14.5 L27.4 18"' in panes
     assert 'class="hub"' not in panes
     assert ".wind-dial text.card { font: 600 5.25px" in css
     assert ".wind-dial .needle { fill: none;" in css and "stroke-width: 1.35" in css
@@ -590,3 +590,18 @@ def test_tape_hover_card_reads_the_column_data_not_just_the_cells():
     assert "function richCard(i, td)" in tape and "const rich = richCard(Number(i), td);" in tape
     assert 'class="day-curve"' in tape and "WXPanes.sunTimes(d0.lat, d0.lon" in tape
     assert "#tape-card .day-curve polyline" in css
+
+
+def test_basemap_contrast_pass_and_streets_style():
+    # 2026-09-04: roads and borders lifted above the field with halos on every
+    # style swap; Streets (OpenFreeMap Liberty) is a real style option.
+    ov = _read("overlays.js"); app = _read("app.js"); html = _read("index.html")
+    assert "function boostBasemap()" in ov and "__halo" in ov
+    assert "WX.ov.boostBasemap()" in app and 'STREETS_STYLE = "https://tiles.openfreemap.org/styles/liberty"' in app
+    assert 'data-base="streets"' in html
+
+
+def test_webcam_hover_pins_the_camera_on_the_map():
+    panes = _read("panes.js"); css = _read("styles.css")
+    assert "function camPin(c)" in panes and "b.onpointerenter = () => camPin(" in panes
+    assert "@keyframes campin-ring" in css

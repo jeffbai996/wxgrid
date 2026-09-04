@@ -348,11 +348,11 @@
         <svg viewBox="0 0 48 48" aria-hidden="true"><circle class="ring" cx="24" cy="24" r="21"/>
         <text class="card" x="24" y="10.2" text-anchor="middle">N</text><text class="card" x="41.2" y="26.6" text-anchor="middle">E</text>
         <text class="card" x="24" y="43.2" text-anchor="middle">S</text><text class="card" x="6.8" y="26.6" text-anchor="middle">W</text>
-        <path class="needle" d="M24 32 L24 12 M19.5 17 L24 12 L28.5 17"/></svg></span>`;
+        <path class="needle" d="M24 30 L24 14.5 M20.6 18 L24 14.5 L27.4 18"/></svg></span>`;
       chips.push(`<span class="wind-readout" style="--wind-color:${windColor(w || 0)}">
         <span class="wind-main"><small>Wind</small><b>${f(w, (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b><em>${compass(dir)}${dir != null ? ` ${Math.round(dir)}°` : ""}${bf != null ? ` · ${BEAUFORT_NAME[bf]}` : ""}</em></span>
         ${dial}
-        <span class="wind-trend">${spark}<small>next 24 h${peakG != null ? ` · gusts to ${speed(peakG).toFixed(0)}` : ""}</small></span>
+        <span class="wind-trend">${spark}<small>next 24 h${peakG != null ? ` · peak gusts ${speed(peakG).toFixed(0)}` : ""}</small></span>
         ${g != null ? `<span class="wind-gust"><small>Gusts</small><b>${speed(g).toFixed(0)} <i>${speedUnit()}</i></b></span>` : ""}
         <span class="wind-storm" id="storm-slot"></span>
       </span>`);
@@ -430,6 +430,21 @@
       if (spread > 0.3 && spread < 25) normal.push(stat("Cloud base ≈", W().units.alt(Math.round(spread * 125 / 50) * 50).v, W().units.altUnit, "#a9c4d8", "", "", "sky"));
     }
     if (s.cape && s.cape[i] >= 100) normal.push(stat("CAPE", s.cape[i].toFixed(0), "J/kg", s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)", "", "", "air"));
+    // more of the day, read from what the point already carries (Jeff 2026-09-04)
+    if (s.tcc && todays.length >= 2) {
+      // sunshine: daylight steps with under 30 % cloud, times the step length
+      const sun = sunTimes(pt.lat, pt.lon, new Date(d.valid[i]));
+      if (sun && sun.riseMs != null && sun.setMs != null) {
+        const hrs = todays.reduce((acc, k) => { const t0 = new Date(d.valid[k]).getTime(); const h = stepHrs(d, k);
+          if (t0 + h * 1.8e6 < sun.riseMs || t0 - h * 1.8e6 > sun.setMs || s.tcc[k] == null) return acc;
+          return acc + h * Math.max(0, 1 - s.tcc[k]); }, 0);
+        normal.push(stat("Sunshine", hrs.toFixed(hrs < 10 ? 1 : 0), "h", hrs >= 6 ? "#ffd166" : "#9fb0c8", "", "Daylight hours weighted by clear sky, from cloud cover", "sun"));
+      }
+    }
+    { const a = d.aloft && (d.aloft["850"] || d.aloft["925"]); const lvl = d.aloft && d.aloft["850"] ? "850" : "925";
+      if (a && a.wind && a.wind[i] != null) normal.push(stat(`Wind ${lvl} hPa`, Math.round(W().speed(a.wind[i])), `${W().speedUnit()}${a.wdir && a.wdir[i] != null ? ` ${arrow(a.wdir[i])}` : ""}`, "#7fb2ff", "", `Ridge-level wind at ${lvl} hPa (~${lvl === "850" ? "1.5" : "0.8"} km)`, "air")); }
+    if (t != null && s.d2m && s.d2m[i] != null && (t - s.d2m[i]) < 1.5 && (!s.wind || s.wind[i] == null || s.wind[i] * 3.6 < 12))
+      normal.push(stat("Fog risk", (t - s.d2m[i]) < 0.6 ? "high" : "some", "", "#b0bcc8", "", "Air within a degree of its dew point in light wind", "sky"));
     const freezing = d.derived && d.derived.freezing_level_m && d.derived.freezing_level_m[i];
     if (!sea && freezing != null) normal.push(stat("Freezing lvl", W().units.alt(freezing).v, W().units.altUnit, "#7fd8e8", "", "", "air"));
     chips.push(...(sea ? [...marine, ...normal] : [...normal, ...marine]));
@@ -691,7 +706,7 @@
     const base = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
     const fmt = (h) => new Date(base + h * 3600e3).toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric", minute: "2-digit" }));
     const len = ((s - r + 24) % 24);
-    return { rise: fmt(r), set: fmt(s), riseUtc: r, setUtc: s,
+    return { rise: fmt(r), set: fmt(s), riseUtc: r, setUtc: s, riseMs: base + r * 3600e3, setMs: base + (s < r ? s + 24 : s) * 3600e3,
              len: `${Math.floor(len)}h${String(Math.round((len % 1) * 60)).padStart(2, "0")}` };
   }
 
@@ -1108,12 +1123,27 @@
           <span class="cam-name">${esc(c.name)}</span>
           <span class="cam-dist">${c.distance_km} km ${compass(c.bearing_deg)}${c.elevation_m != null ? ` · ${W().units.alt(c.elevation_m).v} ${W().units.altUnit}` : ""}</span>
         </button>`).join("")}</div>`;
-      el.querySelectorAll(".cam").forEach((b) => b.onclick = () => openCam(cams[+b.dataset.cam]));
+      el.querySelectorAll(".cam").forEach((b) => {
+        b.onclick = () => openCam(cams[+b.dataset.cam]);
+        b.onpointerenter = () => camPin(cams[+b.dataset.cam]);
+        b.onpointerleave = () => camPin(null);
+      });
     };
     if (pt.cams) { paint(pt.cams); return; }
     W().api(`${W().API}/webcams?lat=${pt.lat.toFixed(3)}&lon=${pt.lon.toFixed(3)}&n=8`)
       .then((r) => { pt.cams = (r && r.cams) || []; paint(pt.cams); })
       .catch(() => { pt.cams = []; paint(pt.cams); });
+  }
+  // Hovering a thumbnail drops a small camera pin where that camera stands,
+  // with a soft pulse so the eye finds it (Jeff 2026-09-04: "subtle and
+  // modern"). One pin, replaced on the next hover, gone on leave.
+  let camMarker = null;
+  function camPin(c) {
+    if (camMarker) { camMarker.remove(); camMarker = null; }
+    if (!c || !W().map || W().map.noMap) return;
+    const el = document.createElement("div"); el.className = "cam-pin"; el.title = c.name;
+    el.innerHTML = `<i class="ring"></i><span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span>`;
+    camMarker = new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([c.lon, c.lat]).addTo(W().map);
   }
   function openCam(c) {
     let dlg = document.getElementById("cam-view");
@@ -1129,7 +1159,9 @@
       <img src="${esc(c.image)}${c.image.includes("?") ? "&" : "?"}t=${camBust()}" alt="${esc(c.name)}">
       <div class="cam-view-foot"><span>${c.updated ? `updated ${new Date(c.updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ` : ""}${esc(c.credit)}</span><a href="${esc(c.page)}" target="_blank" rel="noopener">open at ${esc(c.provider)} ↗</a></div>`;
     const img = dlg.querySelector("img");
-    const fit = () => { dlg.style.width = `${Math.min(innerWidth * 0.94, Math.max(440, img.naturalWidth || 0))}px`; };
+    // small provider stills (Windy previews are 400 px) get scaled up to a
+    // real viewing size; big ones keep their own width
+    const fit = () => { dlg.style.width = `${Math.min(innerWidth * 0.94, Math.max(640, img.naturalWidth || 0))}px`; };
     img.addEventListener("load", fit); if (img.complete && img.naturalWidth) fit();
     dlg.querySelector("button.icon").onclick = () => dlg.close();
     dlg.showModal();

@@ -341,7 +341,11 @@
     return ["interpolate", ["linear"], ["zoom"], 9, a, 13, Math.max(0.1, a * 0.22)];
   }
   const firstSymbolId = () => { const l = map.getStyle().layers.find((x) => x.type === "symbol"); return l ? l.id : undefined; };
-  const mapStyle = () => document.documentElement.dataset.theme === "light" ? "https://tiles.openfreemap.org/styles/positron" : "https://tiles.openfreemap.org/styles/dark";
+  // Streets is a whole style (OpenFreeMap Liberty: every road class, names,
+  // shields), not a raster under the vector map like Topo/Satellite.
+  const STREETS_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+  const mapStyle = () => state.base === "streets" ? STREETS_STYLE
+    : document.documentElement.dataset.theme === "light" ? "https://tiles.openfreemap.org/styles/positron" : "https://tiles.openfreemap.org/styles/dark";
   // A 1x1 transparent PNG. On the GPU path the raster layer draws nothing, but
   // it stays in the style on purpose: it is the layer overlays.js dims for
   // radar and satellite, and the one the field shader reads its opacity back
@@ -360,6 +364,8 @@
       if (gpu && !map.getLayer("wx-field")) map.addLayer(WX.field.layer, firstSymbolId());
     }
     ensureCoastLayer();
+    // roads and borders back on top of the field, with halos (overlays.js)
+    if (WX.ov && WX.ov.boostBasemap) WX.ov.boostBasemap();
   }
   // The GPU path can give up at any point: no WebGL, a shader that will not
   // compile, a field the server does not have. Put the raster layer back and
@@ -766,7 +772,7 @@
       state.winterMode = false;
       if (back) {
         state.layer = runEntry().layers.includes(back.layer) ? back.layer : runEntry().layers[0];
-        state.base = ["", "topo", "sat"].includes(back.base) ? back.base : "";
+        state.base = ["", "topo", "sat", "streets"].includes(back.base) ? back.base : "";
         state.terrain = !!back.terrain;
         state.resorts = !!back.resorts;
         state.avy = !!back.avy;
@@ -1098,8 +1104,15 @@
     $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme === "light" ? "light" : "dark";
     $("#radar-toggle").onclick = () => WX.ov.toggleRadar();
     $$(".base-row button").forEach((b) => b.onclick = () => {
+      const wasStreets = state.base === "streets";
       state.base = b.dataset.base; localStorage.setItem("wxgrid.base", state.base);
       $$(".base-row button").forEach((x) => x.classList.toggle("on", x === b));
+      if (state.base === "streets" || wasStreets) {
+        // a style swap, the way a theme change is one
+        map.setStyle(mapStyle(), { diff: false });
+        map.once("style.load", restoreLayers);
+        map.once("idle", () => { if (!map.getSource("wx")) restoreLayers(); });
+      }
       WX.ov.setBase(state.base);
     });
     $$(".base-row button").forEach((x) => x.classList.toggle("on", x.dataset.base === state.base));
