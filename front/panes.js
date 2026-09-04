@@ -372,9 +372,9 @@
     const stat = (k, v, unit, color, extra = "", title = "") =>
       `<div class="stat" style="--c:${color}"${title ? ` title="${title}"` : ""}><small>${k}</small><b>${v}${unit ? `<i>${unit}</i>` : ""}</b>${extra}</div>`;
     if (sea && s.wind && s.wind[i] != null) { const bf = beaufort(s.wind[i]);
-      marine.push(stat("Beaufort", bf, BEAUFORT_NAME[bf], "#8ec5f0")); }
+      marine.push(stat(`Beaufort · ${BEAUFORT_NAME[bf]}`, `F${bf}`, "", "#8ec5f0")); }
     if (sea && s.swh && s.swh[i] != null) { const ds = douglas(s.swh[i]);
-      marine.push(stat("Sea state", ds, DOUGLAS_NAME[ds], "#7dd3fc")); }
+      marine.push(stat(`Sea · ${DOUGLAS_NAME[ds]}`, ds, "", "#7dd3fc")); }
     if (s.swh && s.swh[i] != null) marine.push(stat("Waves", W().units.alt(s.swh[i], 1).v, W().units.altUnit, "#7dd3fc",
       `<em>${s.mwp && s.mwp[i] != null ? `${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` ${arrow((s.mwd[i] + 180) % 360)}` : ""}</em>`));
     if (s.tp6 && s.tp6[i] > 0.05) normal.push(stat("Rain 6 h", W().units.precip(s.tp6[i]).v, W().units.precipUnit, "var(--rain)"));

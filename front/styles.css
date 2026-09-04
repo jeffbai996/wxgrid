@@ -1570,7 +1570,7 @@ body.embed #embed-brand:hover { border-color: var(--line-strong); }
   background: var(--c); opacity: .85; }
 .meta .stat small { font: 700 7px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 85%, var(--fg)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; z-index: 1; }
 .meta .stat b { font: 650 13.5px/1 var(--font-num); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--fg); display: flex; align-items: baseline; gap: 3px; position: relative; z-index: 1; }
-.meta .stat b i { font: 550 8.5px var(--font-mono); color: var(--fg-2); font-style: normal; }
+.meta .stat b i { font: 550 8.5px var(--font-mono); color: var(--fg-2); font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* a second line would break the one-height rule: extras ride the number line */
 .meta .stat em { font: 500 8.5px var(--font-mono); color: var(--fg-2); font-style: normal; position: absolute; right: 7px; bottom: 5px; }
 .meta .stat em.trend { font: 700 15px/1 var(--font-num); color: var(--c); bottom: 9px; }
