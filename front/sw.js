@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v65";   // v65: rain now strip on the hero (2026-09-04)
+const VERSION = "wxgrid-v66";   // v66: rain now as a card with bars, snow-aware (2026-09-04)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

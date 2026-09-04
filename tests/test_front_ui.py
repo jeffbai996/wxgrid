@@ -341,8 +341,8 @@ def test_the_hero_and_the_outdoors_verdict_read_one_story_and_the_tape_has_a_col
     assert 'if (e.pointerType === "touch") return;' in tape
     assert "#tape-card" in css
     assert 'class="card-head"' in tape and 'class="card-metrics"' in tape
-    assert 'class="metric ${kind}"' in tape
-    assert 'name = "Snow"' in tape
+    assert 'class="metric ${cls}"' in tape
+    assert 'tile("Snow", U.snow(sf).v, U.snowUnit, "precip")' in tape
     assert "#tape-card .source.ai" in css and "#tape-card .metric.feels" in css
 
 
@@ -405,7 +405,7 @@ def test_now_pane_readings_are_stat_tiles_and_the_card_carries_webcams():
 def test_now_wind_compass_uses_a_hubless_open_needle():
     panes = _read("panes.js")
     css = _read("styles.css")
-    assert 'path class="needle" d="M24 30 L24 14.5 M20.6 18 L24 14.5 L27.4 18"' in panes
+    assert 'path class="needle" d="M24 28.5 L24 17 M21 20 L24 17 L27 20"' in panes
     assert 'class="hub"' not in panes
     assert ".wind-dial text.card { font: 600 5.25px" in css
     assert ".wind-dial .needle { fill: none;" in css and "stroke-width: 1.35" in css
@@ -445,7 +445,7 @@ def test_tape_control_walks_all_three_states_and_every_change_glides():
     assert "#timebar.tape-away { height: 38px !important;" in css and "@keyframes pill-in" in css
     assert "const TAPE_AWAY_HEIGHT = 38, TAPE_TAP_SLOP = 14;" in app
     assert 'tb.classList.add("is-resizing", "tape-dragging");' in app
-    assert '$("#lead").textContent = atNow ? "" :' in app
+    assert '$("#lead").textContent = atNow ? "live" :' in app
     assert 'tapeGrip.addEventListener("click",' in app
     assert "#timebar.tape-dragging { height: var(--tape-drag-height) !important;" in css
 
@@ -478,7 +478,7 @@ def test_tape_slice_label_sits_with_resolution_controls():
     html = _read("index.html"); css = _read("styles.css")
     assert html.index('id="tape-now"') < html.index('id="tape-slice"') < html.index('id="tape-res"')
     assert '<span id="tape-slice">slice</span>' in html
-    assert '#tape-slice { margin-left: 12px; margin-right: -8px;' in css
+    assert '#tape-slice { margin-left: 12px; margin-right: -4px;' in css
     assert '#tape-slice, #tape-where { color: var(--dim); font: 650 11.5px var(--font-display);' in css
     assert "-webkit-text-size-adjust: 100%" in css
 
@@ -590,7 +590,9 @@ def test_tape_hover_card_reads_the_column_data_not_just_the_cells():
     # 2026-09-03: phrase, humidity/cloud/pressure/UV, an hourly curve for a
     # day column and its sunrise/sunset, all from the data behind the tape.
     tape = _read("tape.js"); css = _read("styles.css")
-    assert "function richCard(i, td)" in tape and "const rich = richCard(Number(i), td);" in tape
+    # 2026-09-04: the day header is the hover target, the cells under it are not
+    assert "function dayCard(first, span)" in tape and 'e.target.closest("th.day[data-first]")' in tape
+    assert 'e.target.closest("td[data-i]")' not in tape and "richCard" not in tape
     assert 'class="day-curve"' in tape and "WXPanes.sunTimes(d0.lat, d0.lon" in tape
     assert "#tape-card .day-curve polyline" in css
 
@@ -616,6 +618,15 @@ def test_the_hero_carries_a_rain_now_strip_only_when_something_falls():
     assert "/nowcast?lat=" in panes
     # dry window: no headline, no strip
     assert "if (!nc || !nc.headline) { el.hidden = true; return; }" in panes
-    # one smooth trace, the past clipped and dimmed, bands and a now line
-    assert 'clipPath id="rn-past"' in panes and 'class="now"' in panes and '["light", 2.5], ["moderate", 7.5]' in panes
-    assert ".rainnow .rn-chart .fill.past" in css and ".rainnow .rn-chart .band" in css
+    # thin bars from one spline, the past dimmed, snow in its own colour, bands and a now line
+    assert "const per = 6, N = n * per" in panes and 'class="now"' in panes and '["light", 2.5], ["moderate", 7.5]' in panes
+    assert 'kind[k] === "snow"' in panes
+    assert ".rainnow .rn-chart .sn" in css and ".rainnow .rn-chart .band" in css and "box-shadow: inset 0 0 0 1px var(--line); }" in css
+    # the card sits with the readings, not between the hero and its report
+    assert panes.index('id="rainnow-slot"') > panes.index('<i>next 48 h</i>')
+
+
+def test_the_now_button_holds_still_because_live_fills_the_lead_slot():
+    app = _read("app.js"); css = _read("styles.css")
+    assert '$("#lead").textContent = atNow ? "live" :' in app
+    assert "#lead:empty" not in css and "#lead.live" in css

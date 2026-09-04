@@ -348,7 +348,7 @@
         <svg viewBox="0 0 48 48" aria-hidden="true"><circle class="ring" cx="24" cy="24" r="21"/>
         <text class="card" x="24" y="10.2" text-anchor="middle">N</text><text class="card" x="41.2" y="26.6" text-anchor="middle">E</text>
         <text class="card" x="24" y="43.2" text-anchor="middle">S</text><text class="card" x="6.8" y="26.6" text-anchor="middle">W</text>
-        <path class="needle" d="M24 30 L24 14.5 M20.6 18 L24 14.5 L27.4 18"/></svg></span>`;
+        <path class="needle" d="M24 28.5 L24 17 M21 20 L24 17 L27 20"/></svg></span>`;
       chips.push(`<span class="wind-readout" style="--wind-color:${windColor(w || 0)}">
         <span class="wind-main"><small>Wind</small><b>${f(w, (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b><em>${compass(dir)}${dir != null ? ` ${Math.round(dir)}°` : ""}${bf != null ? ` · ${BEAUFORT_NAME[bf]}` : ""}</em></span>
         ${dial}
@@ -476,8 +476,8 @@
           <div class="vs-normal" id="normal-slot" hidden></div>
         </div>
       </div>
-      ${window.WXStatic ? "" : `<div id="rainnow-slot" class="rainnow" hidden></div>`}
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
+      ${window.WXStatic ? "" : `<div id="rainnow-slot" class="rainnow" hidden></div>`}
       <div class="meta">${chips.filter((c) => !c.startsWith('<div class="stat')).join("")}${sections(chips.filter((c) => c.startsWith('<div class="stat')))}</div>
       ${contextCues(pt, d, i)}
       ${daysStrip(pt, d, i)}
@@ -1129,37 +1129,39 @@
   const rainNowBust = () => Math.floor(Date.now() / 3e5);
   function rainNowHtml(nc) {
     const step = nc.step_min || 15, n = nc.mm.length, now = nc.now || 0;
-    const snowy = /snow/.test(nc.headline || "");
-    const amt = nc.mm.map((v, k) => Math.max(0, snowy && nc.snow ? (nc.snow[k] || 0) / 10 : v));
-    const rate = amt.map((v) => v * 60 / step);                     // mm/h
-    const top = Math.max(7.5, ...rate) * 1.15;
-    const W_ = 100, H = 100;
-    const y = (r) => H - Math.sqrt(Math.min(1, r / top)) * H;
-    const x = (k) => (k + 0.5) / n * W_;
-    const P = (j) => y(rate[Math.max(0, Math.min(n - 1, j))]);
+    const kind = nc.kind || nc.mm.map((v) => (v > 0.1 ? "rain" : "dry"));
+    const rate = nc.mm.map((v) => Math.max(0, v) * 60 / step);                 // mm/h per step
+    const top = Math.max(7.5, ...rate) * 1.1;
+    const H = 100;
+    const P = (j) => rate[Math.max(0, Math.min(n - 1, j))];
+    // one spline through the step rates, sampled into thin bars: the shape
+    // reads at a glance and a bar per 2.5 min keeps the past/future split crisp
     const cr = (u) => { const k = Math.floor(u), t = u - k, p0 = P(k - 1), p1 = P(k), p2 = P(k + 1), p3 = P(k + 2);
-      return Math.min(H, 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)); };
-    const pts = [];
-    for (let k = 0; k <= (n - 1) * 8; k++) pts.push(`${x(k / 8).toFixed(1)} ${cr(k / 8).toFixed(1)}`);
-    const line = `M0 ${P(0).toFixed(1)} L${pts.join(" L")} L${W_} ${P(n - 1).toFixed(1)}`;
-    const nowX = x(now);
-    // band rules live in the SVG; their labels sit in HTML on top, since the
-    // stretched viewBox would distort any text drawn inside it
+      return Math.max(0, 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)); };
+    const per = 6, N = n * per, W_ = N;
+    const bars = [];
+    for (let b = 0; b < N; b++) {
+      const u = (b + 0.5) / per - 0.5, r = cr(u), k = Math.min(n - 1, Math.floor((b + 0.5) / per));
+      if (r < 0.15) continue;
+      const h = Math.max(3, Math.sqrt(Math.min(1, r / top)) * H);
+      const past = k < now, snowy = kind[k] === "snow";
+      bars.push(`<rect class="${snowy ? "sn" : "rn"}${past ? " past" : ""}" x="${b + 0.15}" y="${(H - h).toFixed(1)}" width="0.7" height="${h.toFixed(1)}" rx="0.35" style="opacity:${(past ? 0.28 : 0.45 + 0.55 * Math.min(1, r / top)).toFixed(2)}"/>`);
+    }
     const bandRows = [["light", 2.5], ["moderate", 7.5]].filter(([, r]) => r < top);
+    const y = (r) => H - Math.sqrt(Math.min(1, r / top)) * H;
     const bands = bandRows.map(([, r]) => `<line class="band" x1="0" x2="${W_}" y1="${y(r).toFixed(1)}" y2="${y(r).toFixed(1)}"/>`).join("");
     const bandLabels = bandRows.map(([nm, r]) => `<span class="band-l" style="top:${y(r).toFixed(1)}%">${nm}</span>`).join("");
+    const nowX = now * per;
     const t0 = new Date(nc.times[now]);
-    const tick = (mins) => { const d = new Date(t0.getTime() + mins * 6e4); return d.toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric" })).replace(":00", "").replace(/\s/, ""); };
+    const tick = (mins) => { const d = new Date(t0.getTime() + mins * 6e4); return d.toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric", minute: "2-digit" })).replace(/\s?[ap]m$/i, (m) => m.trim().toLowerCase()); };
     const labels = [];
-    for (let k = 0; k < n; k++) { const m = (k - now) * step; if (m % 60 === 0) labels.push(`<span style="left:${x(k).toFixed(1)}%">${m === 0 ? "now" : tick(m)}</span>`); }
-    return `<div class="rn-head"><i>rain now</i><b>${nc.headline || ""}</b></div>
-      <div class="rn-wrap">${bandLabels}<svg class="rn-chart${snowy ? " snowy" : ""}" viewBox="0 0 ${W_} ${H}" preserveAspectRatio="none" aria-hidden="true">
-        <defs><clipPath id="rn-past"><rect x="0" y="0" width="${nowX.toFixed(1)}" height="${H}"/></clipPath></defs>
-        ${bands}
-        <path class="fill" d="${line} L${W_} ${H} L0 ${H} Z"/>
-        <path class="fill past" d="${line} L${W_} ${H} L0 ${H} Z" clip-path="url(#rn-past)"/>
-        <path class="line" d="${line}"/>
-        <line class="now" x1="${nowX.toFixed(1)}" x2="${nowX.toFixed(1)}" y1="0" y2="${H}"/>
+    for (let k = 0; k < n; k += 4) { const m = (k - now) * step; labels.push(`<span class="${m === 0 ? "now" : ""}" style="left:${(k * per / W_ * 100).toFixed(1)}%">${m === 0 ? "now" : m < 0 ? `${m / 60 === -1 ? "1 h ago" : `${-m} min ago`}` : `${tick(m)}`}</span>`); }
+    const snowAny = kind.some((k) => k === "snow"), rainAny = kind.some((k) => k === "rain");
+    return `<div class="rn-head"><small class="sect-h">${snowAny && !rainAny ? "Snow" : snowAny ? "Rain & snow" : "Rain"} now</small><i>${nc.source || ""}</i></div>
+      <b class="rn-line">${nc.headline || ""}</b>
+      <div class="rn-wrap">${bandLabels}<svg class="rn-chart" viewBox="0 0 ${W_} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        ${bands}${bars.join("")}
+        <line class="now" x1="${nowX}" x2="${nowX}" y1="0" y2="${H}"/>
       </svg></div><div class="rn-x">${labels.join("")}</div>`;
   }
   function paintRainNow(pt) {

@@ -418,67 +418,84 @@
   // for that hour, labelled, so nobody has to line numbers up with the
   // labels at the far left. Built from the rendered cells, so it says
   // whatever the tape says, in the tape's units.
-  // What one column of the tape holds, read from the data behind it.
-  function richCard(i, td) {
+  // What one day of the tape holds, read from the data behind its columns:
+  // the header is the hover target (Jeff 2026-09-04: the card on "Friday 4",
+  // not on every cell under it), so the card is the day's summary — high and
+  // low, totals, peaks, the hours as a curve, and its sun.
+  const dayCurve = (idx, s0) => {
+    if (!idx || idx.length < 3 || !s0 || !s0.t2m) return "";
+    const temps = idx.map((k) => s0.t2m[k]).filter((v) => v != null);
+    if (temps.length < 3) return "";
+    const mn = Math.min(...temps), mx = Math.max(...temps), span = Math.max(mx - mn, 2);
+    const W_ = 100, H = 30;
+    const pts = idx.map((k, n) => s0.t2m[k] == null ? null : `${(n / (idx.length - 1) * W_).toFixed(1)},${(4 + (H - 10) * (1 - (s0.t2m[k] - mn) / span)).toFixed(1)}`).filter(Boolean).join(" ");
+    const rmax = Math.max(0.5, ...idx.map((k) => (s0.tp6 && s0.tp6[k]) || 0));
+    const bars = idx.map((k, n) => { const v = (s0.tp6 && s0.tp6[k]) || 0; if (v < 0.05) return ""; const h = Math.max(1.5, v / rmax * 10); return `<rect x="${(n / idx.length * W_).toFixed(1)}" y="${H - h}" width="${(W_ / idx.length * 0.8).toFixed(1)}" height="${h}"/>`; }).join("");
+    // no hour labels: the viewBox is stretched, so text would be too; the
+    // curve reads left-to-right as midnight-to-midnight on its own
+    return `<svg class="day-curve" viewBox="0 0 ${W_} ${H}" preserveAspectRatio="none" aria-hidden="true"><g class="rain">${bars}</g><polyline points="${pts}"/></svg>`;
+  };
+  function dayCard(first, span) {
     const d0 = tapeData();
     if (!d0 || !d0.series) return null;
     const view = tapeView(d0);
     const s = view.d && view.d.series;
-    const col = view.columns && view.columns[i];
-    if (!s || !col) return null;
+    if (!s || !view.columns || !view.columns[first]) return null;
+    const ii = [];
+    for (let i = first; i < first + span && i < view.columns.length; i++) ii.push(i);
     const U = WX.units, K = 273.15;
-    const t = s.t2m && s.t2m[i] != null ? s.t2m[i] : null, lo = s.t2m_lo && s.t2m_lo[i] != null ? s.t2m_lo[i] : null;
-    const isDay = view.agg && view.res >= 24;
+    const vals = (arr) => (arr ? ii.map((i) => arr[i]).filter((v) => v != null) : []);
+    const mx = (arr) => { const v = vals(arr); return v.length ? Math.max(...v) : null; };
+    const mn = (arr) => { const v = vals(arr); return v.length ? Math.min(...v) : null; };
+    const sum = (arr) => { const v = vals(arr); return v.length ? v.reduce((a, x) => a + x, 0) : null; };
+    const mean = (arr) => { const v = vals(arr); return v.length ? v.reduce((a, x) => a + x, 0) / v.length : null; };
     const tile = (k, v, unit = "", cls = "") => v == null || v === "" ? "" : `<span class="metric ${cls}"><i>${k}</i><b>${v}${unit ? ` <small>${unit}</small>` : ""}</b></span>`;
     const metrics = [];
-    if (t != null) metrics.push(tile(isDay ? "High / low" : "Air temp", lo != null && isDay ? `${U.temp(t).v}° / ${U.temp(lo).v}°` : `${U.temp(t).v}°`, "", "temp"));
-    const fh = s.feels_hi && s.feels_hi[i] != null ? s.feels_hi[i] : (t != null ? feelsAt(s, i) : null), flo = s.feels_lo && s.feels_lo[i] != null ? s.feels_lo[i] : null;
-    if (fh != null && (isDay ? Math.abs(fh - (t - K)) >= 1 || (flo != null && lo != null && Math.abs(flo - (lo - K)) >= 1) : Math.abs(fh - (t - K)) >= 1))
-      metrics.push(tile("Feels like", isDay && flo != null ? `${U.tempC(fh).v}° / ${U.tempC(flo).v}°` : `${U.tempC(fh).v}°`, "", "feels"));
-    const tp = s.tp6 && s.tp6[i] != null ? s.tp6[i] : null, sf = s.sf6 && s.sf6[i] != null ? s.sf6[i] : null;
+    const hi = mx(s.t2m), lo = s.t2m_lo ? mn(s.t2m_lo) : mn(s.t2m);
+    if (hi != null) metrics.push(tile("High / low", lo != null ? `${U.temp(hi).v}° / ${U.temp(lo).v}°` : `${U.temp(hi).v}°`, "", "temp"));
+    const feels = ii.map((i) => (s.feels_hi && s.feels_hi[i] != null ? s.feels_hi[i] : feelsAt(s, i))).filter((v) => v != null);
+    const feelsLo = s.feels_lo ? vals(s.feels_lo) : feels;
+    if (feels.length && hi != null && (Math.abs(Math.max(...feels) - (hi - K)) >= 1 || (lo != null && Math.abs(Math.min(...feelsLo) - (lo - K)) >= 1)))
+      metrics.push(tile("Feels like", `${U.tempC(Math.max(...feels)).v}° / ${U.tempC(Math.min(...feelsLo)).v}°`, "", "feels"));
+    const tp = sum(s.tp6), sf = sum(s.sf6);
     if (sf != null && sf >= 0.3) metrics.push(tile("Snow", U.snow(sf).v, U.snowUnit, "precip"));
     if (tp != null && tp >= 0.1) metrics.push(tile("Precip", U.precip(tp).v, U.precipUnit, "precip"));
-    if (s.prob_rain && s.prob_rain[i] != null && s.prob_rain[i] >= 5) metrics.push(tile("Rain chance", Math.round(s.prob_rain[i]), "%", "precip"));
-    if (s.wind && s.wind[i] != null) metrics.push(tile(isDay ? "Wind, peak" : "Wind", `${Math.round(WX.speed(s.wind[i]))}`, WX.speedUnit(), "wind")
-      .replace("</b>", `</b>${s.wdir && s.wdir[i] != null ? `<em>${WX.arrow(s.wdir[i])} ${Math.round(s.wdir[i])}°</em>` : ""}`));
-    if (s.gust && s.gust[i] != null) metrics.push(tile("Gusts", Math.round(WX.speed(s.gust[i])), WX.speedUnit(), "wind"));
-    if (s.tcc && s.tcc[i] != null) metrics.push(tile("Cloud", Math.round(s.tcc[i] * 100), "%"));
-    if (s.t2m && s.d2m && s.t2m[i] != null && s.d2m[i] != null) {
-      const rh = Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)));
-      metrics.push(tile("Humidity", Math.min(100, rh), "%"));
+    const prob = mx(s.prob_rain);
+    if (prob != null && prob >= 5) metrics.push(tile("Rain chance", Math.round(prob), "%", "precip"));
+    const wpk = mx(s.wind);
+    if (wpk != null) {
+      const at = ii.find((i) => s.wind[i] === wpk);
+      metrics.push(tile("Wind, peak", `${Math.round(WX.speed(wpk))}`, WX.speedUnit(), "wind")
+        .replace("</b>", `</b>${s.wdir && at != null && s.wdir[at] != null ? `<em>${WX.arrow(s.wdir[at])} ${Math.round(s.wdir[at])}°</em>` : ""}`));
     }
-    if (s.msl && s.msl[i] != null) metrics.push(tile("Pressure", U.press(s.msl[i]).v, U.pressUnit));
-    if (s.uvi && s.uvi[i] != null && s.uvi[i] >= 1) metrics.push(tile(isDay ? "UV, peak" : "UV", s.uvi[i].toFixed(0)));
-    if (s.cape && s.cape[i] != null && s.cape[i] >= 300) metrics.push(tile("CAPE", Math.round(s.cape[i]), "J/kg"));
+    const gpk = mx(s.gust);
+    if (gpk != null) metrics.push(tile("Gusts", Math.round(WX.speed(gpk)), WX.speedUnit(), "wind"));
+    const cloud = mean(s.tcc);
+    if (cloud != null) metrics.push(tile("Cloud", Math.round(cloud * 100), "%"));
+    const uv = mx(s.uvi);
+    if (uv != null && uv >= 1) metrics.push(tile("UV, peak", uv.toFixed(0)));
+    const cape = mx(s.cape);
+    if (cape != null && cape >= 300) metrics.push(tile("CAPE", Math.round(cape), "J/kg"));
     // a phrase from the sky, the way the hero does it
-    const cloud = s.tcc && s.tcc[i] != null ? s.tcc[i] : null;
     const wet = (tp || 0) + (sf || 0);
     let phrase = cloud == null ? "" : cloud < 0.25 ? "Clear" : cloud < 0.7 ? "Partly cloudy" : "Overcast";
-    if (wet >= 0.3) phrase = `${phrase ? phrase + ", " : ""}${sf != null && sf >= tp ? "snow" : wet >= 5 ? "rain" : "showers"}`;
-    if (s.gust && s.gust[i] != null && s.gust[i] * 3.6 >= 55) phrase += `${phrase ? " · " : ""}windy`;
-    // the hours inside a day column: temperature curve over rain bars
-    let spark = "";
-    if (isDay && view.buckets && view.buckets[i] && d0.series.t2m) {
-      const idx = view.buckets[i].idx, s0 = d0.series;
-      const temps = idx.map((k) => s0.t2m[k]).filter((v) => v != null);
-      if (temps.length >= 3) {
-        const mn = Math.min(...temps), mx = Math.max(...temps), span = Math.max(mx - mn, 2);
-        const W_ = 100, H = 30;
-        const pts = idx.map((k, n) => s0.t2m[k] == null ? null : `${(n / (idx.length - 1) * W_).toFixed(1)},${(4 + (H - 10) * (1 - (s0.t2m[k] - mn) / span)).toFixed(1)}`).filter(Boolean).join(" ");
-        const rmax = Math.max(0.5, ...idx.map((k) => (s0.tp6 && s0.tp6[k]) || 0));
-        const bars = idx.map((k, n) => { const v = (s0.tp6 && s0.tp6[k]) || 0; if (v < 0.05) return ""; const h = Math.max(1.5, v / rmax * 10); return `<rect x="${(n / idx.length * W_).toFixed(1)}" y="${H - h}" width="${(W_ / idx.length * 0.8).toFixed(1)}" height="${h}"/>`; }).join("");
-        // no hour labels: the viewBox is stretched, so text would be too; the
-        // curve reads left-to-right as midnight-to-midnight on its own
-        spark = `<svg class="day-curve" viewBox="0 0 ${W_} ${H}" preserveAspectRatio="none" aria-hidden="true"><g class="rain">${bars}</g><polyline points="${pts}"/></svg>`;
-      }
-    }
-    // a day gets its sun
+    if (wet >= 0.3) phrase = `${phrase ? phrase + ", " : ""}${sf != null && sf >= (tp || 0) ? "snow" : wet >= 5 ? "rain" : "showers"}`;
+    if (gpk != null && gpk * 3.6 >= 55) phrase += `${phrase ? " · " : ""}windy`;
+    // the hours inside the day: the primary run's own steps, so an AI-tail day has none
+    const ai = ii.some((i) => view.columns[i].ai);
+    const idx = ai ? [] : view.agg && view.buckets ? ii.flatMap((i) => (view.buckets[i] || { idx: [] }).idx) : ii.map((i) => view.columns[i].native).filter((n) => n != null);
+    const spark = dayCurve(idx, d0.series);
     let foot = "";
-    if (isDay && window.WXPanes && WXPanes.sunTimes && d0.lat != null && d0.lon != null) {
-      const sun = WXPanes.sunTimes(d0.lat, d0.lon, new Date(col.valid));
+    if (window.WXPanes && WXPanes.sunTimes && d0.lat != null && d0.lon != null) {
+      const sun = WXPanes.sunTimes(d0.lat, d0.lon, new Date(view.columns[first].valid));
       if (sun) foot = `☼ ${sun.rise} – ${sun.set}${sun.len ? ` · ${sun.len}` : ""}`;
     }
-    return { metrics, phrase, spark, foot };
+    const model = view.columns[first].model || state.model;
+    const entry = WX.catalog && WX.catalog.models.find((m) => m.key === model);
+    const source = model === "aigfs" ? "AI-GFS" : (entry && entry.short) || model.toUpperCase();
+    const icons = ii.map((i) => glyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), s.t2m ? s.t2m[i] : null, false));
+    const ico = icons[Math.floor(icons.length / 2)] || "";
+    return { metrics, phrase, spark, foot, model, source, ico };
   }
 
   function wireTapeHover(tape) {
@@ -488,54 +505,28 @@
     if (!card) { card = document.createElement("div"); card.id = "tape-card"; card.hidden = true; document.body.appendChild(card); }
     let shownFor = null;
     const hide = () => { card.hidden = true; shownFor = null; };
-    const show = (td) => {
-      const i = td.dataset.i;
-      if (shownFor === i) return;
-      shownFor = i;
-      const table = td.closest("table");
-      const metrics = [];
-      let day = "", when = "";
-      table.querySelectorAll("th.day[data-first]").forEach((th) => { if (Number(th.dataset.first) <= Number(i)) day = ((th.childNodes[0] || {}).textContent || th.textContent).trim(); });
-      table.querySelectorAll("tr").forEach((tr) => {
-        const lab = tr.querySelector("th.lab"); const cell = tr.querySelector(`td[data-i="${i}"]`);
-        if (!lab || !cell) return;
-        let name = (lab.childNodes[0] && lab.childNodes[0].textContent || "").trim(), unit = (lab.querySelector("small") || {}).textContent || "";
-        let val = cell.textContent.trim();
-        if (tr.classList.contains("r-icon")) return;
-        if (tr.classList.contains("r-hour")) { when = `${day || ""}${day && val ? "<small>" : ""}${day && val ? ` · ${val}</small>` : (day ? "" : val)}`; return; }
-        if (tr.classList.contains("r-dir")) { const g = cell.querySelector("[title]"); val = g ? g.title : val; }
-        if (tr.classList.contains("r-rain") && cell.classList.contains("snowy")) {
-          name = "Snow"; unit = (unit.split("·")[1] || unit).trim();
-        }
-        if (!val || val === "—") return;
-        const kind = tr.classList.contains("r-temp") ? "temp" : tr.classList.contains("r-feels") ? "feels"
-          : tr.classList.contains("r-rain") ? "precip" : tr.classList.contains("r-wind") ? "wind"
-          : tr.classList.contains("r-dir") ? "direction" : "other";
-        metrics.push(`<span class="metric ${kind}"><i>${name}</i><b>${val.replace("/", " / ")}${unit && !/[a-z°%]/.test(val) ? ` <small>${unit.split("·")[0].trim()}</small>` : ""}</b></span>`);
-      });
-      const model = td.dataset.model || state.model;
-      const entry = WX.catalog && WX.catalog.models.find((m) => m.key === model);
-      const source = model === "aigfs" ? "AI-GFS" : (entry && entry.short) || model.toUpperCase();
-      // The rendered cells only know what the tape shows. The column's own
-      // data knows more: sky and a phrase, humidity, cloud, pressure, UV,
-      // sunrise/sunset for a day, and the hours inside a day column as a
-      // curve (Jeff 2026-09-03: "a missed opportunity").
-      const rich = richCard(Number(i), td);
-      const iconCell = table.querySelector(`tr.r-icon td[data-i="${i}"]`);
-      const ico = iconCell ? iconCell.innerHTML : "";
-      card.innerHTML = `<div class="card-head">${ico ? `<span class="ico">${ico}</span>` : ""}<div class="when-wrap"><b class="when">${when || day}</b>${rich && rich.phrase ? `<span class="phrase">${rich.phrase}</span>` : ""}</div><span class="source" data-model="${model}">${source}</span></div>
-        ${rich && rich.spark ? rich.spark : ""}
-        <div class="card-metrics">${rich && rich.metrics.length ? rich.metrics.join("") : metrics.join("")}</div>
-        ${rich && rich.foot ? `<div class="card-foot">${rich.foot}</div>` : ""}`;
+    const show = (th) => {
+      const first = Number(th.dataset.first), span = Number(th.getAttribute("colspan") || 1);
+      if (shownFor === first) return;
+      const rich = dayCard(first, span);
+      if (!rich) { hide(); return; }
+      shownFor = first;
+      const day = ((th.childNodes[0] || {}).textContent || th.textContent).trim();
+      card.innerHTML = `<div class="card-head">${rich.ico ? `<span class="ico">${rich.ico}</span>` : ""}<div class="when-wrap"><b class="when">${day}</b>${rich.phrase ? `<span class="phrase">${rich.phrase}</span>` : ""}</div><span class="source" data-model="${rich.model}">${rich.source}</span></div>
+        ${rich.spark}
+        <div class="card-metrics">${rich.metrics.join("")}</div>
+        ${rich.foot ? `<div class="card-foot">${rich.foot}</div>` : ""}`;
       card.hidden = false;
-      const r = td.getBoundingClientRect(), cw = card.offsetWidth, ch = card.offsetHeight;
-      const left = Math.max(6, Math.min(innerWidth - cw - 6, r.left + r.width / 2 - cw / 2));
+      // centred on the header's visible part, above the tape
+      const r = th.getBoundingClientRect(), tr = tape.getBoundingClientRect(), cw = card.offsetWidth, ch = card.offsetHeight;
+      const x0 = Math.max(r.left, tr.left), x1 = Math.min(r.right, tr.right);
+      const left = Math.max(6, Math.min(innerWidth - cw - 6, (x0 + x1) / 2 - cw / 2));
       card.style.left = `${left}px`; card.style.top = `${Math.max(6, r.top - ch - 8)}px`;
     };
     tape.addEventListener("pointermove", (e) => {
       if (e.pointerType === "touch") return;
-      const td = e.target.closest && e.target.closest("td[data-i]");
-      if (td) show(td); else hide();
+      const th = e.target.closest && e.target.closest("th.day[data-first]");
+      if (th) show(th); else hide();
     });
     tape.addEventListener("pointerleave", hide);
     tape.addEventListener("scroll", hide, { passive: true });

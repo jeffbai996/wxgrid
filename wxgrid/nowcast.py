@@ -42,6 +42,22 @@ def _span(minutes: int) -> str:
     return f"{minutes} min"
 
 
+SNOW_RATIO = 7.0          # Open-Meteo's cm of snow per mm of water
+
+
+def kinds(mm: list[float], snow: list[float] | None) -> list[str]:
+    """Per step: "dry", "rain" or "snow" — snow when its water equivalent is
+    at least half of what fell."""
+    out = []
+    for k, v in enumerate(mm):
+        v = max(0.0, float(v or 0))
+        if v <= TRACE_MM:
+            out.append("dry"); continue
+        sn = float((snow or [0] * len(mm))[k] or 0) * 10.0 / SNOW_RATIO
+        out.append("snow" if sn >= 0.5 * v else "rain")
+    return out
+
+
 def headline(mm: list[float], step_min: int, now: int, snow: list[float] | None = None) -> str | None:
     """One line about the window from `now` on: when it starts, when it stops,
     or that it keeps going. None when nothing worth a coat falls."""
@@ -49,8 +65,9 @@ def headline(mm: list[float], step_min: int, now: int, snow: list[float] | None 
     wet = [v > TRACE_MM for v in ahead]
     if not any(wet):
         return None
-    snowy = bool(snow) and sum(float(v or 0) for v in snow[now:]) >= 0.5 * sum(ahead)
-    what = "snow" if snowy else "rain"
+    kk = [k for k in kinds(mm, snow)[now:] if k != "dry"]
+    frac = kk.count("snow") / len(kk)
+    what = "snow" if frac >= 0.8 else "rain" if frac <= 0.2 else "wintry mix"
     if wet[0]:
         try:
             stop = wet.index(False)
@@ -85,7 +102,7 @@ def nowcast_for(lat: float, lon: float, *, get_json: Callable[..., Any], cache_g
         t_now = (now_ms if now_ms is not None else time.time() * 1000) / 1000
         stamps = [datetime.strptime(t, "%Y-%m-%dT%H:%MZ").replace(tzinfo=timezone.utc).timestamp() for t in times]
         now = max([k for k, s in enumerate(stamps) if s <= t_now] or [0])
-        return {"times": times, "mm": mm, "snow": snow, "step_min": STEP_MIN, "now": now,
+        return {"times": times, "mm": mm, "snow": snow, "kind": kinds(mm, snow), "step_min": STEP_MIN, "now": now,
                 "headline": headline(mm, STEP_MIN, now, snow), "source": "Open-Meteo 15-min"}
 
     return cache_get(key, CACHE_TTL_S, fetch)

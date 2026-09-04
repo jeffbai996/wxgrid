@@ -34,8 +34,16 @@ def test_headline_is_none_when_nothing_falls_in_the_window():
     assert nowcast.headline([0.05] * 12, 15, 4) is None      # trace amounts are not rain
 
 
-def test_headline_calls_snow_snow():
+def test_headline_calls_snow_snow_and_a_mix_a_mix():
     assert nowcast.headline([0] * 4 + [0.6] * 8, 15, 4, snow=[0] * 4 + [0.8] * 8) == "Light snow for the next 2 hours"
+    # rain turning to snow halfway: neither word alone is honest
+    mixed = nowcast.headline([0] * 4 + [0.6] * 8, 15, 4, snow=[0] * 8 + [0.8] * 4)
+    assert mixed == "Light wintry mix for the next 2 hours"
+
+
+def test_kinds_grade_each_step_by_water_equivalent():
+    # 0.8 cm of snow is ~1.1 mm of water: snow; 0.1 cm against 0.6 mm is rain
+    assert nowcast.kinds([0, 0.6, 0.6, 0.05], [0, 0.8, 0.1, 0.5]) == ["dry", "snow", "rain", "dry"]
 
 
 def test_intensity_bands_follow_the_hourly_rate():
@@ -54,7 +62,7 @@ def test_nowcast_for_shapes_open_meteo_and_marks_now(monkeypatch):
     out = nowcast.nowcast_for(49.28, -123.12, get_json=get_json, cache_get=lambda k, ttl, fn: fn(),
                               now_ms=_ms("2026-09-04T18:50Z"))
     assert calls[0]["past_minutely_15"] == 4 and calls[0]["forecast_minutely_15"] == 8
-    assert out["step_min"] == 15 and out["now"] == 3 and out["mm"][3] == 0.4
+    assert out["step_min"] == 15 and out["now"] == 3 and out["mm"][3] == 0.4 and out["kind"][3] == "rain"
     assert out["times"][0].endswith("Z") and out["headline"] == "Light rain stopping in 30 min"
 
 
