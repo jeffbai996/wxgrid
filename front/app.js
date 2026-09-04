@@ -831,7 +831,8 @@
     const railLabel = (full, phone = "") => phone
       ? `<span class="rail-label"><span class="rail-label-full">${full}</span><span class="rail-label-phone" aria-hidden="true">${phone}</span></span>`
       : `<span>${full}</span>`;
-    rail.innerHTML = `<button class="rail-flat rail-winter ${state.winterMode ? "on" : ""}" data-rail="winter" aria-label="Winter mode" aria-pressed="${state.winterMode ? "true" : "false"}" title="Show the snow-season map">${LAYER_ICON.sd_cm}${railLabel("Winter mode", "Winter")}</button>` + shownFamilies.map((f) => {
+    const winterButton = `<button class="rail-flat rail-winter ${state.winterMode ? "on" : ""}" data-rail="winter" aria-label="Winter mode" aria-pressed="${state.winterMode ? "true" : "false"}" title="Show the snow-season map">${LAYER_ICON.sd_cm}${railLabel("Winter mode", "Winter")}</button>`;
+    rail.innerHTML = shownFamilies.map((f) => {
       const ok = f.layers.some((l) => avail.includes(l));
       const on = f.key === fam.key;
       const section = state.winterMode ? winterSections[f.key] : f.section;
@@ -853,7 +854,9 @@
       <div class="rail-seg rail-run" title="Forecast run (UTC)">
         <span>Model run</span>
         <select id="rail-run">${modelEntry().runs.map((r) => `<option value="${r.run}"${r.run === state.run ? " selected" : ""}>${r.run.slice(5, 10)} · ${r.run.slice(11)}Z</option>`).join("")}</select>
-      </div>`;
+      </div>
+      <div class="rail-sec rail-winter-sec">Season</div>
+      ${winterButton}`;
     const railRun = rail.querySelector("#rail-run");
     railRun.onchange = () => switchRun(railRun.value);
     const railOp = rail.querySelector(".rail-opacity input");
@@ -1084,8 +1087,12 @@
     $("#fires-toggle").onclick = () => { if (!WX.fires) { toast("Fire overlay is still loading", 2500); return; } state.fires = !state.fires; $("#fires-toggle").classList.toggle("on", state.fires); if (state.fires) WX.fires.load(); else WX.fires.clear(); };
     $("#share-btn").onclick = shareLink;
     $("#point-share").onclick = shareLink;
-    $("#settings-btn").onclick = () => { $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(); };
-    $("#keys-btn").onclick = () => { $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(); };
+    const openSettings = (e) => {
+      const opener = e.currentTarget.closest(".menu")?.querySelector(".menu-btn") || e.currentTarget;
+      $$(".menu.open").forEach((x) => x.classList.remove("open")); WX.settings.open(opener);
+    };
+    $("#settings-btn").onclick = openSettings;
+    $("#keys-btn").onclick = openSettings;
     // a unit change repaints every number on screen at once
     document.addEventListener("wx-units", () => { renderControls(); renderLegend(); renderPoint(); WX.tape.renderTape(); if (WX.probe) WX.probe.hover(null); if (state.xsection && WX.xs) WX.xs.refresh(); $("#units-toggle").querySelector(".val").textContent = speedUnit(); });
     $("#theme-toggle").querySelector(".val").textContent = document.documentElement.dataset.theme === "light" ? "light" : "dark";
@@ -1231,7 +1238,7 @@
     // strip and the menu can never disagree about whether it is on.
     const pt0 = $("#probe-toggle");
     if (pt0) {
-      st.insertAdjacentHTML("afterbegin", `<button class="strip-probe" data-tip="Value under the cursor" aria-label="Value under the cursor" aria-pressed="false">${pt0.querySelector("svg").outerHTML}</button>`);
+      st.insertAdjacentHTML("afterbegin", `<button class="strip-probe" data-tip="Show value under cursor" aria-label="Show value under cursor" aria-pressed="false">${pt0.querySelector("svg").outerHTML}</button>`);
       const sp = st.querySelector(".strip-probe");
       const syncProbe = () => {
         const on = !!state.probeChip;

@@ -283,6 +283,12 @@ def test_the_outdoors_verdict_carries_a_briefing_and_the_tape_shades_its_rain():
     assert "Math.sqrt(Math.max(0, mm) / rainScale)" in tape
     assert 'class="precip-area"' in tape and 'class="bar"' not in tape
     assert ".precip-area .fill" in css and ".precip-area .line" in css
+    # Curves replace the angular midpoint polyline, and a dry bucket stays
+    # empty even when the next forecast period is wet.
+    assert "if (here <= 0) return \"\"" in tape
+    assert "C15 ${startY.toFixed(1)}" in tape and "C65 ${peakY.toFixed(1)}" in tape
+    assert "L50 ${rainY(here)" not in tape
+    assert "stroke-linecap: round" in css and "shape-rendering: geometricPrecision" in css
 
 
 def test_outdoors_cards_lead_with_the_number_and_keep_green_quiet():
@@ -480,16 +486,52 @@ def test_daily_tape_continues_with_aigfs_and_marks_the_model_handoff():
     assert "!primaryDays.has(zk(new Date(v)).day)" in tape
     assert "WX.fn.jumpModelTime(col.model, col.valid)" in tape
     assert "table.wtape th.day.ai-start, table.wtape td.ai-start" in css
+    seam = css.split("table.wtape th.day.ai-start, table.wtape td.ai-start", 1)[1].split("}", 1)[0]
+    assert "border-left: 2px solid #65a8ff" in seam
+    assert "box-shadow" not in seam
 
 
 def test_six_hour_tape_uses_named_local_day_periods_and_separates_temperature_rows():
     tape = _read("tape.js"); css = _read("styles.css")
     assert '["NITE", "MORN", "NOON", "EVE"]' in tape
     assert "agg && aggRes === 6 ? periodTxt(dt)" in tape
-    assert 'label(agg ? "Air high / low" : "Air temp"' in tape
+    assert 'label("Air temp", WX.units.tempUnit)' in tape
+    assert 'label("Feels like", WX.units.tempUnit)' in tape
+    assert "Air high / low" not in tape and "Feels high / low" not in tape
     assert 'class="pair-sep"' in tape
     assert "table.wtape tr.r-feels td" in css and "table.wtape .pair-sep" in css
     assert "table.wtape.slice-6 tr.r-hour td" in css
+
+
+def test_sidebar_keeps_winter_near_the_bottom_but_first_in_the_phone_scroller():
+    app = _read("app.js"); css = _read("styles.css")
+    rail = app.split('const rail = $("#layers")', 1)[1].split("const railRun", 1)[0]
+    assert rail.index('class="rail-seg rail-run"') < rail.index("${winterButton}")
+    assert 'class="rail-sec rail-winter-sec">Season' in rail
+    assert ".rail .rail-winter { order: -2; margin: 0; }" in css
+
+
+def test_settings_drawer_is_compact_accessible_and_keeps_utilities_collapsed():
+    app = _read("app.js"); settings = _read("settings.js")
+    assert 'width:min(400px,100%)' in settings and "@media (max-width:540px)" in settings
+    assert 'aria-labelledby", "settings-title"' in settings and 'aria-modal", "true"' in settings
+    assert "Units, time & display" in settings
+    assert 'class="setting-list"' in settings
+    assert 'class="utility"><summary>Keyboard shortcuts' in settings
+    assert 'class="utility"><summary>Embed this view' in settings
+    assert 'b.setAttribute("aria-pressed", String(on))' in settings
+    assert "function open(opener = null)" in settings and "returnFocus.focus" in settings
+    assert 'e.currentTarget.closest(".menu")?.querySelector(".menu-btn")' in app
+    assert "e.stopImmediatePropagation(); close();" in settings
+    assert "Units apply everywhere" not in settings
+
+
+def test_cursor_value_copy_is_consistent_in_menu_and_strip():
+    app = _read("app.js"); html = _read("index.html")
+    assert app.count("Show value under cursor") >= 2
+    assert html.count("Show value under cursor") >= 2
+    assert "Value under the cursor" not in app
+    assert "Cursor value" not in html
 
 
 def test_cursor_probe_accepts_ipad_trackpad_but_ignores_touch_mouse_events():

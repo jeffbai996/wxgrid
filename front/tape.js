@@ -331,17 +331,27 @@
       : s.t2m && s.t2m[i] != null ? degK(s.t2m[i]) : "—", "temp")).join("");
     const feelsRow = dates.map((_, i) => { const v = agg ? null : feelsAt(s, i);
       return cell(i, agg ? pair(s.feels_hi && s.feels_hi[i], s.feels_lo && s.feels_lo[i], degC) : v == null ? "—" : degC(v), "feels"); }).join("");
-    // A continuous filled trace makes the precipitation SHAPE visible across
-    // time. Each cell draws half of the lines to its neighbours, so the SVGs
-    // meet cleanly while the exact amount remains printed above the area.
-    const rainAmount = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; return r == null ? 0 : sn >= 0.3 ? sn / 10 : r; });
+    // A continuous filled trace makes the precipitation shape visible across
+    // time. Only a bucket with a printed amount owns an area: a dry Sunday
+    // must not borrow Monday's rain and quietly look wet.
+    const rainAmount = dates.map((_, i) => {
+      const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0;
+      if (sn >= 0.3) return Math.max(0.1, sn / 10);
+      return r != null && r >= 0.1 ? r : 0;
+    });
     const rainScale = Math.max(10, ...rainAmount);
     const rainY = (mm) => 96 - Math.min(90, Math.sqrt(Math.max(0, mm) / rainScale) * 90);
     const rainArea = (i) => {
-      const here = rainAmount[i], left = i ? (rainAmount[i - 1] + here) / 2 : here;
-      const right = i + 1 < rainAmount.length ? (here + rainAmount[i + 1]) / 2 : here;
-      if (Math.max(left, here, right) <= 0.05) return "";
-      const path = `M0 ${rainY(left).toFixed(1)} L50 ${rainY(here).toFixed(1)} L100 ${rainY(right).toFixed(1)}`;
+      const here = rainAmount[i];
+      if (here <= 0) return "";
+      const prev = i ? rainAmount[i - 1] : 0;
+      const next = i + 1 < rainAmount.length ? rainAmount[i + 1] : 0;
+      const startY = prev > 0 ? rainY((prev + here) / 2) : 96;
+      const peakY = rainY(here);
+      const endY = next > 0 ? rainY((here + next) / 2) : 96;
+      // Horizontal tangents at the cell edges and midpoint join neighbouring
+      // buckets without the old ruler-drawn triangles.
+      const path = `M0 ${startY.toFixed(1)} C15 ${startY.toFixed(1)} 35 ${peakY.toFixed(1)} 50 ${peakY.toFixed(1)} C65 ${peakY.toFixed(1)} 85 ${endY.toFixed(1)} 100 ${endY.toFixed(1)}`;
       return `<svg class="precip-area" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="fill" d="${path} L100 100 L0 100 Z"></path><path class="line" d="${path}"></path></svg>`;
     };
     const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, rainArea(i), "rain"); if (sn >= 0.3) return cell(i, `${rainArea(i)}<span class="snow">${WX.units.snow(sn).v}</span>`, "rain snowy"); return cell(i, `${rainArea(i)}${r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : ""}`, "rain"); }).join("");
@@ -364,8 +374,8 @@
     tape.innerHTML = `<table class="wtape${agg ? " agg" : ""}${aggRes ? ` slice-${aggRes}` : ""}"><thead><tr><th class="lab corner"></th>${dayRow}</tr></thead><tbody>
       ${showHours ? `<tr class="r-hour">${label("Time")}${hourRow}</tr>` : ""}
       <tr class="r-icon">${label("")}${iconRow}</tr>
-      <tr class="r-temp">${label(agg ? "Air high / low" : "Air temp", WX.units.tempUnit)}${tempRow}</tr>
-      <tr class="r-feels">${label(agg ? "Feels high / low" : "Feels like", WX.units.tempUnit)}${feelsRow}</tr>
+      <tr class="r-temp">${label("Air temp", WX.units.tempUnit)}${tempRow}</tr>
+      <tr class="r-feels">${label("Feels like", WX.units.tempUnit)}${feelsRow}</tr>
       <tr class="r-rain">${label("Precip", `${WX.units.precipUnit} · ${WX.units.snowUnit}`)}${rainRow}</tr>
       ${probRow ? `<tr class="r-prob">${label("Chance", "%")}${probRow}</tr>` : ""}
       <tr class="r-wind">${label("Wind", speedUnit())}${windRow}</tr>

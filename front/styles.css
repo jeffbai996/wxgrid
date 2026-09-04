@@ -287,7 +287,7 @@ body.has-point #side { max-height: calc(100dvh - var(--top-h) - var(--tb-h) - 70
 .rail-flat:hover { background: rgba(255,255,255,.06); color: var(--fg); }
 .rail-flat.on { background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 18px var(--accent-glow); }
 .rail-winter { margin-bottom: 2px; }
-.rail-winter + .rail-sec { border-top-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.rail .rail-sec.rail-winter-sec { border-top-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
 body.winter-mode .rail { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); }
 :root[data-theme="light"] .rail-flat:hover { background: rgba(0,0,0,.05); }
 .rail-opacity { display: flex; align-items: center; gap: 9px; padding: 6px 11px 8px; }
@@ -737,6 +737,7 @@ table.bandtape .nil { color: var(--line-strong); }
   .rail { align-items: center; }
   .rail .rail-seg, .rail .rail-opacity { display: none; }
   .rail .rail-flat { width: auto; flex: 0 0 auto; gap: 6px; }
+  .rail .rail-winter { order: -2; margin: 0; }
   .rail button { padding: 3px 8px; border-radius: 999px; box-shadow: none; font-size: 11.5px; line-height: 1.15; }
   .rail button svg { display: none; }
   .rail .rail-sec { display: none; }
@@ -1005,7 +1006,7 @@ table.wtape tr.r-rain td { color: var(--rain); font-weight: 650; position: relat
 table.wtape tr.r-rain td span { position: relative; z-index: 1; text-shadow: 0 1px 3px var(--panel-solid); }
 table.wtape tr.r-rain td .precip-area { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 table.wtape tr.r-rain td .precip-area .fill { fill: currentColor; opacity: .17; }
-table.wtape tr.r-rain td .precip-area .line { fill: none; stroke: currentColor; stroke-width: 1.35; vector-effect: non-scaling-stroke; opacity: .72; }
+table.wtape tr.r-rain td .precip-area .line { fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; shape-rendering: geometricPrecision; vector-effect: non-scaling-stroke; opacity: .72; }
 table.wtape tr.r-rain td.snowy { color: #cfe8ff; }
 /* sunrise and sunset: thin amber notches at the top of their columns */
 table.wtape td.sun-rise, table.wtape td.sun-set { position: relative; }
@@ -1277,7 +1278,9 @@ table.wtape.slice-6 tr.r-hour td { height: 18px; color: var(--dim); font: 750 8.
    first AI-GFS day. The map itself remains on the selected model until an AI
    column is clicked. */
 table.wtape th.day.ai-tail, table.wtape td.ai-tail { background-image: linear-gradient(#65a8ff0a, #65a8ff0a); }
-table.wtape th.day.ai-start, table.wtape td.ai-start { box-shadow: inset 2px 0 0 #65a8ff; }
+/* A real border is deliberately boring. WebKit composited the former inset
+   shadow once per row and exposed every cell edge as a blue horizontal line. */
+table.wtape th.day.ai-start, table.wtape td.ai-start { border-left: 2px solid #65a8ff; }
 table.wtape th.day .model-handoff { display: inline-flex; margin-left: 6px; padding: 1px 4px; border-radius: 4px;
   background: #65a8ff1f; color: #83bcff; font: 750 8px var(--font-display); letter-spacing: .055em; vertical-align: 1px; }
 @media (max-width: 820px) { table.wtape.agg td { min-width: 60px; } }
