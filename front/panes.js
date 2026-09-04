@@ -316,6 +316,11 @@
 
   // ── Now: hero, local context, station obs, meteogram ─────────────────
   function renderNow(pt, d, i) {
+    // A data arrival can beat the native toggle event. Capture the actual
+    // open state before replacing the DOM so that refresh cannot fold it.
+    $("#point-now").querySelectorAll("details[data-detail]").forEach((el) => {
+      pt.details ||= {}; pt.details[el.dataset.detail] = el.open;
+    });
     const { speed, speedUnit, f, arrow } = W();
     const s = d.series;
     const t = s.t2m ? s.t2m[i] : null, night = (() => { const h = new Date(d.valid[i]).getHours(); return h < 6 || h >= 21; })();
@@ -469,7 +474,7 @@
     const moon = moonPhase(W().validDate);
     $("#point-now").innerHTML = `<div class="hero">
         ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
-        <div class="big" style="color:${t != null ? tempColor(t - K) : "inherit"}">${t == null ? "—" : W().units.temp(t).v}<span class="deg">°</span></div>
+        <div class="big" style="--temp-color:${t != null ? tempColor(t - K) : "var(--fg)"}">${t == null ? "—" : W().units.temp(t).v}<span class="deg">°</span></div>
         <div class="hl">
           ${hi != null ? `<div class="hilo"><span class="hi"><i>high</i>${W().units.tempC(hi).v}°</span><span class="rule"></span><span class="lo"><i>low</i>${W().units.tempC(lo).v}°</span></div>` : ""}
           ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span><i class="brk" aria-hidden="true"></i>${sun.len ? `<span class="len" title="Daylight">${W_ICONS.day || ""}${sun.len}</span>` : ""}<span class="moon" title="${moon.name}, ${moon.pct}% lit">${moon.glyph} ${moon.pct}%</span></div>` : ""}
@@ -478,12 +483,15 @@
       </div>
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
       ${window.WXStatic ? "" : `<div id="rainnow-slot" class="rainnow" hidden></div>`}
-      <div class="meta">${chips.filter((c) => !c.startsWith('<div class="stat')).join("")}${sections(chips.filter((c) => c.startsWith('<div class="stat')))}</div>
+      <div class="meta">${chips.filter((c) => !c.startsWith('<div class="stat')).join("")}${sections(chips.filter((c) => c.startsWith('<div class="stat')), pt)}</div>
       ${contextCues(pt, d, i)}
       ${daysStrip(pt, d, i)}
       ${contextCards(pt, d, i)}
       ${window.WXStatic ? "" : `<div id="cams-slot" class="cams" hidden></div>`}
       ${alertsHtml(pt)}${airHtml(pt)}`;
+    $("#point-now").querySelectorAll("details[data-detail]").forEach((el) => el.addEventListener("toggle", () => {
+      if (el.isConnected) { pt.details ||= {}; pt.details[el.dataset.detail] = el.open; }
+    }));
     pt.pressureCurve = pressureCurve;
     fetchNearStorm(pt);
     fetchCams(pt);
@@ -1077,10 +1085,14 @@
   const GROUPS = [["precip", "Precipitation"], ["sky", "Sky"], ["air", "Air"], ["sun", "Sun"], ["uv", "UV"], ["sea", "Sea"], ["aq", "Air quality"]];
   // Tiles → sections. A group with one tile still gets its heading: the
   // heading is the relation, not decoration.
-  function sections(tiles) {
+  function sections(tiles, pt) {
     const by = {};
     for (const t of tiles) { const g = (t.match(/data-g="([a-z]+)"/) || [])[1] || "air"; (by[g] = by[g] || []).push(t); }
-    return GROUPS.filter(([g]) => by[g]).map(([g, label]) => `<section class="sect" data-g="${g}"><small class="sect-h">${label}</small><div class="sect-grid">${by[g].join("")}</div></section>`).join("");
+    return GROUPS.filter(([g]) => by[g]).map(([g, label]) => {
+      const content = `<div class="sect-grid">${by[g].join("")}</div>`;
+      if (pt && ["air", "sun"].includes(g)) return `<details class="sect detail-group" data-detail="${g}"${pt.details && pt.details[g] ? " open" : ""}><summary>${label}<span>${by[g].length} readings</span></summary>${content}</details>`;
+      return `<section class="sect" data-g="${g}"><small class="sect-h">${label}</small>${content}</section>`;
+    }).join("");
   }
 
   // ── vs normal: the day against its 1991–2020 ERA5 climatology ──────────
@@ -1911,18 +1923,23 @@
     }
     if (!Object.keys(pt.cmp.rows).length) { $("#compare").innerHTML = `<div class="note">${pt.cmp.pending ? "loading other models…" : "no other model has this point"}</div>`; return; }
     const t0 = new Date(d.valid[i]).getTime();
-    const cols = Array.from({ length: 8 }, (_, k) => t0 + k * 12 * 3600e3);      // 4 days at 12 h
-    const head = cols.map((t) => `<th>${new Date(t).toLocaleString(undefined, { weekday: "short", hour: "numeric" }).replace(" ", "<br>")}</th>`).join("");
+    const C = W().compare, cols = C.columns(t0);
+    const fmt = (t) => new Date(t).toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }));
+    const head = cols.map((t) => `<th>${fmt(t)}</th>`).join("");
     const rowFor = (label, pick) => pt.cmp.order.map((k) => pt.cmp.rows[k]).filter(Boolean).map(({ model, data }) => {
-      const cells = cols.map((t) => { const k = data.valid.findIndex((v) => new Date(v).getTime() === t); return `<td>${k >= 0 ? pick(data.series, k) : "—"}</td>`; }).join("");
+      const cells = cols.map((t) => `<td>${pick(data, t)}</td>`).join("");
       // Each model's own resolution beside its name: the reason two rows differ
       // is usually that one of them resolves the terrain and the other does not.
-      return `<tr><td class="mdl">${model.short}${model.grid ? `<i>${model.grid}</i>` : ""}</td>${cells}</tr>`;
+      return `<tr><th scope="row" class="mdl" title="Run ${esc(data.run)}Z">${model.short}${model.grid ? `<i>${model.grid}</i>` : ""}</th>${cells}</tr>`;
     }).join("");
-    $("#compare").innerHTML = `<table class="cmp"><thead><tr><th>Temp ${W().units.tempUnit}</th>${head}</tr></thead><tbody>${rowFor("t", (s, k) => s.t2m && s.t2m[k] != null ? W().units.temp(s.t2m[k]).v : "—")}</tbody>
-      <thead><tr><th>Wind ${speedUnit()}</th>${head}</tr></thead><tbody>${rowFor("w", (s, k) => s.wind && s.wind[k] != null ? Math.round(speed(s.wind[k])) : "—")}</tbody>
-      <thead><tr><th>Rain ${W().units.precipUnit}/12h</th>${head}</tr></thead><tbody>${rowFor("r", (s, k) => s.tp6 ? `<span class="r">${W().units.precip((s.tp6[k] || 0) + (s.tp6[k + 1] || 0)).v}</span>` : "—")}</tbody></table>
-      <div class="note">${pt.cmp.pending ? "still loading… " : ""}Same valid times, each model's latest run. Disagreement is the error bar. Regional rows appear only where that model covers the point.</div>`;
+    const readings = Object.values(pt.cmp.rows).map(({ model, data }) => ({ model, v: C.value(data, "t2m", cols[0]) })).filter((r) => r.v != null).sort((a, b) => a.v - b.v);
+    const low = readings[0], high = readings[readings.length - 1];
+    const takeaway = readings.length > 1 ? `<div class="cmp-takeaway"><small>${esc(fmt(cols[0]))} · ${readings.length} models${pt.cmp.pending ? " · loading more" : ""}</small><b>${W().units.temp(low.v).v}–${W().units.temp(high.v).v} ${W().units.tempUnit}</b><span>${esc(low.model.short)} coolest · ${esc(high.model.short)} warmest</span></div>` : "";
+    const display = (v, convert) => v == null ? "—" : convert(v);
+    $("#compare").innerHTML = `${takeaway}<div class="cmp-scroll" tabindex="0" role="region" aria-label="Model comparison table"><table class="cmp"><thead><tr><th>Temp ${W().units.tempUnit}</th>${head}</tr></thead><tbody>${rowFor("t", (d, t) => display(C.value(d, "t2m", t), v => W().units.temp(v).v))}</tbody>
+      <thead><tr><th>Wind ${speedUnit()}</th>${head}</tr></thead><tbody>${rowFor("w", (d, t) => display(C.value(d, "wind", t), v => Math.round(speed(v))))}</tbody>
+      <thead><tr><th>Rain ${W().units.precipUnit}<small>following 12 h</small></th>${head}</tr></thead><tbody>${rowFor("r", (d, t) => display(C.rain(d, t, t + 12 * 3600e3), v => `<span class="r">${W().units.precip(v).v}</span>`))}</tbody></table></div>
+      <div class="note">${pt.cmp.pending ? "Still loading… " : ""}Shared six-hour boundaries, starting at or after your selected time. Each model's latest run; rain totals cover the following 12 hours. A dash means incomplete coverage. Model range shows disagreement, not a probability or a confidence interval.</div>`;
   }
 
   // ── Resort: elevation-band forecast, whistlerpeak-style ───────────────

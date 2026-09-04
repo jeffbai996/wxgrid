@@ -104,6 +104,8 @@
   let map, wind, catalog, playTimer = null, playRaf = 0, playFrom = 0, marker = null;
   let restorePointPanelSize = () => {};
   let restoreSheetHeight = () => {};
+  let focusMobileSheet = () => {};
+  let pointTapeReturn = null;
   let uiWired = false;
   let setTapeState = () => {};
   let tapeState = "full";
@@ -1002,6 +1004,10 @@
     let tapeAnim = 0;
     const TAPE_ANIM_MS = 380;
     setTapeState = (s, persist = true) => {
+      if (phoneMQ.matches && state.point) {
+        if (persist) pointTapeReturn = null;
+        focusMobileSheet(s === "full");
+      }
       const prev = tapeState;
       tapeState = s;
       const apply = () => {
@@ -1179,6 +1185,10 @@
     $$(".point-tabs button").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; renderPoint(); });
     document.addEventListener("keydown", (e) => {
       if (["SELECT", "INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
+      if (e.key === "Escape" && $("#tstrip").classList.contains("more-open")) {
+        $("#tstrip").classList.remove("more-open"); fitStrip(); $("#strip-more").focus(); return;
+      }
+      if (e.target.closest("button, summary, #strip-more-pop") && [" ", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
       if (e.key === "ArrowRight") nudge(1);
       else if (e.key === "ArrowLeft") nudge(-1);
       else if (e.key === " ") { e.preventDefault(); togglePlay(); }
@@ -1263,12 +1273,12 @@
     }
     // overflow flyout: the strip stays fixed, the extras animate out beside it
     st.insertAdjacentHTML("beforeend", `<button id="strip-more" data-tip="More layers and tools" aria-label="More" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>`);
-    document.body.insertAdjacentHTML("beforeend", '<div id="strip-more-pop" class="tstrip strip-pop"></div>');
-    $("#strip-more").onclick = (e) => { e.stopPropagation(); st.classList.toggle("more-open"); positionMorePop(); };
-    document.addEventListener("click", (e) => { if (!e.target.closest("#tstrip") && !e.target.closest("#strip-more-pop")) st.classList.remove("more-open"); });
+    document.body.insertAdjacentHTML("beforeend", '<div id="strip-more-pop" class="tstrip strip-pop" inert></div>');
+    $("#strip-more").onclick = (e) => { e.stopPropagation(); st.classList.toggle("more-open"); fitStrip(); positionMorePop(); };
+    document.addEventListener("click", (e) => { if (!e.target.closest("#tstrip") && !e.target.closest("#strip-more-pop") && st.classList.contains("more-open")) { st.classList.remove("more-open"); fitStrip(); } });
     fitStrip();
     addEventListener("resize", () => { if (!pageIsPinchZoomed()) fitStrip(); });
-    new MutationObserver(() => st.querySelectorAll("button[data-for]").forEach((b) => b.classList.toggle("on", $("#" + b.dataset.for).classList.contains("on")))).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
+    new MutationObserver(fitStrip).observe($("#topbar"), { subtree: true, attributes: true, attributeFilter: ["class"] });
   }
 
   // Bottom-sheet drag on phones: pull the grip up to cover the tape, down to
@@ -1324,6 +1334,7 @@
     };
     const stored = Number(localStorage.getItem("wxgrid.sheetHeight")) || 0;
     let y0 = 0, dy = 0, startH = 0, dragging = false, closing = false, height = stored;
+    let peeking = false, expandedHeight = stored, expandedTab = null;
     const setHeight = (h, persist) => {
       const b = bounds();
       height = Math.max(b.min, Math.min(b.max, Math.round(h)));
@@ -1338,6 +1349,14 @@
       if (innerWidth > 820) { card.style.height = ""; card.classList.remove("sheet-sized", "sheet-peek"); return; }
       if (height) setHeight(height, false);
     };
+    focusMobileSheet = (peek) => {
+      if (innerWidth > 820) return;
+      if (peek && !peeking) { expandedHeight = height; expandedTab = state.tab; state.tab = "now"; }
+      if (!peek && peeking && expandedTab) { state.tab = expandedTab; expandedTab = null; }
+      peeking = peek;
+      setHeight(peek ? 170 : expandedHeight || Math.round(viewH() * 0.52), false);
+      if (state.point && state.point.data) renderPoint();
+    };
     const track = perFrame((clientY) => {
       if (!dragging) return;
       dy = clientY - y0;
@@ -1346,8 +1365,11 @@
       card.style.opacity = closing ? ".62" : "";
       setHeight(startH - dy, false);
     });
+    let openedFromPeek = false;
     grip.addEventListener("pointerdown", (e) => {
       if (innerWidth > 820) return;
+      openedFromPeek = tapeState === "full";
+      if (tapeState === "full") setTapeState("mini", false);
       dragging = true; y0 = e.clientY; dy = 0; closing = false;
       startH = card.getBoundingClientRect().height;
       card.classList.add("sheet-drag"); grip.setPointerCapture(e.pointerId);
@@ -1358,11 +1380,14 @@
       dragging = false; card.classList.remove("sheet-drag"); card.style.opacity = "";
       if (!cancel && closing) { closePoint(); return; }
       if (!cancel && Math.abs(dy) < 6) {                    // a tap cycles peek → half → full
+        if (openedFromPeek) return;
         const b = bounds();
         setHeight(height < 190 ? Math.round(b.max * 0.5) : height < b.max - 40 ? b.max : b.min, true);
+        expandedHeight = height;
         return;
       }
       localStorage.setItem("wxgrid.sheetHeight", String(height));
+      expandedHeight = height;
     };
     grip.addEventListener("pointerup", () => end(false));
     grip.addEventListener("pointercancel", () => end(true));
@@ -1622,65 +1647,9 @@
     addEventListener("resize", () => whenUnpinched(() => { if (tapeHeight) setTapeHeight(tapeHeight); restorePointPanelSize(); }));
   }
 
-  // Size the strip's buttons so the whole set fits between the top bar and the
-  // time bar. It never scrolls: a toolbar that scrolls hides its own controls.
+  // Keep the pinned rail in bounds; the complete named list can scroll.
   function fitStrip() {
-    const st = $("#tstrip"); if (!st || getComputedStyle(st).display === "none") return;
-    const more = $("#strip-more"), pop = $("#strip-more-pop");
-    if (!more || !pop) return;
-    // put everything back in the strip, then move the tail into the flyout
-    Array.from(pop.children).forEach((el) => st.insertBefore(el, more));
-    // Overflowed controls are restored before `more`, so they used to land
-    // below Location on every subsequent fit. Re-pin the footer after every
-    // restore: divider, Location, then the three-dot overflow button.
-    const locate = st.querySelector(".strip-locate"), locateSep = st.querySelector(".strip-locate-sep");
-    if (locateSep) st.insertBefore(locateSep, more);
-    if (locate) st.insertBefore(locate, more);
-    // .strip-locate is a primary control, not an overlay toggle: it is sized
-    // with the rest but never trimmed into the flyout.
-    const trimmable = (el) => el !== more
-      && !el.classList.contains("strip-locate") && !el.classList.contains("strip-locate-sep")
-      && !el.classList.contains("strip-probe");
-    const all = Array.from(st.querySelectorAll("button, .sep")).filter((el) => el !== more);
-    const top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--top-h")) || 52;
-    const tb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tb-h")) || 150;
-    const btns = all.filter((el) => el.tagName === "BUTTON").length;
-    const seps = all.length - btns;
-    // Bottom margin 16px, the same air the point card keeps above the tape
-    // (its max-height is 100dvh - top - tb - 24 with 8px above). Buttons grow
-    // to 44px on a tall screen so the strip actually reaches down there,
-    // instead of stopping mid-map with a fixed cap (Jeff 2026-08-24).
-    const avail = window.innerHeight - top - 6 - tb - 16;
-    st.style.setProperty("--strip-btn", Math.max(26, Math.min(44, Math.floor((avail - 14 - seps * 7 - (all.length - 1) * 3) / Math.max(1, btns)))) + "px");
-    // The flyout is another .tstrip, but it does not inherit the fitted custom
-    // property from the main strip. Copy it explicitly so both columns use
-    // exactly the same button and glyph dimensions.
-    pop.style.setProperty("--strip-btn", st.style.getPropertyValue("--strip-btn"));
-    // Then MEASURE and trim: arithmetic on gaps, borders and margins gets this
-    // wrong every time, and being wrong here means a toolbar under the tape.
-    const limit = st.getBoundingClientRect().top + avail;
-    more.hidden = false;
-    let guard = all.length;
-    while (guard-- > 0 && st.getBoundingClientRect().bottom > limit) {
-      const last = Array.from(st.querySelectorAll("button, .sep")).filter(trimmable).pop();
-      if (!last) break;
-      pop.insertBefore(last, pop.firstChild);
-    }
-    // a separator that lands at the top or bottom of a column just hides
-    [st, pop].forEach((box) => {
-      const kids = Array.from(box.children).filter((el) => el !== more);
-      kids.forEach((el) => el.classList.remove("sep-hide"));
-      if (kids.length && kids[0].classList.contains("sep")) kids[0].classList.add("sep-hide");
-      if (kids.length && kids[kids.length - 1].classList.contains("sep")) kids[kids.length - 1].classList.add("sep-hide");
-      // Keep the anchored Location divider when a section boundary happens
-      // to land beside it; two hairlines in a row look like an empty group.
-      kids.forEach((el, i) => {
-        if (el.classList.contains("sep") && kids[i + 1] && kids[i + 1].classList.contains("sep")) el.classList.add("sep-hide");
-      });
-    });
-    const overflowed = pop.children.length > 0;
-    more.hidden = !overflowed;
-    if (!overflowed) st.classList.remove("more-open");
+    if (WX.toolstrip) WX.toolstrip.fit();
   }
 
   function positionMorePop() {
@@ -1937,6 +1906,7 @@
   let pointReq = 0;
   async function openPoint(lat, lon, name) {
     const my = ++pointReq;
+    if (phoneMQ.matches && !state.point) pointTapeReturn = tapeState;
     const keepResort = state.resort && Math.abs(state.resort.resort.lat - lat) < 1e-4 && Math.abs(state.resort.resort.lon - lon) < 1e-4;
     if (!keepResort) { if (WX.ov && WX.ov.clearResortDetail) WX.ov.clearResortDetail(); else state.resort = null; if (state.tab === "resort") state.tab = "now"; }
     document.body.classList.toggle("has-resort", !!keepResort);
@@ -1948,6 +1918,7 @@
     // while it is open and come back when it closes. A fold the user chose
     // themselves stays.
     if (phoneMQ.matches && !document.body.classList.contains("tucked")) { softTucked = true; setTucked(true, false); }
+    if (phoneMQ.matches) { setTapeState("mini", false); focusMobileSheet(false); }
     $("#point-title").textContent = name || "Locating…";
     // if the geocoder never answers, the coordinates are the name
     if (!name) setTimeout(() => { if (my === pointReq && !state.point.name) $("#point-title").textContent = fmtCoords(lat, lon); }, 8000);
@@ -2047,7 +2018,7 @@
       const d = await WX.api(`${API}/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}&model=${state.model}&run=${state.run}`);
       if (my !== pointReq) return;
       gotPoint(d);
-    } catch (e) { $("#point-now").innerHTML = `<div class="note">${POINT_FAILED}</div>`; }
+    } catch (e) { if (my !== pointReq) return; $("#point-now").innerHTML = `<div class="note">${POINT_FAILED}</div>`; }
     // local context arrives lazily and re-renders as it lands
     WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) gotLocal(r); }).catch(() => {});
     WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.obs(r); }).catch(() => {});
@@ -2057,7 +2028,8 @@
     WX.api(`${API}/prob?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.prob(r); }).catch(() => {});
   }
   function refreshPoint() { if (state.point) openPoint(state.point.lat, state.point.lon, state.point.name); }
-  function closePoint() { state.point = null; if (WX.ov && WX.ov.clearResortDetail) WX.ov.clearResortDetail(); else state.resort = null; $("#point").hidden = true; document.body.classList.remove("has-point", "has-resort");
+  function closePoint() { ++pointReq; state.point = null; if (WX.ov && WX.ov.clearResortDetail) WX.ov.clearResortDetail(); else state.resort = null; $("#point").hidden = true; document.body.classList.remove("has-point", "has-resort");
+    if (pointTapeReturn != null) { const previous = pointTapeReturn; pointTapeReturn = null; setTapeState(previous, false); }
     if (softTucked) { softTucked = false; setTucked(false, false); } if (WX.provider) WX.provider.refresh(); if (marker) { marker.remove(); marker = null; } WX.tape.renderTape(); WX.tape.refreshTapePoint(); }
   function placeMarker(lat, lon) {
     if (!marker) {

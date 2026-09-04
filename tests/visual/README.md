@@ -11,6 +11,13 @@ because the upstream renamed its WMS layer.
 
 This directory looks at the running app.
 
+`touchup.js` is a Playwright browser-tool script for the comparison, phone
+card/tape interaction, saved tool pins, themes, and field retry/scrubbing
+contracts. Navigate the tool's page to the instance to check, then run that
+file with the browser code tool. It creates and closes an isolated context;
+its one simulated 503 exists only in that context. Calculation and request
+scheduler tests also run under pytest via `test_front_runtime.py` (Node).
+
 ## Two questions, because a golden image only answers one
 
 **The interface** is compared against a stored picture. Those views are cropped

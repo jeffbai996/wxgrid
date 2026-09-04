@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v67";   // v67: steady clock width in the tape head (2026-09-04)
+const VERSION = "wxgrid-v68";   // comparison windows, panel focus and field scheduling
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
@@ -58,7 +58,7 @@ const SHELL_EXTRA = [
   "logo.svg", "icon-32.png", "icon-180.png", "icon-512.png",
 ];
 // Used only if index.html cannot be read at install time.
-const SHELL_FALLBACK = ["styles.css", "app.js", "units.js", "particles.js", "overlays.js", "panes.js",
+const SHELL_FALLBACK = ["styles.css", "app.js", "units.js", "particles.js", "toolstrip.js", "field-requests.js", "compare.js", "overlays.js", "panes.js",
   "tape.js", "search.js", "menu.js", "settings.js", "probe.js", "provider.js", "sounding.js",
   "xsection.js", "fires.js", "sigmet.js", "cams.js", "sky.js", "route.js", "ens.js", "features.js", "vendor/maplibre-gl.js",
   "vendor/maplibre-gl.css"];

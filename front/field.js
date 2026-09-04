@@ -45,6 +45,13 @@
   const cache = new Map();          // url → entry
   let cacheBytes = 0;
   let serial = 0;
+  let requestKey = "";
+  const requests = new WX.FieldRequests(async (url, signal, selected) => {
+    const res = await fetch(url, { signal, priority: selected ? "high" : "low",
+      headers: { Accept: "image/webp,image/png;q=0.9,*/*;q=0.5" } });
+    if (!res.ok) throw Object.assign(new Error(String(res.status)), { status: res.status });
+    return decodeBlob(await res.blob());
+  });
 
   function evict(gl) {
     const entries = [...cache.values()].filter((e) => e.img).sort((a, b) => a.used - b.used);
@@ -67,8 +74,10 @@
       // Older Safari: no options bag, or no createImageBitmap at all
       bmp = await new Promise((res, rej) => {
         const im = new Image();
-        im.onload = () => res(im); im.onerror = rej;
-        im.src = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
+        im.onload = () => { URL.revokeObjectURL(url); res(im); };
+        im.onerror = (err) => { URL.revokeObjectURL(url); rej(err); };
+        im.src = url;
       });
     }
     const w = bmp.width, h = bmp.height;
@@ -89,21 +98,26 @@
     return img;
   }
 
-  function entryFor(url) {
+  function entryFor(url, selected = false) {
     let e = cache.get(url);
-    if (e) { e.used = ++serial; return e; }
+    if (e && e.failed && Date.now() >= e.retryAt) { cache.delete(url); e = null; }
+    if (e) {
+      e.used = ++serial;
+      if (!e.img && !e.failed && selected) requests.request(url, true).catch(() => {});
+      return e;
+    }
     e = { url, img: null, tex: null, bytes: 0, used: ++serial, failed: false, promise: null };
     e.promise = (async () => {
-      // fetch() sends Accept */*, which says nothing; ask for WebP outright
-      // (~30 % fewer bytes, same lossless values) and let the server fall
-      // back to PNG.
-      const res = await fetch(url, { headers: { Accept: "image/webp,image/png;q=0.9,*/*;q=0.5" } });
-      if (!res.ok) { const err = new Error(String(res.status)); err.status = res.status; throw err; }
-      const img = await decodeBlob(await res.blob());
+      const img = await requests.request(url, selected);
       e.img = img; e.bytes = img.data.byteLength;
       cacheBytes += e.bytes;
+      evict(layer.gl);
       return e;
-    })().catch((err) => { e.failed = true; e.error = err; throw err; });
+    })().catch((err) => {
+      e.failed = true; e.error = err; e.retryAt = Date.now() + 5000;
+      if (err.name === "AbortError" && cache.get(url) === e) cache.delete(url);
+      throw err;
+    });
     cache.set(url, e);
     return e;
   }
@@ -496,7 +510,7 @@ void main() {
   // ── driving it ─────────────────────────────────────────────────────────
   let showSerial = 0;
   function want(url, gen, repaint) {
-    const e = entryFor(url);
+    const e = entryFor(url, true);
     if (!e.img && !e.failed) e.promise.then(() => { if (gen === showSerial) { commit(); repaint(); } }).catch((err) => {
       // A missing field for a run the catalog names is the server saying
       // this path is not on offer; anything else is one bad step.
@@ -526,6 +540,15 @@ void main() {
     let t = spec.t || 0;
     // a held field shows whichever step is nearer, so the tape and the map agree
     if (snap && spec.b && t >= 0.5) { spec = { ...spec, a: spec.b, b: null }; t = 0; }
+    const key = `${spec.a}|${spec.b || ""}`;
+    if (key !== requestKey) {
+      requestKey = key;
+      const wanted = new Set([spec.a, spec.b]);
+      requests.retain(wanted);
+      // Remove cancelled entries immediately so a quick reversal can ask
+      // for the same URL again before the abort promise settles.
+      for (const [url, e] of cache) if (!e.img && !e.failed && !wanted.has(url)) cache.delete(url);
+    }
     pending = {
       layer: spec.layer, level: spec.level, model: spec.model,
       snap, cells: CELL_LAYERS.has(spec.layer),

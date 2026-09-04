@@ -172,7 +172,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
 <!-- the app scripts, one body: /bundle.js is the files below concatenated in
      this order. wxgrid/bundle.py reads this list; it lives here so the page
      stays the one owner of the load order. -->
-<script type="application/json" data-bundled>particles.js app.js field.js units.js settings.js menu.js tour.js overlays.js tape.js search.js panes.js</script>
+<script type="application/json" data-bundled>particles.js app.js toolstrip.js field-requests.js field.js units.js settings.js menu.js tour.js overlays.js tape.js search.js compare.js panes.js</script>
 <script defer src="bundle.js"></script>
 <script defer src="private/theme.js"></script>
 <!-- Feature modules are part of the offline shell, but they do not block the

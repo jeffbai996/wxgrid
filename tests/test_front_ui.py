@@ -114,11 +114,11 @@ def test_tape_has_equal_outer_gutters_and_owns_safe_area_padding():
     assert "calc(3px + env(safe-area-inset-bottom))" in block   # tightened 2026-09-02, slider sits on the edge
 
 
-def test_next_48_hour_blurb_vertical_space_is_compact():
+def test_next_48_hour_blurb_has_clear_reading_hierarchy():
     css = _read("styles.css")
-    rule = css.split(".summary {", 1)[1].split("}", 1)[0]
-    assert "margin: 1px 0 3px" in rule
-    assert "padding: 0 0 0 11px" in rule
+    rule = css.split("#point-now .summary {", 1)[1].split("}", 1)[0]
+    assert "line-height: 1.55" in rule
+    assert "background: var(--accent-soft)" in rule
 
 
 def test_alert_polygons_open_a_map_card_and_highlight_themselves():
@@ -389,7 +389,7 @@ def test_now_pane_readings_are_stat_tiles_and_the_card_carries_webcams():
     panes = _read("panes.js")
     css = _read("styles.css")
     assert "const stat = (k, v, unit, color, extra = \"\", title = \"\", group = \"air\") =>" in panes
-    assert "function sections(tiles)" in panes and '["precip", "Precipitation"]' in panes
+    assert "function sections(tiles, pt)" in panes and '["precip", "Precipitation"]' in panes
     assert 'normal.push(stat("Rain 6 h"' in panes and 'normal.push(stat("Pressure"' in panes
     assert 'class="chipv" style="color:#71b8ff"' not in panes            # the old pill is gone
     assert '<div id="cams-slot" class="cams" hidden></div>' in panes
@@ -420,8 +420,8 @@ def test_winter_tab_stays_for_winter_sport_country_all_year():
 def test_locate_sits_at_the_foot_of_the_tool_strip():
     app = _read("app.js")
     assert 'class="sep strip-locate-sep"' in app
-    assert 'if (locate) st.insertBefore(locate, more);' in app
-    assert '!el.classList.contains("strip-locate-sep")' in app
+    assert app.index('class="strip-locate"') < app.index('id="strip-more"')
+    assert 'querySelectorAll("button[data-for]")' in _read("toolstrip.js")
 
 
 def test_fire_and_smoke_are_their_own_strip_group_and_flyout_icons_match():
@@ -429,7 +429,8 @@ def test_fire_and_smoke_are_their_own_strip_group_and_flyout_icons_match():
     assert '["sigmet", "SIGMET", "warn"], null,' in app
     assert '["fires", "Fires", "warn"], ["smoke", "Smoke"], null,' in app
     assert '<div class="menu-sec">Fire &amp; smoke</div>' in html
-    assert 'pop.style.setProperty("--strip-btn", st.style.getPropertyValue("--strip-btn"));' in app
+    assert '"fires", "smoke"' in _read("toolstrip.js")
+    assert '.tool-row button[data-action] svg' in _read("styles.css")
 
 
 def test_tape_control_walks_all_three_states_and_every_change_glides():

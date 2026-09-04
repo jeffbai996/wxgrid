@@ -20,6 +20,8 @@ import time
 import os
 import threading
 import uuid
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
@@ -36,7 +38,34 @@ from wxgrid.models import LEVEL_EVERY, LEVELS, MODELS
 from wxgrid.store import RunReader, list_runs, parse_run_id, run_path, store_summary
 
 log = logging.getLogger("wxgrid.api")
-app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None)
+
+
+@asynccontextmanager
+async def catalog_lifespan(app: FastAPI):
+    """Move catalog construction ahead of visits and watch for new runs."""
+    async def warm():
+        try:
+            await asyncio.to_thread(api_models)
+        except Exception:
+            log.exception("Catalog warm failed; requests will retry")
+
+    await warm()
+
+    async def watch():
+        while True:
+            await asyncio.sleep(30)
+            await warm()
+
+    task = asyncio.create_task(watch())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(title="wxgrid", docs_url="/api/docs", redoc_url=None, lifespan=catalog_lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=2048)   # wind JSON shrinks ~5x
 
 LAYERS = ("wind", "temp", "feels", "wbt", "dt24", "gust", "msl", "ptend", "gh", "tp6", "tp24", "tp72", "sf6", "sf24", "sf72", "sd_cm", "tcc", "cloudlow", "cloudmid", "cloudhigh", "fog", "solar", "cape", "d2m", "rh", "cbase", "uvi", "frz", "waves", "wperiod", "wavepower", "swell", "windsea", "pp1d", "prob_rain", "prob_gust", "gfactor", "vis", "sst", "ptype", "vort500")
@@ -360,6 +389,7 @@ def _render_plan(model: str, tag: str) -> tuple[str, int]:
 
 
 _models_cache: dict = {"key": None, "payload": None}
+_models_lock = threading.Lock()
 
 
 def _models_key(summary: dict) -> tuple:
@@ -379,13 +409,15 @@ def _models_key(summary: dict) -> tuple:
 
 @app.get("/api/models")
 def api_models() -> dict:
-    summary = store_summary()
-    k = _models_key(summary)
-    if _models_cache["key"] == k and _models_cache["payload"] is not None:
-        return _models_cache["payload"]
-    payload = _build_models(summary)
-    _models_cache["key"], _models_cache["payload"] = k, payload
-    return payload
+    # The warmer and simultaneous cold visits must share a single build.
+    with _models_lock:
+        summary = store_summary()
+        k = _models_key(summary)
+        if _models_cache["key"] == k and _models_cache["payload"] is not None:
+            return _models_cache["payload"]
+        payload = _build_models(summary)
+        _models_cache["key"], _models_cache["payload"] = k, payload
+        return payload
 
 
 def _build_models(summary: dict) -> dict:
