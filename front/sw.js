@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v57";   // v57: smooth honest precip trace, clean AI seam and refined settings
+const VERSION = "wxgrid-v58";   // v58: smooth honest precip trace, clean AI seam and refined settings
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

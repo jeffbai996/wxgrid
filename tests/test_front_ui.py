@@ -48,6 +48,8 @@ def test_winter_mode_is_a_reversible_workspace_with_featured_resort_details():
     for label in ('"Easy"', '"Intermediate"', '"Difficult"', '"Expert"'):
         assert label in overlays
     assert 'CA: "Canada"' in panes and "Mountain cams" in panes
+    assert "stationName(o.name)" in panes and "province.toUpperCase()}, Canada" in panes
+    assert 'country: latinize(a.country ||' in static_api
     assert "Band weather is model-estimated" not in panes
     assert "North American ratings" in overlays
     assert 'pisteGrade("black", "Difficult", "#111318"' in overlays

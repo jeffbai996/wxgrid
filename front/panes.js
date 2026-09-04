@@ -12,6 +12,9 @@
   const sumWindow = (arr, steps, i, hours) => { if (!arr) return null; let t = 0, n = 0; for (let k = i + 1; k < steps.length; k++) { if (steps[k] > steps[i] + hours) break; t += arr[k] || 0; n++; } return n ? t : null; };
   const stepHrs = (d, i) => (d.steps[i + 1] != null ? d.steps[i + 1] - d.steps[i] : d.steps[i] - (d.steps[i - 1] || 0)) || 6;
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const countryName = (v) => ({ CA: "Canada", US: "United States", MX: "Mexico" })[String(v || "").toUpperCase()] || v || "";
+  const stationName = (v) => String(v || "").replace(/,\s*(AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)\s*,\s*CA$/i,
+    (_, province) => `, ${province.toUpperCase()}, Canada`);
   let W_ICONS = {};
 
   function render(tab, pt, i) {
@@ -463,7 +466,7 @@
     const where = [];
     if (loc.place && loc.place.name && loc.place.name !== pt.name) where.push(`<b>${esc(loc.place.name)}</b>${loc.place.region ? ", " + esc(loc.place.region) : ""}`);
     else if (loc.place && loc.place.region) where.push(esc(loc.place.region));
-    if (loc.place && loc.place.country) where.push(esc(loc.place.country));
+    if (loc.place && loc.place.country) where.push(esc(countryName(loc.place.country)));
     if (where.length) bits.push(`<span class="loc">${where.join(" · ")}</span>`);
     if (loc.elevation_m != null) bits.push(`<span>elev <b>${W().units.alt(loc.elevation_m).txt}</b></span>`);
     if (W().units.followsPoint && loc.timezone && loc.timezone.abbr) bits.push(`<span>${esc(loc.timezone.abbr)}</span>`);
@@ -484,7 +487,7 @@
       // instead of drifting to the end of a wrap; time and distance are the
       // caveat under it, not part of the title.
       obsHtml = `<div class="obs">
-        <div class="obs-head"><span class="stn"><b>${esc(o.station)}</b>${o.name ? `<span class="nm">${esc(o.name)}</span>` : ""}</span>${o.flight_category ? `<span class="fc ${esc(o.flight_category)}">${esc(o.flight_category)}</span>` : ""}</div>
+        <div class="obs-head"><span class="stn"><b>${esc(o.station)}</b>${o.name ? `<span class="nm">${esc(stationName(o.name))}</span>` : ""}</span>${o.flight_category ? `<span class="fc ${esc(o.flight_category)}">${esc(o.flight_category)}</span>` : ""}</div>
         <div class="obs-when">Observed <b>${tm ? W().units.time(tm) : "—"}</b>${obsDist ? `<span>${obsDist} away</span>` : ""}</div>
         <div class="obs-vals">${[
           o.temp_c != null ? `<b style="color:${tempColor(o.temp_c)}">${W().units.tempC(o.temp_c).v}°</b><u>${W().units.tempUnit.replace("°", "")}</u>` : "",
@@ -1788,7 +1791,7 @@
     const official = r.conditions_url || r.website;
     const camsUrl = r.cams_url || "";
     const mountainCams = Array.isArray(r.mountain_cams) ? r.mountain_cams.filter((c) => c && c.image).slice(0, 4) : [];
-    const country = ({ CA: "Canada", US: "United States", MX: "Mexico" })[String(r.country || "").toUpperCase()] || r.country;
+    const country = countryName(r.country);
     const place = [r.region, country].filter(Boolean).join(" · ");
     if (!pt.profile) {
       const bands = [];

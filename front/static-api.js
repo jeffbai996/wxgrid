@@ -132,7 +132,7 @@
     if (/^Regional District of /i.test(district)) district = district.replace(/^Regional District of /i, "") + " Regional District";
     const english = (g.namedetails || {})["name:en"] || "";
     const place = latinize(english || (electoralArea ? (district || g.name || "") : (settlement || a.municipality || a.county || g.name || "")));
-    return { place: { name: place, region: latinize(a.state || a.province || ""), country: (a.country_code || "").toUpperCase(), display: g.display_name || "" },
+    return { place: { name: place, region: latinize(a.state || a.province || ""), country: latinize(a.country || (a.country_code || "").toUpperCase()), display: g.display_name || "" },
              elevation_m: e && e.elevation ? e.elevation[0] : null };
   }
   async function obs(q) {
