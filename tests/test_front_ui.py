@@ -608,3 +608,14 @@ def test_webcam_hover_pins_the_camera_on_the_map():
     panes = _read("panes.js"); css = _read("styles.css")
     assert "function camPin(c)" in panes and "b.onpointerenter = () => camPin(" in panes
     assert "@keyframes campin-breathe" in css
+
+
+def test_the_hero_carries_a_rain_now_strip_only_when_something_falls():
+    panes = _read("panes.js"); css = _read("styles.css")
+    assert 'id="rainnow-slot"' in panes and "paintRainNow(pt)" in panes
+    assert "/nowcast?lat=" in panes
+    # dry window: no headline, no strip
+    assert "if (!nc || !nc.headline) { el.hidden = true; return; }" in panes
+    # one smooth trace, the past clipped and dimmed, bands and a now line
+    assert 'clipPath id="rn-past"' in panes and 'class="now"' in panes and '["light", 2.5], ["moderate", 7.5]' in panes
+    assert ".rainnow .rn-chart .fill.past" in css and ".rainnow .rn-chart .band" in css

@@ -156,6 +156,17 @@ def api_normals(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., 
     return out
 
 
+@router.get("/nowcast")
+def api_nowcast(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
+    """Rain now: an hour back and two hours ahead in 15-minute steps, with a headline."""
+    from fastapi import Response
+    from wxgrid import nowcast
+    out = nowcast.nowcast_for(lat, lon, get_json=ext._get_json, cache_get=ext.cache.get)
+    if out is None:
+        return Response(status_code=204)
+    return out
+
+
 @router.get("/webcams")
 def api_webcams(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180),
                 n: int = Query(6, ge=1, le=24)):

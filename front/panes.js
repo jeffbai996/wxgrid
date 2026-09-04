@@ -476,6 +476,7 @@
           <div class="vs-normal" id="normal-slot" hidden></div>
         </div>
       </div>
+      ${window.WXStatic ? "" : `<div id="rainnow-slot" class="rainnow" hidden></div>`}
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
       <div class="meta">${chips.filter((c) => !c.startsWith('<div class="stat')).join("")}${sections(chips.filter((c) => c.startsWith('<div class="stat')))}</div>
       ${contextCues(pt, d, i)}
@@ -487,6 +488,7 @@
     fetchNearStorm(pt);
     fetchCams(pt);
     paintNormal(pt, d, i, todays);
+    paintRainNow(pt);
     // local context
     const loc = pt.local || {};
     const bits = [];
@@ -1116,6 +1118,67 @@
     W().api(`${W().API}/normals?lat=${pt.lat.toFixed(3)}&lon=${pt.lon.toFixed(3)}`)
       .then((r) => { pt.normals = r && r.tmean ? r : null; if (my === normalsFetch && W().state.point === pt) paint(); })
       .catch(() => { pt.normals = null; });
+  }
+
+  // ── rain now ────────────────────────────────────────────────────────────
+  // The next two hours in 15-minute steps (Open-Meteo minutely_15: HRRR /
+  // ICON-D2 where they exist, radar-assimilating), shown only when something
+  // falls inside the window. Fetched once per pin and refreshed every five
+  // minutes; the slot is re-queried because the card re-renders under it.
+  let rainNowFetch = 0;
+  const rainNowBust = () => Math.floor(Date.now() / 3e5);
+  function rainNowHtml(nc) {
+    const step = nc.step_min || 15, n = nc.mm.length, now = nc.now || 0;
+    const snowy = /snow/.test(nc.headline || "");
+    const amt = nc.mm.map((v, k) => Math.max(0, snowy && nc.snow ? (nc.snow[k] || 0) / 10 : v));
+    const rate = amt.map((v) => v * 60 / step);                     // mm/h
+    const top = Math.max(7.5, ...rate) * 1.15;
+    const W_ = 100, H = 100;
+    const y = (r) => H - Math.sqrt(Math.min(1, r / top)) * H;
+    const x = (k) => (k + 0.5) / n * W_;
+    const P = (j) => y(rate[Math.max(0, Math.min(n - 1, j))]);
+    const cr = (u) => { const k = Math.floor(u), t = u - k, p0 = P(k - 1), p1 = P(k), p2 = P(k + 1), p3 = P(k + 2);
+      return Math.min(H, 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)); };
+    const pts = [];
+    for (let k = 0; k <= (n - 1) * 8; k++) pts.push(`${x(k / 8).toFixed(1)} ${cr(k / 8).toFixed(1)}`);
+    const line = `M0 ${P(0).toFixed(1)} L${pts.join(" L")} L${W_} ${P(n - 1).toFixed(1)}`;
+    const nowX = x(now);
+    // band rules live in the SVG; their labels sit in HTML on top, since the
+    // stretched viewBox would distort any text drawn inside it
+    const bandRows = [["light", 2.5], ["moderate", 7.5]].filter(([, r]) => r < top);
+    const bands = bandRows.map(([, r]) => `<line class="band" x1="0" x2="${W_}" y1="${y(r).toFixed(1)}" y2="${y(r).toFixed(1)}"/>`).join("");
+    const bandLabels = bandRows.map(([nm, r]) => `<span class="band-l" style="top:${y(r).toFixed(1)}%">${nm}</span>`).join("");
+    const t0 = new Date(nc.times[now]);
+    const tick = (mins) => { const d = new Date(t0.getTime() + mins * 6e4); return d.toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric" })).replace(":00", "").replace(/\s/, ""); };
+    const labels = [];
+    for (let k = 0; k < n; k++) { const m = (k - now) * step; if (m % 60 === 0) labels.push(`<span style="left:${x(k).toFixed(1)}%">${m === 0 ? "now" : tick(m)}</span>`); }
+    return `<div class="rn-head"><i>rain now</i><b>${nc.headline || ""}</b></div>
+      <div class="rn-wrap">${bandLabels}<svg class="rn-chart${snowy ? " snowy" : ""}" viewBox="0 0 ${W_} ${H}" preserveAspectRatio="none" aria-hidden="true">
+        <defs><clipPath id="rn-past"><rect x="0" y="0" width="${nowX.toFixed(1)}" height="${H}"/></clipPath></defs>
+        ${bands}
+        <path class="fill" d="${line} L${W_} ${H} L0 ${H} Z"/>
+        <path class="fill past" d="${line} L${W_} ${H} L0 ${H} Z" clip-path="url(#rn-past)"/>
+        <path class="line" d="${line}"/>
+        <line class="now" x1="${nowX.toFixed(1)}" x2="${nowX.toFixed(1)}" y1="0" y2="${H}"/>
+      </svg></div><div class="rn-x">${labels.join("")}</div>`;
+  }
+  function paintRainNow(pt) {
+    if (window.WXStatic || !document.getElementById("rainnow-slot")) return;
+    const paint = () => {
+      const el = document.getElementById("rainnow-slot");
+      if (!el) return;
+      const nc = pt.rainNow;
+      if (!nc || !nc.headline) { el.hidden = true; return; }
+      el.hidden = false; el.innerHTML = rainNowHtml(nc);
+    };
+    const bust = rainNowBust();
+    if (pt.rainNow !== undefined && pt.rainNowBust === bust) { paint(); return; }
+    const my = ++rainNowFetch;
+    pt.rainNowBust = bust;
+    if (pt.rainNow === undefined) pt.rainNow = null;
+    W().api(`${W().API}/nowcast?lat=${pt.lat.toFixed(3)}&lon=${pt.lon.toFixed(3)}`)
+      .then((r) => { pt.rainNow = r && r.mm ? r : null; if (my === rainNowFetch && W().state.point === pt) paint(); })
+      .catch(() => { pt.rainNow = null; });
   }
 
   // ── nearby webcams ─────────────────────────────────────────────────────

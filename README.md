@@ -301,6 +301,7 @@ marked *direct*, whose tiles the browser fetches itself.
 | Places | Nominatim search and reverse (1 req/s honoured) · Open-Meteo elevation | global | |
 | Ski resorts | OpenStreetMap via Overpass, DEM for base/summit | global | catalog, lifts, boundary; pins coloured by 72 h forecast snowfall when a snow layer is showing |
 | Climate normals | ERA5 1991–2020 daily via Open-Meteo archive (CC BY 4.0) | global | one 30-year pull per 0.25° cell, cached 30 days; "+4° vs normal" on the card |
+| Rain now | Open-Meteo `minutely_15` precipitation (HRRR / ICON-D2 where they run, radar-assimilating; interpolated elsewhere) | global | one call per 0.05° cell every 5 min; an hour back, two ahead, shown only when something falls |
 | Webcams | DriveBC (OGL-BC) · Windy Webcams API (keyed, optional) | BC highways · worldwide | nearest cams on the point card; Windy needs `WXGRID_WINDY_WEBCAMS_KEY` and links back to windy.com |
 
 Attribution requirements are honoured in the interface: MeteoAlarm content is
@@ -338,6 +339,7 @@ for a year.
 | `/api/sigmet/layer`, `/api/sigmet/point` | aviation hazard areas |
 | `/api/resorts`, `/api/resorts/all`, `/api/resorts/snow`, `/api/resorts/{id}`, `POST /api/resorts/rebuild` | ski resort catalog, snow colouring, details |
 | `/api/normals` | 366-slot 1991–2020 normals (high, low, mean, precip) for the cell around `lat`, `lon` |
+| `/api/nowcast` | 15-minute precipitation, an hour back and two ahead, with a plain headline; 204 when the upstream is down |
 | `/api/webcams` | nearest public webcams to a point (`lat`, `lon`, `n`) with distance and bearing |
 | `/api/obs/layer` | METAR stations in a view (`s`, `w`, `n`, `e`) as GeoJSON; 204 when the view is too wide |
 | `/api/alerts/{layer,point,detail,ec}`, `/api/avy/{layer,point}`, `/api/storms`, `/api/tides`, `/api/obs`, `/api/station`, `/api/air`, `/api/geo`, `/api/geo/reverse` | external feeds |
