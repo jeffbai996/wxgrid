@@ -580,3 +580,12 @@ def test_the_hero_carries_a_quiet_vs_normal_line():
     assert '<div class="vs-normal" id="normal-slot" hidden></div>' in panes
     assert "function paintNormal(pt, d, i, todays)" in panes and "/normals?lat=" in panes
     assert ".hero .vs-normal { margin-top: 2px; font: 500 11px var(--font-mono); color: var(--dim);" in css
+
+
+def test_tape_hover_card_reads_the_column_data_not_just_the_cells():
+    # 2026-09-03: phrase, humidity/cloud/pressure/UV, an hourly curve for a
+    # day column and its sunrise/sunset, all from the data behind the tape.
+    tape = _read("tape.js"); css = _read("styles.css")
+    assert "function richCard(i, td)" in tape and "const rich = richCard(Number(i), td);" in tape
+    assert 'class="day-curve"' in tape and "WXPanes.sunTimes(d0.lat, d0.lon" in tape
+    assert "#tape-card .day-curve polyline" in css

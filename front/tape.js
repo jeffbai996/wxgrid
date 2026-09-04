@@ -252,7 +252,9 @@
       model: "aigfs", valid: ai.d.valid[i], native: ai.keep ? ai.keep[i] : i, ai: true, aiStart: false,
     }));
     tailColumns[0].aiStart = true;
-    return { d, keep: null, agg: true, res: 24, columns: columns.concat(tailColumns) };
+    // buckets ride along for the primary columns (the hover card draws each
+    // day's hours from them); the AI tail has none
+    return { d, keep: null, agg: true, res: 24, buckets: primary.buckets, columns: columns.concat(tailColumns) };
   }
 
   function renderTape() {
@@ -401,6 +403,68 @@
   // for that hour, labelled, so nobody has to line numbers up with the
   // labels at the far left. Built from the rendered cells, so it says
   // whatever the tape says, in the tape's units.
+  // What one column of the tape holds, read from the data behind it.
+  function richCard(i, td) {
+    const d0 = tapeData();
+    if (!d0 || !d0.series) return null;
+    const view = tapeView(d0);
+    const s = view.d && view.d.series;
+    const col = view.columns && view.columns[i];
+    if (!s || !col) return null;
+    const U = WX.units, K = 273.15;
+    const t = s.t2m && s.t2m[i] != null ? s.t2m[i] : null, lo = s.t2m_lo && s.t2m_lo[i] != null ? s.t2m_lo[i] : null;
+    const isDay = view.agg && view.res >= 24;
+    const tile = (k, v, unit = "", cls = "") => v == null || v === "" ? "" : `<span class="metric ${cls}"><i>${k}</i><b>${v}${unit ? ` <small>${unit}</small>` : ""}</b></span>`;
+    const metrics = [];
+    if (t != null) metrics.push(tile(isDay ? "High / low" : "Air temp", lo != null && isDay ? `${U.temp(t).v}° / ${U.temp(lo).v}°` : `${U.temp(t).v}°`, "", "temp"));
+    const fh = s.feels_hi && s.feels_hi[i] != null ? s.feels_hi[i] : (t != null ? feelsAt(s, i) : null), flo = s.feels_lo && s.feels_lo[i] != null ? s.feels_lo[i] : null;
+    if (fh != null && (isDay ? Math.abs(fh - (t - K)) >= 1 || (flo != null && lo != null && Math.abs(flo - (lo - K)) >= 1) : Math.abs(fh - (t - K)) >= 1))
+      metrics.push(tile("Feels like", isDay && flo != null ? `${U.tempC(fh).v}° / ${U.tempC(flo).v}°` : `${U.tempC(fh).v}°`, "", "feels"));
+    const tp = s.tp6 && s.tp6[i] != null ? s.tp6[i] : null, sf = s.sf6 && s.sf6[i] != null ? s.sf6[i] : null;
+    if (sf != null && sf >= 0.3) metrics.push(tile("Snow", U.snow(sf).v, U.snowUnit, "precip"));
+    if (tp != null && tp >= 0.1) metrics.push(tile("Precip", U.precip(tp).v, U.precipUnit, "precip"));
+    if (s.prob_rain && s.prob_rain[i] != null && s.prob_rain[i] >= 5) metrics.push(tile("Rain chance", Math.round(s.prob_rain[i]), "%", "precip"));
+    if (s.wind && s.wind[i] != null) metrics.push(tile(isDay ? "Wind, peak" : "Wind", `${Math.round(WX.speed(s.wind[i]))}`, `${WX.speedUnit()}${s.wdir && s.wdir[i] != null ? ` ${WX.arrow(s.wdir[i])} ${Math.round(s.wdir[i])}°` : ""}`, "wind"));
+    if (s.gust && s.gust[i] != null) metrics.push(tile("Gusts", Math.round(WX.speed(s.gust[i])), WX.speedUnit(), "wind"));
+    if (s.tcc && s.tcc[i] != null) metrics.push(tile("Cloud", Math.round(s.tcc[i] * 100), "%"));
+    if (s.t2m && s.d2m && s.t2m[i] != null && s.d2m[i] != null) {
+      const rh = Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)));
+      metrics.push(tile("Humidity", Math.min(100, rh), "%"));
+    }
+    if (s.msl && s.msl[i] != null) metrics.push(tile("Pressure", U.press(s.msl[i]).v, U.pressUnit));
+    if (s.uvi && s.uvi[i] != null && s.uvi[i] >= 1) metrics.push(tile(isDay ? "UV, peak" : "UV", s.uvi[i].toFixed(0)));
+    if (s.cape && s.cape[i] != null && s.cape[i] >= 300) metrics.push(tile("CAPE", Math.round(s.cape[i]), "J/kg"));
+    // a phrase from the sky, the way the hero does it
+    const cloud = s.tcc && s.tcc[i] != null ? s.tcc[i] : null;
+    const wet = (tp || 0) + (sf || 0);
+    let phrase = cloud == null ? "" : cloud < 0.25 ? "Clear" : cloud < 0.7 ? "Partly cloudy" : "Overcast";
+    if (wet >= 0.3) phrase = `${phrase ? phrase + ", " : ""}${sf != null && sf >= tp ? "snow" : wet >= 5 ? "rain" : "showers"}`;
+    if (s.gust && s.gust[i] != null && s.gust[i] * 3.6 >= 55) phrase += `${phrase ? " · " : ""}windy`;
+    // the hours inside a day column: temperature curve over rain bars
+    let spark = "";
+    if (isDay && view.buckets && view.buckets[i] && d0.series.t2m) {
+      const idx = view.buckets[i].idx, s0 = d0.series;
+      const temps = idx.map((k) => s0.t2m[k]).filter((v) => v != null);
+      if (temps.length >= 3) {
+        const mn = Math.min(...temps), mx = Math.max(...temps), span = Math.max(mx - mn, 2);
+        const W_ = 100, H = 30;
+        const pts = idx.map((k, n) => s0.t2m[k] == null ? null : `${(n / (idx.length - 1) * W_).toFixed(1)},${(4 + (H - 10) * (1 - (s0.t2m[k] - mn) / span)).toFixed(1)}`).filter(Boolean).join(" ");
+        const rmax = Math.max(0.5, ...idx.map((k) => (s0.tp6 && s0.tp6[k]) || 0));
+        const bars = idx.map((k, n) => { const v = (s0.tp6 && s0.tp6[k]) || 0; if (v < 0.05) return ""; const h = Math.max(1.5, v / rmax * 10); return `<rect x="${(n / idx.length * W_).toFixed(1)}" y="${H - h}" width="${(W_ / idx.length * 0.8).toFixed(1)}" height="${h}"/>`; }).join("");
+        // no hour labels: the viewBox is stretched, so text would be too; the
+        // curve reads left-to-right as midnight-to-midnight on its own
+        spark = `<svg class="day-curve" viewBox="0 0 ${W_} ${H}" preserveAspectRatio="none" aria-hidden="true"><g class="rain">${bars}</g><polyline points="${pts}"/></svg>`;
+      }
+    }
+    // a day gets its sun
+    let foot = "";
+    if (isDay && window.WXPanes && WXPanes.sunTimes && d0.lat != null && d0.lon != null) {
+      const sun = WXPanes.sunTimes(d0.lat, d0.lon, new Date(col.valid));
+      if (sun) foot = `☼ ${sun.rise} – ${sun.set}${sun.len ? ` · ${sun.len}` : ""}`;
+    }
+    return { metrics, phrase, spark, foot };
+  }
+
   function wireTapeHover(tape) {
     if (tape.dataset.hoverWired) return;
     tape.dataset.hoverWired = "1";
@@ -436,7 +500,17 @@
       const model = td.dataset.model || state.model;
       const entry = WX.catalog && WX.catalog.models.find((m) => m.key === model);
       const source = model === "aigfs" ? "AI-GFS" : (entry && entry.short) || model.toUpperCase();
-      card.innerHTML = `<div class="card-head"><b class="when">${when || day}</b><span class="source${model === "aigfs" ? " ai" : ""}">${source}</span></div><div class="card-metrics">${metrics.join("")}</div>`;
+      // The rendered cells only know what the tape shows. The column's own
+      // data knows more: sky and a phrase, humidity, cloud, pressure, UV,
+      // sunrise/sunset for a day, and the hours inside a day column as a
+      // curve (Jeff 2026-09-03: "a missed opportunity").
+      const rich = richCard(Number(i), td);
+      const iconCell = table.querySelector(`tr.r-icon td[data-i="${i}"]`);
+      const ico = iconCell ? iconCell.innerHTML : "";
+      card.innerHTML = `<div class="card-head">${ico ? `<span class="ico">${ico}</span>` : ""}<div class="when-wrap"><b class="when">${when || day}</b>${rich && rich.phrase ? `<span class="phrase">${rich.phrase}</span>` : ""}</div><span class="source${model === "aigfs" ? " ai" : ""}">${source}</span></div>
+        ${rich && rich.spark ? rich.spark : ""}
+        <div class="card-metrics">${rich && rich.metrics.length ? rich.metrics.join("") : metrics.join("")}</div>
+        ${rich && rich.foot ? `<div class="card-foot">${rich.foot}</div>` : ""}`;
       card.hidden = false;
       const r = td.getBoundingClientRect(), cw = card.offsetWidth, ch = card.offsetHeight;
       const left = Math.max(6, Math.min(innerWidth - cw - 6, r.left + r.width / 2 - cw / 2));
