@@ -365,41 +365,36 @@
     const sea = !!(pt.local && pt.local.place && pt.local.place.water);
     const marine = [], normal = [];
     let pressureCurve = "";
-    // One shape for every reading, the wind box's shape: a small label over
-    // the number, unit in the numeral face, the colour as a tint and a ring.
-    // Pills read as tags; a grid of these reads as an instrument panel
-    // (Jeff 2026-09-02: "think of something better to replace the pills").
-    const stat = (k, v, unit, color, extra = "", title = "") =>
-      `<div class="stat" style="--c:${color}"${title ? ` title="${title}"` : ""}><small>${k}</small><b>${v}${unit ? `<i>${unit}</i>` : ""}</b>${extra}</div>`;
     if (sea && s.wind && s.wind[i] != null) { const bf = beaufort(s.wind[i]);
-      marine.push(stat(`Beaufort · ${BEAUFORT_NAME[bf]}`, `F${bf}`, "", "#8ec5f0")); }
+      marine.push(stat(`Beaufort · ${BEAUFORT_NAME[bf]}`, `F${bf}`, "", "#8ec5f0", "", "", "sea")); }
     if (sea && s.swh && s.swh[i] != null) { const ds = douglas(s.swh[i]);
-      marine.push(stat(`Sea · ${DOUGLAS_NAME[ds]}`, ds, "", "#7dd3fc")); }
+      marine.push(stat(`Sea · ${DOUGLAS_NAME[ds]}`, ds, "", "#7dd3fc", "", "", "sea")); }
     if (s.swh && s.swh[i] != null) marine.push(stat("Waves", W().units.alt(s.swh[i], 1).v, W().units.altUnit, "#7dd3fc",
-      `<em>${s.mwp && s.mwp[i] != null ? `${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` ${arrow((s.mwd[i] + 180) % 360)}` : ""}</em>`));
-    if (s.tp6 && s.tp6[i] > 0.05) normal.push(stat("Rain 6 h", W().units.precip(s.tp6[i]).v, W().units.precipUnit, "var(--rain)"));
+      `<em>${s.mwp && s.mwp[i] != null ? `${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` ${arrow((s.mwd[i] + 180) % 360)}` : ""}</em>`, "", "sea"));
+    if (s.tp6 && s.tp6[i] > 0.05) normal.push(stat("Rain 6 h", W().units.precip(s.tp6[i]).v, W().units.precipUnit, "var(--rain)", "", "", "precip"));
     // Chance, from the GEFS members, whichever model the card is reading:
     // the max over the next 24 h from the selected time, only when it says
     // something (a 3 % chance is not a pill).
     const chance = probMax(pt, d, i, "prob_rain", 24);
-    if (chance != null && chance >= 10) normal.push(stat("Rain chance", chance, "%", "#71b8ff", "", "Share of the 30 GEFS members giving rain in the next 24 h"));
+    if (chance != null && chance >= 10) normal.push(stat("Rain chance", chance, "%", "#71b8ff", "", "Share of the 30 GEFS members giving rain in the next 24 h", "precip"));
     const gustChance = probMax(pt, d, i, "prob_gust", 24);
-    if (gustChance != null && gustChance >= 20) normal.push(stat("Gale chance", gustChance, "%", "#ffb454", "", "Share of members with gusts over 50 km/h in the next 24 h"));
-    if (s.sf6 && s.sf6[i] > 0.05) normal.push(stat("New snow", W().units.snow(s.sf6[i]).v, W().units.snowUnit, "#cfe8ff"));
-    if (!sea && s.sd_cm && s.sd_cm[i] >= 0.5) normal.push(stat("Snow depth", W().units.snow(s.sd_cm[i]).v, W().units.snowUnit, "#9fd3ff"));
+    if (gustChance != null && gustChance >= 20) normal.push(stat("Gale chance", gustChance, "%", "#ffb454", "", "Share of members with gusts over 50 km/h in the next 24 h", "air"));
+    if (s.sf6 && s.sf6[i] > 0.05) normal.push(stat("New snow", W().units.snow(s.sf6[i]).v, W().units.snowUnit, "#cfe8ff", "", "", "precip"));
+    if (!sea && s.sd_cm && s.sd_cm[i] >= 0.5) normal.push(stat("Snow depth", W().units.snow(s.sd_cm[i]).v, W().units.snowUnit, "#9fd3ff", "", "", "precip"));
     // 24 h totals and changes, from the step after this one to +24 h
     const ahead = (arr) => { const out = []; for (let k = i + 1; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) if (arr[k] != null) out.push(arr[k]); return out; };
-    if (s.tp6) { const r24 = ahead(s.tp6).reduce((a, b) => a + b, 0); if (r24 >= 0.5) normal.push(stat("Rain 24 h", W().units.precip(r24).v, W().units.precipUnit, "#5aa9ff")); }
-    if (s.tcc && s.tcc[i] != null) normal.push(stat("Cloud", (s.tcc[i] * 100).toFixed(0), "%", "#9fb0c8"));
+    if (s.tp6) { const r24 = ahead(s.tp6).reduce((a, b) => a + b, 0); if (r24 >= 0.5) normal.push(stat("Rain 24 h", W().units.precip(r24).v, W().units.precipUnit, "#5aa9ff", "", "", "precip")); }
+    if (s.tcc && s.tcc[i] != null) normal.push(stat("Cloud", (s.tcc[i] * 100).toFixed(0), "%", "#9fb0c8", "", "", "sky"));
     if (s.t2m && s.d2m && s.t2m[i] != null && s.d2m[i] != null) {
       const rh = Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)));
-      normal.push(stat("Humidity", rh, "%", rh >= 90 ? "#7cc4ff" : rh <= 30 ? "#ffb454" : "#7fd8e8"));
+      normal.push(stat("Humidity", rh, "%", rh >= 90 ? "#7cc4ff" : rh <= 30 ? "#ffb454" : "#7fd8e8", "", "", "sky"));
     }
-    { const uv = uvNow(d, i); if (uv && uv.uvi >= 1) normal.push(stat(uv.peak ? "UV peak" : "UV index", uv.uvi.toFixed(0), "", uv.uvi >= 8 ? "var(--bad)" : uv.uvi >= 6 ? "#ff8a3d" : uv.uvi >= 3 ? "#ffd166" : "#78d39a")); }
-    if (s.vis && s.vis[i] != null) normal.push(stat("Visibility", W().units.dist(s.vis[i] / 1000, s.vis[i] < 5000 ? 1 : 0).v, W().units.dist(1).unit, s.vis[i] > 9000 ? "#78d39a" : s.vis[i] > 3000 ? "#ffd166" : "var(--bad)"));
+    // the model's UV estimate steps aside when CAMS has the measured one below
+    if (!(pt.air && pt.air.uv != null)) { const uv = uvNow(d, i); if (uv && uv.uvi >= 1) normal.push(stat(uv.peak ? "UV peak" : "UV index", uv.uvi.toFixed(0), "", uv.uvi >= 8 ? "var(--bad)" : uv.uvi >= 6 ? "#ff8a3d" : uv.uvi >= 3 ? "#ffd166" : "#78d39a", "", "", "sun")); }
+    if (s.vis && s.vis[i] != null) normal.push(stat("Visibility", W().units.dist(s.vis[i] / 1000, s.vis[i] < 5000 ? 1 : 0).v, W().units.dist(1).unit, s.vis[i] > 9000 ? "#78d39a" : s.vis[i] > 3000 ? "#ffd166" : "var(--bad)", "", "", "sky"));
     if (s.t2m && s.t2m[i] != null) { const k24 = d.steps.findIndex((h, k) => k > i && h >= d.steps[i] + 24); const t24 = k24 > 0 ? s.t2m[k24] : null;
-      if (t24 != null && Math.abs(t24 - s.t2m[i]) >= 1.5) { const dT = W().units.tempDelta(t24 - s.t2m[i]); normal.push(stat("24 h change", `${dT > 0 ? "+" : "−"}${Math.abs(dT).toFixed(0)}°`, "", dT > 0 ? "#ff8a3d" : "#6cb6ff")); } }
-    if (s.d2m) normal.push(stat("Dew point", `${f(s.d2m[i], (v) => W().units.temp(v).v)}°`, "", "#6cd7c4"));
+      if (t24 != null && Math.abs(t24 - s.t2m[i]) >= 1.5) { const dT = W().units.tempDelta(t24 - s.t2m[i]); normal.push(stat("24 h change", `${dT > 0 ? "+" : "−"}${Math.abs(dT).toFixed(0)}°`, "", dT > 0 ? "#ff8a3d" : "#6cb6ff", "", "", "air")); } }
+    if (s.d2m) normal.push(stat("Dew point", `${f(s.d2m[i], (v) => W().units.temp(v).v)}°`, "", "#6cd7c4", "", "", "sky"));
     // Pressure with its direction: the number alone says nothing, the trend is
     // the whole reason a barometer is on the wall.
     if (s.msl) {
@@ -417,7 +412,7 @@
       }
       pressureCurve = spark;
       normal.push(stat("Pressure", f(s.msl[i], (v) => W().units.press(v).v), W().units.pressUnit, "#b7a6f0",
-        `<em class="trend" title="${dP > 0 ? "rising" : dP < 0 ? "falling" : "steady"} ${Math.abs(dP).toFixed(1)} hPa / 6 h">${dP >= 1 ? "↑" : dP <= -1 ? "↓" : "→"}</em>`));
+        `<em class="trend" title="${dP > 0 ? "rising" : dP < 0 ? "falling" : "steady"} ${Math.abs(dP).toFixed(1)} hPa / 6 h">${dP >= 1 ? "↑" : dP <= -1 ? "↓" : "→"}</em>`, "", "air"));
     }
     // What it feels like, when that is not what the thermometer says.
     if (t != null) {
@@ -426,17 +421,17 @@
       if (w != null && c <= 10 && w * 3.6 >= 4.8) { const q = Math.pow(w * 3.6, 0.16); feels = 13.12 + 0.6215 * c - 11.37 * q + 0.3965 * c * q; }
       else if (dpK != null && c >= 20) { const e = 6.11 * Math.exp(5417.753 * (1 / 273.16 - 1 / dpK)); feels = c + 0.5555 * (e - 10); }
       if (Math.abs(Math.round(feels) - Math.round(c)) >= 2)
-        normal.push(stat("Feels like", `${W().units.tempC(feels).v}°`, "", tempColor(feels)));
+        normal.push(stat("Feels like", `${W().units.tempC(feels).v}°`, "", tempColor(feels), "", "", "air"));
     }
     // Cloud base from the temperature/dew-point spread: ~125 m per °C. Only
     // worth saying when there is cloud to have a base.
     if (!sea && s.tcc && s.tcc[i] > 0.2 && s.d2m && s.d2m[i] != null && t != null) {
       const spread = (t - s.d2m[i]);
-      if (spread > 0.3 && spread < 25) normal.push(stat("Cloud base ≈", W().units.alt(Math.round(spread * 125 / 50) * 50).v, W().units.altUnit, "#a9c4d8"));
+      if (spread > 0.3 && spread < 25) normal.push(stat("Cloud base ≈", W().units.alt(Math.round(spread * 125 / 50) * 50).v, W().units.altUnit, "#a9c4d8", "", "", "sky"));
     }
-    if (s.cape && s.cape[i] >= 100) normal.push(stat("CAPE", s.cape[i].toFixed(0), "J/kg", s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)"));
+    if (s.cape && s.cape[i] >= 100) normal.push(stat("CAPE", s.cape[i].toFixed(0), "J/kg", s.cape[i] > 1000 ? "var(--bad)" : "var(--warm)", "", "", "air"));
     const freezing = d.derived && d.derived.freezing_level_m && d.derived.freezing_level_m[i];
-    if (!sea && freezing != null) normal.push(stat("Freezing lvl", W().units.alt(freezing).v, W().units.altUnit, "#7fd8e8"));
+    if (!sea && freezing != null) normal.push(stat("Freezing lvl", W().units.alt(freezing).v, W().units.altUnit, "#7fd8e8", "", "", "air"));
     chips.push(...(sea ? [...marine, ...normal] : [...normal, ...marine]));
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
     const moon = moonPhase(W().validDate);
@@ -450,7 +445,7 @@
         </div>
       </div>
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
-      <div class="meta">${chips.join("")}</div>
+      <div class="meta">${chips.filter((c) => !c.startsWith('<div class="stat')).join("")}${sections(chips.filter((c) => c.startsWith('<div class="stat')))}</div>
       ${contextCues(pt, d, i)}
       ${daysStrip(pt, d, i)}
       ${contextCards(pt, d, i)}
@@ -617,12 +612,18 @@
     const uvValues = a.hourly && a.hourly.uv ? a.hourly.uv.slice(0, 24).filter((x) => x != null) : [];
     const uvMax = uvValues.length ? Math.max(...uvValues) : null;
     const uvb = uvMax != null ? uvBand(uvMax) : null;
-    return `<div class="air">${b ? `<span class="chipv" style="background:${b[2]}22;color:${b[2]}"><i class="sw" style="background:${b[2]}"></i>US AQI <b>${a.us_aqi}</b> ${b[1]}</span>` : ""}
-      ${a.eu_aqi != null ? `<span class="chipv" style="color:#8fd6a8">EU AQI <b>${a.eu_aqi}</b></span>` : ""}
-      ${a.pm2_5 != null ? `<span class="chipv" style="color:#e0b57a">PM2.5 <b>${a.pm2_5.toFixed(0)}</b> µg/m³</span>` : ""}${a.pm10 != null ? `<span class="chipv" style="color:#d8a06a">PM10 <b>${a.pm10.toFixed(0)}</b> µg/m³</span>` : ""}
-      ${a.ozone != null ? `<span class="chipv" style="color:#8ec7f0">O₃ <b>${a.ozone.toFixed(0)}</b> µg/m³</span>` : ""}${a.no2 != null ? `<span class="chipv" style="color:#d79ac0">NO₂ <b>${a.no2.toFixed(0)}</b> µg/m³</span>` : ""}
-      ${a.uv != null ? `<span class="chipv" style="color:#f0c46a">UV now <b>${a.uv.toFixed(1)}</b></span>` : ""}${a.uv_clear != null ? `<span class="chipv" style="color:#f0c46a">clear-sky UV <b>${a.uv_clear.toFixed(1)}</b></span>` : ""}
-      ${uvb ? `<span class="chipv" style="color:${uvb[1]}">UV max <b>${uvMax.toFixed(0)}</b> ${uvb[0]}</span>` : ""}</div>`;
+    const uvCol = (v) => v >= 8 ? "var(--bad)" : v >= 6 ? "#ff8a3d" : v >= 3 ? "#ffd166" : "#78d39a";
+    const tiles = [];
+    if (b) tiles.push(stat(`US AQI · ${b[1]}`, a.us_aqi, "", b[2], "", "", "aq"));
+    if (a.eu_aqi != null) tiles.push(stat("EU AQI", a.eu_aqi, "", "#8fd6a8", "", "", "aq"));
+    if (a.pm2_5 != null) tiles.push(stat("PM2.5", a.pm2_5.toFixed(0), "µg/m³", "#e0b57a", "", "", "aq"));
+    if (a.pm10 != null) tiles.push(stat("PM10", a.pm10.toFixed(0), "µg/m³", "#d8a06a", "", "", "aq"));
+    if (a.ozone != null) tiles.push(stat("Ozone", a.ozone.toFixed(0), "µg/m³", "#8ec7f0", "", "", "aq"));
+    if (a.no2 != null) tiles.push(stat("NO₂", a.no2.toFixed(0), "µg/m³", "#d79ac0", "", "", "aq"));
+    if (a.uv != null) tiles.push(stat("UV now", a.uv.toFixed(1), "", uvCol(a.uv), "", "", "sun"));
+    if (a.uv_clear != null) tiles.push(stat("Clear-sky UV", a.uv_clear.toFixed(1), "", uvCol(a.uv_clear), "", "", "sun"));
+    if (uvb) tiles.push(stat(`UV max · ${uvb[0]}`, uvMax.toFixed(0), "", uvb[1], "", "", "sun"));
+    return `<div class="meta air">${sections(tiles)}</div>`;
   }
   // An alert opens where its text is: in the card. Only the services that
   // publish a readable page get a link out; the ones that publish an API
@@ -1030,6 +1031,24 @@
   // A cyclone within reach of the pin earns a chip on the hero card: the
   // storm's name, its basin-correct category, range and bearing. Tapping it
   // turns the storms layer on and flies to the eye (Jeff 2026-08-21).
+  // ── stat tiles ─────────────────────────────────────────────────────────
+  // One shape for every reading, the wind box's shape: a small label over
+  // the number, unit in the numeral face, the colour as a tint and a ring.
+  // Pills read as tags; a grid of these reads as an instrument panel
+  // (Jeff 2026-09-02). Each tile names its group so the card can lay them
+  // out under headings — "eight cards that don't say their relation to
+  // anything" was the complaint (Jeff 2026-09-04).
+  const stat = (k, v, unit, color, extra = "", title = "", group = "air") =>
+    `<div class="stat" data-g="${group}" style="--c:${color}"${title ? ` title="${title}"` : ""}><small>${k}</small><b>${v}${unit ? `<i>${unit}</i>` : ""}</b>${extra}</div>`;
+  const GROUPS = [["precip", "Precipitation"], ["sky", "Sky"], ["air", "Air"], ["sun", "Sun"], ["sea", "Sea"], ["aq", "Air quality"]];
+  // Tiles → sections. A group with one tile still gets its heading: the
+  // heading is the relation, not decoration.
+  function sections(tiles) {
+    const by = {};
+    for (const t of tiles) { const g = (t.match(/data-g="([a-z]+)"/) || [])[1] || "air"; (by[g] = by[g] || []).push(t); }
+    return GROUPS.filter(([g]) => by[g]).map(([g, label]) => `<section class="sect" data-g="${g}"><small class="sect-h">${label}</small><div class="sect-grid">${by[g].join("")}</div></section>`).join("");
+  }
+
   // ── vs normal: the day against its 1991–2020 ERA5 climatology ──────────
   // Quiet by design: one muted line under the sunrise, "+4° vs normal", the
   // normal high/low on hover. Fetched once per pin (30-day server cache per
@@ -1103,9 +1122,15 @@
       document.body.appendChild(dlg);
       dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
     }
-    dlg.innerHTML = `<div class="cam-view-head"><b>${esc(c.name)}</b><span>${esc(c.caption || "")}</span><button class="icon cam-view-close" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button></div>
+    // Sized by the picture, never by the caption: a long title used to
+    // stretch the box and leave a small still alone on the left (Jeff 2026-09-04).
+    dlg.style.width = "";
+    dlg.innerHTML = `<div class="cam-view-head"><div class="cam-view-titles"><b>${esc(c.name)}</b>${c.caption ? `<span>${esc(c.caption)}</span>` : ""}</div><button class="icon cam-view-close" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button></div>
       <img src="${esc(c.image)}${c.image.includes("?") ? "&" : "?"}t=${camBust()}" alt="${esc(c.name)}">
       <div class="cam-view-foot"><span>${c.updated ? `updated ${new Date(c.updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ` : ""}${esc(c.credit)}</span><a href="${esc(c.page)}" target="_blank" rel="noopener">open at ${esc(c.provider)} ↗</a></div>`;
+    const img = dlg.querySelector("img");
+    const fit = () => { dlg.style.width = `${Math.min(innerWidth * 0.94, Math.max(440, img.naturalWidth || 0))}px`; };
+    img.addEventListener("load", fit); if (img.complete && img.naturalWidth) fit();
     dlg.querySelector("button.icon").onclick = () => dlg.close();
     dlg.showModal();
   }

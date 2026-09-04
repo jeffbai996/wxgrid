@@ -385,12 +385,13 @@ def test_now_pane_readings_are_stat_tiles_and_the_card_carries_webcams():
     # a webcams strip slotted in once per pin from /api/webcams (DriveBC first).
     panes = _read("panes.js")
     css = _read("styles.css")
-    assert "const stat = (k, v, unit, color, extra = \"\", title = \"\") =>" in panes
+    assert "const stat = (k, v, unit, color, extra = \"\", title = \"\", group = \"air\") =>" in panes
+    assert "function sections(tiles)" in panes and '["precip", "Precipitation"]' in panes
     assert 'normal.push(stat("Rain 6 h"' in panes and 'normal.push(stat("Pressure"' in panes
     assert 'class="chipv" style="color:#71b8ff"' not in panes            # the old pill is gone
     assert '<div id="cams-slot" class="cams" hidden></div>' in panes
     assert "function fetchCams(pt)" in panes and "function openCam(c)" in panes
-    assert ".meta:has(.stat) { display: grid;" in css
+    assert ".meta .sect-grid { display: grid;" in css and ".meta .sect-h {" in css
     assert ".meta .stat::before" in css and "background: var(--c); opacity: .85;" in css
     assert "color: var(--fg); display: flex; align-items: baseline" in css
     assert ".cam-view::backdrop" in css
