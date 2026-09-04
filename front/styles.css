@@ -1625,14 +1625,16 @@ body.embed #embed-brand:hover { border-color: var(--line-strong); }
 .cam img { transition: transform .5s cubic-bezier(.32,.72,.24,1), filter .3s ease; }
 .cam:hover { box-shadow: inset 0 0 0 1px var(--accent), 0 10px 26px rgba(0,0,0,.35); transform: translateY(-2px) scale(1.025); z-index: 1; }
 .cam:hover img { transform: scale(1.06); filter: brightness(1.08); }
-/* the hovered camera's place on the map: a small camera in a ring that breathes */
-.cam-pin { position: relative; width: 26px; height: 26px; pointer-events: none; }
-.cam-pin .dot { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: var(--panel-solid); color: var(--accent);
-  border: 1.5px solid var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,.45); animation: campin-in .28s cubic-bezier(.32,.72,.24,1) both; }
-.cam-pin .dot svg { width: 13px; height: 13px; }
-.cam-pin .ring { position: absolute; inset: -6px; border-radius: 50%; border: 1.5px solid var(--accent); opacity: 0; animation: campin-ring 1.8s ease-out infinite .2s; }
-@keyframes campin-in { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes campin-ring { 0% { transform: scale(.55); opacity: .7; } 70% { opacity: 0; } 100% { transform: scale(1.6); opacity: 0; } }
+/* the hovered camera's place on the map: one small white camera glyph, a
+   soft shadow so it reads on any ramp, a gentle fade-in and a slow breathe
+   (Jeff 2026-09-04: "a little white camera icon is all that's enough") */
+.cam-pin { position: relative; width: 22px; height: 22px; pointer-events: none; }
+.cam-pin .dot { position: absolute; inset: 0; display: grid; place-items: center; color: #fff;
+  filter: drop-shadow(0 0 2px rgba(0,0,0,.85)) drop-shadow(0 1px 6px rgba(0,0,0,.5)); animation: campin-in .32s cubic-bezier(.32,.72,.24,1) both, campin-breathe 2.4s ease-in-out .3s infinite; }
+.cam-pin .dot svg { width: 16px; height: 16px; }
+.cam-pin .ring { display: none; }
+@keyframes campin-in { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes campin-breathe { 0%, 100% { opacity: 1; transform: none; } 50% { opacity: .72; transform: scale(1.08); } }
 .cam-view { border: 1px solid var(--line-strong); border-radius: 14px; padding: 0; background: var(--panel-solid); color: var(--fg); width: min(94vw, 720px); max-width: 94vw; box-shadow: 0 24px 80px rgba(0,0,0,.6); }
 .cam-view::backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(4px); }
 .cam-view-head { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; }

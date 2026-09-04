@@ -604,4 +604,4 @@ def test_basemap_contrast_pass_and_streets_style():
 def test_webcam_hover_pins_the_camera_on_the_map():
     panes = _read("panes.js"); css = _read("styles.css")
     assert "function camPin(c)" in panes and "b.onpointerenter = () => camPin(" in panes
-    assert "@keyframes campin-ring" in css
+    assert "@keyframes campin-breathe" in css

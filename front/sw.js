@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v62";   // v62: precip-type words, hover card contrast (2026-09-04)
+const VERSION = "wxgrid-v63";   // v63: quieter camera pin (2026-09-04)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
