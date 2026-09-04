@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v60";   // v60: neutral road hierarchy (2026-09-04)
+const VERSION = "wxgrid-v61";   // v61: viewer caption in Urbanist, provider link (2026-09-04)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
