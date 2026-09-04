@@ -1157,6 +1157,9 @@ table.wtape tr.r-dir td { height: 20px; }
 .chipv i.sw { display: none; }
 .meta { gap: 5px 6px; }
 .hero .sun { display: flex; gap: 3px 10px; align-items: center; flex-wrap: wrap; font: 500 11.5px var(--font-mono); color: var(--fg-2); }
+.hero .vs-normal { margin-top: 2px; font: 500 11px var(--font-mono); color: var(--dim); cursor: help; }
+.hero .vs-normal.warm { color: color-mix(in srgb, var(--warm) 70%, var(--fg-2)); }
+.hero .vs-normal.cool { color: color-mix(in srgb, var(--rain) 70%, var(--fg-2)); }
 .hero .sun svg { width: 14px; height: 14px; }
 .tempc { font-weight: 700; }
 .wchip { display: inline-block; min-width: 26px; padding: 1px 4px; border-radius: 4px; color: #fff; text-align: center; }

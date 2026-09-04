@@ -573,3 +573,10 @@ def test_storms_tool_uses_a_distinct_cloud_and_lightning_icon():
     assert 'M6.8 15.5h10.1' in storm
     assert 'm13 13.5-2.4 4.2' in storm
     assert 'M12 2a10 10' not in storm
+
+
+def test_the_hero_carries_a_quiet_vs_normal_line():
+    panes = _read("panes.js"); css = _read("styles.css")
+    assert '<div class="vs-normal" id="normal-slot" hidden></div>' in panes
+    assert "function paintNormal(pt, d, i, todays)" in panes and "/normals?lat=" in panes
+    assert ".hero .vs-normal { margin-top: 2px; font: 500 11px var(--font-mono); color: var(--dim);" in css

@@ -446,6 +446,7 @@
         <div class="hl">
           ${hi != null ? `<div class="hilo"><span class="hi"><i>high</i>${W().units.tempC(hi).v}°</span><span class="rule"></span><span class="lo"><i>low</i>${W().units.tempC(lo).v}°</span></div>` : ""}
           ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span><i class="brk" aria-hidden="true"></i>${sun.len ? `<span class="len" title="Daylight">${W_ICONS.day || ""}${sun.len}</span>` : ""}<span class="moon" title="${moon.name}, ${moon.pct}% lit">${moon.glyph} ${moon.pct}%</span></div>` : ""}
+          <div class="vs-normal" id="normal-slot" hidden></div>
         </div>
       </div>
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
@@ -458,6 +459,7 @@
     pt.pressureCurve = pressureCurve;
     fetchNearStorm(pt);
     fetchCams(pt);
+    paintNormal(pt, d, i, todays);
     // local context
     const loc = pt.local || {};
     const bits = [];
@@ -1028,6 +1030,43 @@
   // A cyclone within reach of the pin earns a chip on the hero card: the
   // storm's name, its basin-correct category, range and bearing. Tapping it
   // turns the storms layer on and flies to the eye (Jeff 2026-08-21).
+  // ── vs normal: the day against its 1991–2020 ERA5 climatology ──────────
+  // Quiet by design: one muted line under the sunrise, "+4° vs normal", the
+  // normal high/low on hover. Fetched once per pin (30-day server cache per
+  // 0.25° cell); nothing is drawn until it lands.
+  const CUM366 = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
+  const day366 = (dt) => CUM366[dt.getMonth()] + dt.getDate() - 1;
+  let normalsFetch = 0;
+  function paintNormal(pt, d, i, todays) {
+    if (window.WXStatic || !document.getElementById("normal-slot")) return;
+    const paint = () => {
+      // re-query: the card re-renders (streamed panes, step changes) while
+      // the fetch is out, and the slot captured earlier is no longer in the DOM
+      const el = document.getElementById("normal-slot");
+      if (!el) return;
+      const nm = pt.normals;
+      const s = d.series;
+      if (!nm || !nm.tmean || !todays.length || !s.t2m) { el.hidden = true; return; }
+      const slot = day366(new Date(d.valid[i]));
+      const ref = nm.tmean[slot], hiN = nm.tmax[slot], loN = nm.tmin[slot];
+      if (ref == null) { el.hidden = true; return; }
+      const dayMean = todays.reduce((a, k) => a + s.t2m[k], 0) / todays.length - K;
+      const dT = W().units.tempDelta(dayMean - ref);
+      const u = W().units.tempUnit;
+      const word = Math.abs(dT) < 1 ? "near normal" : `${dT > 0 ? "+" : "−"}${Math.abs(dT).toFixed(0)}° vs normal`;
+      el.hidden = false;
+      el.className = `vs-normal${dT >= 4 ? " warm" : dT <= -4 ? " cool" : ""}`;
+      el.title = `${nm.years} ERA5 normal for this date: high ${W().units.tempC(hiN).v}${u} · low ${W().units.tempC(loN).v}${u}${nm.precip && nm.precip[slot] != null ? ` · ${W().units.precip(nm.precip[slot]).txt}/day` : ""}`;
+      el.textContent = word;
+    };
+    if (pt.normals !== undefined) { paint(); return; }
+    const my = ++normalsFetch;
+    pt.normals = null;
+    W().api(`${W().API}/normals?lat=${pt.lat.toFixed(3)}&lon=${pt.lon.toFixed(3)}`)
+      .then((r) => { pt.normals = r && r.tmean ? r : null; if (my === normalsFetch && W().state.point === pt) paint(); })
+      .catch(() => { pt.normals = null; });
+  }
+
   // ── nearby webcams ─────────────────────────────────────────────────────
   // What the sky actually looks like from the nearest pass or shore road.
   // Public DOT cams today (DriveBC); more providers are a server-side list.
