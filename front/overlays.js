@@ -130,11 +130,7 @@
       }
       // the line itself: above the field, a touch stronger than the style shipped it
       if (anchor && m.getLayer(l.id)) { if (m.getLayer(haloId)) m.moveLayer(haloId, anchor); m.moveLayer(l.id, anchor); }
-      // Cartographic colours, not black-and-white: motorways in the muted
-      // orange every road atlas uses, major roads warm off-white, minor roads
-      // fainter still, borders grey and dashed (Jeff 2026-09-04: "black and
-      // white makes even less sense", "not yellow").
-      const motorway = /motorway/.test(l.id);
+          const motorway = /motorway/.test(l.id);
       // major roads fade in from z9 to z11 so a regional view keeps only the
       // motorways and borders; zoomed in, the network fills in
       const fade = (full) => motorway || border ? full : ["interpolate", ["linear"], ["zoom"], 9, 0, 11, full];
@@ -142,10 +138,13 @@
         m.setPaintProperty(l.id, "line-color", light ? "hsl(0,0%,30%)" : "hsl(0,0%,78%)");
         m.setPaintProperty(l.id, "line-opacity", 0.85);
       } else if (/_inner$/.test(l.id)) {
-        m.setPaintProperty(l.id, "line-color", motorway ? (light ? "hsl(22,68%,60%)" : "hsl(24,60%,60%)") : (light ? "hsl(35,30%,94%)" : "hsl(35,12%,78%)"));
+        // hierarchy by weight and brightness, not hue: motorways are the
+        // brightest, widest line; no colour competes with the ramp or the
+        // app's own accent (Jeff 2026-09-04: not yellow, not orange)
+        m.setPaintProperty(l.id, "line-color", motorway ? (light ? "#ffffff" : "hsl(35,10%,88%)") : (light ? "hsl(35,25%,93%)" : "hsl(35,10%,74%)"));
         m.setPaintProperty(l.id, "line-opacity", fade(0.95));
       } else if (/_casing$/.test(l.id)) {
-        m.setPaintProperty(l.id, "line-color", motorway ? (light ? "hsl(22,50%,40%)" : "hsl(24,40%,32%)") : (light ? "hsl(30,15%,45%)" : "hsl(30,8%,32%)"));
+        m.setPaintProperty(l.id, "line-color", motorway ? (light ? "hsl(30,12%,42%)" : "hsl(30,8%,26%)") : (light ? "hsl(30,15%,48%)" : "hsl(30,8%,32%)"));
         m.setPaintProperty(l.id, "line-opacity", fade(0.6));
       }
       if (m.getLayer(haloId) && !motorway && !border) m.setPaintProperty(haloId, "line-opacity", fade(0.2));

@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v59";   // v59: sectioned card, webcams + viewer, tape hover card, road contrast (2026-09-04)
+const VERSION = "wxgrid-v60";   // v60: neutral road hierarchy (2026-09-04)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
