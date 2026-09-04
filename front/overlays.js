@@ -98,13 +98,23 @@
   // orientation — motorways, major roads, borders — above the field, and
   // give each a contrasting halo so they read on any colour. Idempotent:
   // runs after every style swap and every wx-layer rebuild.
-  const LIFT_RE = /^(highway_(motorway|major|trunk_primary|secondary_tertiary|minor)(_inner|_casing)?|bridge_(motorway|trunk_primary|secondary_tertiary)(_inner|_casing)?|boundary_(2|3|state|country.*|disputed))$/;
+  // motorways, major roads (trunk/primary/secondary/tertiary) and borders only:
+  // minor streets stay under the field, a lifted street grid was a black net
+  const LIFT_RE = /^(highway_(motorway|major|trunk_primary|secondary_tertiary)(_inner|_casing)?|bridge_(motorway|trunk_primary|secondary_tertiary)(_inner|_casing)?|boundary_(2|3|state|country.*|disputed))$/;
   const HALO_RE = /^(highway_(motorway|major|trunk_primary|secondary_tertiary)(_inner)?|bridge_(motorway|trunk_primary|secondary_tertiary)|boundary_(2|3|state|country.*))$/;
   function boostBasemap() {
     const m = M(); if (!m || !m.getStyle) return;
     const style = m.getStyle(); if (!style || !style.layers) return;
     const light = document.documentElement.dataset.theme === "light";
     const anchor = WX.fn.firstSymbolId();
+    // Under the field, the dark style draws every street near-black, and a
+    // half-transparent ramp turned that into a black net (Jeff 2026-09-04).
+    // Those stay below the field but become faint warm-grey streets.
+    if (!light) for (const l of style.layers) {
+      if (l.type !== "line" || !/^(highway_|road_|bridge_|tunnel_)/.test(l.id) || LIFT_RE.test(l.id)) continue;
+      m.setPaintProperty(l.id, "line-color", "hsl(35,8%,60%)");
+      m.setPaintProperty(l.id, "line-opacity", /casing|subtle/.test(l.id) ? 0.25 : 0.45);
+    }
     const lines = style.layers.filter((l) => l.type === "line" && LIFT_RE.test(l.id));
     for (const l of lines) {
       const border = /^boundary/.test(l.id);
@@ -113,22 +123,32 @@
         // the halo is the same geometry, wider, in the colour the line is not
         const spec = { id: haloId, type: "line", source: l.source, "source-layer": l["source-layer"], filter: l.filter,
           layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": light ? "hsl(0,0%,18%)" : "hsl(0,0%,92%)", "line-opacity": border ? 0.32 : 0.28, "line-blur": 0.6,
+          paint: { "line-color": light ? "hsl(0,0%,18%)" : "hsl(0,0%,92%)", "line-opacity": border ? 0.3 : 0.2, "line-blur": 0.6,
                    "line-width": ["interpolate", ["exponential", 1.3], ["zoom"], 5, border ? 2.2 : 1.6, 10, border ? 3.4 : 3.2, 16, border ? 6 : 12] } };
         if (l.minzoom != null) spec.minzoom = l.minzoom; if (l.maxzoom != null) spec.maxzoom = l.maxzoom;
         m.addLayer(spec, anchor);
       }
       // the line itself: above the field, a touch stronger than the style shipped it
       if (anchor && m.getLayer(l.id)) { if (m.getLayer(haloId)) m.moveLayer(haloId, anchor); m.moveLayer(l.id, anchor); }
+      // Cartographic colours, not black-and-white: motorways in the muted
+      // orange every road atlas uses, major roads warm off-white, minor roads
+      // fainter still, borders grey and dashed (Jeff 2026-09-04: "black and
+      // white makes even less sense", "not yellow").
+      const motorway = /motorway/.test(l.id);
+      // major roads fade in from z9 to z11 so a regional view keeps only the
+      // motorways and borders; zoomed in, the network fills in
+      const fade = (full) => motorway || border ? full : ["interpolate", ["linear"], ["zoom"], 9, 0, 11, full];
       if (border) {
-        m.setPaintProperty(l.id, "line-color", light ? "hsl(0,0%,28%)" : "hsl(0,0%,80%)");
-        m.setPaintProperty(l.id, "line-opacity", 0.9);
-      } else if (/_inner$|highway_minor/.test(l.id)) {
-        m.setPaintProperty(l.id, "line-color", light ? "#ffffff" : "hsl(0,0%,74%)");
-        m.setPaintProperty(l.id, "line-opacity", /minor/.test(l.id) ? 0.7 : 0.92);
+        m.setPaintProperty(l.id, "line-color", light ? "hsl(0,0%,30%)" : "hsl(0,0%,78%)");
+        m.setPaintProperty(l.id, "line-opacity", 0.85);
+      } else if (/_inner$/.test(l.id)) {
+        m.setPaintProperty(l.id, "line-color", motorway ? (light ? "hsl(22,68%,60%)" : "hsl(24,60%,60%)") : (light ? "hsl(35,30%,94%)" : "hsl(35,12%,78%)"));
+        m.setPaintProperty(l.id, "line-opacity", fade(0.95));
       } else if (/_casing$/.test(l.id)) {
-        m.setPaintProperty(l.id, "line-color", light ? "hsl(0,0%,40%)" : "hsl(0,0%,25%)");
+        m.setPaintProperty(l.id, "line-color", motorway ? (light ? "hsl(22,50%,40%)" : "hsl(24,40%,32%)") : (light ? "hsl(30,15%,45%)" : "hsl(30,8%,32%)"));
+        m.setPaintProperty(l.id, "line-opacity", fade(0.6));
       }
+      if (m.getLayer(haloId) && !motorway && !border) m.setPaintProperty(haloId, "line-opacity", fade(0.2));
     }
   }
 
