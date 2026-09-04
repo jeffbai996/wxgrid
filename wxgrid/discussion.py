@@ -111,11 +111,13 @@ def compose(r: RunReader, lat: float, lon: float, point: dict, prob: dict | None
             if sys_later and sys_later["kind"] == sys_now["kind"]:
                 d = sys_later["hpa"] - sys_now["hpa"]
                 if sys_now["kind"] == "low":
-                    trend = ", deepening" if d <= -2 else ", filling" if d >= 2 else ""
+                    trend = "deepening " if d <= -2 else "filling " if d >= 2 else ""
                 else:
-                    trend = ", building" if d >= 2 else ", weakening" if d <= -2 else ""
+                    trend = "building " if d >= 2 else "weakening " if d <= -2 else ""
         place = "overhead" if sys_now["km"] <= 150 else f"about {sys_now['km']} km to the {sys_now['dir']}"
-        driver = (f"A {sys_now['hpa']} hPa {sys_now['kind']} {place}{trend} is running "
+        # The trend goes before the noun ("a filling 1000 hPa low"): trailing
+        # ", filling is running" read as a stray clause.
+        driver = (f"A {trend}{sys_now['hpa']} hPa {sys_now['kind']} {place} is running "
                   f"the weather here.")
     ptend = None
     if s.get("msl") and s["msl"][0] is not None:
