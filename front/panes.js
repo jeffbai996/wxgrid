@@ -146,16 +146,16 @@
         const snow = snowAt(i) > rainAt(i), what = snow ? "Snow" : "Rain";
         const withWind = windy && peak[1] <= k ? `, ${gustPhrase()}` : "";
         if (withWind) windSaid = true;
-        say("rain", k > end ? `${what} right through${much}${withWind}.` : `${what} easing ${when(k)}${much}${withWind}.`);
+        say("rain", k > end ? `${what} the whole way through${much}${withWind}.` : `${what} easing ${when(k)}${much}${withWind}.`);
       } else if (wetSteps.length) {
         const first = wetSteps[0], snow = snowAt(first) > rainAt(first);
         const scattered = wetSteps.length <= Math.max(2, Math.ceil(idx.length * 0.35));
         say("rain", scattered ? `Mostly dry, ${snow ? "a little snow" : "a few showers"} ${when(first)}.`
                             : `Dry until ${when(first)}, then ${snow ? "snow moves in" : "rain moves in"}${much}.`);
       } else if (damp.length) {
-        say("rain", `Dry, give or take ${snowAt(damp[0]) > rainAt(damp[0]) ? "a flurry" : "a stray shower"}.`);
+        say("rain", `Dry, bar ${snowAt(damp[0]) > rainAt(damp[0]) ? "the odd flurry" : "a stray shower"}.`);
       } else {
-        say("rain", (at(end) - at(i)) / 3600e3 >= 36 ? "Nothing falling for the next couple of days." : "Nothing falling through tomorrow.");
+        say("rain", (at(end) - at(i)) / 3600e3 >= 36 ? "Dry for the next couple of days." : "Dry through tomorrow.");
       }
     }
     if (windy && !windSaid) {
@@ -187,12 +187,12 @@
       else if (cc2 != null && cc - cc2 > 0.35) say("sky", `Clearing ${when(half)}.`);
     }
     // Two warnings nothing else carries.
-    if (dp != null && t0 != null && t0 - dp < 1 && (w0 == null || w0 * 3.6 < 12)) say("fog", "Air is sitting at its dew point, so expect fog.");
+    if (dp != null && t0 != null && t0 - dp < 1 && (w0 == null || w0 * 3.6 < 12)) say("fog", "Air at its dew point and hardly moving: expect fog.");
     let uvK = null; for (const k of idx) if (val("uvi", k) != null && (uvK == null || val("uvi", k) > val("uvi", uvK))) uvK = k;
-    if (uvK != null && val("uvi", uvK) >= 3) say("uv", `${val("uvi", uvK) >= 8 ? "Strong sun, " : ""}UV ${Math.round(val("uvi", uvK))} at its peak ${when(uvK)}.`);
+    if (uvK != null && val("uvi", uvK) >= 3) say("uv", `${val("uvi", uvK) >= 8 ? "Strong sun: " : ""}UV peaks at ${Math.round(val("uvi", uvK))} ${when(uvK)}.`);
     // the wind when it is not part of the rain: the Outdoors verdict wants
     // it even when it is only a breeze
-    if (peak && !windy) say("breeze", peak[0] * 3.6 >= 15 ? `Breezy at times, ${gustPhrase()}${peak[1] > i + 1 ? ` ${when(peak[1])}` : ""}.` : "Light winds throughout.");
+    if (peak && !windy) say("breeze", peak[0] * 3.6 >= 15 ? `Breezy at times, ${gustPhrase()}${peak[1] > i + 1 ? ` ${when(peak[1])}` : ""}.` : "Light winds the whole time.");
     return parts;
   }
   // The hero's line: what it is like now, then up to four of the story.
@@ -366,7 +366,7 @@
     const marine = [], normal = [];
     let pressureCurve = "";
     if (sea && s.wind && s.wind[i] != null) { const bf = beaufort(s.wind[i]);
-      marine.push(stat(`Beaufort · ${BEAUFORT_NAME[bf]}`, `F${bf}`, "", "#8ec5f0", "", "", "sea")); }
+      marine.push(stat("Beaufort", `F${bf}`, "", "#8ec5f0", `<em>${BEAUFORT_NAME[bf]}</em>`, "", "sea")); }
     if (sea && s.swh && s.swh[i] != null) { const ds = douglas(s.swh[i]);
       marine.push(stat(`Sea · ${DOUGLAS_NAME[ds]}`, ds, "", "#7dd3fc", "", "", "sea")); }
     if (s.swh && s.swh[i] != null) marine.push(stat("Waves", W().units.alt(s.swh[i], 1).v, W().units.altUnit, "#7dd3fc",
@@ -382,8 +382,26 @@
     if (s.sf6 && s.sf6[i] > 0.05) normal.push(stat("New snow", W().units.snow(s.sf6[i]).v, W().units.snowUnit, "#cfe8ff", "", "", "precip"));
     if (!sea && s.sd_cm && s.sd_cm[i] >= 0.5) normal.push(stat("Snow depth", W().units.snow(s.sd_cm[i]).v, W().units.snowUnit, "#9fd3ff", "", "", "precip"));
     // 24 h totals and changes, from the step after this one to +24 h
+    const freezing = d.derived && d.derived.freezing_level_m && d.derived.freezing_level_m[i];
     const ahead = (arr) => { const out = []; for (let k = i + 1; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) if (arr[k] != null) out.push(arr[k]); return out; };
     if (s.tp6) { const r24 = ahead(s.tp6).reduce((a, b) => a + b, 0); if (r24 >= 0.5) normal.push(stat("Rain 24 h", W().units.precip(r24).v, W().units.precipUnit, "#5aa9ff", "", "", "precip")); }
+    // when the next rain arrives, or that the next two days stay dry
+    if (s.tp6 && (s.tp6[i] || 0) < 0.2) {
+      let k = i + 1; while (k < d.steps.length && d.steps[k] <= d.steps[i] + 48 && ((s.tp6[k] || 0) + (s.sf6 ? s.sf6[k] || 0 : 0)) < 0.3) k++;
+      const soon = k < d.steps.length && d.steps[k] <= d.steps[i] + 48;
+      const hrs = soon ? d.steps[k] - d.steps[i] : null;
+      normal.push(stat(soon ? "Next rain" : "Dry spell", soon ? (hrs < 24 ? `${hrs}` : `${Math.round(hrs / 24)}`) : "48", soon ? (hrs < 24 ? "h" : "d") : "h+", soon ? "#5aa9ff" : "#9fb0c8", "", soon ? "Hours until the next wet step" : "No rain in the next two days", "precip"));
+    }
+    if (freezing != null && s.sf6 && ahead(s.sf6).some((v) => v >= 0.3)) normal.push(stat("Snow level ≈", W().units.alt(Math.max(0, freezing - 300)).v, W().units.altUnit, "#cfe8ff", "", "Freezing level less ~300 m, where snow turns to rain", "precip"));
+    if (t != null && s.d2m && s.d2m[i] != null) {
+      // Stull's wet-bulb from T and RH: the temperature the sweat gets you
+      const tc = t - K, rh = Math.min(100, Math.max(1, 100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * tc / (243.04 + tc))));
+      const tw = tc * Math.atan(0.151977 * Math.sqrt(rh + 8.313659)) + Math.atan(tc + rh) - Math.atan(rh - 1.676331) + 0.00391838 * Math.pow(rh, 1.5) * Math.atan(0.023101 * rh) - 4.686035;
+      normal.push(stat("Wet-bulb", `${W().units.tempC(tw).v}°`, "", tw >= 26 ? "var(--bad)" : tw >= 21 ? "#ff8a3d" : "#6cd7c4", "", "Wet-bulb temperature (Stull): heat stress above ~26°", "air"));
+    }
+    for (const [key, name] of [["lcc", "Low cloud"], ["mcc", "Mid cloud"], ["hcc", "High cloud"]]) {
+      if (s[key] && s[key][i] != null && s[key][i] >= 0.05) normal.push(stat(name, (s[key][i] * 100).toFixed(0), "%", key === "lcc" ? "#9fb0c8" : key === "mcc" ? "#b5c2d2" : "#cfd8e4", "", "", "sky"));
+    }
     if (s.tcc && s.tcc[i] != null) normal.push(stat("Cloud", (s.tcc[i] * 100).toFixed(0), "%", "#9fb0c8", "", "", "sky"));
     if (s.t2m && s.d2m && s.t2m[i] != null && s.d2m[i] != null) {
       const rh = Math.round(100 * Math.exp(17.625 * (s.d2m[i] - K) / (243.04 + s.d2m[i] - K)) / Math.exp(17.625 * (s.t2m[i] - K) / (243.04 + s.t2m[i] - K)));
@@ -445,7 +463,6 @@
       if (a && a.wind && a.wind[i] != null) normal.push(stat(`Wind ${lvl} hPa`, Math.round(W().speed(a.wind[i])), `${W().speedUnit()}${a.wdir && a.wdir[i] != null ? ` ${arrow(a.wdir[i])}` : ""}`, "#7fb2ff", "", `Ridge-level wind at ${lvl} hPa (~${lvl === "850" ? "1.5" : "0.8"} km)`, "air")); }
     if (t != null && s.d2m && s.d2m[i] != null && (t - s.d2m[i]) < 1.5 && (!s.wind || s.wind[i] == null || s.wind[i] * 3.6 < 12))
       normal.push(stat("Fog risk", (t - s.d2m[i]) < 0.6 ? "high" : "some", "", "#b0bcc8", "", "Air within a degree of its dew point in light wind", "sky"));
-    const freezing = d.derived && d.derived.freezing_level_m && d.derived.freezing_level_m[i];
     if (!sea && freezing != null) normal.push(stat("Freezing lvl", W().units.alt(freezing).v, W().units.altUnit, "#7fd8e8", "", "", "air"));
     chips.push(...(sea ? [...marine, ...normal] : [...normal, ...marine]));
     const sun = sunTimes(pt.lat, pt.lon, W().validDate);
@@ -614,7 +631,7 @@
       const first = extended[0].dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
       note = `<div class="days-note"><b>AI-GFS</b> generated forecast from ${first}</div>`;
     }
-    return `<i class="kicker">week ahead</i><div class="days${usable.length > 8 ? " extended" : ""}">${cells}</div>${note}`;
+    return `<i class="kicker">long range forecast</i><div class="days${usable.length > 8 ? " extended" : ""}">${cells}</div>${note}`;
   }
 
   const AQI_BANDS = [[50, "Good", "#2f9e44"], [100, "Moderate", "#e6b800"], [150, "Unhealthy for sensitive", "#f08c00"], [200, "Unhealthy", "#e03131"], [300, "Very unhealthy", "#9c36b5"], [9999, "Hazardous", "#7f1d1d"]];
@@ -635,9 +652,9 @@
     if (a.pm10 != null) tiles.push(stat("PM10", a.pm10.toFixed(0), "µg/m³", "#d8a06a", "", "", "aq"));
     if (a.ozone != null) tiles.push(stat("Ozone", a.ozone.toFixed(0), "µg/m³", "#8ec7f0", "", "", "aq"));
     if (a.no2 != null) tiles.push(stat("NO₂", a.no2.toFixed(0), "µg/m³", "#d79ac0", "", "", "aq"));
-    if (a.uv != null) tiles.push(stat("UV now", a.uv.toFixed(1), "", uvCol(a.uv), "", "", "sun"));
-    if (a.uv_clear != null) tiles.push(stat("Clear-sky UV", a.uv_clear.toFixed(1), "", uvCol(a.uv_clear), "", "", "sun"));
-    if (uvb) tiles.push(stat(`UV max · ${uvb[0]}`, uvMax.toFixed(0), "", uvb[1], "", "", "sun"));
+    if (a.uv != null) tiles.push(stat("UV now", a.uv.toFixed(1), "", uvCol(a.uv), "", "", "uv"));
+    if (a.uv_clear != null) tiles.push(stat("Clear-sky UV", a.uv_clear.toFixed(1), "", uvCol(a.uv_clear), "", "", "uv"));
+    if (uvb) tiles.push(stat(`UV max · ${uvb[0]}`, uvMax.toFixed(0), "", uvb[1], "", "", "uv"));
     return `<div class="meta air">${sections(tiles)}</div>`;
   }
   // An alert opens where its text is: in the card. Only the services that
@@ -1055,7 +1072,7 @@
   // anything" was the complaint (Jeff 2026-09-04).
   const stat = (k, v, unit, color, extra = "", title = "", group = "air") =>
     `<div class="stat" data-g="${group}" style="--c:${color}"${title ? ` title="${title}"` : ""}><small>${k}</small><b>${v}${unit ? `<i>${unit}</i>` : ""}</b>${extra}</div>`;
-  const GROUPS = [["precip", "Precipitation"], ["sky", "Sky"], ["air", "Air"], ["sun", "Sun"], ["sea", "Sea"], ["aq", "Air quality"]];
+  const GROUPS = [["precip", "Precipitation"], ["sky", "Sky"], ["air", "Air"], ["sun", "Sun"], ["uv", "UV"], ["sea", "Sea"], ["aq", "Air quality"]];
   // Tiles → sections. A group with one tile still gets its heading: the
   // heading is the relation, not decoration.
   function sections(tiles) {

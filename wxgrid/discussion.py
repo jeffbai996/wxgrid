@@ -115,8 +115,8 @@ def compose(r: RunReader, lat: float, lon: float, point: dict, prob: dict | None
                 else:
                     trend = ", building" if d >= 2 else ", weakening" if d <= -2 else ""
         place = "overhead" if sys_now["km"] <= 150 else f"about {sys_now['km']} km to the {sys_now['dir']}"
-        driver = (f"The weather here is being run by a {sys_now['hpa']} hPa "
-                  f"{sys_now['kind']} {place}{trend}.")
+        driver = (f"A {sys_now['hpa']} hPa {sys_now['kind']} {place}{trend} is running "
+                  f"the weather here.")
     ptend = None
     if s.get("msl") and s["msl"][0] is not None:
         nxt = next((k for k, h in enumerate(steps) if h >= steps[0] + 6), None)
@@ -124,8 +124,8 @@ def compose(r: RunReader, lat: float, lon: float, point: dict, prob: dict | None
             ptend = (s["msl"][nxt] - s["msl"][0]) / 100.0
     if ptend is not None and abs(ptend) >= 1.5:
         glass = "falling" if ptend < 0 else "rising"
-        why = "usually the sign of weather arriving" if ptend < 0 else "which generally means it is clearing out"
-        driver += f" The pressure here is {glass} {abs(ptend):.0f} hPa over the next six hours, {why}."
+        why = "weather on the way" if ptend < 0 else "the sign of it clearing out"
+        driver += f" Pressure {glass} {abs(ptend):.0f} hPa over the next six hours: {why}."
     if driver:
         paras.append(driver.strip())
 
@@ -139,12 +139,12 @@ def compose(r: RunReader, lat: float, lon: float, point: dict, prob: dict | None
         snowy = s.get("sf6") and first is not None and (s["sf6"][first] or 0) > (s.get("tp6", [0] * len(steps))[first] or 0)
         kind = "snow" if snowy else "rain"
         when = _fmt_when(steps[first] - steps[0], lambda h: 12) if first is not None else "soon"
-        here.append(f"That means {kind} for this point, {total:.0f} mm of it in the next two days, starting {when}.")
+        here.append(f"For this spot that means {kind}: {total:.0f} mm over the next two days, starting {when}.")
     elif sys_now and sys_now["kind"] == "high":
-        here.append("For this point that means settled weather: the high sits on the moisture and not much gets past a ridge.")
+        here.append("Here that means settled weather: the ridge keeps the moisture out.")
     gusts = [v for v in (s.get("gust") or s.get("wind") or [])[:len(idx48)] if v is not None]
     if gusts and max(gusts) * 3.6 >= 45:
-        here.append(f"Wind is part of the story too, gusts to {max(gusts) * 3.6:.0f} km/h as the gradient tightens.")
+        here.append(f"Wind is part of it: gusts to {max(gusts) * 3.6:.0f} km/h as the gradient tightens.")
     if here:
         paras.append(" ".join(here))
 
@@ -167,10 +167,10 @@ def compose(r: RunReader, lat: float, lon: float, point: dict, prob: dict | None
         if pr:
             mx = max(pr)
             if total >= 1 and mx >= 70:
-                paras.append(f"The ensemble is fairly sure about this: at the wettest window, {mx:.0f}% of the 30 members bring precipitation.")
+                paras.append(f"The ensemble is fairly sure: at the wettest window {mx:.0f}% of the 30 members bring precipitation.")
             elif total >= 1 and mx <= 45:
-                paras.append(f"Worth knowing: the members are split, only {mx:.0f}% of 30 carry the precipitation. This one could miss.")
+                paras.append(f"Worth knowing: the members are split, only {mx:.0f}% of 30 carry the precipitation, so this one could miss.")
             elif total < 1 and mx >= 55:
-                paras.append(f"One caveat: this run keeps it dry, but {mx:.0f}% of the ensemble's members disagree. Do not wash the car on this forecast alone.")
+                paras.append(f"One caveat: this run keeps it dry, but {mx:.0f}% of the ensemble disagrees. Don't wash the car on this run alone.")
 
     return {"model": point["model"], "run": point["run"], "paras": paras}

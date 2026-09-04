@@ -619,7 +619,7 @@ def api_discussion(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..
         from wxgrid import discussion
         return discussion.compose(r, lat, lon, point, prob)
     from wxgrid.ext import cache as _ext_cache
-    return _ext_cache.get(f"disc-v2:{model}:{lat:.1f}:{lon:.1f}", 900, build)
+    return _ext_cache.get(f"disc-v3:{model}:{lat:.1f}:{lon:.1f}", 900, build)
 
 
 @app.get("/api/prob")

@@ -1002,9 +1002,9 @@ table.wtape tr.r-feels td { color: var(--dim); font-size: 10.5px; border-top: 1p
   background-image: linear-gradient(to bottom, rgba(127,140,160,.035), transparent); }
 table.wtape tr.r-feels th.lab { border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
 table.wtape tr.r-feels td .hi { color: var(--fg-2); font-weight: 650; }
-table.wtape tr.r-rain td { color: var(--rain); font-weight: 650; position: relative; overflow: hidden; height: 24px; }
+table.wtape tr.r-rain td { color: var(--rain); font-weight: 650; position: relative; overflow: visible; height: 24px; }   /* the trace may crest above the row */
 table.wtape tr.r-rain td span { position: relative; z-index: 1; text-shadow: 0 1px 3px var(--panel-solid); }
-table.wtape tr.r-rain td .precip-area { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+table.wtape tr.r-rain td .precip-area { position: absolute; z-index: 0; inset: auto 0 0 0; width: 100%; height: 150%; pointer-events: none; overflow: visible; }
 table.wtape tr.r-rain td .precip-area .fill { fill: currentColor; opacity: .17; }
 table.wtape tr.r-rain td .precip-area .line { fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; shape-rendering: geometricPrecision; vector-effect: non-scaling-stroke; opacity: .72; }
 table.wtape tr.r-rain td.snowy { color: #cfe8ff; }
@@ -1332,7 +1332,7 @@ table.wtape th.day .model-handoff { display: inline-flex; margin-left: 6px; padd
 .modcard .mod-stats em { font: 600 10.5px var(--font-num); font-style: normal; color: var(--dim); }
 /* the kicker: a slim uppercase label that names a section without a box */
 .kicker { display: block; font: 700 8.5px var(--font-display); font-style: normal; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--dim); margin: 4px 0 2px; }
+  text-transform: uppercase; color: var(--dim); margin: 2px 0 0; }
 .chipv .pspark { width: 44px; height: 12px; margin-left: 2px; align-self: center; }
 .chipv .pspark polyline { fill: none; stroke: currentColor; stroke-width: 1.4; opacity: .75; }
 .summary .why-btn { display: inline-block; margin-left: 7px; border: 0; background: transparent; cursor: pointer;
@@ -1526,7 +1526,16 @@ body.no-map #particles { display: none; }
 #tape-card .metric em { font: 600 10.5px var(--font-num); font-style: normal; color: var(--fg); margin-top: 1px; }
 #tape-card .metric.wind { position: relative; }
 #tape-card .metric.wind em { position: absolute; right: 7px; bottom: 7px; }
-#tape-card .when small { font: 600 12px var(--font-display); color: var(--fg-2); }
+#tape-card .when small { font: 600 10.5px var(--font-display); color: var(--fg-2); }
+#tape-card .source[data-model="ifs"] { background: #ff8a3d22; color: #ffa366; }
+#tape-card .source[data-model="aifs"] { background: #2dd4bf22; color: #5eead4; }
+#tape-card .source[data-model="gfs"] { background: #4ade8022; color: #86efac; }
+#tape-card .source[data-model="aigfs"] { background: #65a8ff20; color: #83bcff; }
+#tape-card .source[data-model="gem"] { background: #f8717122; color: #fca5a5; }
+#tape-card .source[data-model="gefs"] { background: #fbbf2422; color: #fcd34d; }
+#tape-card .source[data-model="hrdps"] { background: #f472b622; color: #f9a8d4; }
+#tape-card .source[data-model="hrrr"] { background: #22d3ee22; color: #67e8f9; }
+#tape-card .source[data-model="wn2"] { background: #a78bfa22; color: #c4b5fd; }
 
 /* ── marine and touring cards: one call, then the numbers ────────────── */
 .modcard .mod-head .call { font: 800 15px var(--font-display) !important; letter-spacing: -.01em; }
