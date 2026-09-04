@@ -424,7 +424,8 @@
     if (sf != null && sf >= 0.3) metrics.push(tile("Snow", U.snow(sf).v, U.snowUnit, "precip"));
     if (tp != null && tp >= 0.1) metrics.push(tile("Precip", U.precip(tp).v, U.precipUnit, "precip"));
     if (s.prob_rain && s.prob_rain[i] != null && s.prob_rain[i] >= 5) metrics.push(tile("Rain chance", Math.round(s.prob_rain[i]), "%", "precip"));
-    if (s.wind && s.wind[i] != null) metrics.push(tile(isDay ? "Wind, peak" : "Wind", `${Math.round(WX.speed(s.wind[i]))}`, `${WX.speedUnit()}${s.wdir && s.wdir[i] != null ? ` ${WX.arrow(s.wdir[i])} ${Math.round(s.wdir[i])}°` : ""}`, "wind"));
+    if (s.wind && s.wind[i] != null) metrics.push(tile(isDay ? "Wind, peak" : "Wind", `${Math.round(WX.speed(s.wind[i]))}`, WX.speedUnit(), "wind")
+      .replace("</b>", `</b>${s.wdir && s.wdir[i] != null ? `<em>${WX.arrow(s.wdir[i])} ${Math.round(s.wdir[i])}°</em>` : ""}`));
     if (s.gust && s.gust[i] != null) metrics.push(tile("Gusts", Math.round(WX.speed(s.gust[i])), WX.speedUnit(), "wind"));
     if (s.tcc && s.tcc[i] != null) metrics.push(tile("Cloud", Math.round(s.tcc[i] * 100), "%"));
     if (s.t2m && s.d2m && s.t2m[i] != null && s.d2m[i] != null) {
@@ -486,7 +487,7 @@
         let name = (lab.childNodes[0] && lab.childNodes[0].textContent || "").trim(), unit = (lab.querySelector("small") || {}).textContent || "";
         let val = cell.textContent.trim();
         if (tr.classList.contains("r-icon")) return;
-        if (tr.classList.contains("r-hour")) { when = `${day ? `${day} · ` : ""}${val}`; return; }
+        if (tr.classList.contains("r-hour")) { when = `${day || ""}${day && val ? "<small>" : ""}${day && val ? ` · ${val}</small>` : (day ? "" : val)}`; return; }
         if (tr.classList.contains("r-dir")) { const g = cell.querySelector("[title]"); val = g ? g.title : val; }
         if (tr.classList.contains("r-rain") && cell.classList.contains("snowy")) {
           name = "Snow"; unit = (unit.split("·")[1] || unit).trim();

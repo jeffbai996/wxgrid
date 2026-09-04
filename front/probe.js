@@ -104,6 +104,8 @@
       for (let k = 0; k < 256; k++) { const c = r.cols[k].rgb; const d = (c[0] - R) ** 2 + (c[1] - G) ** 2 + (c[2] - B) ** 2; if (d < bd) { bd = d; best = k; } }
       v = r.cols[best].v;
     }
+    // precipitation type is a code, not a quantity: say the word
+    if (layer === "ptype") { const code = Math.round(v); return { text: ["—", "rain", "mixed", "snow"][code] || "—", sub: "" }; }
     if (["wind", "gust", "gfactor"].includes(layer)) return { text: `${Math.round(WX.speed(v))} ${WX.speedUnit()}`, sub: "" };
     const U = WX.units;
     // Same conversion table as the legend — a probe that says metres under a
