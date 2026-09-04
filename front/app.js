@@ -1750,10 +1750,9 @@
     $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts(narrow ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
     const atNow = state.stepIdx === currentStepIdx() && !state.frac;
-    // "live" holds the slot at now: an empty label collapsed and the Now
-    // button slid left every time it was pressed
-    $("#lead").textContent = atNow ? "live" : `+${Math.round(shownHours())}h`;
-    $("#lead").classList.toggle("live", atNow);
+    // the slot keeps its width when empty (CSS), so the Now button never
+    // slides; the lit Now button is the whole "live" signal, no extra word
+    $("#lead").textContent = atNow ? "" : `+${Math.round(shownHours())}h`;
     $("#tape-now").classList.toggle("on", atNow);
     $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
     renderTapePill();

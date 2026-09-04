@@ -446,7 +446,7 @@ def test_tape_control_walks_all_three_states_and_every_change_glides():
     assert "#timebar.tape-away { height: 38px !important;" in css and "@keyframes pill-in" in css
     assert "const TAPE_AWAY_HEIGHT = 38, TAPE_TAP_SLOP = 14;" in app
     assert 'tb.classList.add("is-resizing", "tape-dragging");' in app
-    assert '$("#lead").textContent = atNow ? "live" :' in app
+    assert '$("#lead").textContent = atNow ? "" :' in app
     assert 'tapeGrip.addEventListener("click",' in app
     assert "#timebar.tape-dragging { height: var(--tape-drag-height) !important;" in css
 
@@ -629,5 +629,7 @@ def test_the_hero_carries_a_rain_now_strip_only_when_something_falls():
 
 def test_the_now_button_holds_still_because_live_fills_the_lead_slot():
     app = _read("app.js"); css = _read("styles.css")
-    assert '$("#lead").textContent = atNow ? "live" :' in app
-    assert "#lead:empty" not in css and "#lead.live" in css
+    assert '$("#lead").textContent = atNow ? "" :' in app
+    # no LIVE word (Jeff 2026-09-04: "too many words, no hierarchy"): the slot
+    # keeps a fixed width and the lit Now button carries a breathing dot
+    assert "#lead:empty" not in css and "#lead { font-size: 11.5px; width: 46px;" in css and ".now-btn.on::before" in css

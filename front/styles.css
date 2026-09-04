@@ -441,7 +441,10 @@ button:focus:not(:focus-visible) { outline: none; }
 #valid-utc { white-space: nowrap; }
 #valid-utc { font-size: 10.5px; }
 #lead { font-size: 11.5px; width: 46px; box-sizing: border-box; }   /* fixed, so Now never slides */
-#lead.live { color: var(--accent); letter-spacing: .06em; text-transform: uppercase; font-size: 10px; }
+/* a small breathing dot inside the lit Now button says "live" without a word */
+.now-btn.on::before { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin: 0 6px 1px 0; vertical-align: middle;
+  background: var(--accent-ink); animation: now-breathe 2.4s ease-in-out infinite; }
+@keyframes now-breathe { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 #tape-where { font: 650 11.5px var(--font-display); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30%; }
 .tape-min { width: 26px; height: 26px; flex: 0 0 auto; margin-left: 6px; }
 .tape-min svg { width: 15px; height: 15px; transition: transform .2s cubic-bezier(.4,0,.2,1); }
