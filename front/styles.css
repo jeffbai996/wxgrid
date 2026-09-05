@@ -1348,7 +1348,7 @@ table.wtape th.day .model-handoff { display: inline-flex; margin-left: 6px; padd
 /* Rain now: a card above the readings. Thin bars every 2.5 min from one
    spline through the 15-min steps, the past hour dimmed left of the now
    line, intensity bands as faint rules; snow bars wear the snow colour. */
-.rainnow { margin: 4px 0 8px; padding: 8px 10px 7px; border-radius: 8px; box-sizing: border-box;
+.rainnow { flex: 0 0 100%; margin: 4px 0 8px; padding: 8px 10px 7px; border-radius: 8px; box-sizing: border-box;
   background: linear-gradient(105deg, color-mix(in srgb, var(--rain) 7%, transparent), rgba(127,140,160,.045) 56%);
   box-shadow: inset 0 0 0 1px var(--line); }
 .rainnow .rn-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -1356,7 +1356,7 @@ table.wtape th.day .model-handoff { display: inline-flex; margin-left: 6px; padd
 .rainnow .rn-head i { font: 500 8.5px var(--font-num); font-style: normal; color: var(--dim); }
 #point-now .rainnow .rn-line { display: block; margin: 3px 0 6px; font: 600 11.5px/1.3 var(--font-display); color: var(--fg); }
 .rainnow .rn-wrap { position: relative; }
-.rainnow .rn-chart { display: block; width: 100%; height: 40px; overflow: visible; }
+.rainnow .rn-chart { display: block; width: 100%; height: 46px; overflow: visible; }
 .rainnow .rn-chart .rn { fill: var(--rain); }
 .rainnow .rn-chart .sn { fill: #dbeeff; }
 .rainnow .rn-chart .band { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; opacity: .6; }

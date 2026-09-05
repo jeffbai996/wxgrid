@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v80";   // v80: outbound card links answer the pointer (2026-09-05)
+const VERSION = "wxgrid-v81";   // v81: precipitation card full width, fatter bars, window note (2026-09-05)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

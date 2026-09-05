@@ -1149,18 +1149,19 @@
     const top = Math.max(7.5, ...rate) * 1.1;
     const H = 100;
     const P = (j) => rate[Math.max(0, Math.min(n - 1, j))];
-    // one spline through the step rates, sampled into thin bars: the shape
-    // reads at a glance and a bar per 2.5 min keeps the past/future split crisp
+    // one spline through the step rates, sampled into bars: a bar per 5 min,
+    // fat enough to read as bars rather than a comb (Jeff 2026-09-05, "think
+    // Apple's"), while the past/future split stays crisp at the now line
     const cr = (u) => { const k = Math.floor(u), t = u - k, p0 = P(k - 1), p1 = P(k), p2 = P(k + 1), p3 = P(k + 2);
       return Math.max(0, 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)); };
-    const per = 6, N = n * per, W_ = N;
+    const per = 3, N = n * per, W_ = N;
     const bars = [];
     for (let b = 0; b < N; b++) {
       const u = (b + 0.5) / per - 0.5, r = cr(u), k = Math.min(n - 1, Math.floor((b + 0.5) / per));
       if (r < 0.15) continue;
       const h = Math.max(3, Math.sqrt(Math.min(1, r / top)) * H);
       const past = k < now, snowy = kind[k] === "snow";
-      bars.push(`<rect class="${snowy ? "sn" : "rn"}${past ? " past" : ""}" x="${b + 0.15}" y="${(H - h).toFixed(1)}" width="0.7" height="${h.toFixed(1)}" rx="0.35" style="opacity:${(past ? 0.28 : 0.45 + 0.55 * Math.min(1, r / top)).toFixed(2)}"/>`);
+      bars.push(`<rect class="${snowy ? "sn" : "rn"}${past ? " past" : ""}" x="${b + 0.1}" y="${(H - h).toFixed(1)}" width="0.8" height="${h.toFixed(1)}" rx="0.3" style="opacity:${(past ? 0.28 : 0.45 + 0.55 * Math.min(1, r / top)).toFixed(2)}"/>`);
     }
     const bandRows = [["light", 2.5], ["moderate", 7.5]].filter(([, r]) => r < top);
     const y = (r) => H - Math.sqrt(Math.min(1, r / top)) * H;
@@ -1172,7 +1173,10 @@
     const labels = [];
     for (let k = 0; k < n; k += 4) { const m = (k - now) * step; labels.push(`<span class="${m === 0 ? "now" : ""}" style="left:${(k * per / W_ * 100).toFixed(1)}%">${m === 0 ? "now" : m < 0 ? `${m / 60 === -1 ? "1 h ago" : `${-m} min ago`}` : `${tick(m)}`}</span>`); }
     const snowAny = kind.some((k) => k === "snow"), rainAny = kind.some((k) => k === "rain");
-    return `<div class="rn-head"><small class="sect-h">${snowAny && !rainAny ? "Snow" : snowAny ? "Rain & snow" : "Rain"} now</small><i>${nc.source || ""}</i></div>
+    // The heading is the group name; the right-hand note says what the
+    // window is, and the data credit lives in its tooltip.
+    const span = `${Math.round(now * step / 60)} h back · ${Math.round((n - now) * step / 60)} h ahead · ${step}-min steps`;
+    return `<div class="rn-head"><small class="sect-h">Precipitation${snowAny && !rainAny ? " · snow" : snowAny ? " · rain & snow" : ""}</small><i title="${nc.source || "Open-Meteo"} (HRRR / ICON-D2 where they run, radar-assimilating)">${span}</i></div>
       <b class="rn-line">${nc.headline || ""}</b>
       <div class="rn-wrap">${bandLabels}<svg class="rn-chart" viewBox="0 0 ${W_} ${H}" preserveAspectRatio="none" aria-hidden="true">
         ${bands}${bars.join("")}
