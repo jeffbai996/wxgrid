@@ -623,12 +623,12 @@ def test_the_hero_carries_a_rain_now_strip_only_when_something_falls():
     # dry window: no headline, no strip
     assert "if (!nc || !nc.headline) { el.hidden = true; return; }" in panes
     # thin bars from one spline, the past dimmed, snow in its own colour, bands and a now line
-    assert "const per = 3, N = n * per" in panes and 'class="now"' in panes and '["light", 2.5], ["moderate", 7.5]' in panes
+    assert "const per = 5, N = n * per" in panes and 'class="now"' in panes and '["light", 2.5], ["moderate", 7.5]' in panes
     # full width of the card, "Precipitation" heading, a window note instead of a bare source name
     assert ".rainnow { flex: 0 0 100%;" in css and '<small class="sect-h">Precipitation' in panes and "h back · " in panes
     # round-capped bars of a fixed pixel width: stroked lines, not rects
     assert 'vector-effect="non-scaling-stroke"' in panes.split("const bars = [];", 1)[1].split("const bandRows", 1)[0]
-    assert ".rainnow .rn-chart .rn, .rainnow .rn-chart .sn { stroke-width: 5px; stroke-linecap: round;" in css
+    assert ".rainnow .rn-chart .rn, .rainnow .rn-chart .sn { stroke-width: 4px; stroke-linecap: round;" in css
     assert 'kind[k] === "snow"' in panes
     assert ".rainnow .rn-chart .sn" in css and ".rainnow .rn-chart .band" in css and "box-shadow: inset 0 0 0 1px var(--line); }" in css
     # the card sits with the readings, not between the hero and its report

@@ -1154,7 +1154,7 @@
     // Apple's"), while the past/future split stays crisp at the now line
     const cr = (u) => { const k = Math.floor(u), t = u - k, p0 = P(k - 1), p1 = P(k), p2 = P(k + 1), p3 = P(k + 2);
       return Math.max(0, 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)); };
-    const per = 3, N = n * per, W_ = N;
+    const per = 5, N = n * per, W_ = N;   // a bar every 3 min, packed close (Jeff: "fill it in, think Apple")
     const bars = [];
     for (let b = 0; b < N; b++) {
       const u = (b + 0.5) / per - 0.5, r = cr(u), k = Math.min(n - 1, Math.floor((b + 0.5) / per));
