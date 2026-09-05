@@ -733,3 +733,10 @@ def test_level_badge_moves_with_the_tap_and_the_seg_keeps_its_dom_on_a_no_op_re_
 def test_the_48h_blurb_sits_below_the_hero_in_size():
     css = _read("styles.css")
     assert "#point-now .summary { font-size: 12.5px;" in css    # 14 was shouting over the tiles (Jeff 2026-09-05)
+
+
+def test_outbound_card_links_have_a_hover_state():
+    css = _read("styles.css")
+    assert ".mapcard .mc-foot .qp-link:hover, .quake-pop .qp-link:hover, .cam-view-foot a:hover, .avy a:hover" in css
+    hover = css.split(".mapcard .mc-foot .qp-link:hover,", 1)[1].split("}", 1)[0]
+    assert "background: var(--accent-soft)" in hover and "text-decoration-color: currentColor" in hover

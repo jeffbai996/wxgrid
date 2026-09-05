@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v79";   // v79: offset pill counts from now, back in the accent (2026-09-05)
+const VERSION = "wxgrid-v80";   // v80: outbound card links answer the pointer (2026-09-05)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
