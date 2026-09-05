@@ -1363,6 +1363,18 @@ table.wtape th.day .model-handoff { display: inline-flex; margin-left: 6px; padd
 .rainnow .rn-chart .rn, .rainnow .rn-chart .sn { stroke-width: 4px; stroke-linecap: round; fill: none; }
 .rainnow .rn-chart .rn { stroke: var(--rain); }
 .rainnow .rn-chart .sn { stroke: #dbeeff; }
+/* hover: the bar under the pointer steps forward, the rest step back a touch */
+.rainnow .rn-chart line { transition: filter .12s ease; }
+.rainnow .rn-chart.hovering line:not(.hot) { filter: brightness(.72); }
+.rainnow .rn-chart line.hot { filter: brightness(1.35) drop-shadow(0 0 4px color-mix(in srgb, var(--rain) 60%, transparent)); }
+.rainnow .rn-tip { position: absolute; top: 0; left: 0; transform: translate(-50%, calc(-100% - 8px)); z-index: 2; pointer-events: none; white-space: nowrap;
+  display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 8px 4px 7px; border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-solid) 90%, transparent); backdrop-filter: blur(6px);
+  box-shadow: 0 6px 18px rgba(0,0,0,.35), inset 0 0 0 1px var(--line); animation: pill-in .14s cubic-bezier(.32,.72,.24,1) both; }
+.rainnow .rn-tip b { font: 700 12px var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.rainnow .rn-tip b small { font: 600 9px var(--font-display); color: var(--fg-2); }
+.rainnow .rn-tip i { font: 600 8.5px var(--font-display); font-style: normal; color: var(--dim); letter-spacing: .06em; text-transform: uppercase; }
+.rainnow .rn-tip i + i { padding-left: 6px; border-left: 1px solid var(--line); }
 .rainnow .rn-chart .band { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; opacity: .6; }
 .rainnow .rn-chart .now { stroke: var(--fg-2); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: .55; }
 .rainnow .band-l { position: absolute; right: 0; width: 54px; text-align: left; transform: translateY(-50%); font: 600 7px var(--font-display); color: var(--dim); letter-spacing: .08em; text-transform: uppercase; pointer-events: none; opacity: .85; line-height: 1; }

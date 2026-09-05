@@ -1164,7 +1164,7 @@
       // a stroked line with a round cap: the cap stays round under the
       // stretched viewBox (a rect's rx would squash), and non-scaling stroke
       // keeps every bar the same width on any card
-      bars.push(`<line class="${snowy ? "sn" : "rn"}${past ? " past" : ""}" x1="${b + 0.5}" x2="${b + 0.5}" y1="${H + 3}" y2="${(H - h).toFixed(1)}" vector-effect="non-scaling-stroke" style="opacity:${(past ? 0.28 : 0.45 + 0.55 * Math.min(1, r / top)).toFixed(2)}"/>`);
+      bars.push(`<line class="${snowy ? "sn" : "rn"}${past ? " past" : ""}" data-b="${b}" data-r="${r.toFixed(1)}" data-m="${Math.round((b / per - now) * step)}" data-k="${snowy ? "snow" : "rain"}" x1="${b + 0.5}" x2="${b + 0.5}" y1="${H + 3}" y2="${(H - h).toFixed(1)}" vector-effect="non-scaling-stroke" style="opacity:${(past ? 0.28 : 0.45 + 0.55 * Math.min(1, r / top)).toFixed(2)}"/>`);
     }
     const bandRows = [["light", 2.5], ["moderate", 7.5]].filter(([, r]) => r < top);
     const y = (r) => H - Math.sqrt(Math.min(1, r / top)) * H;
@@ -1178,13 +1178,42 @@
     const snowAny = kind.some((k) => k === "snow"), rainAny = kind.some((k) => k === "rain");
     // The heading is the group name; the right-hand note says what the
     // window is, and the data credit lives in its tooltip.
-    const span = `${Math.round(now * step / 60)} h back · ${Math.round((n - now) * step / 60)} h ahead · ${step}-min steps`;
+    const span = `${step} min. steps`;
     return `<div class="rn-head"><small class="sect-h">Precipitation${snowAny && !rainAny ? " · snow" : snowAny ? " · rain & snow" : ""}</small><i title="${nc.source || "Open-Meteo"} (HRRR / ICON-D2 where they run, radar-assimilating)">${span}</i></div>
       <b class="rn-line">${nc.headline || ""}</b>
       <div class="rn-wrap">${bandLabels}<svg class="rn-chart" viewBox="0 0 ${W_} ${H}" preserveAspectRatio="none" aria-hidden="true">
         ${bands}${bars.join("")}
         <line class="now" x1="${nowX}" x2="${nowX}" y1="0" y2="${H}"/>
-      </svg></div><div class="rn-x">${labels.join("")}</div>`;
+      </svg><div class="rn-tip" hidden></div></div><div class="rn-x">${labels.join("")}</div>`;
+  }
+  // Hover on the bars: the bar under the pointer brightens and a small plate
+  // above it says when, how hard, and which band — dry slots say so too.
+  function wireRainNowHover(el, nc) {
+    const svg = el.querySelector(".rn-chart"), tip = el.querySelector(".rn-tip"), wrap = el.querySelector(".rn-wrap");
+    if (!svg || !tip || !wrap) return;
+    const step = nc.step_min || 15, per = 5, N = nc.mm.length * per, now = nc.now || 0, t0 = new Date(nc.times[now]);
+    const band = (r) => (r < 2.5 ? "light" : r < 7.5 ? "moderate" : "heavy");
+    let hot = null;
+    const clear = () => { tip.hidden = true; svg.classList.remove("hovering"); if (hot) { hot.classList.remove("hot"); hot = null; } };
+    svg.addEventListener("pointermove", (e) => {
+      const rect = svg.getBoundingClientRect();
+      const b = Math.max(0, Math.min(N - 1, Math.floor((e.clientX - rect.left) / rect.width * N)));
+      const bar = svg.querySelector(`line[data-b="${b}"]`);
+      const mins = Math.round((b / per - now) * step);
+      const when = new Date(t0.getTime() + mins * 6e4).toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric", minute: "2-digit" }));
+      const r = bar ? Number(bar.dataset.r) : 0;
+      if (hot && hot !== bar) hot.classList.remove("hot");
+      hot = bar; if (bar) bar.classList.add("hot");
+      svg.classList.add("hovering");
+      tip.innerHTML = bar
+        ? `<b>${r.toFixed(1)}<small>${bar.dataset.k === "snow" ? " cm/h" : " mm/h"}</small></b><i>${band(r)}${mins < 0 ? " · was" : ""}</i><i>${when}</i>`
+        : `<b>dry</b><i>${when}</i>`;
+      tip.hidden = false;
+      const x = (b + 0.5) / N * rect.width;
+      tip.style.left = `${Math.max(34, Math.min(rect.width - 34, x))}px`;
+      tip.style.top = `${bar ? Math.max(0, (Number(bar.getAttribute("y2")) / 100) * rect.height) : rect.height * 0.6}px`;
+    });
+    svg.addEventListener("pointerleave", clear);
   }
   function paintRainNow(pt) {
     if (window.WXStatic || !document.getElementById("rainnow-slot")) return;
@@ -1194,6 +1223,7 @@
       const nc = pt.rainNow;
       if (!nc || !nc.headline) { el.hidden = true; return; }
       el.hidden = false; el.innerHTML = rainNowHtml(nc);
+      wireRainNowHover(el, nc);
     };
     const bust = rainNowBust();
     if (pt.rainNow !== undefined && pt.rainNowBust === bust) { paint(); return; }

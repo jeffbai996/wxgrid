@@ -625,7 +625,7 @@ def test_the_hero_carries_a_rain_now_strip_only_when_something_falls():
     # thin bars from one spline, the past dimmed, snow in its own colour, bands and a now line
     assert "const per = 5, N = n * per" in panes and 'class="now"' in panes and '["light", 2.5], ["moderate", 7.5]' in panes
     # full width of the card, "Precipitation" heading, a window note instead of a bare source name
-    assert ".rainnow { flex: 0 0 100%;" in css and '<small class="sect-h">Precipitation' in panes and "h back · " in panes
+    assert ".rainnow { flex: 0 0 100%;" in css and '<small class="sect-h">Precipitation' in panes and "const span = `${step} min. steps`;" in panes
     # round-capped bars of a fixed pixel width: stroked lines, not rects
     assert 'vector-effect="non-scaling-stroke"' in panes.split("const bars = [];", 1)[1].split("const bandRows", 1)[0]
     assert ".rainnow .rn-chart .rn, .rainnow .rn-chart .sn { stroke-width: 4px; stroke-linecap: round;" in css
@@ -760,3 +760,10 @@ def test_precipitation_band_labels_sit_in_a_gutter_not_over_the_bars():
     assert ".rainnow .rn-wrap { position: relative; padding-right: 60px; }" in css
     assert "translateY(-50%)" in css.split(".rainnow .band-l {", 1)[1].split("}", 1)[0]
     assert ".rainnow .rn-x { position: relative; height: 11px; margin-top: 3px; margin-right: 60px; }" in css
+
+
+def test_precipitation_bars_have_a_hover_readout():
+    panes = _read("panes.js"); css = _read("styles.css")
+    assert "function wireRainNowHover(el, nc)" in panes and "wireRainNowHover(el, nc);" in panes
+    assert 'data-b="${b}" data-r="${r.toFixed(1)}" data-m=' in panes and '<div class="rn-tip" hidden></div>' in panes
+    assert ".rainnow .rn-chart.hovering line:not(.hot) { filter: brightness(.72); }" in css and ".rainnow .rn-tip {" in css
