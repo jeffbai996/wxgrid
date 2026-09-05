@@ -136,13 +136,12 @@ button { font: inherit; color: inherit; }
    The clip is a phone concern only, where the peek animation needs it. */
 #levels button .level-alt { font: 600 9px var(--font-display); font-style: normal; padding-left: 3px; opacity: .65; letter-spacing: 0; }
 @media (max-width: 820px) {
-  #levels button .level-alt { display: inline-block; overflow: hidden; vertical-align: text-bottom; max-width: 0; opacity: 0; animation: level-peek 3s ease forwards; }
-  @keyframes level-peek {
-    0%   { max-width: 0;    opacity: 0;   padding-left: 0; }
-    12%  { max-width: 64px; opacity: .65; padding-left: 3px; }
-    78%  { max-width: 64px; opacity: .65; padding-left: 3px; }
-    100% { max-width: 0;    opacity: 0;   padding-left: 0; }
-  }
+  /* The badge only ever sits on the lit level, so it stays: fading it in is
+     an opacity change on the compositor. The old 3 s max-width "peek" was a
+     layout animation that re-measured the plate every frame — the stutter
+     after the slide (Jeff 2026-09-05). */
+  #levels button .level-alt { display: inline-block; vertical-align: text-bottom; animation: level-fade .22s ease both; }
+  @keyframes level-fade { from { opacity: 0; } to { opacity: .65; } }
   @media (prefers-reduced-motion: reduce) { #levels button .level-alt { animation: none; } }
 }
 #models .model-child { max-width: 0; min-width: 0; overflow: hidden; opacity: 0; padding-left: 0; padding-right: 0;

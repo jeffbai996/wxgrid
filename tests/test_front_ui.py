@@ -714,3 +714,11 @@ def test_drags_are_transforms_not_heights_and_the_level_plate_slides_first():
     # level tap: plate first, field swap after the slide
     assert "levelApply = setTimeout(() => { renderControls(); applyStep(false); loadWind(false);" in app
     assert "const LEVEL_SLIDE_MS = 260;" in app
+
+
+def test_level_badge_moves_with_the_tap_and_the_seg_keeps_its_dom_on_a_no_op_re_render():
+    app = _read("app.js"); css = _read("styles.css")
+    assert 'b.insertAdjacentHTML("beforeend", `<i class="level-alt">${levelBadge(level)}</i>`)' in app
+    assert "if (segSignature(probe) === segSignature(el)) { el._segPlace(); return; }" in app
+    assert "level-peek" not in css and "@keyframes level-fade { from { opacity: 0; } to { opacity: .65; } }" in css
+    assert "max-width: 64px" not in css

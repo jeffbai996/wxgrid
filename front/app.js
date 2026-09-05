@@ -660,8 +660,17 @@
   // selected grid badge) does not turn a smooth move into a flash.
   let levelApply = 0;
   const LEVEL_SLIDE_MS = 260;          // the plate's .24s slide, plus a frame
+  // A re-render that changes nothing the eye can see (same buttons, same
+  // one lit) keeps its DOM: rebuilding restarted the badge animation and
+  // re-created the plate mid-slide.
+  const segSignature = (root) => [...root.querySelectorAll("button")]
+    .map((b) => `${b.dataset.level ?? b.dataset.model ?? b.textContent}|${b.disabled ? 1 : 0}|${b.classList.contains("on") ? 1 : 0}`).join(",");
   function renderSlidingSeg(el, buttons) {
     const old = el.querySelector(".seg-cursor");
+    if (old && el._segPlace) {
+      const probe = document.createElement("div"); probe.innerHTML = buttons;
+      if (segSignature(probe) === segSignature(el)) { el._segPlace(); return; }
+    }
     const prior = old ? old.getBoundingClientRect() : null;
     el.classList.add("sliding");
     el.innerHTML = `<i class="seg-cursor" aria-hidden="true"></i>${buttons}`;
@@ -948,7 +957,11 @@
         const level = Number(b.dataset.level);
         if (level === state.level) return;
         state.level = level;
-        lv.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        // move the badge with the selection so the plate grows to its final
+        // width in the same slide, instead of a second hitch when the badge
+        // arrives with the deferred re-render (Jeff 2026-09-05)
+        lv.querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === b); const alt = x.querySelector(".level-alt"); if (alt && x !== b) alt.remove(); });
+        if (level && !b.querySelector(".level-alt")) b.insertAdjacentHTML("beforeend", `<i class="level-alt">${levelBadge(level)}</i>`);
         if (lv._segPlace) lv._segPlace();
         clearTimeout(levelApply);
         levelApply = setTimeout(() => { renderControls(); applyStep(false); loadWind(false); if (state.iso) WX.ov.loadIso(); }, LEVEL_SLIDE_MS);
