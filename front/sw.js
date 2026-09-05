@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v70";   // v70: tool pins/stars removed from the rail flyout (2026-09-04)
+const VERSION = "wxgrid-v71";   // v71: the tape fold glides with compact rows, pill lands at the end (2026-09-04)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

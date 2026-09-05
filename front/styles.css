@@ -399,7 +399,7 @@ button:focus:not(:focus-visible) { outline: none; }
    their natural full height. */
 #timebar.mini { height: auto !important; }
 /* the fold glide: an explicit height + clip while sliding between states */
-#timebar.tape-anim { transition: height .38s cubic-bezier(.22,1,.36,1), background-color .3s ease, border-color .3s ease, box-shadow .3s ease; overflow: hidden; will-change: height; }
+#timebar.tape-anim, #timebar.mini.tape-anim { height: var(--tape-anim-h) !important; transition: height .38s cubic-bezier(.22,1,.36,1), background-color .3s ease, border-color .3s ease, box-shadow .3s ease; overflow: hidden; will-change: height; }
 #timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: hidden; transition: none !important; will-change: height; }
 #timebar.tape-anim #step { display: none; }
 #timebar.tape-anim-away { background: transparent; border-color: transparent; }

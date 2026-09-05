@@ -1035,26 +1035,39 @@
         // .mini/.tape-away pin height with !important, so the glide runs
         // WITHOUT the class and swaps it in at the end; going to full the
         // class state is already right and the box just opens onto the rows.
-        if (s === "mini") tb.classList.remove("mini");
-        if (s === "away") tb.classList.remove("tape-away");
+        // The box glides on --tape-anim-h (which .tape-anim lets override the
+        // pinned heights), so the content classes can stay honest during the
+        // slide: leaving or entering mini keeps the compact rows on screen
+        // instead of flashing the full table for 380 ms (Jeff 2026-09-04,
+        // "small to fully minimized still not smooth"). Away swaps in at the
+        // end, once the box is down to pill height.
+        if (s === "away") { tb.classList.remove("tape-away"); if (prev === "mini") tb.classList.add("mini"); }
+        // Commit the restored classes before the transition switches on.
+        // Measuring `to` left a 38 px height in the last computed style, and
+        // with the transition live the box would animate 38 → from and then
+        // retarget to 38: a snap. A plain reflow here resets the start value.
+        tb.getBoundingClientRect();
         tb.classList.add("tape-anim");
         tb.classList.toggle("tape-anim-away", s === "away");
-        tb.style.height = from + "px";
+        tb.style.setProperty("--tape-anim-h", from + "px");
         tb.getBoundingClientRect();
-        tb.style.height = (s === "full" && sized ? parseFloat(sized) : to) + "px";
+        tb.style.setProperty("--tape-anim-h", (s === "full" && sized ? parseFloat(sized) : to) + "px");
         tapeAnim = setTimeout(() => {
           tb.classList.remove("tape-anim", "tape-anim-away");
-          if (!(s === "full" && sized)) tb.style.height = "";
-          if (s === "mini") tb.classList.add("mini");
-          if (s === "away") tb.classList.add("tape-away");
+          tb.style.removeProperty("--tape-anim-h");
+          tb.style.height = s === "full" && sized ? sized : "";
+          if (s === "away") { tb.classList.remove("mini"); tb.classList.add("tape-away"); }
+          const pill = $("#tape-pill");
+          if (pill) pill.hidden = s !== "away";
           document.documentElement.style.setProperty("--tb-h", tb.offsetHeight + "px");
           if (WX.fn.fitStrip) WX.fn.fitStrip();
           restoreSheetHeight();
           restorePointPanelSize();
         }, TAPE_ANIM_MS);
       } else apply();
+      // the pill appears when the glide lands (above); leaving away it goes at once
       const pill = $("#tape-pill");
-      if (pill) pill.hidden = s !== "away";
+      if (pill && (s !== "away" || !animatable)) pill.hidden = s !== "away";
       if (persist) localStorage.setItem("wxgrid.tapeState", s);
       const nextAction = s === "full" ? "Show compact forecast" : s === "mini" ? "Hide forecast timeline" : "Show full forecast";
       tmin.title = nextAction; tmin.setAttribute("aria-label", nextAction);

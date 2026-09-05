@@ -648,3 +648,18 @@ def test_the_tool_flyout_has_no_pins_or_stars():
     assert 'localStorage.removeItem("wxgrid.toolPins")' in ts and 'localStorage.setItem("wxgrid.toolPins"' not in ts
     assert "data-pin" not in ts and "★" not in ts and "☆" not in ts and "pins" not in ts
     assert "button[data-pin]" not in css
+
+
+def test_the_tape_fold_glides_on_a_variable_and_keeps_compact_rows():
+    # mini -> away used to drop .mini for the slide, flashing the full table
+    # for 380 ms; the box now glides on --tape-anim-h with .mini kept on, and
+    # the pill appears when the glide lands rather than at its start
+    app = _read("app.js"); css = _read("styles.css")
+    assert 'tb.style.setProperty("--tape-anim-h", from + "px");' in app
+    assert 'if (s === "away") { tb.classList.remove("tape-away"); if (prev === "mini") tb.classList.add("mini"); }' in app
+    assert 'if (s === "away") { tb.classList.remove("mini"); tb.classList.add("tape-away"); }' in app
+    # the reflow between restoring classes and enabling the transition is the fix
+    glide = app.split('tb.classList.add("mini"); }', 1)[1].split('tb.classList.add("tape-anim");', 1)[0]
+    assert "tb.getBoundingClientRect();" in glide
+    assert 'if (pill && (s !== "away" || !animatable)) pill.hidden = s !== "away";' in app
+    assert "#timebar.tape-anim, #timebar.mini.tape-anim { height: var(--tape-anim-h) !important;" in css
