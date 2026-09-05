@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v87";   // v87: band labels on frosted plates over full-width bars; headline weight back; near normal says nothing (2026-09-05)
+const VERSION = "wxgrid-v88";   // v88: bar readout rides above the chart (2026-09-05)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

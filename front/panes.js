@@ -1213,7 +1213,7 @@
       tip.hidden = false;
       const x = (b + 0.5) / N * rect.width;
       tip.style.left = `${Math.max(34, Math.min(rect.width - 34, x))}px`;
-      tip.style.top = `${bar ? Math.max(0, (Number(bar.getAttribute("y2")) / 100) * rect.height) : rect.height * 0.6}px`;
+      tip.style.top = "0px";   // always above the chart, never over the bars or the time labels
     });
     svg.addEventListener("pointerleave", clear);
   }
