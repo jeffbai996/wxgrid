@@ -35,7 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from wxgrid import coast, render
 from wxgrid.config import CACHE_DIR, FRONT_DIR, PUBLIC
 from wxgrid.models import LEVEL_EVERY, LEVELS, MODELS
-from wxgrid.store import RunReader, list_runs, parse_run_id, run_path, store_summary
+from wxgrid.store import RunManifest, RunReader, list_runs, parse_run_id, run_path, store_summary
 
 log = logging.getLogger("wxgrid.api")
 
@@ -88,6 +88,7 @@ _ACCUM = {"tp24": ("tp6", 24), "tp72": ("tp6", 72), "sf24": ("sf6", 24), "sf72":
 # Layers that live only on LEVEL_EVERY steps (like the pressure levels).
 _SIX_HOURLY = ("frz", "waves", "wperiod", "wavepower", "swell", "windsea", "pp1d", "prob_rain", "prob_gust", "vort500", "gh")
 _readers: dict[tuple[str, str], tuple[float, RunReader]] = {}
+_readers_lock = threading.Lock()
 _pool = ThreadPoolExecutor(max_workers=8)
 # Striped, not per-key: a lock per distinct cache path lived for the life of
 # the process, and cache paths are per (model, run, step, layer, level,
@@ -130,17 +131,23 @@ def _reader(model: str, run: str) -> RunReader:
     try:
         stamp = meta.stat().st_mtime
     except FileNotFoundError:
-        _readers.pop(key, None)
+        with _readers_lock:
+            _readers.pop(key, None)
         raise HTTPException(404, f"no run {model}/{run}")
-    hit = _readers.get(key)
-    if hit is None or hit[0] != stamp:
-        try:
-            _readers[key] = (stamp, RunReader(model, run))
-        except FileNotFoundError:
-            raise HTTPException(404, f"no run {model}/{run}")
-        if len(_readers) > 12:      # runs are pruned underneath us anyway
+    # Construct once even when the image, particles and tape arrive together.
+    # Reader count stays bounded; hits become most recently used.
+    with _readers_lock:
+        hit = _readers.get(key)
+        if hit is None or hit[0] != stamp:
+            try:
+                hit = (stamp, RunReader(model, run))
+            except FileNotFoundError:
+                raise HTTPException(404, f"no run {model}/{run}")
+        _readers.pop(key, None)
+        _readers[key] = hit
+        if len(_readers) > 12:
             _readers.pop(next(iter(_readers)))
-    return _readers[key][1]
+        return hit[1]
 
 
 def _vars_for(layer: str, level: int | None) -> tuple[str, ...]:
@@ -320,7 +327,7 @@ def _feels_grid(r: RunReader, step: int) -> np.ndarray:
     return (out + 273.15).astype(np.float32)
 
 
-def _available(reader: RunReader, layer: str, level: int | None = None) -> bool:
+def _available(reader: RunReader | RunManifest, layer: str, level: int | None = None) -> bool:
     if layer == "frz":
         # needs at least two levels with both temperature and height
         return len([l for l in _levels_for(reader) if f"gh_{l}" in reader.variables]) >= 2
@@ -332,7 +339,7 @@ def _available(reader: RunReader, layer: str, level: int | None = None) -> bool:
     return all(v in reader.variables for v in _vars_for(layer, level))
 
 
-def _levels_for(reader: RunReader) -> list[int]:
+def _levels_for(reader: RunReader | RunManifest) -> list[int]:
     return [lvl for lvl in LEVELS if f"u_{lvl}" in reader.variables and f"t_{lvl}" in reader.variables]
 
 
@@ -433,7 +440,14 @@ def _build_models(summary: dict) -> dict:
                                "ny": m.grid_shape[0], "nx": m.grid_shape[1]},
                  "runs": []}
         for rid in summary.get(key, []):
-            r = _reader(key, rid)
+            try:
+                r = RunManifest(key, rid)
+            except (OSError, ValueError, KeyError, TypeError):
+                # An ingest can replace/prune a run between discovery and
+                # this read. The next metadata signature retries the build.
+                continue
+            if not r.attrs.get("complete"):
+                continue
             entry["runs"].append({
                 "run": rid, "steps": r.steps,
                 "layers": [l for l in LAYERS if _available(r, l)],

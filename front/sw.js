@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v68";   // comparison windows, panel focus and field scheduling
+const VERSION = "wxgrid-v69";   // bounded server caches and lean shell precache
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;
@@ -58,15 +58,16 @@ const SHELL_EXTRA = [
   "logo.svg", "icon-32.png", "icon-180.png", "icon-512.png",
 ];
 // Used only if index.html cannot be read at install time.
-const SHELL_FALLBACK = ["styles.css", "app.js", "units.js", "particles.js", "toolstrip.js", "field-requests.js", "compare.js", "overlays.js", "panes.js",
-  "tape.js", "search.js", "menu.js", "settings.js", "probe.js", "provider.js", "sounding.js",
+const SHELL_FALLBACK = ["styles.css", "bundle.js", "probe.js", "provider.js", "sounding.js",
   "xsection.js", "fires.js", "sigmet.js", "cams.js", "sky.js", "route.js", "ens.js", "features.js", "vendor/maplibre-gl.js",
   "vendor/maplibre-gl.css"];
 
 async function shellUrls() {
-  const rel = new Set([...SHELL_EXTRA, ...SHELL_FALLBACK]);
+  const rel = new Set(SHELL_EXTRA);
   try {
-    const html = await (await fetch(at("index.html"), { cache: "reload" })).text();
+    const res = await fetch(at("index.html"), { cache: "reload" });
+    if (!res.ok) throw new Error("shell index unavailable");
+    const html = await res.text();
     for (const m of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
       const u = m[1];
       // Skip absolute URLs, data:, and in-page anchors; keep everything the
@@ -74,7 +75,7 @@ async function shellUrls() {
       if (!/^(https?:|data:|blob:|mailto:|#|\/\/|\/)/.test(u)) rel.add(u);
     }
   } catch (err) {
-    // No index.html, no update to the list — the fallback still installs.
+    for (const u of SHELL_FALLBACK) rel.add(u);
   }
   return [...rel].map(at);
 }

@@ -5,7 +5,9 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/local-projects/wxgrid
-ExecStart=%h/local-projects/wxgrid/venv/bin/uvicorn wxgrid.api:app --host 127.0.0.1 --port 8097
+ExecStart=%h/local-projects/wxgrid/venv/bin/uvicorn wxgrid.api:app --host 127.0.0.1 --port 8097 --no-access-log
+Environment=OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 BLOSC_NTHREADS=1
+Environment=MALLOC_ARENA_MAX=2 MALLOC_TRIM_THRESHOLD_=65536 MALLOC_MMAP_THRESHOLD_=65536
 Restart=on-failure
 RestartSec=5
 # the interactive service wins the box when the ingest is churning

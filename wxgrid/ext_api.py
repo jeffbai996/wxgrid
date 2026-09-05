@@ -67,6 +67,11 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
             for fut, kind in futures.items():
                 if not fut.done():
                     yield json.dumps({"kind": kind, "pending": True}) + "\n"
+        finally:
+            # A closed/expired card has no use for jobs still in the queue.
+            # Running fetches finish into the shared cache; queued ones stop.
+            for fut in futures:
+                fut.cancel()
 
     return StreamingResponse(gen(), media_type="application/x-ndjson",
                              headers={"Cache-Control": "no-store"})

@@ -61,9 +61,9 @@ M3_FC = {"type": "FeatureCollection", "features": [
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    fires.cache._d.clear()
+    fires.cache.clear()
     yield
-    fires.cache._d.clear()
+    fires.cache.clear()
 
 
 def _route(monkeypatch, **by_host):

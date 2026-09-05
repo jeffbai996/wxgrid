@@ -10,7 +10,8 @@ rules, and so a hundred taps become one upstream request:
   Bureau of Meteorology (AU)     Australian warnings (CAP-AU + AMOC district shapefiles)
   Environment Canada GeoMet      Canadian alerts (WMS raster + GetFeatureInfo text)
 
-Every call is cached in memory with a TTL. Nothing here touches the store.
+Every call uses an expiry-aware disk cache with a bounded hot set.
+Nothing here touches the model store.
 """
 from __future__ import annotations
 
@@ -20,7 +21,6 @@ import math
 import re
 import threading
 import time
-import uuid
 from typing import Any, Callable
 
 import requests
@@ -31,77 +31,12 @@ _session = requests.Session()
 _session.headers["User-Agent"] = UA
 
 
-class _Cache:
-    """TTL cache; mirrored to disk so a restart doesn't re-hit every upstream
-    (station lists alone are megabytes). Written at most every 30 s."""
-
-    def __init__(self, path: "Path | None" = None) -> None:
-        self._d: dict[str, tuple[float, Any]] = {}
-        self._lock = threading.Lock()
-        # One upstream call per cold key: later callers for the same key wait
-        # on the first instead of each making the request (a hundred taps on
-        # a cold card used to be a hundred upstream fetches).
-        self._inflight: dict[str, threading.Event] = {}
-        self._path = path
-        self._dirty = False
-        self._last_flush = 0.0
-        if path and path.exists():
-            try:
-                import json
-                raw = json.loads(path.read_text())
-                self._d = {k: (v[0], v[1]) for k, v in raw.items()}
-            except Exception:
-                self._d = {}
-
-    def get(self, key: str, ttl: float, fn: Callable[[], Any]) -> Any:
-        while True:
-            now = time.time()
-            with self._lock:
-                hit = self._d.get(key)
-                if hit and now - hit[0] < ttl:
-                    return hit[1]
-                waiter = self._inflight.get(key)
-                if waiter is None:
-                    self._inflight[key] = threading.Event()
-                    break
-            # Someone else is fetching this key: wait for their answer, then
-            # re-read. A bounded wait so a hung upstream cannot pin every
-            # caller; the re-read either hits or takes the fetch itself.
-            waiter.wait(timeout=30)
-        try:
-            val = fn()
-        except BaseException:
-            with self._lock:
-                self._inflight.pop(key, None).set()
-            raise
-        with self._lock:
-            self._d[key] = (now, val)
-            self._dirty = True
-            if len(self._d) > 20000:           # crude bound; oldest first
-                for k in sorted(self._d, key=lambda k: self._d[k][0])[:1000]:
-                    self._d.pop(k, None)
-            if self._path and now - self._last_flush > 30:
-                self._flush(now)
-            ev = self._inflight.pop(key, None)
-            if ev is not None:
-                ev.set()
-        return val
-
-    def _flush(self, now: float) -> None:
-        import json
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self._path.with_suffix(f".part-{uuid.uuid4().hex[:8]}")
-            tmp.write_text(json.dumps({k: [t, v] for k, (t, v) in self._d.items() if now - t < 45 * 24 * 3600}))
-            tmp.replace(self._path)
-            self._last_flush, self._dirty = now, False
-        except Exception as exc:               # a cache that fails to persist is still a cache
-            log.debug("ext cache flush failed: %s", exc)
+from wxgrid.ttl_cache import _Cache
 
 
 from pathlib import Path as _Path
 from wxgrid.config import CACHE_DIR as _CACHE_DIR
-cache = _Cache(_Path(_CACHE_DIR) / "ext.json")
+cache = _Cache(_Path(_CACHE_DIR) / "ext.sqlite3")
 _nominatim_lock = threading.Lock()
 _nominatim_last = 0.0
 

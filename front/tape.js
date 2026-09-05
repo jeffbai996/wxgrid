@@ -259,6 +259,7 @@
 
   function renderTape() {
     const tape = $("#tape");
+    tape.onclick = null; // release the previous column mapping on empty/radar renders
     tape.classList.toggle("radar", state.radar && state.radarFrames.length > 0);
     if (state.radar && state.radarFrames.length) {
       let html = "", lastDay = null;
@@ -268,7 +269,10 @@
         html += `<div class="tape-col ${fr.kind}" data-radar="${i}"><span class="tape-hour">${t.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })}</span><span class="tape-glyph" style="color:${fr.kind === "nowcast" ? "var(--warm)" : "var(--rain)"};text-align:center">${fr.kind === "nowcast" ? "◌" : "●"}</span></div>`;
       });
       tape.innerHTML = html + "</div></div>";
-      tape.querySelectorAll(".tape-col").forEach((c) => c.onclick = () => { state.radarIdx = Number(c.dataset.radar); WX.ov.applyRadarFrame(); });
+      tape.onclick = (e) => {
+        const c = e.target.closest(".tape-col[data-radar]");
+        if (c && tape.contains(c)) { state.radarIdx = Number(c.dataset.radar); WX.ov.applyRadarFrame(); }
+      };
       $("#tape-where").textContent = "";
       renderTapeSelection();
       return;
@@ -401,14 +405,17 @@
     </tbody></table>`;
     const pick = (shown) => {
       const col = columns[shown];
+      if (!col) return;
       if (col.model !== state.model) WX.fn.jumpModelTime(col.model, col.valid);
       else WX.fn.setStep(col.native);
       fineSelectedValid = col.valid;
       renderTapeSelection();
     };
-    tape.querySelectorAll("td[data-i]").forEach((c) => c.onclick = () => pick(Number(c.dataset.i)));
+    tape.onclick = (e) => {
+      const c = e.target.closest("td[data-i], th.day[data-first]");
+      if (c && tape.contains(c)) pick(Number(c.dataset.i ?? c.dataset.first));
+    };
     wireTapeHover(tape);
-    tape.querySelectorAll("th.day[data-first]").forEach((c) => c.onclick = () => pick(Number(c.dataset.first)));
     renderTapePlace();
     renderTapeSelection();
   }

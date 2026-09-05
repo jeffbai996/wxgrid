@@ -102,8 +102,8 @@ def cache():
     `wind_speed_spread` alone and has no business reading a cache file."""
     global _cache
     if _cache is None:
-        from wxgrid.ext import _Cache
-        _cache = _Cache(Path(CACHE_DIR) / "ens.json")
+        from wxgrid.ttl_cache import _Cache
+        _cache = _Cache(Path(CACHE_DIR) / "ens.sqlite3")
     return _cache
 
 

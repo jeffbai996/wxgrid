@@ -76,9 +76,9 @@ OVATION_JSON = {
 
 @pytest.fixture(autouse=True)
 def _clean_cache():
-    radar.cache._d.clear()
+    radar.cache.clear()
     yield
-    radar.cache._d.clear()
+    radar.cache.clear()
 
 
 # ── ISO 8601 durations and instants ──────────────────────────────────────

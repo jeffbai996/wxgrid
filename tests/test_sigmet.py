@@ -62,7 +62,7 @@ def _stub(monkeypatch, air=AIRSIGMET, isig=ISIGMET, gair=GAIRMET):
             return gair
         raise AssertionError(f"unexpected url {url}")
     monkeypatch.setattr(ext, "_get_json", fake)
-    ext.cache._d.clear()
+    ext.cache.clear()
 
 
 # ── parsers ───────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ def test_layer_survives_one_dead_feed(monkeypatch):
             raise RuntimeError("502 from AWC")
         return AIRSIGMET if url.endswith("/airsigmet") else GAIRMET
     monkeypatch.setattr(ext, "_get_json", fake)
-    ext.cache._d.clear()
+    ext.cache.clear()
     lay = sigmet.sigmet_layer()
     assert "isigmet" not in lay["counts"] and lay["counts"]["airsigmet"] == 1
     assert len(lay["features"]) == 3

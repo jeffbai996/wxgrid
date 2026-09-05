@@ -25,7 +25,7 @@ def test_geocoding_requests_english_names(monkeypatch):
 
     monkeypatch.setattr(ext, "_get_json", fake_get)
     monkeypatch.setattr(ext.time, "sleep", lambda _: None)
-    ext.cache._d.clear()
+    ext.cache.clear()
     assert ext.geocode("Al Aflaj", 1)[0]["name"] == "Al Aflaj"
     assert ext.reverse(22.282, 46.683)["name"] == "Al Aflaj"
     assert len(calls) == 2
@@ -57,7 +57,7 @@ def test_reverse_prefers_containing_water_over_distant_admin_boundary(monkeypatc
     })
     monkeypatch.setattr(ext, "elevation", lambda *a: 0.0)
     monkeypatch.setattr(ext, "nearby_named_water", lambda *a: "Puget Sound")
-    ext.cache._d.clear()
+    ext.cache.clear()
     assert ext.reverse(47.7, -122.45) == {
         "name": "Puget Sound", "region": "", "country": "", "display": "", "water": True,
     }
@@ -70,7 +70,7 @@ def test_reverse_keeps_land_when_no_water_area_contains_point(monkeypatch):
     })
     monkeypatch.setattr(ext, "elevation", lambda *a: 0.0)
     monkeypatch.setattr(ext, "nearby_named_water", lambda *a: "")
-    ext.cache._d.clear()
+    ext.cache.clear()
     assert ext.reverse(47.0, -122.0)["name"] == "Lowland"
 
 
@@ -83,7 +83,7 @@ def test_reverse_does_not_name_the_ocean_when_the_geocoder_is_down(monkeypatch):
     monkeypatch.setattr(ext, "_nominatim", boom)
     monkeypatch.setattr(ext, "nearest_water", lambda *a: "North Pacific Ocean")
     monkeypatch.setattr(ext, "water_nodes", lambda: [])
-    ext.cache._d.clear()
+    ext.cache.clear()
     r = ext.reverse(50.116, -122.957)
     assert r["name"] == "" and not r.get("water")
     assert not any(k.startswith("rgeo") for k in ext.cache._d)
@@ -98,7 +98,7 @@ def test_nearest_metar_picks_closest_station(monkeypatch):
     fake = [{"icaoId": "CYVR", "lat": 49.19, "lon": -123.18, "temp": 17.0, "rawOb": "METAR CYVR", "reportTime": "t"},
             {"icaoId": "CWWA", "lat": 49.347, "lon": -123.193, "temp": 17.4, "rawOb": "METAR CWWA", "reportTime": "t"}]
     monkeypatch.setattr(ext, "_get_json", lambda *a, **k: fake)
-    ext.cache._d.clear()
+    ext.cache.clear()
     o = ext.nearest_metar(49.34, -123.19)
     assert o["station"] == "CWWA" and o["distance_km"] < 2
 
@@ -118,7 +118,7 @@ def test_avalanche_ca_point_shape(monkeypatch):
                                   "data": {"elevations": [{"display": "Alp"}], "aspects": [{"display": "N"}]}, "comment": "<b>x</b>"}],
                     "summaries": []}}
     monkeypatch.setattr(ext._session, "get", lambda *a, **k: R())
-    ext.cache._d.clear()
+    ext.cache.clear()
     p = ext.avy_point(50.1, -122.9)
     assert p["source"] == "avalanche.ca" and p["days"][0]["alp"]["level"] == 3 and p["days"][0]["btl"]["level"] == 1
     assert p["problems"][0]["type"] == "Wind Slab" and p["highlights"] == "Wind slabs."
@@ -130,7 +130,7 @@ def test_nws_alerts_layer_keeps_only_geometry_and_colours_by_severity(monkeypatc
         {"geometry": {"type": "Polygon", "coordinates": [[[-100, 40], [-99, 40], [-99, 41], [-100, 40]]]}, "properties": {"id": "a", "event": "Flood Warning", "severity": "Severe", "areaDesc": "X"}},
         {"geometry": None, "properties": {"id": "b", "event": "Heat Advisory", "severity": "Minor"}}]}
     monkeypatch.setattr(ext, "_get_json", lambda *a, **k: j)
-    ext.cache._d.clear()
+    ext.cache.clear()
     lay = ext.nws_alerts_layer()
     assert len(lay["features"]) == 1 and lay["features"][0]["properties"]["sev"] == 3
 
@@ -234,7 +234,7 @@ def test_meteoalarm_warnings_fill_geometry_from_emma_regions(monkeypatch):
     monkeypatch.setattr(ext._session, "get", lambda *a, **k: R())
     monkeypatch.setattr(ext, "MA_COUNTRIES", ("austria",))
     monkeypatch.setattr(ext, "_emma_regions", lambda: {"AT503": square})
-    ext.cache._d.clear()
+    ext.cache.clear()
     ws = {w["event"]: w for w in ext._ma_warnings()}
     assert ws["thunderstorm"]["geometry"] == square
     assert ws["wind"]["sev"] == 3 and "_sent" not in ws["wind"]
@@ -252,7 +252,7 @@ def test_meteoalarm_detail_prefers_the_english_cap_info(monkeypatch):
         text = cap
         def raise_for_status(self): pass
     monkeypatch.setattr(ext._session, "get", lambda *a, **k: R())
-    ext.cache._d.clear()
+    ext.cache.clear()
     d = ext._ma_detail("https://feeds.example/cap/a")
     assert d["sender"] == "GeoSphere Austria" and d["description"].startswith("Thunderstorms")
     assert d["instruction"] == "Take care." and d["web"] == "http://x/en"
@@ -363,13 +363,13 @@ def test_alerts_point_adds_hits_from_meteoalarm_and_bom(monkeypatch):
     monkeypatch.setattr(ext, "_bom_warnings", lambda: [_fake_warning("BoM", 4, au)])
     monkeypatch.setattr(ext, "_ma_detail", lambda url: {"sender": "GeoSphere Austria", "description": "Thunderstorms.",
                                                        "instruction": "Take care.", "web": "http://x/en"})
-    ext.cache._d.clear()
+    ext.cache.clear()
     inside_eu = ext.alerts_point(47.5, 13.5)
     assert [a["source"] for a in inside_eu] == ["MeteoAlarm"]
     assert inside_eu[0]["sender"] == "GeoSphere Austria" and inside_eu[0]["url"] == "http://x/en"
-    ext.cache._d.clear()
+    ext.cache.clear()
     assert [a["source"] for a in ext.alerts_point(-37.5, 144.5)] == ["BoM"]
-    ext.cache._d.clear()
+    ext.cache.clear()
     assert ext.alerts_point(0.0, 0.0) == []
 
 
@@ -642,7 +642,7 @@ def test_ec_alerts_point_asks_geomet_about_one_pixel_and_normalises_it(monkeypat
         seen.update({"url": url, **(params or {})})
         return payload
     monkeypatch.setattr(ext, "_get_json", fake)
-    ext.cache._d.clear()
+    ext.cache.clear()
     got = ext.ec_alerts_point(58.7, -118.0)
     assert seen["REQUEST"] == "GetFeatureInfo" and seen["QUERY_LAYERS"] == "Current-Alerts"
     assert seen["INFO_FORMAT"] == "application/json" and (seen["I"], seen["J"]) == (1, 1)
@@ -657,7 +657,7 @@ def test_ec_alerts_point_never_leaves_the_process_outside_canada(monkeypatch):
     def boom(*a, **k):
         raise AssertionError("GeoMet asked about a point it does not cover")
     monkeypatch.setattr(ext, "_get_json", boom)
-    ext.cache._d.clear()
+    ext.cache.clear()
     assert ext.ec_alerts_point(48.8, 2.3) == []          # Paris
 
 
@@ -669,7 +669,7 @@ def test_alerts_point_carries_environment_canada(monkeypatch):
         {"id": "x", "event": "Snowfall warning", "severity": "Severe", "sev": 3, "color": "#e8590c",
          "headline": "h", "area": "Vancouver", "onset": None, "ends": None, "sender": "Environment Canada",
          "source": "Environment Canada", "description": "d", "instruction": "", "url": "u"}])
-    ext.cache._d.clear()
+    ext.cache.clear()
     assert [a["source"] for a in ext.alerts_point(49.3, -123.1)] == ["Environment Canada"]
 
 
@@ -680,7 +680,7 @@ def test_alert_detail_reads_meteoalarm_cap_without_touching_the_layer(monkeypatc
     monkeypatch.setattr(ext, "_bom_warnings", lambda: [])
     monkeypatch.setattr(ext, "_ma_detail", lambda url: {"sender": "GeoSphere Austria", "description": "Thunderstorms.",
                                                         "instruction": "Take care.", "web": "http://x/en"})
-    ext.cache._d.clear()
+    ext.cache.clear()
     d = ext.alert_detail(w["id"], "MeteoAlarm")
     assert d["description"] == "Thunderstorms." and d["sender"] == "GeoSphere Austria" and d["url"] == "http://x/en"
     assert ext.alert_detail("no-such-id", "MeteoAlarm") is None
@@ -698,7 +698,7 @@ def test_alert_detail_resolves_an_nws_id_to_its_own_document(monkeypatch):
     monkeypatch.setattr(ext, "_get_json", fake)
     monkeypatch.setattr(ext, "_ma_warnings", lambda: [])
     monkeypatch.setattr(ext, "_bom_warnings", lambda: [])
-    ext.cache._d.clear()
+    ext.cache.clear()
     d = ext.alert_detail("urn:oid:2.49.0.1.840.0.abc.001.1", "NWS")
     assert seen["url"].endswith("/alerts/urn:oid:2.49.0.1.840.0.abc.001.1")
     assert d["sev"] == 3 and d["urgency"] == "Expected" and d["description"] == "The river is up."
@@ -728,7 +728,7 @@ def test_a_failed_tide_prediction_is_not_remembered_as_no_station(monkeypatch):
         return {"predictions": [{"t": "2026-08-27 01:00", "v": "3.1", "type": "H"}]}
 
     monkeypatch.setattr(ext, "_get_json", fake_get)
-    ext.cache._d.clear()
+    ext.cache.clear()
     assert ext.tides(47.6, -122.34) is None
     assert ext.tides(47.6, -122.34)["station"].startswith("SEATTLE")
     assert calls["pred"] == 2
@@ -748,7 +748,7 @@ def test_a_failed_station_list_is_not_cached_for_a_week(monkeypatch):
         return {"predictions": []}
 
     monkeypatch.setattr(ext, "_get_json", fake_get)
-    ext.cache._d.clear()
+    ext.cache.clear()
     assert ext._noaa_stations() == []
     assert len(ext._noaa_stations()) == 1
     assert calls["list"] == 2
@@ -766,7 +766,7 @@ def test_tide_window_starts_before_now_so_the_curve_has_a_left_anchor(monkeypatc
         return {"predictions": []}
 
     monkeypatch.setattr(ext, "_get_json", fake_get)
-    ext.cache._d.clear()
+    ext.cache.clear()
     ext.tides(47.6, -122.34)
     from datetime import datetime, timezone
     begin = datetime.strptime(seen["begin_date"], "%Y%m%d %H:%M").replace(tzinfo=timezone.utc)

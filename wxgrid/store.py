@@ -47,6 +47,30 @@ def run_path(model: str, rid: str, root: Path = STORE_DIR) -> Path:
     return root / model / f"{rid}.zarr"
 
 
+def _run_attrs(path: Path) -> dict:
+    """Read only root metadata; catalog discovery must not open array handles."""
+    try:
+        meta = json.loads((path / "zarr.json").read_text())
+    except FileNotFoundError:
+        # Read-only compatibility with older Zarr v2 stores.
+        attrs = json.loads((path / ".zattrs").read_text())
+    else:
+        if not isinstance(meta, dict) or meta.get("node_type") != "group":
+            raise ValueError(f"not a Zarr group: {path}")
+        attrs = meta.get("attributes", {})
+    if not isinstance(attrs, dict):
+        raise ValueError(f"invalid run attributes: {path}")
+    return attrs
+
+
+class RunManifest:
+    """The small portion of a run needed to advertise steps and products."""
+    def __init__(self, model: str, rid: str, root: Path = STORE_DIR) -> None:
+        self.attrs = _run_attrs(run_path(model, rid, root))
+        self.steps = list(self.attrs["steps"])
+        self.variables = list(self.attrs.get("variables", []))
+
+
 def list_runs(model: str, root: Path = STORE_DIR, complete_only: bool = True) -> list[str]:
     """Run ids for a model, newest first."""
     mdir = root / model
@@ -56,7 +80,7 @@ def list_runs(model: str, root: Path = STORE_DIR, complete_only: bool = True) ->
     for p in sorted(mdir.glob("*.zarr"), reverse=True):
         if complete_only:
             try:
-                if not zarr.open_group(p, mode="r").attrs.get("complete"):
+                if not _run_attrs(p).get("complete"):
                     continue
             except Exception:
                 continue

@@ -280,7 +280,7 @@ End-use Licence.
 ## Data sources
 
 Everything is free and keyless. Feeds are proxied through `wxgrid/ext.py`
-behind a server-side TTL cache mirrored to `data/cache/ext.json`, except those
+behind a server-side TTL cache in `data/cache/ext.sqlite3`, except those
 marked *direct*, whose tiles the browser fetches itself.
 
 | Feed | Provider | Coverage | Notes |

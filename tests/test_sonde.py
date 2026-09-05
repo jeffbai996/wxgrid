@@ -86,9 +86,9 @@ class _Resp:
 
 @pytest.fixture(autouse=True)
 def _clean_cache():
-    ext.cache._d.clear()
+    ext.cache.clear()
     yield
-    ext.cache._d.clear()
+    ext.cache.clear()
 
 
 # ── Wyoming parser ───────────────────────────────────────────────────────
