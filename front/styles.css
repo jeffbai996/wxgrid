@@ -401,7 +401,11 @@ button:focus:not(:focus-visible) { outline: none; }
 /* the fold glide: an explicit height + clip while sliding between states */
 #timebar.tape-anim, #timebar.mini.tape-anim { height: var(--tape-anim-h) !important; transition: height .38s cubic-bezier(.22,1,.36,1), background-color .3s ease, border-color .3s ease, box-shadow .3s ease; overflow: hidden; will-change: height; }
 #timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: hidden; transition: none !important; will-change: height; }
-#timebar.tape-anim #step { display: none; }
+/* the slider and the rows fade with the box instead of cutting: a display:none
+   here was the visible "step" in every fold */
+#timebar #step, #timebar .tape-head, #timebar .tape { transition: opacity .22s ease; }
+#timebar.tape-anim #step { opacity: 0; }
+#timebar.tape-anim-away .tape-head, #timebar.tape-anim-away .tape { opacity: 0; }
 #timebar.tape-anim-away { background: transparent; border-color: transparent; }
 /* out of the way entirely: only the grip is left to pull it back */
 /* Away: the slab is gone. What stays is the grip and one pill at the foot of
@@ -413,8 +417,11 @@ button:focus:not(:focus-visible) { outline: none; }
   background: var(--panel-solid); color: var(--fg); font: 700 12px var(--font-display); cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.35);
   animation: pill-in .28s cubic-bezier(.32,.72,.24,1) both; }
 .tape-pill svg { width: 14px; height: 14px; flex: 0 0 auto; color: var(--accent); }
+.tape-pill .pp { flex: 0 0 auto; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; color: var(--dim); font-size: 9px; line-height: 1; transition: color .15s, background .15s; }
+.tape-pill .pp:hover { color: var(--accent); background: var(--accent-soft); }
 .tape-pill .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); font: 600 11px var(--font-mono); font-variant-numeric: tabular-nums; }
 .tape-pill .status { flex: 0 0 auto; padding: 2px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: 750 9.5px var(--font-display); letter-spacing: .035em; text-transform: uppercase; }
+.tape-pill .status.away { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
 .tape-pill .dot { color: var(--dim); }
 .tape-pill .field { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); }
 .tape-pill .value { flex: 0 0 auto; color: var(--fg); font: 750 11.5px var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -441,8 +448,10 @@ button:focus:not(:focus-visible) { outline: none; }
 #valid-utc { white-space: nowrap; }
 #valid-utc { font-size: 10.5px; }
 /* a small breathing dot inside the lit Now button says "live" without a word */
-.now-btn .off { font: 700 10.5px var(--font-num); letter-spacing: 0; text-transform: none; color: var(--accent); font-variant-numeric: tabular-nums; }
-.now-btn:hover .off { color: inherit; }
+/* stepped off live: the offset in red, the way a "jump to live" button reads */
+.now-btn .off { font: 700 10.5px var(--font-num); letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
+.now-btn.away { border-color: color-mix(in srgb, var(--bad) 70%, transparent); color: var(--bad); }
+.now-btn.away:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
 .now-btn.on::before { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin: 0 6px 1px 0; vertical-align: middle;
   background: var(--accent-ink); animation: now-breathe 2.4s ease-in-out infinite; }
 @keyframes now-breathe { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
@@ -1053,10 +1062,11 @@ table.wtape tr.r-dir td { height: 20px; }
 .hero .big { color: var(--temp-color, var(--fg)); }
 :root[data-theme="light"] .hero .big { color: color-mix(in srgb, var(--temp-color, var(--fg)) 38%, #141821); }
 #point-now .summary { font-size: 14px; line-height: 1.55; padding: 10px 12px; background: var(--accent-soft); border-radius: 0 10px 10px 0; }
-.detail-group { width: 100%; border-top: 1px solid var(--line); padding-top: 5px; }
-.detail-group summary { cursor: pointer; padding: 7px 0; color: var(--fg-2); font: 650 12px var(--font-body); }
-.detail-group summary span { float: right; color: var(--dim); font-size: 10px; font-weight: 500; }
-.detail-group[open] summary { color: var(--fg); }
+/* section headings fold their group: no marker, the hover shift is the cue */
+.meta details.sect > summary.sect-h { list-style: none; cursor: pointer; display: block; transition: color .15s; user-select: none; }
+.meta details.sect > summary.sect-h::-webkit-details-marker { display: none; }
+.meta details.sect > summary.sect-h:hover { color: var(--fg-2); }
+.meta details.sect:not([open]) > summary.sect-h { margin-bottom: 0; }
 .cmp-scroll { overflow-x: auto; max-width: 100%; scrollbar-width: thin; }
 .cmp-scroll th small { display: block; white-space: nowrap; font-weight: 500; }
 .cmp-scroll tbody th { position: sticky; left: 0; background: var(--panel-solid); z-index: 1; text-align: left; }
@@ -1328,7 +1338,7 @@ table.wtape th.day .model-handoff { display: inline-flex; margin-left: 6px; padd
 .tool-row button[data-action] { flex: 1; width: auto; height: 34px; justify-content: flex-start; gap: 9px; padding: 0 7px; font: 550 12px var(--font-body); line-height: 1.2; }
 .tool-row button[data-action] svg { width: 18px; height: 18px; flex-shrink: 0; }
 .tool-row button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
-.tstrip button:focus-visible, .detail-group summary:focus-visible, .cmp-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tstrip button:focus-visible, .meta details.sect > summary:focus-visible, .cmp-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #tstrip.more-open #strip-more { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-glow); }
 @media (max-width: 820px) { .tstrip.strip-pop { display: none; } }
 

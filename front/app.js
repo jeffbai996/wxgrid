@@ -968,6 +968,8 @@
   // twice, then three times, and the menu buttons toggled themselves shut.
   function wireOnce() {
     $("#play").onclick = togglePlay;
+    // the minimized pill keeps a small play/pause of its own; it must not open the tape
+    const pillPP = $("#tape-pill .pp"); if (pillPP) pillPP.onclick = (e) => { e.stopPropagation(); togglePlay(); };
     // Back to the present in one tap: scrubbing four days out and finding your
     // way home by dragging is the kind of thing a button fixes.
     $("#tape-now").onclick = () => { setStep(currentStepIdx()); WX.tape.renderTapeSelection(); };
@@ -1052,6 +1054,9 @@
         tb.style.setProperty("--tape-anim-h", from + "px");
         tb.getBoundingClientRect();
         tb.style.setProperty("--tape-anim-h", (s === "full" && sized ? parseFloat(sized) : to) + "px");
+        // the pill fades in over the last third of the glide so box and pill
+        // read as one motion rather than a slide, a stop, then a pop
+        if (s === "away") setTimeout(() => { const pill = $("#tape-pill"); if (pill && tapeState === "away") pill.hidden = false; }, TAPE_ANIM_MS * 0.6);
         tapeAnim = setTimeout(() => {
           tb.classList.remove("tape-anim", "tape-anim-away");
           tb.style.removeProperty("--tape-anim-h");
@@ -1749,6 +1754,7 @@
     }
     const put = (sel, value) => { const el = pill.querySelector(sel); if (el) el.textContent = value || ""; };
     put(".t", time); put(".status", status); put(".field", field);
+    const st = pill.querySelector(".status"); if (st) st.classList.toggle("away", status !== "Now");   // red offset, same as the Now pill
     const value = pill.querySelector(".value"), sub = pill.querySelector(".sub");
     if (value) { value.textContent = reading && reading.text || ""; value.hidden = !(reading && reading.text); }
     if (sub) { sub.textContent = reading && reading.sub || ""; sub.hidden = !(reading && reading.sub); }
@@ -1763,10 +1769,12 @@
     $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts(narrow ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
     const atNow = state.stepIdx === currentStepIdx() && !state.frac;
-    // one pill, two states: lit "Now" when live, "+36h back" once stepped —
-    // the offset is both the status and the way home, so nothing else moves
-    $("#tape-now").innerHTML = atNow ? "Now" : `<b class="off">+${Math.round(shownHours())}h</b> back`;
+    // one pill, two states: lit "Now" when live, a red "+36h" once stepped —
+    // the offset is both the status and the way home (a "jump to live"), so
+    // nothing else moves and no extra word is needed
+    $("#tape-now").innerHTML = atNow ? "Now" : `<b class="off">+${Math.round(shownHours())}h</b>`;
     $("#tape-now").classList.toggle("on", atNow);
+    $("#tape-now").classList.toggle("away", !atNow);
     $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
     renderTapePill();
   }
@@ -1821,6 +1829,7 @@
   function togglePlay() {
     state.playing = !state.playing;
     $("#play").textContent = state.playing ? "❚❚" : "▶";
+    const pp = $("#tape-pill .pp"); if (pp) { pp.textContent = state.playing ? "❚❚" : "▶"; pp.setAttribute("aria-label", state.playing ? "Pause" : "Play"); }
     if (playTimer) { clearInterval(playTimer); playTimer = null; }
     if (playRaf) { cancelAnimationFrame(playRaf); playRaf = 0; }
     if (!state.playing) { settleStep(); applyStep(); loadWind(); return; }

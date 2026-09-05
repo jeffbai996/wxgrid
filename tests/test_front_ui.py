@@ -635,7 +635,8 @@ def test_the_now_button_holds_still_because_live_fills_the_lead_slot():
     # design B (Jeff 2026-09-04): one pill, two states — lit "Now" with a
     # breathing dot when live, "+36h back" once stepped; no separate lead slot
     html = _read("index.html")
-    assert '$("#tape-now").innerHTML = atNow ? "Now" : `<b class="off">+${Math.round(shownHours())}h</b> back`;' in app
+    assert '$("#tape-now").innerHTML = atNow ? "Now" : `<b class="off">+${Math.round(shownHours())}h</b>`;' in app
+    assert '$("#tape-now").classList.toggle("away", !atNow);' in app and ".now-btn.away {" in css   # red, like "jump to live"
     assert 'id="lead"' not in html and "#lead" not in css and "#lead" not in app and "#lead" not in _read("overlays.js")
     assert ".now-btn .off" in css and ".now-btn.on::before" in css
 
@@ -675,3 +676,23 @@ def test_the_tape_grip_shows_a_hand_not_a_resize_arrow():
     grip = css.split(".tape-resize-handle { position: absolute;", 1)[1].split("}", 1)[0]
     assert "cursor: grab;" in grip and "ns-resize" not in grip
     assert "body.resizing-tape, body.resizing-tape * { cursor: grabbing !important; }" in css
+
+
+def test_section_headings_fold_their_group_open_by_default_with_no_marker():
+    panes = _read("panes.js"); css = _read("styles.css")
+    assert '<details class="sect" data-g="${g}" data-detail="${g}"${closed ? "" : " open"}><summary class="sect-h">${label}</summary>' in panes
+    assert "detail-group" not in panes and "detail-group" not in css and "readings</span>" not in panes
+    assert ".meta details.sect > summary.sect-h::-webkit-details-marker { display: none; }" in css
+    assert "list-style: none" in css.split(".meta details.sect > summary.sect-h {", 1)[1].split("}", 1)[0]
+
+
+def test_the_minimized_pill_carries_play_pause_and_the_fold_crossfades():
+    html = _read("index.html"); app = _read("app.js"); css = _read("styles.css")
+    assert '<span class="pp" role="button" tabindex="0" aria-label="Play">▶</span>' in html
+    assert 'pillPP.onclick = (e) => { e.stopPropagation(); togglePlay(); };' in app
+    assert 'const pp = $("#tape-pill .pp");' in app
+    # no display:none cut mid-glide; the rows and slider fade, the pill lands early
+    assert "#timebar.tape-anim #step { display: none; }" not in css and "#timebar.tape-anim #step { opacity: 0; }" in css
+    assert "#timebar.tape-anim-away .tape-head, #timebar.tape-anim-away .tape { opacity: 0; }" in css
+    assert "TAPE_ANIM_MS * 0.6" in app
+    assert 'st.classList.toggle("away", status !== "Now")' in app and ".tape-pill .status.away {" in css

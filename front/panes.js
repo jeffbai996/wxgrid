@@ -665,7 +665,7 @@
     if (a.uv != null) tiles.push(stat("UV now", a.uv.toFixed(1), "", uvCol(a.uv), "", "", "uv"));
     if (a.uv_clear != null) tiles.push(stat("Clear-sky UV", a.uv_clear.toFixed(1), "", uvCol(a.uv_clear), "", "", "uv"));
     if (uvb) tiles.push(stat(`UV max · ${uvb[0]}`, uvMax.toFixed(0), "", uvb[1], "", "", "uv"));
-    return `<div class="meta air">${sections(tiles)}</div>`;
+    return `<div class="meta air">${sections(tiles, pt)}</div>`;
   }
   // An alert opens where its text is: in the card. Only the services that
   // publish a readable page get a link out; the ones that publish an API
@@ -1088,10 +1088,13 @@
   function sections(tiles, pt) {
     const by = {};
     for (const t of tiles) { const g = (t.match(/data-g="([a-z]+)"/) || [])[1] || "air"; (by[g] = by[g] || []).push(t); }
+    // Every group is open by default and folds from its heading alone: no
+    // caret, no count, a hover shift on the label is the whole affordance
+    // (Jeff 2026-09-05: "don't minimize AIR and SUN … clicking the header ONLY").
     return GROUPS.filter(([g]) => by[g]).map(([g, label]) => {
       const content = `<div class="sect-grid">${by[g].join("")}</div>`;
-      if (pt && ["air", "sun"].includes(g)) return `<details class="sect detail-group" data-detail="${g}"${pt.details && pt.details[g] ? " open" : ""}><summary>${label}<span>${by[g].length} readings</span></summary>${content}</details>`;
-      return `<section class="sect" data-g="${g}"><small class="sect-h">${label}</small>${content}</section>`;
+      const closed = pt && pt.details && pt.details[g] === false;
+      return `<details class="sect" data-g="${g}" data-detail="${g}"${closed ? "" : " open"}><summary class="sect-h">${label}</summary>${content}</details>`;
     }).join("");
   }
 

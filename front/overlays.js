@@ -908,7 +908,7 @@
     // radar frames are minutes old or minutes ahead: the age rides in the Now
     // pill the same way a forecast offset does (the latest frame is "Now")
     const nowBtn = $("#tape-now");
-    if (nowBtn) { const latest = Math.abs(ageMin) <= 6; nowBtn.innerHTML = latest ? "Now" : `<b class="off">${ageMin >= 0 ? `−${ageMin}m` : `+${-ageMin}m`}</b> back`; nowBtn.classList.toggle("on", latest); }
+    if (nowBtn) { const latest = Math.abs(ageMin) <= 6; nowBtn.innerHTML = latest ? "Now" : `<b class="off">${ageMin >= 0 ? `−${ageMin}m` : `+${-ageMin}m`}</b>`; nowBtn.classList.toggle("on", latest); nowBtn.classList.toggle("away", !latest); }
     badge("radar", `Radar <b>${src.label}</b> <small>${t.toISOString().slice(11, 16)}Z${fr.kind === "nowcast" ? " nowcast" : ""}</small>`, "var(--rain, #6cb6ff)");
     if (WX.fn.renderTapePill) WX.fn.renderTapePill();
     WX.tape.renderTapeSelection();
