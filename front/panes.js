@@ -1207,9 +1207,10 @@
       if (hot && hot !== bar) hot.classList.remove("hot");
       hot = bar; if (bar) bar.classList.add("hot");
       svg.classList.add("hovering");
-      tip.innerHTML = bar
-        ? `<b>${r.toFixed(1)}<small>${bar.dataset.k === "snow" ? " cm/h" : " mm/h"}</small></b><i>${band(r)}${mins < 0 ? " · was" : ""}</i><i>${when}</i>`
-        : `<b>dry</b><i>${when}</i>`;
+      // time on top, the reading under it (Jeff 2026-09-05)
+      tip.innerHTML = `<i class="when">${when}${mins < 0 ? " · was" : ""}</i>` + (bar
+        ? `<span><b>${r.toFixed(1)}<small>${bar.dataset.k === "snow" ? " cm/h" : " mm/h"}</small></b><i>${band(r)}</i></span>`
+        : `<span><b>dry</b></span>`);
       tip.hidden = false;
       const x = (b + 0.5) / N * rect.width;
       tip.style.left = `${Math.max(34, Math.min(rect.width - 34, x))}px`;

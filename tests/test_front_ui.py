@@ -696,7 +696,7 @@ def test_section_headings_fold_their_group_open_by_default_with_no_marker():
 
 def test_the_minimized_pill_carries_play_pause_and_the_fold_crossfades():
     html = _read("index.html"); app = _read("app.js"); css = _read("styles.css")
-    assert '<span class="pp" role="button" tabindex="0" aria-label="Play">▶</span>' in html
+    assert '<span class="pp" role="button" tabindex="0" aria-label="Play"><svg viewBox="0 0 10 10"' in html
     assert 'pillPP.onclick = (e) => { e.stopPropagation(); togglePlay(); };' in app
     assert 'const pp = $("#tape-pill .pp");' in app
     # no display:none cut mid-glide; the rows and slider fade, the pill lands early
@@ -770,3 +770,10 @@ def test_precipitation_bars_have_a_hover_readout():
     assert "function wireRainNowHover(el, nc)" in panes and "wireRainNowHover(el, nc);" in panes
     assert 'data-b="${b}" data-r="${r.toFixed(1)}" data-m=' in panes and '<div class="rn-tip" hidden></div>' in panes
     assert ".rainnow .rn-chart.hovering line:not(.hot) { filter: brightness(.72); }" in css and ".rainnow .rn-tip {" in css
+
+
+def test_the_chin_wind_readout_renders_when_the_wind_field_lands_and_the_readout_leads_with_time():
+    app = _read("app.js"); panes = _read("panes.js"); css = _read("styles.css")
+    assert "wind.setField(fld);\n      // the chin's wind readout samples this field" in app and "renderTapePill();" in app.split("wind.setField(fld);", 1)[1][:260]
+    assert "pp.innerHTML = state.playing ? PP_PAUSE : PP_PLAY;" in app and ".tape-pill .pp svg { width: 10px; height: 10px; display: block; fill: currentColor; }" in css
+    assert 'tip.innerHTML = `<i class="when">${when}' in panes and "flex-direction: column" in css.split(".rainnow .rn-tip {", 1)[1].split("}", 1)[0]

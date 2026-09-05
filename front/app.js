@@ -1897,14 +1897,21 @@
       const fld = await WX.api(windUrl());
       if (my !== windReq) return;
       wind.setField(fld);
+      // the chin's wind readout samples this field: re-render now it exists
+      // (it used to say just "Wind" until something else happened to repaint)
+      renderTapePill();
       if (prefetch) fetch(windUrl(steps()[(state.stepIdx + 1) % steps().length])).catch(() => {});
     } catch (e) { /* keep the previous field */ }
   }
 
+  // Drawn glyphs, not text: a ▶ character has its own side bearing and never
+  // sits dead centre in a round button (Jeff 2026-09-05).
+  const PP_PLAY = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1.8v6.4L8.2 5z"/></svg>';
+  const PP_PAUSE = '<svg viewBox="0 0 10 10" aria-hidden="true"><rect x="2.2" y="1.8" width="2" height="6.4" rx=".5"/><rect x="5.8" y="1.8" width="2" height="6.4" rx=".5"/></svg>';
   function togglePlay() {
     state.playing = !state.playing;
     $("#play").textContent = state.playing ? "❚❚" : "▶";
-    const pp = $("#tape-pill .pp"); if (pp) { pp.textContent = state.playing ? "❚❚" : "▶"; pp.setAttribute("aria-label", state.playing ? "Pause" : "Play"); }
+    const pp = $("#tape-pill .pp"); if (pp) { pp.innerHTML = state.playing ? PP_PAUSE : PP_PLAY; pp.setAttribute("aria-label", state.playing ? "Pause" : "Play"); }
     if (playTimer) { clearInterval(playTimer); playTimer = null; }
     if (playRaf) { cancelAnimationFrame(playRaf); playRaf = 0; }
     if (!state.playing) { settleStep(); applyStep(); loadWind(); return; }
