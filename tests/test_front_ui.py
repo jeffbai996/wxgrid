@@ -663,3 +663,8 @@ def test_the_tape_fold_glides_on_a_variable_and_keeps_compact_rows():
     assert "tb.getBoundingClientRect();" in glide
     assert 'if (pill && (s !== "away" || !animatable)) pill.hidden = s !== "away";' in app
     assert "#timebar.tape-anim, #timebar.mini.tape-anim { height: var(--tape-anim-h) !important;" in css
+
+
+def test_the_discussion_link_sits_flush_left_under_the_blurb():
+    css = _read("styles.css")
+    assert ".summary .why-btn { display: block; margin: 4px 0 0;" in css and "text-align: left;" in css.split(".summary .why-btn {", 1)[1].split("}", 1)[0]
