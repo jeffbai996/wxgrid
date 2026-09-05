@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v74";   // v74: foldable section headings, red offset pill, pill play/pause, crossfaded fold (2026-09-05)
+const VERSION = "wxgrid-v75";   // v75: transform-only drags for tape and sheet, level plate slides before the swap (2026-09-05)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

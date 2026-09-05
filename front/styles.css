@@ -400,7 +400,11 @@ button:focus:not(:focus-visible) { outline: none; }
 #timebar.mini { height: auto !important; }
 /* the fold glide: an explicit height + clip while sliding between states */
 #timebar.tape-anim, #timebar.mini.tape-anim { height: var(--tape-anim-h) !important; transition: height .38s cubic-bezier(.22,1,.36,1), background-color .3s ease, border-color .3s ease, box-shadow .3s ease; overflow: hidden; will-change: height; }
-#timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: hidden; transition: none !important; will-change: height; }
+/* a drag is a transform, never a height per frame: the box sits at its ceiling
+   and slides; everything that rides it (sheet, locate) slides with it */
+#timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: hidden; transition: none !important; will-change: transform; }
+.tape-riding { transition: none !important; will-change: transform; }
+body.resizing-tape #timebar { z-index: 7; }
 /* the slider and the rows fade with the box instead of cutting: a display:none
    here was the visible "step" in every fold */
 #timebar #step, #timebar .tape-head, #timebar .tape { transition: opacity .22s ease; }
@@ -781,7 +785,8 @@ table.bandtape .nil { color: var(--line-strong); }
   /* max(--top-h, 48px): a stale or mid-transition topbar measurement must
      never let the card climb past the screen top and take its × with it */
   #point.sheet-full { bottom: calc(6px + env(safe-area-inset-bottom)); max-height: calc(100dvh - max(var(--top-h), 48px) - 20px - env(safe-area-inset-top)); }
-  #point.sheet-drag { transition: none; }
+  #point.sheet-drag { transition: none; will-change: transform; }
+  body:has(#point.sheet-drag) #timebar { z-index: 7; }   /* the sheet's hidden tail slides under the tape */
   #point.sheet-sized { max-height: calc(100dvh - max(var(--top-h), 48px) - max(var(--tb-h), 96px) - 22px - env(safe-area-inset-top)); }
   /* while the tape grip is being dragged, the card must not chase it through
      a .22s ease — that lag is the jitter */

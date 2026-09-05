@@ -658,6 +658,8 @@
   // The model and pressure pickers share one sliding selection plate. Keep the
   // old plate's geometry across a re-render so changing model metadata (the
   // selected grid badge) does not turn a smooth move into a flash.
+  let levelApply = 0;
+  const LEVEL_SLIDE_MS = 260;          // the plate's .24s slide, plus a frame
   function renderSlidingSeg(el, buttons) {
     const old = el.querySelector(".seg-cursor");
     const prior = old ? old.getBoundingClientRect() : null;
@@ -939,7 +941,18 @@
       // Native title tooltips show all three systems; the badge follows the
       // explicit pressure-level unit chosen in Settings.
       renderSlidingSeg(lv, opts.map((l) => `<button data-level="${l}" class="${l === state.level ? "on" : ""}" title="${l ? `${l} hPa · ${LEVEL_M[l]} · ${LEVEL_FEET[l]} · ${LEVEL_FT[l]}` : "surface · 10 m wind · 2 m temperature"}">${l ? `${l}${l === state.level ? `<i class="level-alt">${levelBadge(l)}</i>` : ""}` : "sfc"}</button>`).join(""));
-      lv.querySelectorAll("button").forEach((b) => b.onclick = () => { state.level = Number(b.dataset.level); renderControls(); applyStep(false); loadWind(false); if (state.iso) WX.ov.loadIso(); });
+      // The plate slides first, alone; the field swap (re-render, texture
+      // upload, particle reseed) lands once it has stopped. Doing both in the
+      // tap's frame made the slide stutter on a phone (Jeff 2026-09-05).
+      lv.querySelectorAll("button").forEach((b) => b.onclick = () => {
+        const level = Number(b.dataset.level);
+        if (level === state.level) return;
+        state.level = level;
+        lv.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        if (lv._segPlace) lv._segPlace();
+        clearTimeout(levelApply);
+        levelApply = setTimeout(() => { renderControls(); applyStep(false); loadWind(false); if (state.iso) WX.ov.loadIso(); }, LEVEL_SLIDE_MS);
+      });
     }
 
     const slider = $("#step");
@@ -1375,13 +1388,18 @@
       setHeight(peek ? 170 : expandedHeight || Math.round(viewH() * 0.52), false);
       if (state.point && state.point.data) renderPoint();
     };
+    // While the thumb is down the card is laid out ONCE at its ceiling and
+    // slid with a transform; the real height lands on release. Setting the
+    // height per move re-laid-out the whole card each frame (Jeff 2026-09-05).
+    let dragMax = 0, dragH = 0;
     const track = perFrame((clientY) => {
       if (!dragging) return;
       dy = clientY - y0;
       const b = bounds();
       closing = startH - dy < b.min - 64;
       card.style.opacity = closing ? ".62" : "";
-      setHeight(startH - dy, false);
+      dragH = Math.max(b.min, Math.min(dragMax, Math.round(startH - dy)));
+      card.style.transform = `translateY(${dragMax - dragH}px)`;
     });
     let openedFromPeek = false;
     grip.addEventListener("pointerdown", (e) => {
@@ -1390,12 +1408,19 @@
       if (tapeState === "full") setTapeState("mini", false);
       dragging = true; y0 = e.clientY; dy = 0; closing = false;
       startH = card.getBoundingClientRect().height;
-      card.classList.add("sheet-drag"); grip.setPointerCapture(e.pointerId);
+      dragMax = bounds().max; dragH = startH;
+      card.classList.add("sheet-drag");
+      card.style.height = `${dragMax}px`; card.classList.add("sheet-sized");
+      card.style.transform = `translateY(${dragMax - startH}px)`;
+      grip.setPointerCapture(e.pointerId);
     });
     grip.addEventListener("pointermove", (e) => { if (dragging) track(e.clientY); });
     const end = (cancel) => {
       if (!dragging) return;
-      dragging = false; card.classList.remove("sheet-drag"); card.style.opacity = "";
+      dragging = false; card.style.opacity = "";
+      card.style.transform = "";
+      setHeight(cancel ? startH : dragH, false);   // the one real layout of the drag
+      card.classList.remove("sheet-drag");
       if (!cancel && closing) { closePoint(); return; }
       if (!cancel && Math.abs(dy) < 6) {                    // a tap cycles peek → half → full
         if (openedFromPeek) return;
@@ -1481,6 +1506,14 @@
     // a compact table to a pill while the finger was still moving. During a
     // drag this is one clipped surface; the semantic state is chosen once,
     // on release, then the existing glide finishes the small remainder.
+    // The drag never changes layout. The box is laid out ONCE at its ceiling
+    // (--tape-drag-height = max) and the pointer moves it with a transform:
+    // its top edge sits `want` px above the bottom, the rest slides under the
+    // screen edge. The sheet and the locate button ride the same transform.
+    // Writing the height per frame reflowed the forecast table and every
+    // --tb-h dependant on each move — the "steppy" drag on a phone
+    // (Jeff 2026-09-05, "it's dogged us forever").
+    const riders = () => [$("#point"), $(".locate-btn")].filter(Boolean);
     const previewTapeDrag = (clientY) => {
       if (!tapeDrag) return;
       tapeDrag.lastY = clientY;
@@ -1489,13 +1522,18 @@
         tb.classList.remove("tape-away"); tb.classList.add("mini");
         const pill = $("#tape-pill"); if (pill) pill.hidden = true;
       }
-      const px = `${tapeDrag.want.toFixed(2)}px`;
-      tb.style.setProperty("--tape-drag-height", px);
-      document.documentElement.style.setProperty("--tb-h", px);
+      tb.style.transform = `translateY(${(tapeDrag.max - tapeDrag.want).toFixed(2)}px)`;
+      const rise = tapeDrag.want - tapeDrag.height;
+      for (const el of riders()) el.style.transform = `translateY(${(-rise).toFixed(2)}px)`;
       tapeGrip.setAttribute("aria-valuenow", Math.round(tapeDrag.want));
+    };
+    const clearTapeDragTransforms = () => {
+      tb.style.transform = "";
+      for (const el of riders()) { el.style.transform = ""; el.classList.remove("tape-riding"); }
     };
     const trackTape = perFrame(previewTapeDrag);
     const restoreTapeDragStart = (drag) => {
+      clearTapeDragTransforms();
       tb.classList.remove("tape-dragging"); tb.style.removeProperty("--tape-drag-height");
       tb.classList.toggle("mini", drag.from === "mini");
       tb.classList.toggle("tape-away", drag.from === "away");
@@ -1510,7 +1548,9 @@
       tapeGrip.setAttribute("aria-valuemax", Math.round(maxH));
       tapeDrag = { id: e.pointerId, y: e.clientY, lastY: e.clientY, height: h0, want: h0,
         max: maxH, distance: 0, from: tapeState, inlineHeight: tb.style.height };
-      tb.style.setProperty("--tape-drag-height", `${h0.toFixed(2)}px`);
+      tb.style.setProperty("--tape-drag-height", `${maxH.toFixed(2)}px`);
+      tb.style.transform = `translateY(${(maxH - h0).toFixed(2)}px)`;
+      for (const el of riders()) el.classList.add("tape-riding");
       tapeGrip.setPointerCapture(e.pointerId); tb.classList.add("is-resizing", "tape-dragging"); document.body.classList.add("resizing-tape");
     });
     tapeGrip.addEventListener("pointermove", (e) => {
@@ -1537,14 +1577,16 @@
         restoreTapeDragStart(drag);
         setTapeState(nextTapeState());
       } else {
-        const visualHeight = tb.getBoundingClientRect().height;
+        const visualHeight = drag.want;          // the box is at its ceiling; `want` is what the eye saw
         const target = tapeTargetState(drag.want);
-        // Leave the preview at its exact release height while setTapeState
-        // measures the other end. Removing the drag class first without this
-        // explicit height was the remaining mini → away snap.
+        // Land the real layout at exactly the release height (one reflow)
+        // while setTapeState measures the other end. Removing the drag class
+        // first without this explicit height was the remaining mini → away snap.
+        clearTapeDragTransforms();
         tb.classList.remove("tape-dragging", "mini", "tape-away");
         tb.style.removeProperty("--tape-drag-height");
         tb.style.height = `${visualHeight}px`;
+        document.documentElement.style.setProperty("--tb-h", `${visualHeight}px`);
         const pill = $("#tape-pill"); if (pill) pill.hidden = true;
         if (target === "full") {
           setTapeHeight(drag.want, true, drag.max);

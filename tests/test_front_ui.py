@@ -457,7 +457,7 @@ def test_tape_drag_is_frame_paced_and_stops_at_its_natural_content_height():
     assert 'tapeDrag.want = clamp(tapeDrag.height + tapeDrag.y - clientY, TAPE_AWAY_HEIGHT, tapeDrag.max);' in app
     assert 'max: maxH, distance: 0, from: tapeState' in app
     assert 'tapeGrip.setAttribute("aria-valuemax", Math.round(maxH));' in app
-    assert 'const px = `${tapeDrag.want.toFixed(2)}px`;' in app
+    assert "tb.style.transform = `translateY(${(tapeDrag.max - tapeDrag.want).toFixed(2)}px)`;" in app   # transform-only drag (2026-09-05)
     assert 'const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : null;' in app
     assert 'if (dragging || animating) return;' in app
     assert '#timebar.user-sized table.wtape { min-height: 0; }' in css
@@ -696,3 +696,21 @@ def test_the_minimized_pill_carries_play_pause_and_the_fold_crossfades():
     assert "#timebar.tape-anim-away .tape-head, #timebar.tape-anim-away .tape { opacity: 0; }" in css
     assert "TAPE_ANIM_MS * 0.6" in app
     assert 'st.classList.toggle("away", status !== "Now")' in app and ".tape-pill .status.away {" in css
+
+
+def test_drags_are_transforms_not_heights_and_the_level_plate_slides_first():
+    app = _read("app.js"); css = _read("styles.css")
+    # tape grip: box laid out once at its ceiling, moved by transform; riders follow
+    assert 'tb.style.setProperty("--tape-drag-height", `${maxH.toFixed(2)}px`);' in app
+    assert "tb.style.transform = `translateY(${(tapeDrag.max - tapeDrag.want).toFixed(2)}px)`;" in app
+    preview = app.split("const previewTapeDrag = (clientY) => {", 1)[1].split("};", 1)[0]
+    assert "--tb-h" not in preview and "--tape-drag-height" not in preview
+    assert "for (const el of riders()) el.style.transform" in app
+    assert "will-change: transform; }" in css.split("#timebar.tape-dragging {", 1)[1].split("\n", 1)[0]
+    # phone sheet: same
+    assert "card.style.transform = `translateY(${dragMax - dragH}px)`;" in app
+    assert "setHeight(cancel ? startH : dragH, false);" in app
+    assert "body:has(#point.sheet-drag) #timebar { z-index: 7; }" in css
+    # level tap: plate first, field swap after the slide
+    assert "levelApply = setTimeout(() => { renderControls(); applyStep(false); loadWind(false);" in app
+    assert "const LEVEL_SLIDE_MS = 260;" in app
