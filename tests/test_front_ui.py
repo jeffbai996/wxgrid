@@ -755,11 +755,14 @@ def test_the_minimized_pill_reads_in_urbanist_with_tight_units_and_a_visible_pla
     assert "border: 1px solid var(--line-strong)" in css.split(".tape-pill .pp {", 1)[1].split("}", 1)[0]
 
 
-def test_precipitation_band_labels_sit_in_a_gutter_not_over_the_bars():
-    css = _read("styles.css")
-    assert ".rainnow .rn-wrap { position: relative; padding-right: 60px; }" in css
-    assert "translateY(-50%)" in css.split(".rainnow .band-l {", 1)[1].split("}", 1)[0]
-    assert ".rainnow .rn-x { position: relative; height: 11px; margin-top: 3px; margin-right: 60px; }" in css
+def test_precipitation_band_labels_float_on_plates_over_full_width_bars():
+    css = _read("styles.css"); panes = _read("panes.js")
+    assert ".rainnow .rn-wrap { position: relative; }" in css and "padding-right: 60px" not in css
+    plate = css.split(".rainnow .band-l {", 1)[1].split("}", 1)[0]
+    assert "translateY(-50%)" in plate and "backdrop-filter: blur(4px)" in plate and "z-index: 1" in plate
+    # the headline keeps its weight; near-normal says nothing on the hero
+    assert "#point-now .rainnow .rn-line { display: block; margin: 4px 0 7px; font: 700 13px/1.3" in css
+    assert 'if (Math.abs(dT) < 1) { el.hidden = true; return; }' in panes and '"near normal"' not in panes
 
 
 def test_precipitation_bars_have_a_hover_readout():

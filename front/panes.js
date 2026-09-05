@@ -1121,7 +1121,9 @@
       const dayMean = todays.reduce((a, k) => a + s.t2m[k], 0) / todays.length - K;
       const dT = W().units.tempDelta(dayMean - ref);
       const u = W().units.tempUnit;
-      const word = Math.abs(dT) < 1 ? "near normal" : `${dT > 0 ? "+" : "−"}${Math.abs(dT).toFixed(0)}° vs normal`;
+      // near normal is the absence of news: say nothing (Jeff 2026-09-05)
+      if (Math.abs(dT) < 1) { el.hidden = true; return; }
+      const word = `${dT > 0 ? "+" : "−"}${Math.abs(dT).toFixed(0)}° vs normal`;
       el.hidden = false;
       el.className = `vs-normal${dT >= 4 ? " warm" : dT <= -4 ? " cool" : ""}`;
       el.title = `${nm.years} ERA5 normal for this date: high ${W().units.tempC(hiN).v}${u} · low ${W().units.tempC(loN).v}${u}${nm.precip && nm.precip[slot] != null ? ` · ${W().units.precip(nm.precip[slot]).txt}/day` : ""}`;
