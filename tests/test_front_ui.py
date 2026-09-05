@@ -635,8 +635,11 @@ def test_the_now_button_holds_still_because_live_fills_the_lead_slot():
     # design B (Jeff 2026-09-04): one pill, two states — lit "Now" with a
     # breathing dot when live, "+36h back" once stepped; no separate lead slot
     html = _read("index.html")
-    assert '$("#tape-now").innerHTML = atNow ? "Now" : `<b class="off">+${Math.round(shownHours())}h</b>`;' in app
-    assert '$("#tape-now").classList.toggle("away", !atNow);' in app and ".now-btn.away {" in css   # red, like "jump to live"
+    # the offset counts from the wall clock, signed, and wears the accent (Jeff 2026-09-05: red was wrong, +24h after Now was hours-since-run)
+    assert 'const dh = (v.getTime() - Date.now()) / 3600e3;' in app
+    assert '${dh >= 0 ? "+" : "−"}${Math.round(Math.abs(dh))}h' in app and "shownHours())}h" not in app
+    assert '$("#tape-now").classList.toggle("away", !atNow);' in app and ".now-btn.away { border-color: color-mix(in srgb, var(--accent) 70%" in css
+    assert "var(--bad)" not in css.split(".now-btn.away {", 1)[1].split("\n\n", 1)[0] and ".tape-pill .status.away" not in css
     assert 'id="lead"' not in html and "#lead" not in css and "#lead" not in app and "#lead" not in _read("overlays.js")
     assert ".now-btn .off" in css and ".now-btn.on::before" in css
 
@@ -695,7 +698,7 @@ def test_the_minimized_pill_carries_play_pause_and_the_fold_crossfades():
     assert "#timebar.tape-anim #step { display: none; }" not in css and "#timebar.tape-anim #step { opacity: 0; }" in css
     assert "#timebar.tape-anim-away .tape-head, #timebar.tape-anim-away .tape { opacity: 0; }" in css
     assert "TAPE_ANIM_MS * 0.6" in app
-    assert 'st.classList.toggle("away", status !== "Now")' in app and ".tape-pill .status.away {" in css
+    assert 'st.classList.toggle("away", status !== "Now")' in app
 
 
 def test_drags_are_transforms_not_heights_and_the_level_plate_slides_first():

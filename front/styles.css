@@ -424,7 +424,6 @@ body.resizing-tape #timebar { z-index: 7; }
 .tape-pill .pp:hover { color: var(--accent); background: var(--accent-soft); }
 .tape-pill .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); font: 600 11px var(--font-mono); font-variant-numeric: tabular-nums; }
 .tape-pill .status { flex: 0 0 auto; padding: 2px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: 750 9.5px var(--font-display); letter-spacing: .035em; text-transform: uppercase; }
-.tape-pill .status.away { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
 .tape-pill .dot { color: var(--dim); }
 .tape-pill .field { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); }
 .tape-pill .value { flex: 0 0 auto; color: var(--fg); font: 750 11.5px var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -451,10 +450,10 @@ body.resizing-tape #timebar { z-index: 7; }
 #valid-utc { white-space: nowrap; }
 #valid-utc { font-size: 10.5px; }
 /* a small breathing dot inside the lit Now button says "live" without a word */
-/* stepped off live: the offset in red, the way a "jump to live" button reads */
+/* stepped off live: the offset in the accent, outlined; press to jump home */
 .now-btn .off { font: 700 10.5px var(--font-num); letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
-.now-btn.away { border-color: color-mix(in srgb, var(--bad) 70%, transparent); color: var(--bad); }
-.now-btn.away:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
+.now-btn.away { border-color: color-mix(in srgb, var(--accent) 70%, transparent); color: var(--accent); }
+.now-btn.away:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .now-btn.on::before { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin: 0 6px 1px 0; vertical-align: middle;
   background: var(--accent-ink); animation: now-breathe 2.4s ease-in-out infinite; }
 @keyframes now-breathe { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }

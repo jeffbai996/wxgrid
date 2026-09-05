@@ -1838,11 +1838,14 @@
     const narrow = matchMedia("(max-width: 820px)").matches;
     $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts(narrow ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
-    const atNow = state.stepIdx === currentStepIdx() && !state.frac;
-    // one pill, two states: lit "Now" when live, a red "+36h" once stepped —
-    // the offset is both the status and the way home (a "jump to live"), so
-    // nothing else moves and no extra word is needed
-    $("#tape-now").innerHTML = atNow ? "Now" : `<b class="off">+${Math.round(shownHours())}h</b>`;
+    // The offset is measured from the wall clock, not from the run start:
+    // "+24h" right after pressing Now was hours-since-run, which reads as
+    // nonsense (Jeff 2026-09-05). Signed, so a step behind now says "−3h".
+    const dh = (v.getTime() - Date.now()) / 3600e3;
+    const atNow = (state.stepIdx === currentStepIdx() && !state.frac) || Math.abs(dh) < 0.5;
+    // one pill, two states: lit "Now" when live, "+36h" once stepped — the
+    // offset is both the status and the way home, so nothing else moves
+    $("#tape-now").innerHTML = atNow ? "Now" : `<b class="off">${dh >= 0 ? "+" : "−"}${Math.round(Math.abs(dh))}h</b>`;
     $("#tape-now").classList.toggle("on", atNow);
     $("#tape-now").classList.toggle("away", !atNow);
     $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
