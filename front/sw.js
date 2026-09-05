@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v77";   // v77: level swap waits for the plate to land, work split across frames (2026-09-05)
+const VERSION = "wxgrid-v78";   // v78: 48 h blurb a notch and a half smaller (2026-09-05)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

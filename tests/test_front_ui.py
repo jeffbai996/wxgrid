@@ -725,3 +725,8 @@ def test_level_badge_moves_with_the_tap_and_the_seg_keeps_its_dom_on_a_no_op_re_
     assert "if (segSignature(probe) === segSignature(el)) { el._segPlace(); return; }" in app
     assert "level-peek" not in css and "@keyframes level-fade { from { opacity: 0; } to { opacity: .65; } }" in css
     assert "max-width: 64px" not in css
+
+
+def test_the_48h_blurb_sits_below_the_hero_in_size():
+    css = _read("styles.css")
+    assert "#point-now .summary { font-size: 12.5px;" in css    # 14 was shouting over the tiles (Jeff 2026-09-05)

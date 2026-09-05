@@ -1065,7 +1065,7 @@ table.wtape tr.r-dir td { height: 20px; }
 .hero .big .deg { font-size: 24px; margin-top: 5px; margin-left: 1px; opacity: .5; }
 .hero .big { color: var(--temp-color, var(--fg)); }
 :root[data-theme="light"] .hero .big { color: color-mix(in srgb, var(--temp-color, var(--fg)) 38%, #141821); }
-#point-now .summary { font-size: 14px; line-height: 1.55; padding: 10px 12px; background: var(--accent-soft); border-radius: 0 10px 10px 0; }
+#point-now .summary { font-size: 12.5px; line-height: 1.5; padding: 10px 12px; background: var(--accent-soft); border-radius: 0 10px 10px 0; }
 /* section headings fold their group: no marker, the hover shift is the cue */
 .meta details.sect > summary.sect-h { list-style: none; cursor: pointer; display: block; transition: color .15s; user-select: none; }
 .meta details.sect > summary.sect-h::-webkit-details-marker { display: none; }
