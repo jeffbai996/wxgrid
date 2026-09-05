@@ -481,6 +481,15 @@ def test_jtwc_active_lists_wpac_and_skips_nhc_basins():
     assert [s["id"] for s in got] == ["17W", "19W"]          # 01C is NHC/CPHC's storm
     assert got[0]["name"] == "Saudel" and got[0]["class"] == "Typhoon"
     assert got[0]["url"].endswith("wp1726web.txt")
+    # an unnamed depression shows its designation, not the spelled-out number
+    assert got[1]["name"] == "19W" and got[1]["class"] == "Tropical Depression"
+
+
+def test_jtwc_display_name_swaps_only_spelled_out_numbers():
+    assert ext._jtwc_display_name("23W", "Twentythree") == "23W"
+    assert ext._jtwc_display_name("05B", "Twenty-One") == "05B"
+    assert ext._jtwc_display_name("17W", "SAUDEL") == "Saudel"
+    assert ext._jtwc_display_name("09S", "Nine") == "09S"
 
 
 def test_jtwc_warning_parses_position_winds_and_track():

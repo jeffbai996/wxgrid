@@ -1519,8 +1519,23 @@ def _jtwc_active(rss: str) -> list[dict]:
         end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
         link = _JTWC_LINK.search(text, m.end(), end)
         if link:
-            out.append({"id": sid, "name": name.strip().title(), "class": cls, "url": link.group(1)})
+            out.append({"id": sid, "name": _jtwc_display_name(sid, name), "class": cls, "url": link.group(1)})
     return out
+
+
+# JTWC's ATCF name for an unnamed system is the number spelled out
+# ("Twentythree"); its designation is "23W", which is how every advisory and
+# every news line refers to it. Show the designation (Jeff 2026-09-05:
+# "Tropical Depression 23W, and all of this pattern going forward").
+_NUMBER_WORDS = re.compile(
+    r"^(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|"
+    r"sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)"
+    r"(?:[- ]?(?:one|two|three|four|five|six|seven|eight|nine))?$", re.I)
+
+
+def _jtwc_display_name(sid: str, name: str) -> str:
+    name = name.strip()
+    return sid if _NUMBER_WORDS.match(name) else name.title()
 
 
 def _parse_jtwc_warning(text: str) -> dict | None:
@@ -1842,7 +1857,7 @@ def storms() -> dict:
                     log.info("nhc %s %s: %s", s.get("id"), kind, exc)
         jf, jm = _jtwc_storms()
         return {"type": "FeatureCollection", "features": feats + jf, "storms": meta + jm}
-    return cache.get("storms-v11", 900, fetch)   # v11: tracks unwrapped across the dateline
+    return cache.get("storms-v12", 900, fetch)   # v12: unnamed JTWC systems carry their designation (23W)
 
 
 # ── air quality / UV (Open-Meteo) ────────────────────────────────────────
