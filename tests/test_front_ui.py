@@ -446,7 +446,7 @@ def test_tape_control_walks_all_three_states_and_every_change_glides():
     assert "#timebar.tape-away { height: 38px !important;" in css and "@keyframes pill-in" in css
     assert "const TAPE_AWAY_HEIGHT = 38, TAPE_TAP_SLOP = 14;" in app
     assert 'tb.classList.add("is-resizing", "tape-dragging");' in app
-    assert '$("#lead").textContent = atNow ? "" :' in app
+    assert '$("#tape-now").innerHTML = atNow ? "Now" :' in app
     assert 'tapeGrip.addEventListener("click",' in app
     assert "#timebar.tape-dragging { height: var(--tape-drag-height) !important;" in css
 
@@ -592,7 +592,10 @@ def test_tape_hover_card_reads_the_column_data_not_just_the_cells():
     # day column and its sunrise/sunset, all from the data behind the tape.
     tape = _read("tape.js"); css = _read("styles.css")
     # 2026-09-04: the day header is the hover target, the cells under it are not
-    assert "function dayCard(first, span)" in tape and 'e.target.closest("th.day[data-first]")' in tape
+    assert "function dayCard(first, span)" in tape and 'e.target.closest("th.day[data-first] .dlab")' in tape
+    # the card pops from the label text only, and names the full date
+    assert '<span class="dlab" data-iso=' in tape and 'weekday: "long", month: "long", day: "numeric"' in tape
+    assert "#tape-card .phrase { font: 500 10px var(--font-display);" in css and "#tape-card .when { min-width: 0; flex: 1; font: 750 13.5px" in css
     assert 'e.target.closest("td[data-i]")' not in tape and "richCard" not in tape
     assert 'class="day-curve"' in tape and "WXPanes.sunTimes(d0.lat, d0.lon" in tape
     assert "#tape-card .day-curve polyline" in css
@@ -629,7 +632,9 @@ def test_the_hero_carries_a_rain_now_strip_only_when_something_falls():
 
 def test_the_now_button_holds_still_because_live_fills_the_lead_slot():
     app = _read("app.js"); css = _read("styles.css")
-    assert '$("#lead").textContent = atNow ? "" :' in app
-    # no LIVE word (Jeff 2026-09-04: "too many words, no hierarchy"): the slot
-    # keeps a fixed width and the lit Now button carries a breathing dot
-    assert "#lead:empty" not in css and "#lead { font-size: 11.5px; width: 46px;" in css and ".now-btn.on::before" in css
+    # design B (Jeff 2026-09-04): one pill, two states — lit "Now" with a
+    # breathing dot when live, "+36h back" once stepped; no separate lead slot
+    html = _read("index.html")
+    assert '$("#tape-now").innerHTML = atNow ? "Now" : `<b class="off">+${Math.round(shownHours())}h</b> back`;' in app
+    assert 'id="lead"' not in html and "#lead" not in css and "#lead" not in app and "#lead" not in _read("overlays.js")
+    assert ".now-btn .off" in css and ".now-btn.on::before" in css

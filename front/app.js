@@ -1725,8 +1725,8 @@
     const pill = $("#tape-pill"); if (!pill) return;
     const local = $("#valid-local");
     const time = local ? local.textContent.split(" · ")[0] : "";
-    const lead = $("#lead");
-    const status = lead && lead.textContent === "current" ? "Now" : (lead ? lead.textContent : "");
+    const off = $("#tape-now .off");
+    const status = off ? off.textContent : "Now";
     const field = state.radar ? "Radar" : selectedLayerName();
     let reading = null;
     if (state.radar) {
@@ -1750,9 +1750,9 @@
     $("#valid-local").textContent = v.toLocaleString(undefined, WX.units.timeOpts(narrow ? { weekday: "short", hour: "numeric", minute: "2-digit" } : { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
     $("#valid-utc").textContent = v.toISOString().slice(0, 16).replace("T", " ") + "Z";
     const atNow = state.stepIdx === currentStepIdx() && !state.frac;
-    // the slot keeps its width when empty (CSS), so the Now button never
-    // slides; the lit Now button is the whole "live" signal, no extra word
-    $("#lead").textContent = atNow ? "" : `+${Math.round(shownHours())}h`;
+    // one pill, two states: lit "Now" when live, "+36h back" once stepped —
+    // the offset is both the status and the way home, so nothing else moves
+    $("#tape-now").innerHTML = atNow ? "Now" : `<b class="off">+${Math.round(shownHours())}h</b> back`;
     $("#tape-now").classList.toggle("on", atNow);
     $("#tape-now").setAttribute("aria-pressed", atNow ? "true" : "false");
     renderTapePill();

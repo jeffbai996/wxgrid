@@ -440,8 +440,9 @@ button:focus:not(:focus-visible) { outline: none; }
 #valid-local { font: 700 13px var(--font-num); font-variant-numeric: tabular-nums; white-space: nowrap; }
 #valid-utc { white-space: nowrap; }
 #valid-utc { font-size: 10.5px; }
-#lead { font-size: 11.5px; width: 46px; box-sizing: border-box; }   /* fixed, so Now never slides */
 /* a small breathing dot inside the lit Now button says "live" without a word */
+.now-btn .off { font: 700 10.5px var(--font-num); letter-spacing: 0; text-transform: none; color: var(--accent); font-variant-numeric: tabular-nums; }
+.now-btn:hover .off { color: inherit; }
 .now-btn.on::before { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin: 0 6px 1px 0; vertical-align: middle;
   background: var(--accent-ink); animation: now-breathe 2.4s ease-in-out infinite; }
 @keyframes now-breathe { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
@@ -791,7 +792,7 @@ table.bandtape .nil { color: var(--line-strong); }
      button rides the first row instead of owning a third. */
   .tape-head { flex-wrap: wrap; gap: 4px 6px; }
   #play { order: 1; } .time-meta { order: 2; min-width: 0; flex: 1 1 90px; overflow: hidden; }
-  #lead { order: 3; min-width: 0; } #tape-now { order: 4; } .tape-min { order: 5; margin-left: 0; }
+  #tape-now { order: 4; } .tape-min { order: 5; margin-left: 0; }
   #tape-slice { order: 6; } #tape-res { order: 7; } #variant { order: 8; }
   /* mini on a phone is one glance: the resolution picker and the row labels
      are full-view furniture, and the label gutter was costing two columns */
@@ -821,7 +822,6 @@ table.bandtape .nil { color: var(--line-strong); }
   .point-resize-handle { display: none; }
   #point-now { gap: 10px; }
 }
-@media (max-width: 350px) { #lead { display: none; } }
 
 /* ── v3 additions ────────────────────────────────────────────────────── */
 
@@ -1551,12 +1551,12 @@ body.no-map #particles { display: none; }
 #tape-card .ico { flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; }
 #tape-card .ico svg, #tape-card .ico img { width: 28px; height: 28px; }
 #tape-card .when-wrap { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
-#tape-card .phrase { font: 500 10.5px var(--font-mono); color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tape-card .phrase { font: 500 10px var(--font-display); color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #tape-card .day-curve { display: block; width: 100%; height: 34px; margin: 0 0 7px; overflow: visible; }
 #tape-card .day-curve polyline { fill: none; stroke: var(--warm); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
 #tape-card .day-curve .rain rect { fill: var(--rain); opacity: .75; }
 #tape-card .card-foot { margin-top: 7px; font: 500 10.5px var(--font-mono); color: var(--fg-2); }
-#tape-card .when { min-width: 0; flex: 1; font: 750 12.5px var(--font-display); color: var(--fg); letter-spacing: -.005em; }
+#tape-card .when { min-width: 0; flex: 1; font: 750 13.5px var(--font-display); color: var(--fg); letter-spacing: -.005em; }
 #tape-card .source { flex: 0 0 auto; padding: 2px 6px; border-radius: 6px; background: rgba(127,140,160,.12);
   color: var(--fg-2); font: 750 8.5px var(--font-display); letter-spacing: .055em; text-transform: uppercase; }
 #tape-card .source.ai { background: #65a8ff20; color: #83bcff; }

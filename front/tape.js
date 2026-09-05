@@ -297,7 +297,7 @@
     const dayRow = days.map((dy) => { const wd = dy.start.getDay();
       const source = dy.aiStart ? `<small class="model-handoff">AI-GFS</small>` : "";
       const title = dy.ai ? "NOAA AI-GFS continuation · jump to this day" : "Jump to this day";
-      return `<th colspan="${dy.span}" class="day${wd === 0 || wd === 6 ? " wknd" : ""}${dy.ai ? " ai-tail" : ""}${dy.aiStart ? " ai-start" : ""}" data-first="${dy.first}" title="${title}">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}${source}</th>`; }).join("");
+      return `<th colspan="${dy.span}" class="day${wd === 0 || wd === 6 ? " wknd" : ""}${dy.ai ? " ai-tail" : ""}${dy.aiStart ? " ai-start" : ""}" data-first="${dy.first}" title="${title}"><span class="dlab" data-iso="${dy.start.toISOString()}">${dy.start.toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", day: "numeric" }))}</span>${source}</th>`; }).join("");
     // sunrise/sunset as thin amber notches on the hour row: compute each
     // day's events once, then find the column whose span holds them
     const sunCols = new Map();   // shown index -> "rise"|"set"
@@ -512,28 +512,31 @@
     if (!card) { card = document.createElement("div"); card.id = "tape-card"; card.hidden = true; document.body.appendChild(card); }
     let shownFor = null;
     const hide = () => { card.hidden = true; shownFor = null; };
-    const show = (th) => {
+    const show = (lab) => {
+      const th = lab.closest("th");
       const first = Number(th.dataset.first), span = Number(th.getAttribute("colspan") || 1);
       if (shownFor === first) return;
       const rich = dayCard(first, span);
       if (!rich) { hide(); return; }
       shownFor = first;
-      const day = ((th.childNodes[0] || {}).textContent || th.textContent).trim();
+      // the full date on the card: the header only has room for "Friday 4"
+      const day = new Date(lab.dataset.iso).toLocaleDateString(undefined, WX.units.timeOpts({ weekday: "long", month: "long", day: "numeric" }));
       card.innerHTML = `<div class="card-head">${rich.ico ? `<span class="ico">${rich.ico}</span>` : ""}<div class="when-wrap"><b class="when">${day}</b>${rich.phrase ? `<span class="phrase">${rich.phrase}</span>` : ""}</div><span class="source" data-model="${rich.model}">${rich.source}</span></div>
         ${rich.spark}
         <div class="card-metrics">${rich.metrics.join("")}</div>
         ${rich.foot ? `<div class="card-foot">${rich.foot}</div>` : ""}`;
       card.hidden = false;
       // centred on the header's visible part, above the tape
-      const r = th.getBoundingClientRect(), tr = tape.getBoundingClientRect(), cw = card.offsetWidth, ch = card.offsetHeight;
-      const x0 = Math.max(r.left, tr.left), x1 = Math.min(r.right, tr.right);
-      const left = Math.max(6, Math.min(innerWidth - cw - 6, (x0 + x1) / 2 - cw / 2));
+      const r = lab.getBoundingClientRect(), cw = card.offsetWidth, ch = card.offsetHeight;
+      const left = Math.max(6, Math.min(innerWidth - cw - 6, r.left + r.width / 2 - cw / 2));
       card.style.left = `${left}px`; card.style.top = `${Math.max(6, r.top - ch - 8)}px`;
     };
     tape.addEventListener("pointermove", (e) => {
       if (e.pointerType === "touch") return;
-      const th = e.target.closest && e.target.closest("th.day[data-first]");
-      if (th) show(th); else hide();
+      // the label text only (Jeff 2026-09-04): a day header spans the whole
+      // day, and a card popping from blank space a foot to the right read as a bug
+      const lab = e.target.closest && e.target.closest("th.day[data-first] .dlab");
+      if (lab) show(lab); else hide();
     });
     tape.addEventListener("pointerleave", hide);
     tape.addEventListener("scroll", hide, { passive: true });
