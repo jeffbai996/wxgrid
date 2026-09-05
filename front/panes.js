@@ -1161,7 +1161,10 @@
       if (r < 0.15) continue;
       const h = Math.max(3, Math.sqrt(Math.min(1, r / top)) * H);
       const past = k < now, snowy = kind[k] === "snow";
-      bars.push(`<rect class="${snowy ? "sn" : "rn"}${past ? " past" : ""}" x="${b + 0.1}" y="${(H - h).toFixed(1)}" width="0.8" height="${h.toFixed(1)}" rx="0.3" style="opacity:${(past ? 0.28 : 0.45 + 0.55 * Math.min(1, r / top)).toFixed(2)}"/>`);
+      // a stroked line with a round cap: the cap stays round under the
+      // stretched viewBox (a rect's rx would squash), and non-scaling stroke
+      // keeps every bar the same width on any card
+      bars.push(`<line class="${snowy ? "sn" : "rn"}${past ? " past" : ""}" x1="${b + 0.5}" x2="${b + 0.5}" y1="${H + 3}" y2="${(H - h).toFixed(1)}" vector-effect="non-scaling-stroke" style="opacity:${(past ? 0.28 : 0.45 + 0.55 * Math.min(1, r / top)).toFixed(2)}"/>`);
     }
     const bandRows = [["light", 2.5], ["moderate", 7.5]].filter(([, r]) => r < top);
     const y = (r) => H - Math.sqrt(Math.min(1, r / top)) * H;

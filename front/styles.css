@@ -1356,9 +1356,10 @@ table.wtape th.day .model-handoff { display: inline-flex; margin-left: 6px; padd
 .rainnow .rn-head i { font: 500 8.5px var(--font-num); font-style: normal; color: var(--dim); }
 #point-now .rainnow .rn-line { display: block; margin: 3px 0 6px; font: 600 11.5px/1.3 var(--font-display); color: var(--fg); }
 .rainnow .rn-wrap { position: relative; }
-.rainnow .rn-chart { display: block; width: 100%; height: 46px; overflow: visible; }
-.rainnow .rn-chart .rn { fill: var(--rain); }
-.rainnow .rn-chart .sn { fill: #dbeeff; }
+.rainnow .rn-chart { display: block; width: 100%; height: 46px; overflow: hidden; }   /* hidden: the bottom cap of each bar is clipped flat */
+.rainnow .rn-chart .rn, .rainnow .rn-chart .sn { stroke-width: 5px; stroke-linecap: round; fill: none; }
+.rainnow .rn-chart .rn { stroke: var(--rain); }
+.rainnow .rn-chart .sn { stroke: #dbeeff; }
 .rainnow .rn-chart .band { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; opacity: .6; }
 .rainnow .rn-chart .now { stroke: var(--fg-2); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: .55; }
 .rainnow .band-l { position: absolute; right: 0; transform: translateY(-100%); font: 600 7px var(--font-display); color: var(--dim); letter-spacing: .08em; text-transform: uppercase; pointer-events: none; opacity: .8; }
