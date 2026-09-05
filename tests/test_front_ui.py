@@ -117,7 +117,7 @@ def test_tape_has_equal_outer_gutters_and_owns_safe_area_padding():
 def test_next_48_hour_blurb_has_clear_reading_hierarchy():
     css = _read("styles.css")
     rule = css.split("#point-now .summary {", 1)[1].split("}", 1)[0]
-    assert "line-height: 1.55" in rule
+    assert "line-height: 1.5" in rule
     assert "background: var(--accent-soft)" in rule
 
 
