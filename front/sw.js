@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v69";   // bounded server caches and lean shell precache
+const VERSION = "wxgrid-v70";   // v70: tool pins/stars removed from the rail flyout (2026-09-04)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

@@ -638,3 +638,13 @@ def test_the_now_button_holds_still_because_live_fills_the_lead_slot():
     assert '$("#tape-now").innerHTML = atNow ? "Now" : `<b class="off">+${Math.round(shownHours())}h</b> back`;' in app
     assert 'id="lead"' not in html and "#lead" not in css and "#lead" not in app and "#lead" not in _read("overlays.js")
     assert ".now-btn .off" in css and ".now-btn.on::before" in css
+
+
+def test_the_tool_flyout_has_no_pins_or_stars():
+    # Jeff 2026-09-04: the rail is a fixed short set plus whatever is on; no
+    # per-user starring, and the old stored pins are cleared, not read
+    ts = _read("toolstrip.js"); css = _read("styles.css")
+    assert 'const RAIL = new Set(["radar", "alerts", "obs", "particles"]);' in ts
+    assert 'localStorage.removeItem("wxgrid.toolPins")' in ts and 'localStorage.setItem("wxgrid.toolPins"' not in ts
+    assert "data-pin" not in ts and "★" not in ts and "☆" not in ts and "pins" not in ts
+    assert "button[data-pin]" not in css

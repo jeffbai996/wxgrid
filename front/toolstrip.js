@@ -7,9 +7,11 @@
     ["Mountains", ["winter", "avy", "resorts"]],
     ["Analysis", ["particles", "barbs", "xsection", "route", "measure"]],
   ];
-  let pins;
-  try { pins = JSON.parse(localStorage.getItem("wxgrid.toolPins")); } catch (_) { /* use defaults */ }
-  pins = new Set(Array.isArray(pins) ? pins : ["radar", "alerts", "obs", "particles"]);
+  // The rail shows a fixed short set plus whatever is switched on; the full
+  // inventory lives in the flyout. No per-user pinning (Jeff 2026-09-04:
+  // "drop the whole favorites/star spiel").
+  const RAIL = new Set(["radar", "alerts", "obs", "particles"]);
+  try { localStorage.removeItem("wxgrid.toolPins"); } catch (_) { /* nothing stored */ }
   function fit() {
     const st = document.querySelector("#tstrip"), pop = document.querySelector("#strip-more-pop");
     if (!st || !pop || getComputedStyle(st).display === "none") return;
@@ -20,12 +22,12 @@
     st.querySelectorAll("button[data-for]").forEach(b => {
       const key = b.dataset.for.replace(/-toggle$/, ""), source = document.getElementById(b.dataset.for);
       const on = source.classList.contains("on");
-      b.classList.toggle("on", on); b.hidden = !pins.has(key) && !on;
+      b.classList.toggle("on", on); b.hidden = !RAIL.has(key) && !on;
       b.setAttribute("aria-pressed", String(on));
     });
     more.hidden = false;
     more.setAttribute("aria-expanded", String(st.classList.contains("more-open")));
-    more.setAttribute("aria-label", "All tools and pinned shortcuts");
+    more.setAttribute("aria-label", "All weather tools");
     const top = st.getBoundingClientRect().top;
     const floor = innerHeight - document.querySelector("#timebar").getBoundingClientRect().height - 16;
     const candidates = [...st.querySelectorAll("button[data-for]")].filter(b => !b.hidden).reverse();
@@ -33,10 +35,6 @@
     pop.style.maxHeight = Math.max(120, floor - top) + "px";
     if (pop.dataset.built) {
       pop.querySelectorAll("[data-action]").forEach(b => b.setAttribute("aria-pressed", String(document.getElementById(b.dataset.action + "-toggle").classList.contains("on"))));
-      pop.querySelectorAll("[data-pin]").forEach(b => {
-        const pinned = pins.has(b.dataset.pin);
-        b.setAttribute("aria-pressed", String(pinned)); b.textContent = pinned ? "★" : "☆";
-      });
       return;
     }
     pop.dataset.built = "1";
@@ -45,16 +43,11 @@
       const original = st.querySelector(`[data-for="${key}-toggle"]`);
       if (!original) return "";
       const title = original.dataset.tip;
-      return `<div class="tool-row"><button data-action="${key}" aria-pressed="${original.classList.contains("on")}">${original.innerHTML}<span>${title}</span></button><button data-pin="${key}" aria-label="Pin ${title}" aria-pressed="${pins.has(key)}" title="Pin to toolbar">${pins.has(key) ? "★" : "☆"}</button></div>`;
+      return `<div class="tool-row"><button data-action="${key}" aria-pressed="${original.classList.contains("on")}">${original.innerHTML}<span>${title}</span></button></div>`;
     }).join("")}</section>`).join("");
     pop.addEventListener("click", e => {
-      const action = e.target.closest("[data-action]"), pin = e.target.closest("[data-pin]");
+      const action = e.target.closest("[data-action]");
       if (action) document.getElementById(action.dataset.action + "-toggle").click();
-      if (pin) {
-        const key = pin.dataset.pin;
-        if (pins.has(key)) pins.delete(key); else pins.add(key);
-        localStorage.setItem("wxgrid.toolPins", JSON.stringify([...pins]));
-      }
       fit();
     });
   }
