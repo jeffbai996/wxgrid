@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v82";   // v82: round-capped, fixed-width precipitation bars (2026-09-05)
+const VERSION = "wxgrid-v83";   // v83: minimized pill in Urbanist, tight units, visible play ring (2026-09-05)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

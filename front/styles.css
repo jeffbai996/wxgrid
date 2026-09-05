@@ -420,14 +420,15 @@ body.resizing-tape #timebar { z-index: 7; }
   background: var(--panel-solid); color: var(--fg); font: 700 12px var(--font-display); cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,.35);
   animation: pill-in .28s cubic-bezier(.32,.72,.24,1) both; }
 .tape-pill svg { width: 14px; height: 14px; flex: 0 0 auto; color: var(--accent); }
-.tape-pill .pp { flex: 0 0 auto; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; color: var(--dim); font-size: 9px; line-height: 1; transition: color .15s, background .15s; }
-.tape-pill .pp:hover { color: var(--accent); background: var(--accent-soft); }
-.tape-pill .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); font: 600 11px var(--font-mono); font-variant-numeric: tabular-nums; }
+.tape-pill .pp { flex: 0 0 auto; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; color: var(--fg-2); font-size: 9px; line-height: 1;
+  border: 1px solid var(--line-strong); box-sizing: border-box; transition: color .15s, background .15s, border-color .15s; }
+.tape-pill .pp:hover { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.tape-pill .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); font: 600 11px var(--font-display); font-variant-numeric: tabular-nums; }
 .tape-pill .status { flex: 0 0 auto; padding: 2px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: 750 9.5px var(--font-display); letter-spacing: .035em; text-transform: uppercase; }
 .tape-pill .dot { color: var(--dim); }
 .tape-pill .field { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); }
-.tape-pill .value { flex: 0 0 auto; color: var(--fg); font: 750 11.5px var(--font-mono); font-variant-numeric: tabular-nums; }
-.tape-pill .sub { flex: 0 0 auto; color: var(--dim); font: 550 10px var(--font-mono); }
+.tape-pill .value { flex: 0 0 auto; color: var(--fg); font: 750 11.5px var(--font-display); font-variant-numeric: tabular-nums; }
+.tape-pill .sub { flex: 0 0 auto; color: var(--dim); font: 550 10px var(--font-display); }
 .tape-pill:hover { border-color: var(--accent); }
 @media (max-width: 520px) {
   .tape-pill { max-width: calc(100vw - 24px); gap: 5px; padding-right: 10px; }

@@ -1826,7 +1826,9 @@
     put(".t", time); put(".status", status); put(".field", field);
     const st = pill.querySelector(".status"); if (st) st.classList.toggle("away", status !== "Now");   // red offset, same as the Now pill
     const value = pill.querySelector(".value"), sub = pill.querySelector(".sub");
-    if (value) { value.textContent = reading && reading.text || ""; value.hidden = !(reading && reading.text); }
+    // "13kt", not "13 kt": the chin is a one-line readout, the unit hugs the number (Jeff 2026-09-05)
+    const tight = (txt) => (txt || "").replace(/(\d)\s+(?=[a-z°%\/]+$)/i, "$1");
+    if (value) { value.textContent = tight(reading && reading.text); value.hidden = !(reading && reading.text); }
     if (sub) { sub.textContent = reading && reading.sub || ""; sub.hidden = !(reading && reading.sub); }
     pill.setAttribute("aria-label", ["Show forecast timeline", time, status, field,
       reading && reading.text, reading && reading.sub].filter(Boolean).join(", "));
