@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v84";   // v84: precipitation bars packed closer, 3-min spacing (2026-09-05)
+const VERSION = "wxgrid-v85";   // v85: band labels in their own gutter beside the bars (2026-09-05)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

@@ -753,3 +753,10 @@ def test_the_minimized_pill_reads_in_urbanist_with_tight_units_and_a_visible_pla
     for sel in (".tape-pill .t {", ".tape-pill .value {", ".tape-pill .sub {"):
         assert "var(--font-display)" in css.split(sel, 1)[1].split("}", 1)[0] and "font-mono" not in css.split(sel, 1)[1].split("}", 1)[0]
     assert "border: 1px solid var(--line-strong)" in css.split(".tape-pill .pp {", 1)[1].split("}", 1)[0]
+
+
+def test_precipitation_band_labels_sit_in_a_gutter_not_over_the_bars():
+    css = _read("styles.css")
+    assert ".rainnow .rn-wrap { position: relative; padding-right: 60px; }" in css
+    assert "translateY(-50%)" in css.split(".rainnow .band-l {", 1)[1].split("}", 1)[0]
+    assert ".rainnow .rn-x { position: relative; height: 11px; margin-top: 3px; margin-right: 60px; }" in css
