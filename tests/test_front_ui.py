@@ -668,3 +668,10 @@ def test_the_tape_fold_glides_on_a_variable_and_keeps_compact_rows():
 def test_the_discussion_link_sits_flush_left_under_the_blurb():
     css = _read("styles.css")
     assert ".summary .why-btn { display: block; margin: 4px 0 0;" in css and "text-align: left;" in css.split(".summary .why-btn {", 1)[1].split("}", 1)[0]
+
+
+def test_the_tape_grip_shows_a_hand_not_a_resize_arrow():
+    css = _read("styles.css")
+    grip = css.split(".tape-resize-handle { position: absolute;", 1)[1].split("}", 1)[0]
+    assert "cursor: grab;" in grip and "ns-resize" not in grip
+    assert "body.resizing-tape, body.resizing-tape * { cursor: grabbing !important; }" in css

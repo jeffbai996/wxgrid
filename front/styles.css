@@ -382,7 +382,7 @@ button:focus:not(:focus-visible) { outline: none; }
   backdrop-filter: blur(10px); display: flex; flex-direction: column;
 }
 .tape-resize-handle { position: absolute; z-index: 2; left: 50%; top: -9px; width: 72px; height: 18px;
-  transform: translateX(-50%); display: grid; place-items: center; cursor: ns-resize; touch-action: none; outline: none; }
+  transform: translateX(-50%); display: grid; place-items: center; cursor: grab; touch-action: none; outline: none; }   /* a hand: it is grabbed and dragged, not a window edge */
 /* The visible pill is 72×18; the thing a finger hits is this. An 18 px target
    missed low lands on the tape header and nothing moves (Jeff 2026-08-22,
    iPad, "doesn't resize at all"). */
@@ -494,7 +494,7 @@ input#step { width: 100%; accent-color: var(--accent); height: 12px; margin: 0; 
 .point-resize-handle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .point-resize-handle:hover, .point-resize-handle:focus-visible, #point.is-resizing .point-resize-handle {
   color: var(--accent); background: var(--accent-soft); }
-body.resizing-tape, body.resizing-tape * { cursor: ns-resize !important; }
+body.resizing-tape, body.resizing-tape * { cursor: grabbing !important; }
 body.resizing-point, body.resizing-point * { cursor: nwse-resize !important; }
 #timebar.is-resizing, #point.is-resizing { border-color: color-mix(in srgb, var(--accent) 58%, var(--line)); }
 /* the head and tabs stay put; the body scrolls, so a late METAR or a long
