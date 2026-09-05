@@ -659,7 +659,7 @@
   // old plate's geometry across a re-render so changing model metadata (the
   // selected grid badge) does not turn a smooth move into a flash.
   let levelApply = 0;
-  const LEVEL_SLIDE_MS = 260;          // the plate's .24s slide, plus a frame
+  const LEVEL_SLIDE_MS = 260;          // the plate's .24s slide, plus a frame; ×3 is the fallback if no transitionend arrives
   // A re-render that changes nothing the eye can see (same buttons, same
   // one lit) keeps its DOM: rebuilding restarted the badge animation and
   // re-created the plate mid-slide.
@@ -963,8 +963,23 @@
         lv.querySelectorAll("button").forEach((x) => { x.classList.toggle("on", x === b); const alt = x.querySelector(".level-alt"); if (alt && x !== b) alt.remove(); });
         if (level && !b.querySelector(".level-alt")) b.insertAdjacentHTML("beforeend", `<i class="level-alt">${levelBadge(level)}</i>`);
         if (lv._segPlace) lv._segPlace();
-        clearTimeout(levelApply);
-        levelApply = setTimeout(() => { renderControls(); applyStep(false); loadWind(false); if (state.iso) WX.ov.loadIso(); }, LEVEL_SLIDE_MS);
+        // Apply when the plate has actually LANDED, not after a fixed delay:
+        // on a phone the slide can take longer than 260 ms, and the field
+        // swap then froze it mid-way (Jeff's screenshot, 2026-09-05). The
+        // work is also split across frames so no single frame stalls.
+        const token = ++levelApply;
+        const cursor = lv.querySelector(".seg-cursor");
+        const apply = () => {
+          if (token !== levelApply) return;
+          renderControls();
+          requestAnimationFrame(() => { if (token !== levelApply) return; applyStep(false);
+            setTimeout(() => { if (token !== levelApply) return; loadWind(false); if (state.iso) WX.ov.loadIso(); }, 0); });
+        };
+        let done = false;
+        const once = () => { if (done) return; done = true; cursor && cursor.removeEventListener("transitionend", onEnd); requestAnimationFrame(apply); };
+        const onEnd = (ev) => { if (ev.propertyName === "transform" || ev.propertyName === "width") once(); };
+        if (cursor && cursor.classList.contains("ready")) { cursor.addEventListener("transitionend", onEnd); setTimeout(once, LEVEL_SLIDE_MS * 3); }
+        else once();
       });
     }
 

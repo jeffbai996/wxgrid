@@ -712,7 +712,10 @@ def test_drags_are_transforms_not_heights_and_the_level_plate_slides_first():
     assert "setHeight(cancel ? startH : dragH, false);" in app
     assert "body:has(#point.sheet-drag) #timebar { z-index: 7; }" in css
     # level tap: plate first, field swap after the slide
-    assert "levelApply = setTimeout(() => { renderControls(); applyStep(false); loadWind(false);" in app
+    # the swap waits for the plate's transitionend (fallback 3× the slide) and
+    # is split across frames: render, then the field, then the particles
+    assert 'cursor.addEventListener("transitionend", onEnd); setTimeout(once, LEVEL_SLIDE_MS * 3);' in app
+    assert "requestAnimationFrame(() => { if (token !== levelApply) return; applyStep(false);" in app
     assert "const LEVEL_SLIDE_MS = 260;" in app
 
 
