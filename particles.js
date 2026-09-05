@@ -1,0 +1,494 @@
+// Wind particle overlay on a plain 2-D canvas above the map.
+//
+// Lineage: cambecc/earth → leaflet-velocity. Particles live in lon/lat, are
+// advected by the coarse u/v grid (bilinear), and drawn as short segments in
+// screen space through map.project(). The canvas is faded a little every
+// frame instead of cleared, which is what gives the trails. Particles stay in
+// geographic space and are reprojected every frame, including while the map
+// is moving, so dragging never pauses or resets the flow.
+//
+// Contract with app.js:  const wl = new WindLayer(map, canvas)
+//                        wl.setField(json)   // /api/wind payload
+//                        wl.setEnabled(bool)
+(function () {
+  "use strict";
+
+  const TAU = Math.PI * 2;
+  const MAX_STEP_DEG = 1.5;      // per frame, per axis
+  const MAX_STEP_PX = 1.8;       // the universal speed governor: ~1.2× a brisk mid-latitude flow, poles pinned to it
+
+  class WindLayer {
+    constructor(map, canvas) {
+      this.map = map;
+      this.canvas = canvas;
+      this.ctx = canvas.getContext("2d", { alpha: true });
+      this.field = null;
+      this.enabled = true;
+      this.mode = "particles";
+      this.density = 50;
+      this.particles = [];
+      this.raf = 0;
+      this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+      this.lastFrame = 0;
+      this._resize = () => this.resize();
+      this._moveEnd = () => {
+        if (this.mode === "barbs") { this.drawBarbs(); return; }
+        // A rapid zoom-out leaves every particle inside the OLD viewport — a
+        // dense clump in the middle of the new one, dying off over a minute.
+        // Looking straight down a pole is another density regime: longitude
+        // collapses into a point. Re-deal when crossing into or out of it.
+        const z = this.map.getZoom(), lat = Math.abs(this.map.getCenter().lat);
+        if (this._seedZoom == null || Math.abs(z - this._seedZoom) > 0.4 || (lat > 65) !== (this._seedLat > 65)) this.reseed();
+      };
+      // Barbs are drawn in screen space from the field underneath. Drawing them
+      // only at the end of a movement left them pinned to the glass while the
+      // map slid beneath — the same complaint the particle trails had.
+      this._moving = false;
+      this._onMove = () => {
+        if (this.mode !== "barbs" || this._moving) return;
+        this._moving = true;
+        requestAnimationFrame(() => { this._moving = false; if (this.mode === "barbs") this.drawBarbs(); });
+      };
+      map.on("move", this._onMove);
+      map.on("zoom", this._onMove);
+      window.addEventListener("resize", this._resize);
+      map.on("resize", this._resize);
+      // Ctrl+/− changes devicePixelRatio, and a canvas sized under the old
+      // ratio draws soft or (booted at zero) not at all — "zoom in and out
+      // to make it work" was the manual version of this listener
+      // (Jeff 2026-08-20). matchMedia only fires once per resolution, so it
+      // re-arms itself after every change.
+      this._armDpr = () => {
+        const mq = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+        const once = () => { mq.removeEventListener("change", once); this.resize(); this._armDpr(); };
+        mq.addEventListener("change", once);
+      };
+      this._armDpr();
+      map.on("moveend", this._moveEnd);
+      // A cold boot changes projection and canvas geometry after the wind JSON
+      // can already have arrived. Zooming used to be the first lifecycle event
+      // that dealt particles against the final globe. Listen to the actual
+      // style/projection/layout transitions instead.
+      this._settle = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+        this._apply();
+        if (this.field && this.mode !== "barbs") this.start();
+      }));
+      map.on("style.load", this._settle);
+      map.on("projectiontransition", this._settle);
+      map.on("load", this._settle);
+      this._layoutObserver = new ResizeObserver(this._settle);
+      this._layoutObserver.observe(map.getContainer());
+      this.resize();
+    }
+
+    resize() {
+      // Never SKIP a resize: a return here left the canvas at its old size
+      // and the particles painting one corner of the map (2026-08-19). While
+      // the page is actively pinch-zooming, defer — but "settled" means the
+      // scale STOPPED MOVING, not "returned to exactly 1": iOS parks at 1.03
+      // forever (documented at the card-height fix in app.js), and waiting
+      // for 1.0 deferred this resize for the life of the page. That was the
+      // invisible-particles boot: a parked pinch meant the canvas was never
+      // sized at all, and every later cure re-entered the same wait
+      // (Jeff 2026-08-20, three screenshots). The poll therefore calls
+      // _apply() directly — going through resize() again would re-defer.
+      if (window.visualViewport && Math.abs(window.visualViewport.scale - 1) > 0.02) {
+        if (!this._pinchWait) {
+          let last = window.visualViewport.scale, stable = 0;
+          this._pinchWait = setInterval(() => {
+            const sc = window.visualViewport.scale;
+            if (Math.abs(sc - last) < 0.001) stable++; else stable = 0;
+            last = sc;
+            if (Math.abs(sc - 1) <= 0.02 || stable >= 2) {
+              clearInterval(this._pinchWait); this._pinchWait = null; this._apply();
+            }
+          }, 300);
+        }
+        return;
+      }
+      this._apply();
+    }
+
+    _apply() {
+      const w = this.map.getContainer().clientWidth, h = this.map.getContainer().clientHeight;
+      if (!w || !h) return;
+      this.dpr = Math.min(window.devicePixelRatio || 1, 2);   // page zoom moves it; never trust the boot value
+      this.canvas.width = Math.round(w * this.dpr);
+      this.canvas.height = Math.round(h * this.dpr);
+      this.canvas.style.width = w + "px";
+      this.canvas.style.height = h + "px";
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      this.reseed();
+    }
+
+    setField(field) {
+      this.field = field;
+      this.reseed();
+      if (this.mode === "barbs") this.drawBarbs(); else this.start();
+    }
+
+    setEnabled(on) {
+      this.enabled = on;
+      if (on) this.start(); else { this.stop(); this.wipe(); }
+    }
+
+    setDensity(value) {
+      this.density = Math.max(0, Math.min(100, Number(value) || 0));
+      this.reseed();
+      if (this.mode === "barbs") this.drawBarbs();
+    }
+
+    // "particles" (animated) or "barbs" (static station-model barbs on a grid).
+    setMode(mode) {
+      this.mode = mode;
+      this.wipe();
+      if (mode === "barbs") { this.stop(); this.drawBarbs(); }
+      else this.start();
+    }
+
+    // Wind barbs in knots on a screen grid: half barb 5, full 10, pennant 50.
+    // Staff points INTO the wind (toward where it comes from), like a chart.
+    drawBarbs() {
+      if (!this.field || this.mode !== "barbs") return;
+      const ctx = this.ctx, w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      this.wipe();
+      const light = document.documentElement.dataset.theme === "light";
+      ctx.strokeStyle = light ? "rgba(20,30,50,0.85)" : "rgba(255,255,255,0.9)";
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.lineWidth = 1.4; ctx.lineCap = "round"; ctx.lineJoin = "round";
+      const gap = 64, len = 22;
+      for (let y = gap / 2; y < h; y += gap) {
+        for (let x = gap / 2; x < w; x += gap) {
+          const ll = this.map.unproject([x, y]);
+          if (ll.lat > 85 || ll.lat < -85) continue;
+          // Globe: a pixel in space beside the sphere still "unprojects" to
+          // an edge coordinate. Only trust the cell if it projects back to
+          // where we asked.
+          const rt = this.map.project([ll.lng, ll.lat]);
+          if (Math.abs(rt.x - x) > 3 || Math.abs(rt.y - y) > 3) continue;
+          const uv = this.sample(ll.lng, ll.lat);
+          if (!uv) continue;
+          const [u, v] = uv;
+          const kt = Math.hypot(u, v) * 1.943844;
+          if (kt < 2) { ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.stroke(); continue; }
+          const dirFrom = Math.atan2(-u, -v);           // radians, 0 = north, clockwise; wind FROM
+          const dx = Math.sin(dirFrom), dy = -Math.cos(dirFrom);
+          const ex = x + dx * len, ey = y + dy * len;   // staff end (upwind)
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+          // barbs go on the right side of the staff (looking downwind) in the northern hemisphere
+          const side = ll.lat >= 0 ? 1 : -1;
+          const px = -dy * side, py = dx * side;        // perpendicular
+          let remaining = Math.round(kt / 5) * 5, pos = 0;
+          const step = 4.2, bl = 8;
+          const at = (t) => [ex - dx * t, ey - dy * t];
+          while (remaining >= 50) { const [ax, ay] = at(pos), [bx, by] = at(pos + step); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + px * bl, ay + py * bl); ctx.lineTo(bx, by); ctx.closePath(); ctx.fill(); pos += step + 1.5; remaining -= 50; }
+          while (remaining >= 10) { const [ax, ay] = at(pos); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + px * bl + dx * 2, ay + py * bl + dy * 2); ctx.stroke(); pos += step; remaining -= 10; }
+          if (remaining >= 5) { const [ax, ay] = at(pos === 0 ? step : pos); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + px * bl / 2 + dx, ay + py * bl / 2 + dy); ctx.stroke(); }
+        }
+      }
+    }
+
+    wipe() {
+      const c = this.canvas;
+      this.ctx.save();
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.ctx.clearRect(0, 0, c.width, c.height);
+      this.ctx.restore();
+    }
+
+    // Bilinear u/v at lon/lat from the coarse grid. Row 0 = lat0 (north pole),
+    // rows go south by |dlat|; the last column duplicates the first for wrap.
+    sample(lon, lat) {
+      const f = this.field;
+      if (!f) return null;
+      let x = (lon - f.lon0) / f.dlon;
+      if (f.wrap !== false) x = ((x % (f.nx - 1)) + (f.nx - 1)) % (f.nx - 1);
+      else if (x < 0 || x > f.nx - 1) return null;
+      const y = (lat - f.lat0) / f.dlat;                 // dlat negative → y grows southward
+      if (y < 0 || y > f.ny - 1) return null;
+      const x0 = Math.floor(x), y0 = Math.floor(y);
+      const x1 = Math.min(x0 + 1, f.nx - 1), y1 = Math.min(y0 + 1, f.ny - 1);
+      const fx = x - x0, fy = y - y0;
+      const i00 = y0 * f.nx + x0, i01 = y0 * f.nx + x1, i10 = y1 * f.nx + x0, i11 = y1 * f.nx + x1;
+      if (f.mask) {
+        const valid = (f.mask[i00] * (1 - fx) + f.mask[i01] * fx) * (1 - fy)
+          + (f.mask[i10] * (1 - fx) + f.mask[i11] * fx) * fy;
+        if (valid < 0.9) return null;
+      }
+      const u = (f.u[i00] * (1 - fx) + f.u[i01] * fx) * (1 - fy) + (f.u[i10] * (1 - fx) + f.u[i11] * fx) * fy;
+      const v = (f.v[i00] * (1 - fx) + f.v[i01] * fx) * (1 - fy) + (f.v[i10] * (1 - fx) + f.v[i11] * fx) * fy;
+      return [u, v];
+    }
+
+    bounds() {
+      const b = this.map.getBounds();
+      const out = { w: b.getWest(), e: b.getEast(), s: Math.max(b.getSouth(), -89.5), n: Math.min(b.getNorth(), 89.5) };
+      const f = this.field;
+      if (f && f.wrap === false) {
+        out.w = Math.max(out.w, f.lon0);
+        out.e = Math.min(out.e, f.lon0 + (f.nx - 1) * f.dlon);
+        out.n = Math.min(out.n, f.lat0);
+        out.s = Math.max(out.s, f.lat0 + (f.ny - 1) * f.dlat);
+      }
+      return out;
+    }
+
+    reseed() {
+      this._seedZoom = this.map ? this.map.getZoom() : null;
+      this._seedLat = this.map ? Math.abs(this.map.getCenter().lat) : 0;
+      const b = this.bounds();
+      const area = this.canvas.clientWidth * this.canvas.clientHeight;
+      // 50% is the quieter default and equals about 70% of the old particle
+      // count. The full control ranges from off to 1.4x the old density.
+      const base = Math.max(600, Math.min(7000, Math.round(area / 220)));
+      // At a pole the meridians and their trajectories converge into the same
+      // few pixels. Fewer particles there preserves motion without turning
+      // the cap into a black starburst.
+      // No polar thinning: the 0.4 factor read as the wind dying at 65°N
+      // (Jeff 2026-08-21). The px-per-frame governor handles the pole now.
+      // World zooms pack the same particle count onto smaller features and
+      // the field reads denser than it is — thin the deal below z5.
+      const zc = this.map ? Math.max(0.7, Math.min(1, this.map.getZoom() / 5)) : 1;
+      const n = Math.max(0, Math.min(9800, Math.round(base * zc * this.density * 0.014)));
+      this.particles = new Array(n);
+      for (let i = 0; i < n; i++) this.particles[i] = this.spawn(b, true);
+      this.wipe();
+    }
+
+    spawn(b, randomAge) {
+      let lon, lat;
+      const globe = this.map.getProjection && (this.map.getProjection() || {}).type === "globe" && this.map.getZoom() < 6;
+      if (globe && this.canvas.clientWidth && this.canvas.clientHeight) {
+        // Deal uniformly on the visible disc. Geographic bounds become
+        // degenerate when the camera looks straight down a pole and used to
+        // stack most cards into a bright, frantic ring.
+        for (let k = 0; k < 16; k++) {
+          const x = Math.random() * this.canvas.clientWidth, y = Math.random() * this.canvas.clientHeight;
+          let ll, rt;
+          try { ll = this.map.unproject([x, y]); rt = this.map.project(ll); }
+          catch (e) { continue; }                  // outside the visible globe disc
+          if (Math.abs(rt.x - x) > 2 || Math.abs(rt.y - y) > 2 || Math.abs(ll.lat) > 89.5) continue;
+          if (this.field && !this.sample(ll.lng, ll.lat)) continue;
+          lon = ll.lng; lat = ll.lat; break;
+        }
+      }
+      if (lon == null) {
+        if (!(b.e > b.w && b.n > b.s)) return { lon: 0, lat: 0, age: 1e9, maxAge: 0, px: null, py: null };
+        lon = b.w + Math.random() * (b.e - b.w);
+      // Uniform in Mercator y, not latitude, so density looks even on screen.
+        const yN = Math.log(Math.tan(Math.PI / 4 + (b.n * Math.PI / 180) / 2));
+        const yS = Math.log(Math.tan(Math.PI / 4 + (b.s * Math.PI / 180) / 2));
+        const y = yS + Math.random() * (yN - yS);
+        lat = (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180 / Math.PI;
+      }
+      // Zoomed out, a particle covers tens of degrees a second and the flow
+      // packs them into its convergence zones within a few seconds — the dense
+      // band. Short lives at low zoom keep the field evenly seeded.
+      const wide = this.map.getZoom() < 3.5;
+      const maxAge = wide ? 18 + Math.random() * 22 : 40 + Math.random() * 60;
+      return { lon, lat, age: randomAge ? Math.random() * maxAge : 0, maxAge, px: null, py: null };
+    }
+
+    start() {
+      if (this.raf || !this.enabled || !this.field || this.mode === "barbs") return;
+      // The watchdog. Twice now a boot has produced a running loop that
+      // paints nothing until the user zooms "a few times" (Jeff 2026-08-20,
+      // both times unreproducible here). Whatever the degenerate state is,
+      // its cure is always the same — re-measure, re-deal — so when the loop
+      // draws zero segments for ~2 s straight, do exactly that, once a cycle.
+      if (!this._watch) {
+        this._starve = 0;
+        this._watch = setInterval(() => {
+          if (!this.raf || !this.field || this.mode === "barbs") { this._starve = 0; return; }
+          if (this._drawn === 0 && this.particles.length) {
+            if (++this._starve >= 3) { this._starve = 0; console.warn("wxgrid: particle loop starved, re-dealing"); this.resize(); }
+          } else this._starve = 0;
+        }, 700);
+      }
+      // A canvas measured before layout settled is 0×0 (or stale after a
+      // page-zoom): every frame then paints nothing while the loop runs
+      // happily. Re-measure at the moment the animation actually starts.
+      const want = Math.round(this.map.getContainer().clientWidth * this.dpr);
+      if (!this.canvas.width || Math.abs(this.canvas.width - want) > 2 * this.dpr) this.resize();
+      const loop = (t) => { this.raf = requestAnimationFrame(loop); this.frame(t); };
+      this.raf = requestAnimationFrame(loop);
+    }
+
+    stop() {
+      if (this.raf) cancelAnimationFrame(this.raf);
+      this.raf = 0;
+    }
+
+    // The trail buffer is a picture of where the wind has just been, painted in
+    // screen space. When the map moves, that picture has to move with it — or
+    // the trails smear across the display and the field reads as animating the
+    // user's drag instead of the weather. Pan and zoom of a north-up map are a
+    // similarity transform, so a single drawImage relocates the whole buffer
+    // exactly: scale by the zoom ratio, then put the old centre back where the
+    // new view says that place now is.
+    warpTrails() {
+      const m = this.map, z = m.getZoom(), c = m.getCenter();
+      const prev = this._view;
+      this._view = { z, lng: c.lng, lat: c.lat };
+      if (!prev || (prev.z === z && prev.lng === c.lng && prev.lat === c.lat)) return;
+      const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      // On the sphere a drag is a ROTATION: every screen point moves along a
+      // different vector, so translating the old frame smears trails off the
+      // limb into space. Wiping instead (first fix) strobed — every frame of
+      // a drag restarted the trails. The right move is neither: keep the
+      // particles animating in place and let the STALE pixels die fast, so
+      // nothing lives long enough for the rotation to smear it.
+      if (this.map.getProjection && (this.map.getProjection() || {}).type === "globe" && z < 6) { this._fastFade = true; return; }
+      const s = Math.pow(2, z - prev.z);
+      const p = m.project([prev.lng, prev.lat]);
+      const tx = p.x - s * w / 2, ty = p.y - s * h / 2;
+      // A jump across the antimeridian projects into another world copy; there
+      // is nothing sensible to warp then, so start the trails over.
+      if (!isFinite(tx) || !isFinite(ty) || Math.abs(tx) > 2 * w || Math.abs(ty) > 2 * h) { this.wipe(); return; }
+      const buf = this._buf || (this._buf = document.createElement("canvas"));
+      if (buf.width !== this.canvas.width || buf.height !== this.canvas.height) { buf.width = this.canvas.width; buf.height = this.canvas.height; }
+      const bx = buf.getContext("2d");
+      bx.setTransform(1, 0, 0, 1, 0, 0);
+      bx.clearRect(0, 0, buf.width, buf.height);
+      bx.drawImage(this.canvas, 0, 0);
+      this.ctx.clearRect(0, 0, w, h);
+      this.ctx.drawImage(buf, tx, ty, w * s, h * s);
+    }
+
+    frame(t) {
+      const dtMs = t - (this.lastFrame || t);
+      const dt = Math.min(50, dtMs) / 1000;   // s, capped for tab wake-ups
+      this.lastFrame = t;
+      // Adaptive relief for weak compositors (iPad Safari, 2026-08-21): when
+      // frames are already late while the map is being dragged, painting
+      // particles every frame just makes the drag fight for the same budget.
+      // Skip every other particle frame until the frame time recovers — the
+      // map's own motion stays smooth, the trails just update at half rate.
+      this._ema = (this._ema || 16) * 0.85 + Math.min(80, dtMs || 16) * 0.15;
+      if (this._ema > 26 && this.map.isMoving && this.map.isMoving()) {
+        this._skip = !this._skip;
+        if (this._skip) return;
+      }
+      const ctx = this.ctx, w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+      const zoom = this.map.getZoom();
+      // A fast, chained scroll-zoom never reaches moveend while it runs, so
+      // the moveend reseed can't fire and the old particles stay packed in
+      // the OLD viewport — the bright rectangle mid-ocean. Re-deal mid-flight
+      // whenever the view has left the seeded zoom behind; reseed() records
+      // the new zoom, so this self-throttles to once per 0.7 levels.
+      if (this._seedZoom != null && Math.abs(zoom - this._seedZoom) > 0.7) this.reseed();
+      const polarView = zoom < 3.5 && Math.abs(this.map.getCenter().lat) > 65;
+      this._drawn = 0;
+      this.warpTrails();
+      // Fade the previous frame: this is the trail. Pole-on projection puts
+      // every meridian into one disc, so its trails need a shorter visual
+      // half-life even after reducing the particle count.
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = `rgba(0,0,0,${this._fastFade ? 0.3 : polarView ? 0.12 : 0.06})`;
+      this._fastFade = false;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.lineWidth = 1.05;
+      ctx.lineCap = "round";
+
+      const b = this.bounds();
+      // On the globe the far hemisphere still projects INTO the canvas —
+      // without this cull its particles draw mirrored on the visible disc.
+      // A particle more than ~85° of arc from the view centre cannot be on
+      // the near side; kill it by dot product, no trig per frame beyond four
+      // terms. Central-angle culling is also safe when the projection eases
+      // flat while zooming: anything 85° from centre is off-screen there too.
+      const D = Math.PI / 180;
+      let cull = null;
+      if (this.map.getProjection && (this.map.getProjection() || {}).type === "globe") {
+        const c = this.map.getCenter();
+        const cv = [Math.cos(c.lat * D) * Math.cos(c.lng * D), Math.cos(c.lat * D) * Math.sin(c.lng * D), Math.sin(c.lat * D)];
+        const lim = Math.cos(85 * D);
+        cull = (lon, lat) => {
+          const cl = Math.cos(lat * D);
+          return cv[0] * cl * Math.cos(lon * D) + cv[1] * cl * Math.sin(lon * D) + cv[2] * Math.sin(lat * D) < lim;
+        };
+      }
+      const respawn = () => {
+        // With the cull active, a blind spawn lands on the far side half the
+        // time and dies next frame — the visible disc thins out. Deal again,
+        // a few tries, until the card is on the near side.
+        let np = this.spawn(b, false);
+        if (cull) for (let k = 0; k < 4 && cull(np.lon, np.lat); k++) np = this.spawn(b, false);
+        return np;
+      };
+      const light = document.documentElement.dataset.theme === "light";
+      // Screen-relative speed: a 10 m/s wind moves ~90 px/s at any zoom, so
+      // the animation reads the same whether you look at a hemisphere or a
+      // bay. px/deg at the equator = 512·2^z / 360 for MapLibre's 512 tiles.
+      const pxPerDeg = 512 * Math.pow(2, zoom) / 360;
+      // Constant px/s reads frantic at world zoom: the features shrink but
+      // the pixels per second don't, and half a hemisphere is jet stream, so
+      // most particles ride the step cap. Ease the rate down below z5 and the
+      // cap with it — a hemisphere breathes, a bay keeps its full speed.
+      const zf = Math.max(0.35, Math.min(1, Math.pow(2, (zoom - 5) / 2)));
+      const stepCap = MAX_STEP_PX * Math.max(0.5, zf);
+      const speed = 9.0 * zf / pxPerDeg;         // deg/s per m/s (before the cos-lat correction)
+      const buckets = new Map();     // colour → path, batched draw calls
+      for (const p of this.particles) {
+        p.age += 1;
+        const uv = this.sample(p.lon, p.lat);
+        // out of the view by more than a world? it can never come back — respawn
+        if (!uv || p.age > p.maxAge || p.lat > 89.5 || p.lat < -89.5 || p.lon < b.w - 360 || p.lon > b.e + 360 || (cull && cull(p.lon, p.lat))) { Object.assign(p, respawn()); continue; }
+        const [u, v] = uv;
+        const cosLat = Math.max(0.08, Math.cos(p.lat * Math.PI / 180));
+        // A single frame must not teleport a particle across a continent: at
+        // world zoom the screen-relative speed works out to many degrees per
+        // frame, which both smears the trail and empties the rest of the map.
+        const dlon = Math.max(-MAX_STEP_DEG, Math.min(MAX_STEP_DEG, u * speed * dt / cosLat));
+        const dlat = Math.max(-MAX_STEP_DEG, Math.min(MAX_STEP_DEG, v * speed * dt));
+        const a = this.map.project([p.lon, p.lat]);
+        let nlon = p.lon + dlon, nlat = p.lat + dlat;
+        if (nlat > 89.99 || nlat < -89.99) { Object.assign(p, respawn()); continue; }
+        let q = this.map.project([nlon, nlat]);
+        const screenStep = Math.hypot(q.x - a.x, q.y - a.y);
+        if (!isFinite(screenStep)) { Object.assign(p, respawn()); continue; }
+        if (screenStep > stepCap) {
+          const scale = stepCap / screenStep;
+          nlon = p.lon + dlon * scale; nlat = p.lat + dlat * scale;
+          q = this.map.project([nlon, nlat]);
+        }
+        // Keep longitude in the CONTINUOUS space of the current view instead
+        // of wrapping it to [-180, 180). map.project() maps a wrapped lon into
+        // the primary world copy, so when the viewport showed the copy east of
+        // the antimeridian, half the screen had no particles at all
+        // (Jeff 2026-08-18). sample() wraps on its own, so nothing else cares.
+        p.lon = nlon;
+        p.lat = nlat;
+        if (a.x < -20 || a.x > w + 20 || a.y < -20 || a.y > h + 20) { Object.assign(p, respawn()); continue; }
+        if (Math.abs(q.x - a.x) > w / 2) continue;                        // wrapped across the antimeridian
+        const spd = Math.hypot(u, v);
+        const key = light ? (spd < 4 ? "rgba(20,30,50,0.35)" : spd < 10 ? "rgba(20,30,50,0.5)" : spd < 18 ? "rgba(120,60,10,0.6)" : "rgba(160,30,10,0.7)")
+                          : (spd < 4 ? "rgba(255,255,255,0.38)" : spd < 10 ? "rgba(255,255,255,0.55)" : spd < 18 ? "rgba(255,230,160,0.7)" : "rgba(255,170,120,0.8)");
+        let path = buckets.get(key);
+        if (!path) { path = new Path2D(); buckets.set(key, path); }
+        path.moveTo(a.x, a.y);
+        path.lineTo(q.x, q.y);
+        this._drawn++;
+      }
+      for (const [color, path] of buckets) { ctx.strokeStyle = color; ctx.stroke(path); }
+    }
+
+    destroy() {
+      this.stop();
+      if (this._pinchWait) { clearInterval(this._pinchWait); this._pinchWait = null; }
+      if (this._watch) { clearInterval(this._watch); this._watch = null; }
+      window.removeEventListener("resize", this._resize);
+      this.map.off("resize", this._resize);
+      this.map.off("moveend", this._moveEnd);
+      this.map.off("move", this._onMove);
+      this.map.off("zoom", this._onMove);
+      this.map.off("style.load", this._settle);
+      this.map.off("projectiontransition", this._settle);
+      this.map.off("load", this._settle);
+      if (this._layoutObserver) this._layoutObserver.disconnect();
+    }
+  }
+
+  window.WindLayer = WindLayer;
+})();
