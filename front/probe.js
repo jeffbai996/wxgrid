@@ -220,4 +220,8 @@
   }
 
   WX.probe = { refresh, hover, pin, pinUpdate, updateCityValues, wireCityValues, valueAt };
+  // This module lands after the first field and the first pill render; the
+  // chin's readout needs valueAt, so paint it once we exist (2026-09-05: the
+  // minimized tape said just "Wind" until something else repainted).
+  if (WX.fn && WX.fn.renderTapePill) WX.fn.renderTapePill();
 })();

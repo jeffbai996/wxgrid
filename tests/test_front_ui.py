@@ -777,3 +777,9 @@ def test_the_chin_wind_readout_renders_when_the_wind_field_lands_and_the_readout
     assert "wind.setField(fld);\n      // the chin's wind readout samples this field" in app and "renderTapePill();" in app.split("wind.setField(fld);", 1)[1][:260]
     assert "pp.innerHTML = state.playing ? PP_PAUSE : PP_PLAY;" in app and ".tape-pill .pp svg { width: 10px; height: 10px; display: block; fill: currentColor; }" in css
     assert 'tip.innerHTML = `<i class="when">${when}' in panes and "flex-direction: column" in css.split(".rainnow .rn-tip {", 1)[1].split("}", 1)[0]
+
+
+def test_the_probe_module_paints_the_chin_when_it_lands():
+    probe = _read("probe.js")
+    assert "WX.probe = { refresh, hover, pin, pinUpdate, updateCityValues, wireCityValues, valueAt };\n  // This module lands after" in probe
+    assert "if (WX.fn && WX.fn.renderTapePill) WX.fn.renderTapePill();" in probe.split("WX.probe = {", 1)[1][:400]
