@@ -858,3 +858,9 @@ def test_the_grip_is_not_clipped_during_a_glide_or_a_drag():
     for sel in ("#timebar.tape-anim, #timebar.mini.tape-anim {", "#timebar.tape-dragging {"):
         rule = css.split(sel, 1)[1].split("}", 1)[0]
         assert "clip-path: inset(-14px 0 0 0)" in rule and "overflow: hidden" not in rule
+
+
+def test_the_sun_group_always_has_company():
+    panes = _read("panes.js")
+    assert 'normal.push(stat("Daylight", `${Math.floor(dayMin / 60)}h' in panes and 'normal.push(stat("Solar noon", noonTxt' in panes
+    assert "min/day" in panes and "° up" in panes

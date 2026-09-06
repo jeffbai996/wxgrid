@@ -462,6 +462,20 @@
           if (t0 + h * 1.8e6 < sun.riseMs || t0 - h * 1.8e6 > sun.setMs || s.tcc[k] == null) return acc;
           return acc + h * Math.max(0, 1 - s.tcc[k]); }, 0);
         normal.push(stat("Sunshine", hrs.toFixed(hrs < 10 ? 1 : 0), "h", hrs >= 6 ? "#ffd166" : "#9fb0c8", "", "Daylight hours weighted by clear sky, from cloud cover", "sun"));
+        // Two more that are always there, so the Sun group never sits as one
+        // lonely tile (Jeff 2026-09-06): the day's length with its drift, and
+        // solar noon with how high the sun gets.
+        const dayMin = Math.round((sun.setMs - sun.riseMs) / 6e4);
+        const yday = sunTimes(pt.lat, pt.lon, new Date(new Date(d.valid[i]).getTime() - 864e5));
+        const drift = yday && yday.riseMs != null && yday.setMs != null ? dayMin - Math.round((yday.setMs - yday.riseMs) / 6e4) : null;
+        normal.push(stat("Daylight", `${Math.floor(dayMin / 60)}h${String(dayMin % 60).padStart(2, "0")}`, "", "#ffd166",
+          drift != null && drift !== 0 ? `<em>${drift > 0 ? "+" : "−"}${Math.abs(drift)} min/day</em>` : "", "Sunrise to sunset, and the change since yesterday", "sun"));
+        const noon = new Date((sun.riseMs + sun.setMs) / 2);
+        const doy = Math.floor((noon - new Date(noon.getFullYear(), 0, 0)) / 864e5);
+        const decl = 23.44 * Math.sin(2 * Math.PI * (284 + doy) / 365);
+        const alt = Math.max(0, 90 - Math.abs(pt.lat - decl));
+        const noonTxt = noon.toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric", minute: "2-digit" })).replace(/\s?([AP]M)$/i, (m, ap) => ap.toLowerCase());
+        normal.push(stat("Solar noon", noonTxt, "", "#ffd166", `<em>${Math.round(alt)}° up</em>`, "When the sun is highest, and how high it gets", "sun"));
       }
     }
     { const a = d.aloft && (d.aloft["850"] || d.aloft["925"]); const lvl = d.aloft && d.aloft["850"] ? "850" : "925";
