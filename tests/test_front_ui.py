@@ -827,3 +827,11 @@ def test_airgram_takes_the_card_width_and_a_legible_row_height_at_device_pixels(
     assert "const padL = 44, padR = 8, padT = 8, padB = 22, ROW_H = 26;" in panes
     assert "ctx.setTransform(dpr, 0, 0, dpr, 0, 0);" in panes and "const H = padT + padB + rows.length * ROW_H;" in panes
     assert "#airgram { width: 100%; display: block; margin-top: 6px; }" in css and "height: 150px" not in css.split("#airgram {", 1)[1].split("}", 1)[0]
+
+
+def test_skewt_captions_read_like_a_forecaster_not_a_spec():
+    snd = _read("sounding.js")
+    assert "Bulk shear, surface to 500 hPa:" in snd and "Hodograph: bulk shear" not in snd
+    assert "so the green dew-point line stops at the ground" in snd and "Observed temperature in white" in snd
+    captions = "\n".join(l for l in snd.splitlines() if "notes.push(" in l or "notes.unshift(" in l)
+    assert "so a thin inversion between two of them will not show" in captions and "pseudoadiabatic" not in captions

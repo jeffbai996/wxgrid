@@ -486,17 +486,18 @@
     // the supercell signature. Coloured by layer the way forecasters read it:
     // warm near the ground, green through the middle, cool aloft.
     const hodo = hodograph(ctx, prof.winds, bxx, byy + bh + 8, 150, P);
-    if (hodo && hodo.shear != null) notes.push(`Hodograph: bulk shear surface → 500 hPa ${Math.round(hodo.shear)} kt.`);
+    if (hodo && hodo.shear != null) notes.push(`Bulk shear, surface to 500 hPa: ${Math.round(hodo.shear)} kt.`);
 
     // ── caption ─────────────────────────────────────────────────────────
-    if (!prof.hasDewAloft) notes.push("No humidity aloft in this run. Green is the surface dew point only.");
-    else notes.push("Dew point from the run's humidity aloft.");
-    if (par) notes.push(`Surface parcel, dry to the LCL then pseudoadiabatic. CAPE and CIN across ${prof.env.length} levels, so an inversion between them is invisible.`);
-    else notes.push("No surface dew point: no parcel, no LCL, no CAPE.");
+    // Plain captions, the way a forecaster would say it out loud (Jeff 2026-09-06).
+    if (!prof.hasDewAloft) notes.push("This run has no humidity above the surface, so the green dew-point line stops at the ground.");
+    else notes.push("Dew point comes from the run's own humidity profile.");
+    if (par) notes.push(`The parcel is lifted from the surface, dry to the LCL and moist above it. CAPE and CIN are summed over the ${prof.env.length} levels the run publishes, so a thin inversion between two of them will not show.`);
+    else notes.push("No surface dew point in this run, so there is no parcel to lift: no LCL, no CAPE.");
     if (obs && obs.levels && obs.levels.length > 4) {
       const when = obs.time ? new Date(obs.time).toUTCString().replace(/^\w+, /, "").replace(":00 GMT", "Z") : "";
       const st = obs.station || {};
-      notes.unshift(`Ascent from ${st.name || st.id || "the nearest station"}${st.distance_km != null ? `, ${Math.round(st.distance_km)} km` : ""}, ${when}. White is temperature, dashed blue is dew point. Orange and green are the model.`);
+      notes.unshift(`${st.name || st.id || "Nearest"} sounding${st.distance_km != null ? `, ${Math.round(st.distance_km)} km away` : ""}${when ? `, ${when}` : ""}. Observed temperature in white, observed dew point dashed blue; the model run is orange and green.`);
     }
     const caption = notes.join(" ");
     ctx.fillStyle = P.dim; ctx.font = `500 9px ${P.mono}`; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
