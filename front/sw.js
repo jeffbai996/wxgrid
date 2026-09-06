@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v91";   // v91: chin label lighter, unit a size down (2026-09-05)
+const VERSION = "wxgrid-v92";   // v92: Now glides instead of cutting; the chin chip jumps to now (2026-09-05)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

@@ -425,7 +425,9 @@ body.resizing-tape #timebar { z-index: 7; }
 .tape-pill .pp svg { width: 10px; height: 10px; display: block; fill: currentColor; }
 .tape-pill .pp:hover { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
 .tape-pill .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); font: 600 11px var(--font-display); font-variant-numeric: tabular-nums; }
-.tape-pill .status { flex: 0 0 auto; padding: 2px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: 750 9.5px var(--font-display); letter-spacing: .035em; text-transform: uppercase; }
+.tape-pill .status { flex: 0 0 auto; padding: 2px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: 750 9.5px var(--font-display); letter-spacing: .035em; text-transform: uppercase;
+  cursor: pointer; transition: background .15s, color .15s; }
+.tape-pill .status:hover { background: var(--accent); color: var(--accent-ink); }
 .tape-pill .dot { color: var(--dim); }
 .tape-pill .field { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-2); font-weight: 650; }
 .tape-pill .value { flex: 0 0 auto; color: var(--fg); font: 750 11.5px var(--font-display); font-variant-numeric: tabular-nums; }

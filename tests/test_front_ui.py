@@ -784,3 +784,11 @@ def test_the_probe_module_paints_the_chin_when_it_lands():
     probe = _read("probe.js")
     assert "WX.probe = { refresh, hover, pin, pinUpdate, updateCityValues, wireCityValues, valueAt };\n  // This module lands after" in probe
     assert "if (WX.fn && WX.fn.renderTapePill) WX.fn.renderTapePill();" in probe.split("WX.probe = {", 1)[1][:400]
+
+
+def test_jump_to_now_glides_and_the_chin_chip_is_the_same_control():
+    app = _read("app.js"); css = _read("styles.css")
+    assert "function jumpToNow()" in app and '$("#tape-now").onclick = jumpToNow;' in app
+    assert 'pillStatus.onclick = (e) => { e.stopPropagation(); jumpToNow(); };' in app
+    assert "const GLIDE_STEPS = 4;" in app and "if (jumpRaf) { cancelAnimationFrame(jumpRaf); jumpRaf = 0; }" in app.split("function togglePlay() {", 1)[1][:600]
+    assert ".tape-pill .status:hover { background: var(--accent); color: var(--accent-ink); }" in css

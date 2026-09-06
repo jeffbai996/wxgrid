@@ -1013,7 +1013,9 @@
     const pillPP = $("#tape-pill .pp"); if (pillPP) pillPP.onclick = (e) => { e.stopPropagation(); togglePlay(); };
     // Back to the present in one tap: scrubbing four days out and finding your
     // way home by dragging is the kind of thing a button fixes.
-    $("#tape-now").onclick = () => { setStep(currentStepIdx()); WX.tape.renderTapeSelection(); };
+    $("#tape-now").onclick = jumpToNow;
+    // the chin's NOW / +36h chip is the same control (Jeff 2026-09-05)
+    const pillStatus = $("#tape-pill .status"); if (pillStatus) pillStatus.onclick = (e) => { e.stopPropagation(); jumpToNow(); };
     // The tape answers LEFT-RIGHT only. Mapping vertical wheel to time
     // steps lasted one day: an iPad trackpad's two-finger scroll fired it
     // continuously and the tape went haywire (Jeff 2026-08-20). Vertical
@@ -1782,6 +1784,38 @@
   // Round the sub-step position away onto the nearer real step. Everything
   // except the field layer works in whole steps, so this is what a scrub, a
   // model change and the end of a playback loop all come back to.
+  // Jump to now as a glide, not a cut: the field layer can draw the hours
+  // between steps, so the map slides through the last few steps to the
+  // present (Jeff 2026-09-05, "when user taps NOW it should animate"). A long
+  // way off, it cuts to four steps short and glides the rest; radar and the
+  // raster path (no in-between frames) still cut.
+  let jumpRaf = 0;
+  function jumpToNow() {
+    const target = currentStepIdx();
+    if (jumpRaf) { cancelAnimationFrame(jumpRaf); jumpRaf = 0; }
+    if (state.playing) togglePlay();
+    if (WX.tape) WX.tape.clearFineSelection();
+    const from = state.stepIdx + state.frac, dist = Math.abs(target - from);
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!fieldLive() || state.radar || dist < 0.05 || reduced) { setStep(target); WX.tape.renderTapeSelection(); return; }
+    const GLIDE_STEPS = 4;
+    let start = from;
+    if (dist > GLIDE_STEPS) { start = target + Math.sign(from - target) * GLIDE_STEPS; state.stepIdx = Math.floor(start); state.frac = start - state.stepIdx; applyStep(true); loadWind(); }
+    const span = Math.abs(target - start), dur = 260 + 110 * span, t0 = performance.now();
+    const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    const frame = (now) => {
+      jumpRaf = 0;
+      const k = Math.min(1, (now - t0) / dur);
+      if (k >= 1) { setStep(target); WX.tape.renderTapeSelection(); return; }
+      const pos = start + (target - start) * ease(k);
+      const i = Math.floor(pos), crossed = i !== state.stepIdx;
+      state.stepIdx = i; state.frac = Math.min(0.999, pos - i);
+      const slider = $("#step"); if (slider) slider.value = String(pos);
+      if (crossed) { applyStep(true); loadWind(); if (state.iso) WX.ov.loadIso(); } else { WX.field.show(fieldSpec()); renderClock(); }
+      jumpRaf = requestAnimationFrame(frame);
+    };
+    jumpRaf = requestAnimationFrame(frame);
+  }
   function settleStep() {
     if (!state.frac) return;
     state.stepIdx = Math.min(steps().length - 1, state.stepIdx + Math.round(state.frac));
@@ -1915,6 +1949,7 @@
     const pp = $("#tape-pill .pp"); if (pp) { pp.innerHTML = state.playing ? PP_PAUSE : PP_PLAY; pp.setAttribute("aria-label", state.playing ? "Pause" : "Play"); }
     if (playTimer) { clearInterval(playTimer); playTimer = null; }
     if (playRaf) { cancelAnimationFrame(playRaf); playRaf = 0; }
+    if (jumpRaf) { cancelAnimationFrame(jumpRaf); jumpRaf = 0; }
     if (!state.playing) { settleStep(); applyStep(); loadWind(); return; }
     // The field layer can draw the hours between two model steps, so playback
     // glides through them. Radar and the raster path swap whole frames.
