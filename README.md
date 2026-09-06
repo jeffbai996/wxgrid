@@ -58,10 +58,12 @@ view on the map: flight-category pins, temperature, wind with an arrow the way
 the air is going, and the decoded report on tap. The check on the forecast,
 where the forecast is.
 
-**Tap anywhere.** Hero conditions, a forecast strip to 16 days, the nearest
-station's actual METAR, air quality, warnings in force, a meteogram, then tabs
-for aloft winds, an airgram, a Skew-T, winter, outdoors, and every model side
-by side on the same valid times.
+**Tap anywhere.** Hero conditions against the 1991–2020 normal, a rain-now
+strip when something is falling in the next two hours, a wind rose with the
+24 h trend, the nearest station's actual METAR, air quality, warnings in
+force, nearby webcams, a meteogram, then tabs for aloft winds, an airgram with
+the column's numbers in its margin, a Skew-T, winter, outdoors, and every
+model side by side on the same valid times.
 
 ![point card](docs/img/02-card.jpg)
 
@@ -127,6 +129,11 @@ zone, UTC, or the zone of the place you are looking at.
 <img src="docs/img/07-mobile.jpg" width="19%" align="top">
 </p>
 
+**The tape.** A forecast strip for the map centre (or the pinned point) along
+the bottom: icons, temperature, precipitation, wind, at 1 h to 24 h slices,
+with a day card on hover. It folds to a header, then to one pill saying what
+time the map shows; the grip cycles the three, a drag sizes it.
+
 Also: isobars with H/L centres, aerosols (PM2.5, PM10, dust, AOD), GOES
 satellite, aurora, official warnings from four national services, SIGMET and
 AIRMET areas, earthquakes, avalanche forecasts, tides, 1,000-odd ski resorts
@@ -186,7 +193,8 @@ ECCC MSC Datamart (GEM, HRDPS) ─────────────┘       
 | `wxgrid/liveness.py` | shape-asserting probes for every upstream, behind `/api/health/sources` |
 | `front/` | static app: `app.js` (state, controls), `field.js` (GPU field), `panes.js` (card panes), `tape.js`, `overlays.js`, `particles.js`, `sw.js` |
 | `deploy/` | systemd units and timers |
-| `scripts/` | Pages publisher, post-deploy smoke test |
+| `scripts/` | Pages publisher, post-deploy smoke test, memory profilers |
+| `docs/` | screenshots; `runtime-footprint.md` (measured memory work and its limits), `next-footprint-pass.md` (the open footprint contracts) |
 
 Every field is stored float16 against a per-field offset and scale
 (temperatures as °C, pressure as Pa above 100 000, heights in 4 m units): half
@@ -378,8 +386,10 @@ After a run lands, the ingest pre-renders the layers a visit actually opens
 never render on a click.
 
 **Resources.** Ingest is memory-hungry: a run is several GB and the point cube
-is written per latitude band. The units cap memory and run at idle IO
-priority. A hand-run `python -m wxgrid.ingest` has no cap; on a shared box go
+is built through a paced scratch file for the large variables. The units cap
+memory, pin the native maths libraries to one thread and run at idle IO
+priority; `docs/runtime-footprint.md` has the measurements behind those
+settings. A hand-run `python -m wxgrid.ingest` has no cap; on a shared box go
 through `systemctl --user start wxgrid-ingest` or wrap it in
 `systemd-run --user -p MemoryMax=3G --scope`. The ingest paces its own writes
 and downloads (see [Configuration](#configuration)) so a run lands over
@@ -407,7 +417,9 @@ Everything is an environment variable with a working default.
 | `WXGRID_DOWNLOAD_MBPS` | `20` | ingest download pacing |
 | `WXGRID_WINDY_WEBCAMS_KEY` | unset | Windy Webcams API key; unset = DriveBC cams only |
 | `WXGRID_WN2_ZARR` | unset | WeatherNext 2 Zarr URL (`gs://…` or a local path); unset = model not ingested |
-| `WXGRID_STEP_GATE_COMMAND` | unset | optional host-pressure gate run between ingest steps; non-zero exit aborts the pass, completed downloads stay reusable |
+| `WXGRID_STEP_GATE_COMMAND` | unset | optional host-pressure gate run between ingest steps and warmed frames; non-zero exit aborts the pass, completed downloads stay reusable |
+| `WXGRID_ECMWF_ATTEMPTS`, `WXGRID_ECMWF_TRANSFER_SECONDS`, `WXGRID_ECMWF_RETRY_WAIT_SECONDS` | `4`, `300`, `900` | the ECMWF retry budget: attempts per operation, seconds per transfer, cumulative retry wait per run; a deferred product keeps its finished downloads for the next pass |
+| `WXGRID_PHASE_METRICS` | unset | `1` logs one structured line per ingest phase (fetch, decode, point cube, warm) with wall, CPU, RSS and cgroup deltas |
 
 ## Front end
 
@@ -425,13 +437,23 @@ other chrome, for an iframe on another page; the settings drawer writes the
 snippet for the current view, and the wordmark in the frame opens the full app
 on the same view.
 
-Card panes: **Now** (hero, alerts, air quality, station obs, up to 16 daily
-cells, meteogram), **Aloft** (winds and temperatures per level, freezing level,
-cloud, CAPE, QNH, TAF), **Airgram**, **Skew-T**, **Winter** (new snow, depth,
-freezing and snow level, ridge wind, rain-on-snow, avalanche), **Outdoors**
-(precipitation type, 24 h rain, gusts, wind chill and humidex, dry windows,
-tides, marine), **Compare** (all models on the same valid times), **Spread**,
-**Resort** (elevation-band forecast and lifts).
+Card panes: **Now** (hero with the departure from normal, the rain-now
+strip, a 48 h blurb and the discussion, wind rose and 24 h trend, readings
+grouped as precipitation / sky / air / sun / UV / sea / air quality, alerts,
+station obs, nearby webcams, up to 16 daily cells, meteogram), **Aloft**
+(winds and temperatures per level, freezing level, cloud, CAPE, QNH, TAF),
+**Airgram** (time × level, freezing line, hover readout, the selected hour's
+freezing level, 850 hPa temperature, strongest wind, thickness and lapse in
+the margin), **Skew-T** (one-line caption, the reasoning behind an info dot),
+**Winter** (new snow, depth, freezing and snow level, ridge wind, rain-on-snow,
+avalanche), **Outdoors** (precipitation type, 24 h rain, gusts, wind chill and
+humidex, dry windows, tides, marine), **Compare** (all models on the same valid
+times), **Spread**, **Resort** (elevation-band forecast and lifts).
+
+The tape has three states, full → header → pill, cycled by its grip and sized
+by dragging it; every change glides. Day headers carry a hover card with the
+day's highs, lows, totals and a temperature curve over the rain bars; the
+precipitation row appears only when something falls in the shown window.
 
 Layers: wind, temperature, gusts, rain (6/24/72 h), new snow (6/24/72 h), snow
 depth, cloud, pressure, humidity (RH or dew point), CAPE, UV index, freezing
@@ -502,17 +524,23 @@ feeds that need a server degrade quietly.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q                     # offline suite: network is blocked unless a test is marked
+pytest -q tests               # offline suite: network is blocked unless a test is marked
 pytest -q -m network          # the tests that reach live upstreams
+node --test tests/frontend    # the front end's request scheduler, caches and alert status
 scripts/smoke.sh              # against a running instance
 ```
 
 The suite covers render (Mercator, colour, field encoding, wind JSON), store
 roundtrip and pruning, GRIB grid normalisation, accumulation differencing, the
 API contract, external-feed parsers, liveness assertions, resorts, routes,
-ensembles and the static builder. Tests use a scratch data dir; outbound
-sockets are refused unless a test carries `@pytest.mark.network`, and every
-test has a timeout.
+ensembles, the static builder, and the front end's source contracts
+(`tests/test_front_ui.py` pins the CSS and JS that broke before). Tests use a
+scratch data dir; outbound sockets are refused unless a test carries
+`@pytest.mark.network`, and every test has a timeout. Name `tests` explicitly
+so collection never walks the model store. `tests/visual/` looks at the
+running app with Playwright: cropped golden images for the interface, painted
+properties for the map, and overlay checks paired with what the API says it
+has; its README explains why each is checked the way it is.
 
 Conventions: conventional commits, one logical change per commit, comments
 explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
@@ -520,8 +548,19 @@ explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
 ## Roadmap
 
 - WeatherNext 2 member spread into the Spread pane (the adapter ingests the
-  mean today; members need the full dataset). AIFS-ENS member columns for
-  true plumes.
+  mean today; the 64-member dataset is ~350 GB per init, so spread needs a
+  member subset or Google's precomputed statistics). AIFS-ENS member columns
+  for true plumes.
+- Push alerts: a warning issued for a saved place reaches the phone without
+  the app open.
+- A radar-advection nowcast where Open-Meteo's 15-minute product is
+  interpolated rather than radar-assimilated.
+- Topic packs on the card: garden and farm (growing degree days, frost, ET₀,
+  spray windows), fire weather (Fosberg, Haines), sky tonight, run and ride,
+  drone.
+- Browser field memory as separate CPU and GPU budgets (implemented on a
+  branch; a cold HRRR scrub was slower under it, so it waits for a better
+  prefetch policy). See `docs/next-footprint-pass.md`.
 - ICON (needs icosahedral regrid weights), hourly GFS surface tier, GFS waves
   (WW3).
 - Self-hosted AI model via ECMWF `ai-models` (Aurora / GraphCast-small).
@@ -530,6 +569,25 @@ explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
 
 Short version; the commit log is the long one.
 
+- **2026-09-06** — the airgram fills the card, draws the freezing line, answers
+  the pointer, and writes the selected hour's freezing level, 850 hPa
+  temperature, strongest wind, thickness and lapse in its margin. Skew-T
+  captions in one voice, the reasoning behind an info dot. Daylight and solar
+  noon tiles. The tape's fold glides without overshoot, the grip stays whole,
+  only bottom-anchored panels ride a drag. Upstream failures are remembered
+  briefly instead of as answers; the archive is paced; retry chatter is quiet.
+- **2026-09-04** — the point card's readings grouped under headings; rain-now
+  strip from 15-minute data with a plain headline; wind rose and 24 h trend on
+  the hero; new tiles (next rain, dry spell, snow level, wet-bulb, cloud
+  layers, sunshine, fog risk, 850 hPa wind); the day header's hover card; the
+  precipitation row only when something falls; roads and boundaries lifted on
+  the basemap with a Streets option; the tape's three states glide.
+- **2026-09-02** — climate normals on the card ("+4° vs normal", ERA5
+  1991–2020); nearby webcams (DriveBC, Windy); stat tiles replace the pills;
+  the tape folds to a header and then to a pill; the ECMWF retry budget with
+  resumable downloads; point cubes staged through a paced scratch file and
+  GRIB fields written as they decode (peak RSS for an HRRR variable 471 →
+  72 MiB); bounded SQLite feed caches; a five-second budget on point alerts.
 - **2026-09-01** — station observations (METAR) as a map overlay. Embed mode and
   the iframe snippet. Hodograph on the Skew-T. Meteosat discs in the satellite
   overlay. Swell, wind sea and peak period wave layers. Test suite offline by
