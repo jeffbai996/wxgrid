@@ -412,6 +412,10 @@ body.resizing-tape #timebar { z-index: 7; }
    here was the visible "step" in every fold */
 #timebar #step, #timebar .tape-head, #timebar .tape { transition: opacity .22s ease; }
 #timebar.tape-anim #step { opacity: 0; }
+/* the drag lays the box out at its ceiling and slides it, so the slider at
+   its foot went under the screen edge with the hidden tail; fade it like the
+   glide does and it returns at release */
+#timebar.tape-dragging #step { opacity: 0; }
 #timebar.tape-anim-away .tape-head, #timebar.tape-anim-away .tape { opacity: 0; }
 /* the away glide: the box itself goes invisible at once (background, border,
    blur, shadow); only the fading rows and the arriving pill are seen. With the

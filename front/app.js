@@ -1075,6 +1075,10 @@
         const from = tb.getBoundingClientRect().height;
         const sized = tb.style.height;           // a hand-set height, if any
         tb.style.height = "";
+        // Leaving away, the pill is still a laid-out child until the glide
+        // lands; measured with it the box overshot by its 32 px and snapped
+        // back at the end (Jeff 2026-09-06). Hide it before measuring.
+        if (prev === "away") { const p = $("#tape-pill"); if (p) p.hidden = true; }
         apply();
         const to = tb.getBoundingClientRect().height;
         // .mini/.tape-away pin height with !important, so the glide runs
@@ -1543,7 +1547,10 @@
     // Writing the height per frame reflowed the forecast table and every
     // --tb-h dependant on each move — the "steppy" drag on a phone
     // (Jeff 2026-09-05, "it's dogged us forever").
-    const riders = () => [$("#point"), $(".locate-btn")].filter(Boolean);
+    // Only what hangs off the tape's top edge rides the drag: the phone
+    // sheet and the locate button are bottom-anchored (top: auto); the desktop
+    // card hangs from the top bar and moved for no reason (Jeff 2026-09-06).
+    const riders = () => [$("#point"), $(".locate-btn")].filter((el) => el && getComputedStyle(el).top === "auto");
     const previewTapeDrag = (clientY) => {
       if (!tapeDrag) return;
       tapeDrag.lastY = clientY;

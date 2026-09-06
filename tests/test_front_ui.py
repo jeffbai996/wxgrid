@@ -874,3 +874,21 @@ def test_precip_heading_has_no_suffix_and_the_wind_trend_answers_the_pointer():
     assert "function wireWindTrendHover()" in panes and 'class="wind-trend" data-rows=' in panes and '<div class="gtip wt-tip" hidden></div>' in panes
     assert "#point-now .rainnow .rn-line { display: block; margin: 4px 0 7px; font: 700 14px/1.3" in css
     assert ".wind-trend { position: relative;" in css
+
+
+def test_leaving_away_hides_the_pill_before_the_glide_target_is_measured():
+    # away -> full glided to 288 px and landed on 256: the pill (32 px) was
+    # still a laid-out child when `to` was measured, so the box overshot by
+    # exactly its height and snapped back at the end (Jeff 2026-09-06).
+    app = _read("app.js")
+    glide = app.split("const from = tb.getBoundingClientRect().height;", 1)[1].split("const to = tb.getBoundingClientRect().height;", 1)[0]
+    assert 'if (prev === "away") { const p = $("#tape-pill"); if (p) p.hidden = true; }' in glide
+
+
+def test_only_bottom_anchored_panels_ride_the_tape_drag():
+    # The card rode the drag on desktop, where it hangs from the top bar and
+    # has no reason to move; the slider at the foot of the box slid under the
+    # screen edge with the rest of the hidden tail (Jeff 2026-09-06).
+    app = _read("app.js"); css = _read("styles.css")
+    assert 'const riders = () => [$("#point"), $(".locate-btn")].filter((el) => el && getComputedStyle(el).top === "auto");' in app
+    assert "#timebar.tape-dragging #step { opacity: 0; }" in css
