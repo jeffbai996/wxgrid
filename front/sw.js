@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v104";   // v104: Daylight and Solar noon tiles fill the Sun group (2026-09-06)
+const VERSION = "wxgrid-v105";   // v105: bounded CPU/GPU field residency (2026-09-06)
 const SHELL = `${VERSION}-shell`;
 // Change these only when their own schema changes, not for a UI release.
 // Field format/version and run already live in each immutable URL.

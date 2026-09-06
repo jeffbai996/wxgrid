@@ -218,7 +218,8 @@ def test_the_field_layer_holds_the_last_frame_while_the_next_loads():
     field = _read("field.js")
     assert "let pending = null;" in field
     assert "if (!pending || !pending.a || !pending.a.img) return;" in field
-    assert "if (pending && (e === pending.a || e === pending.b)) continue;" in field
+    assert "e === shown.a || e === shown.b || wantedUrls.has(e.url)" in field
+    assert "if (!e.img || pinned(e)) continue;" in field
 
 
 def test_the_outdoors_tide_card_draws_the_curve_and_the_hero_stays_lean():

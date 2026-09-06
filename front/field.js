@@ -27,7 +27,8 @@
   "use strict";
   const WX = window.WX;
 
-  const CACHE_BYTES = 96 * 1024 * 1024;     // decoded fields kept for instant scrubbing
+  const CACHE_BYTES = 80 * 1024 * 1024;
+  const GPU_BYTES = 40 * 1024 * 1024;       // displayed pair only; no texture prefetch
   const RULE_KIND = { const: 0, ramp: 1, abs: 2, fall: 3, step: 4, mask: 5 };
   // Categorical and accumulated fields hold their step: a 6-hour bucket half
   // mixed with the next is not a quantity anyone measured.
@@ -44,29 +45,67 @@
   // ── decoded fields ─────────────────────────────────────────────────────
   const cache = new Map();          // url → entry
   let cacheBytes = 0;
+  let gpuBytes = 0, reservedBytes = 0, expectedBytes = 0;
+  let wantedUrls = new Set();
+  const spaceWaiters = new Set();
+  function wakeSpace() { for (const wake of [...spaceWaiters]) wake(); }
+  function dropTexture(gl, e) {
+    if (!e.tex) return;
+    if (gl) gl.deleteTexture(e.tex);
+    gpuBytes -= e.gpuBytes || 0;
+    e.tex = null; e.gpuBytes = 0;
+  }
+  function pinned(e) {
+    return e === shown.a || e === shown.b || wantedUrls.has(e.url);
+  }
+  function room(bytes) {
+    for (const e of [...cache.values()].sort((a, b) => a.used - b.used)) {
+      if (cacheBytes + reservedBytes + bytes <= CACHE_BYTES) break;
+      if (!e.img || pinned(e)) continue;
+      cache.delete(e.url); cacheBytes -= e.bytes;
+      dropTexture(layer.gl, e); e.img = null;
+    }
+    return cacheBytes + reservedBytes + bytes <= CACHE_BYTES;
+  }
+  async function reserve(e, signal, selected) {
+    if (!e.expected || e.expected * 2 > CACHE_BYTES) throw Object.assign(new Error("field CPU budget"), { status: 413 });
+    while (!room(e.expected)) {
+      signal.throwIfAborted();
+      if (!selected) throw Object.assign(new Error("prefetch budget"), { status: 499 });
+      await new Promise((resolve) => {
+        const wake = () => { spaceWaiters.delete(wake); signal.removeEventListener("abort", wake); resolve(); };
+        spaceWaiters.add(wake); signal.addEventListener("abort", wake, { once: true });
+      });
+    }
+    signal.throwIfAborted();
+    reservedBytes += e.expected;
+  }
   let serial = 0;
   let requestKey = "";
   const requests = new WX.FieldRequests(async (url, signal, selected) => {
-    const res = await fetch(url, { signal, priority: selected ? "high" : "low",
-      headers: { Accept: "image/webp,image/png;q=0.9,*/*;q=0.5" } });
-    if (!res.ok) throw Object.assign(new Error(String(res.status)), { status: res.status });
-    return decodeBlob(await res.blob());
+    const e = cache.get(url);
+    if (!e) throw Object.assign(new Error("superseded"), { status: 499 });
+    await reserve(e, signal, selected);
+    try {
+      const res = await fetch(url, { signal, priority: selected ? "high" : "low",
+        headers: { Accept: "image/webp,image/png;q=0.9,*/*;q=0.5" } });
+      if (!res.ok) throw Object.assign(new Error(String(res.status)), { status: res.status });
+      const img = await decodeBlob(await res.blob(), e.expected);
+      signal.throwIfAborted();
+      if (cache.get(url) !== e) throw Object.assign(new Error("superseded"), { status: 499 });
+      e.img = img; e.bytes = img.data.byteLength; cacheBytes += e.bytes;
+      return img;
+    } finally {
+      reservedBytes -= e.expected;
+      wakeSpace();
+    }
   });
 
   function evict(gl) {
-    const entries = [...cache.values()].filter((e) => e.img).sort((a, b) => a.used - b.used);
-    while (cacheBytes > CACHE_BYTES && entries.length > 2) {
-      const e = entries.shift();
-      if (e === shown.a || e === shown.b) continue;
-      if (pending && (e === pending.a || e === pending.b)) continue;
-      cache.delete(e.url);
-      cacheBytes -= e.bytes;
-      if (e.tex && gl) gl.deleteTexture(e.tex);
-      e.tex = null; e.img = null;
-    }
+    room(0);
   }
 
-  async function decodeBlob(blob) {
+  async function decodeBlob(blob, expected) {
     let bmp;
     try {
       bmp = await createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
@@ -81,6 +120,10 @@
       });
     }
     const w = bmp.width, h = bmp.height;
+    if (w * h * 4 !== expected) {
+      if (bmp.close) bmp.close();
+      throw Object.assign(new Error("field grid size changed"), { status: 413 });
+    }
     const c = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : Object.assign(document.createElement("canvas"), { width: w, height: h });
     const ctx = c.getContext("2d", { willReadFrequently: true });
     ctx.imageSmoothingEnabled = false;
@@ -106,19 +149,16 @@
       if (!e.img && !e.failed && selected) requests.request(url, true).catch(() => {});
       return e;
     }
-    e = { url, img: null, tex: null, bytes: 0, used: ++serial, failed: false, promise: null };
+    e = { url, img: null, tex: null, bytes: 0, expected: expectedBytes, used: ++serial, failed: false, promise: null };
+    cache.set(url, e);
     e.promise = (async () => {
-      const img = await requests.request(url, selected);
-      e.img = img; e.bytes = img.data.byteLength;
-      cacheBytes += e.bytes;
-      evict(layer.gl);
+      await requests.request(url, selected);
       return e;
     })().catch((err) => {
       e.failed = true; e.error = err; e.retryAt = Date.now() + 5000;
-      if (err.name === "AbortError" && cache.get(url) === e) cache.delete(url);
+      if (cache.get(url) === e) cache.delete(url); // errors are not an unbounded metadata cache
       throw err;
     });
-    cache.set(url, e);
     return e;
   }
 
@@ -131,6 +171,10 @@
   function fallback(why) {
     if (gaveUp) return;
     gaveUp = true; live = false;
+    requests.retain(new Set());
+    for (const e of cache.values()) { dropTexture(layer.gl, e); e.img = null; }
+    cache.clear(); cacheBytes = 0; wantedUrls.clear(); pending = null;
+    shown.a = shown.b = null; wakeSpace();
     console.info(`wxgrid field path: raster png (${why})`);
     if (WX.field.onFallback) WX.field.onFallback(why);
   }
@@ -390,7 +434,10 @@ void main() {
 
   function upload(gl, e) {
     if (e.tex || !e.img) return;
+    if (gpuBytes + e.bytes > GPU_BYTES) throw new Error("field GPU budget");
     const tex = gl.createTexture();
+    if (!tex) throw new Error("field texture allocation failed");
+    e.tex = tex; e.gpuBytes = e.bytes; gpuBytes += e.bytes;
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
@@ -400,7 +447,7 @@ void main() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    e.tex = tex;
+    if (gl.getError() === gl.OUT_OF_MEMORY) throw new Error("field texture out of memory");
   }
 
   // The zoom fade and the overlay dimming live on the hidden raster layer's
@@ -437,12 +484,29 @@ void main() {
     onAdd(map, gl) {
       this.map = map; this.gl = gl; this.programs = {}; this.mesh = null; this.lut = null; this.lutKey = "";
       this.gl2 = typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext;
+      this.lost = () => {
+        for (const e of cache.values()) dropTexture(null, e);
+        this.programs = {}; this.mesh = null; this.lut = null;
+      };
+      this.restored = () => map.triggerRepaint();
+      this.canvas = map.getCanvas();
+      this.canvas.addEventListener("webglcontextlost", this.lost);
+      this.canvas.addEventListener("webglcontextrestored", this.restored);
     },
     onRemove(map, gl) {
       for (const p of Object.values(this.programs || {})) gl.deleteProgram(p.program);
       if (this.mesh) { gl.deleteBuffer(this.mesh.vb); gl.deleteBuffer(this.mesh.ib); }
       if (this.lut) gl.deleteTexture(this.lut);
-      for (const e of cache.values()) if (e.tex) { gl.deleteTexture(e.tex); e.tex = null; }
+      requests.retain(new Set()); wantedUrls.clear(); pending = null;
+      for (const [url, e] of cache) {
+        dropTexture(gl, e);
+        if (e !== shown.a && e !== shown.b) {
+          cache.delete(url); cacheBytes -= e.bytes; e.img = null;
+        }
+      }
+      this.canvas?.removeEventListener("webglcontextlost", this.lost);
+      this.canvas?.removeEventListener("webglcontextrestored", this.restored);
+      this.gl = null; wakeSpace();
       this.programs = {}; this.mesh = null; this.lut = null; this.lutKey = "";
     },
     render(gl, args) {
@@ -469,9 +533,12 @@ void main() {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         this.lutKey = lutKey;
       }
-      upload(gl, shown.a);
       const haveB = shown.b && shown.b.img && shown.t > 0 && !shown.snap;
-      if (haveB) upload(gl, shown.b);
+      // Retire obsolete textures BEFORE allocating the new pair. CPU images
+      // remain cached for scrubbing and exact hover sampling.
+      for (const e of cache.values()) if (e !== shown.a && (!haveB || e !== shown.b)) dropTexture(gl, e);
+      try { upload(gl, shown.a); if (haveB) upload(gl, shown.b); }
+      catch (err) { fallback(err.message); return; }
       evict(gl);
 
       gl.useProgram(prog.program);
@@ -514,7 +581,7 @@ void main() {
     if (!e.img && !e.failed) e.promise.then(() => { if (gen === showSerial) { commit(); repaint(); } }).catch((err) => {
       // A missing field for a run the catalog names is the server saying
       // this path is not on offer; anything else is one bad step.
-      if (gen === showSerial && err && (err.status === 404 || err.status === 501 || /altered/.test(err.message))) fallback(err.status ? `field ${err.status}` : err.message);
+      if (gen === showSerial && err && (err.status === 404 || err.status === 413 || err.status === 501 || /altered/.test(err.message))) fallback(err.status ? `field ${err.status}` : err.message);
     });
     return e;
   }
@@ -528,11 +595,16 @@ void main() {
     if (!pending || !pending.a || !pending.a.img) return;
     Object.assign(shown, pending);
     pending = null;
+    room(0); wakeSpace();
   }
 
   // spec: { a: url, b: url|null, t, layer, level, model }
   function show(spec) {
     if (!live) return;
+    expectedBytes = spec.model.grid_spec.nx * spec.model.grid_spec.ny * 4;
+    if (expectedBytes * (spec.b && spec.t > 0 ? 2 : 1) > GPU_BYTES) {
+      fallback("field pair exceeds GPU budget"); return;
+    }
     const gen = ++showSerial;
     const repaint = () => { if (WX.map) WX.map.triggerRepaint(); if (WX.probe) { WX.probe.pinUpdate(); } if (WX.fn && WX.fn.updateMarkerFlag) WX.fn.updateMarkerFlag(); if (WX.fn && WX.fn.renderTapePill) WX.fn.renderTapePill(); };
     const lg = rampFor(spec.layer, spec.level);
@@ -541,6 +613,7 @@ void main() {
     // a held field shows whichever step is nearer, so the tape and the map agree
     if (snap && spec.b && t >= 0.5) { spec = { ...spec, a: spec.b, b: null }; t = 0; }
     const key = `${spec.a}|${spec.b || ""}`;
+    wantedUrls = new Set([spec.a, ...(spec.b && t > 0 ? [spec.b] : [])]);
     if (key !== requestKey) {
       requestKey = key;
       const wanted = new Set([spec.a, spec.b]);
@@ -558,6 +631,7 @@ void main() {
       b: spec.b && t > 0 ? want(spec.b, gen, repaint) : null,
     };
     commit();
+    wakeSpace();
     repaint();
   }
   function prefetch(url) { if (live) entryFor(url).promise.catch(() => {}); }
@@ -576,5 +650,7 @@ void main() {
   }
 
   WX.field = { enable, get live() { return live; }, layer, show, prefetch, sample, ready, onFallback: null,
-               get shown() { return shown; } };
+               get shown() { return shown; },
+               get memory() { return { cpuBytes: cacheBytes, reservedBytes, gpuBytes,
+                 cpuLimit: CACHE_BYTES, gpuLimit: GPU_BYTES, entries: cache.size }; } };
 })();
