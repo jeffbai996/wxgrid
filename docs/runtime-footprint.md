@@ -106,3 +106,72 @@ Final follow-up validation: 695 pytest tests passed, 20 skipped, including
 installed scheduled units (global/regional/ensemble/Pages) have verified live
 drop-ins; the aerosol unit template is updated but that service is not
 installed on this host. No browser surface was available for visual QA.
+
+## Point-cube staging and streamed GRIB writes (2026-09-06)
+
+Variables above 32 MiB now transpose through one anonymous temporary file on
+the run's filesystem. Source step chunks are decompressed once, and output
+point chunks compressed once; do not replace this with latitude-band reads
+from the source (which repeatedly decompress the whole map). Staging writes
+share the existing write pacer with output writes. On Linux, fsync and
+DONTNEED advice bound dirty scratch pages and evict clean scratch cache.
+Variables at or below 32 MiB keep the existing in-memory fast path.
+
+Scratch capacity is one uncompressed variable per concurrent builder, not a
+persistent second store: 392.9 MiB for the measured 49-step HRRR variable.
+It adds one raw write and one raw read per large variable. The file closes
+and is removed on success, exceptions or process death. Disk errors leave
+the point variable incomplete and retryable; readers keep using the original
+step layout. Advisory eviction can be unavailable on other platforms, so
+the Linux cgroup result below is not a cross-platform memory guarantee.
+
+Mean and spread GRIB fields now write independent variables as they decode.
+Only accumulation, snow-mask, SST, swell and ensemble-wind dependencies remain
+in RAM. Final duplicate messages still win; derived fields use original
+float32 inputs rather than re-reading quantized data. Final rain/snow
+accumulations are released before point-cube construction. No worker/cache,
+coverage, retention, service-limit or native-thread setting changes.
+
+Fresh-process comparisons against `6a8eacd9`, serialized in one-core/1 GiB
+scopes with the existing single-thread/allocator settings:
+
+| Sample | Before | After |
+| --- | ---: | ---: |
+| HRRR t2m point-cube peak RSS | 470.8 MiB | 72.3 MiB |
+| Point-cube cgroup peak (includes file cache) | 774.0 MiB | 319.5 MiB |
+| Point-cube wall / process CPU | 14.051 / 12.217 s | 33.407 / 13.755 s |
+| Synthetic decoded-GRIB peak RSS | 618.0 MiB | 232.0 MiB |
+| Synthetic decoded-GRIB cgroup peak | 597.5 MiB | 210.2 MiB |
+| Synthetic decoded-GRIB wall / process CPU | 1.814 / 1.812 s | 1.567 / 1.565 s |
+
+All four scopes reported zero peak swap. RSS and cgroup peaks have different
+accounting and sampling semantics; do not subtract one from the other.
+Point data came from HRRR 2026-09-06T12, shape 49 × 1401 × 3001, with
+`WXGRID_WRITE_MBPS=30`. Both variants wrote 123,272,681 point-store bytes and
+the same raw-band SHA-256:
+`f8babeba62125c4a5e2a33c37a509a3f0396a27e51cc2c3fd47d72e38c7b1cc6`.
+
+The synthetic GRIB fixture uses two HRRR-sized steps, 24 independent fields
+plus four dependency inputs, and a float16 hashing writer. All 54 final
+outputs matched (aggregate SHA-256
+`033c1e696614bb6adf730d4db5a065cffad4bbeb84d2ce97c8505d5e26d28f30`).
+It isolates retention after decoding, **not** ecCodes, reprojection, network
+or real Zarr write performance. These are bounded phase samples, not full
+scheduled-job peaks or a browser-snappiness measurement. The point-cube
+memory saving deliberately costs paced disk IO and batch latency.
+
+Reproduce with `PYTHONPATH=. venv/bin/python scripts/profile_ingest_memory.py
+point --run 2026-09-06T12` or `... grib`; add `--baseline 6a8eacd9` for the old
+path. Run one fresh capped process at a time, with the environment above.
+The point profiler copies one compressed variable to disposable scratch and
+never writes to the live run. A different retained run is a different sample.
+
+The implementation-ready, unimplemented follow-ups are in
+[next-footprint-pass.md](next-footprint-pass.md): ECMWF retry/resume boundaries,
+separate browser CPU/GPU budgets, and pressure-aware warming/phase diagnostics.
+
+Final-tree verification: 715 tests passed, 20 skipped in a one-core/1536 MiB
+scope. New tests cover chunk-once reads, exact raw bits/encoding attributes,
+odd edge bands, staging failure/cleanup/retry, scratch/output pacing, bounded
+decoded-field lifetimes, last-message-wins, derived values, partial spread
+decode and release of final accumulations before the point-cube phase.

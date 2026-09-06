@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -368,6 +369,75 @@ def run_lock(model: str, rid: str, root: Path = STORE_DIR):
 
 
 POINT_TILE = 24    # point-cube spatial chunk (24 × 24 gridpoints = 6° × 6°)
+_POINT_IN_MEMORY_BYTES = 32 * 1024 * 1024
+_POINT_DIRTY_BYTES = 16 * 1024 * 1024
+
+
+def _drop_staging_cache(file) -> None:
+    # Dirty pages cannot be discarded. Keep staging out of tmpfs and make
+    # pages clean before advising eviction, or disk staging just moves the
+    # same memory charge from anonymous RSS into the ingest's page cache.
+    os.fsync(file.fileno())
+    if hasattr(os, "posix_fadvise"):
+        try:
+            os.posix_fadvise(file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+        except OSError:
+            pass  # Advisory only; correctness does not depend on eviction.
+
+
+def _copy_point_variable(src, arr, directory: Path, pacer) -> None:
+    """Transpose once through disk for large variables, never reread map
+    chunks per latitude band. Peak buffers are one source chunk plus one
+    output band, not all forecast hours. No mmap or persistent scratch."""
+    nt, ny, nx = src.shape
+    if np.prod(src.shape) * src.dtype.itemsize <= _POINT_IN_MEMORY_BYTES:
+        full = src[:]
+        for y0 in range(0, ny, POINT_TILE):
+            band = full[:, y0:y0 + POINT_TILE, :]
+            pacer.spend(band.nbytes)
+            arr[:, y0:y0 + POINT_TILE, :] = band
+        return
+
+    # Layout: latitude band, step, row, longitude. Source chunks are read
+    # exactly once; destination chunks are compressed exactly once. The
+    # anonymous file is removed even on exceptions or process death.
+    with tempfile.TemporaryFile(dir=directory, prefix=".point-transpose-", buffering=0) as stage:
+        dirty = 0
+        for t0 in range(0, nt, src.chunks[0]):
+            slab = src[t0:min(t0 + src.chunks[0], nt), :, :]
+            # Scratch writes are real host IO too; share the existing write
+            # budget with the destination instead of bursting a whole cube.
+            pacer.spend(slab.nbytes)
+            for y0 in range(0, ny, POINT_TILE):
+                rows = min(POINT_TILE, ny - y0)
+                for i, field in enumerate(slab):
+                    stage.seek((y0 * nt + (t0 + i) * rows) * nx * src.dtype.itemsize)
+                    data = memoryview(field[y0:y0 + rows, :]).cast("B")
+                    while data:
+                        size = stage.write(data)
+                        if not size:
+                            raise OSError("short point-cube staging write")
+                        data = data[size:]
+            dirty += slab.nbytes
+            del data, field, slab
+            if dirty >= _POINT_DIRTY_BYTES:
+                _drop_staging_cache(stage)
+                dirty = 0
+        _drop_staging_cache(stage)
+        stage.seek(0)
+        for y0 in range(0, ny, POINT_TILE):
+            rows = min(POINT_TILE, ny - y0)
+            band = np.empty((nt, rows, nx), dtype=src.dtype)
+            data = memoryview(band).cast("B")
+            while data:
+                size = stage.readinto(data)
+                if not size:
+                    raise OSError("short point-cube staging read")
+                data = data[size:]
+            pacer.spend(band.nbytes)
+            arr[:, y0:y0 + rows, :] = band
+            del data, band
+            _drop_staging_cache(stage)
 
 
 def build_point_cube(
@@ -413,22 +483,7 @@ def _build_point_cube_locked(
                               fill_value=np.nan, dimension_names=("step", "latitude", "longitude"))
         attrs = {k: src.attrs[k] for k in ("offset", "scale", "units") if k in src.attrs}
         arr.attrs.update({**attrs, "complete": False})
-        # Copy one latitude band at a time. Reading the whole variable would be
-        # ~250 MB resident per variable and, with several ingests and the API
-        # in flight, that was enough to put fragserv into swap (2026-08-18).
-        pacer = _Pacer()
-        # One read of the whole variable. The map chunks span the full grid
-        # per step, so reading in bands decompressed every chunk once per
-        # band — thirty times over for a global run, 400 GB of reads and
-        # most of the ingest's CPU per cycle (2026-08-22). A global variable
-        # is ~270 MB in float16; the writes stay banded for the pacer.
-        full = src[:]
-        for y0 in range(0, src.shape[1], POINT_TILE):
-            y1 = min(y0 + POINT_TILE, src.shape[1])
-            band = full[:, y0:y1, :]
-            pacer.spend(band.nbytes)
-            arr[:, y0:y1, :] = band
-        del full
+        _copy_point_variable(src, arr, run_path(model, rid, root), _Pacer())
         arr.attrs["complete"] = True
         n += 1
         if step_gate:

@@ -184,29 +184,33 @@ def write_spread(writer: RunWriter, model: Model, step: int, paths: list[Path],
     if not model.spread_params or not paths:
         return []
     sd: dict[str, np.ndarray] = {}
-    for p in paths:
-        try:
-            for f in iter_fields(p):
-                canon = model.canonical_spread(f.short_name, f.level_type, f.level)
-                if canon is None:
-                    continue
-                vals = f.values
-                # Same unit rule as the mean path: ECMWF-style metres of water
-                # would need ×1000; GEFS ships kg m-2, which is already mm.
-                if canon == "tp6_sd" and f.units.strip().startswith("m"):
-                    vals = vals * 1000.0
-                sd[canon] = vals
-        except Exception:
-            log.exception("%s step %03d: spread file %s unreadable, skipping", model.key, step, p.name)
-    if not sd:
+    written = []
+
+    def fields():
+        for p in paths:
+            try:
+                yield from iter_fields(p)
+            except Exception:
+                log.exception("%s step %03d: spread file %s unreadable, skipping", model.key, step, p.name)
+
+    for f in fields():
+        canon = model.canonical_spread(f.short_name, f.level_type, f.level)
+        if canon is None:
+            del f
+            continue
+        vals = f.values
+        if canon == "tp6_sd" and f.units.strip().startswith("m"):
+            vals = vals * 1000.0
+        if canon in ("u10_sd", "v10_sd"):
+            sd[canon] = vals  # Only the wind-speed derivation needs both.
+        else:
+            writer.write(canon, step, vals)
+            if canon not in written:
+                written.append(canon)
+        del f, vals
+    if not sd and not written:
         log.info("%s step %03d: spread file carried nothing we map", model.key, step)
         return []
-    written = []
-    for canon, vals in sd.items():
-        if canon in ("u10_sd", "v10_sd"):
-            continue                     # inputs to wind_sd, not stored themselves
-        writer.write(canon, step, vals)
-        written.append(canon)
     if "u10_sd" in sd and "v10_sd" in sd:
         writer.write("wind_sd", step,
                      wind_speed_spread(mean.get("u10"), mean.get("v10"), sd["u10_sd"], sd["v10_sd"]))
@@ -250,22 +254,36 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         paths = [p for p in paths if not fetch.is_spread(p)]
         got: dict[str, np.ndarray] = {}
         got_start: dict[str, int] = {}
+        # Independent fields go straight to their step chunk. Keep only the
+        # inputs whose final occurrence is needed by a derived field; re-reading
+        # them from the float16 store would change the derived values.
+        deferred = {"tp", "sf", "csnow", "tsk", "lsm", *WAVE_BAND_INPUTS}
+        if spread_paths and model.spread_params:
+            deferred.update(("u10", "v10"))
         for f in _fields(paths):
             canon = model.canonical(f.short_name, f.level_type, f.level)
             if canon is None:
+                del f
                 continue
             # HRRR files publish both the since-start total and the last-hour
             # bucket with the same shortName. Range coalescing may bring both
             # messages along; only the total belongs to the deaccumulation path.
             if model.precip_mode == "since_start" and canon in {"tp", "sf"} and f.start_step != 0:
+                del f
                 continue
-            got_start[canon] = f.start_step
             vals = f.values
             if (canon == "tcc" or canon in {"lcc", "mcc", "hcc"} or canon.startswith("cc_")) and f.units.strip() == "%":
                 vals = vals / 100.0                                        # GFS TCDC is percent
             if canon in ("tp", "sf") and f.units.strip().startswith("m"):      # "m" or "m of water equivalent"
                 vals = vals * 1000.0                                       # IFS tp/sf in metres → mm
-            got[canon] = vals
+            if canon in deferred:
+                got[canon] = vals
+                got_start[canon] = f.start_step
+            elif canon == "sd":
+                writer.write("sd_cm", step, np.nan_to_num(vals) * model.snow_depth_factor)
+            else:
+                writer.write(canon, step, vals)
+            del f, vals
         derive_swell(got)
         # accumulations → amount since the previous stored step
         starts = {c: st for c, st in got_start.items()}
@@ -287,8 +305,6 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         # categorical-snow flag is on.
         if "csnow" in got and "tp6" in buckets and model.precip_mode == "bucket6":
             writer.write("sf6", step, np.where(got["csnow"] >= 0.5, buckets["tp6"], 0.0))
-        if "sd" in got:
-            writer.write("sd_cm", step, np.nan_to_num(got["sd"]) * model.snow_depth_factor)
         # Skin temperature is ground temperature over land — misleading as a
         # "sea temp". Masked to water here, it is exactly the SST product.
         if "tsk" in got and "lsm" in got:
@@ -319,7 +335,9 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
     # opts a run out of it either way.
     try:
         got = fetcher(model, run, grib_root, on_step=on_step)
-
+        # No later phase deaccumulates another step. Do not carry the final
+        # rain/snow arrays through point-cube construction and warming.
+        prev_accum.clear()
         counts = writer.finish()
         if model.key == "gefs":
             # Member probabilities ride the same ingest, before the point cube is

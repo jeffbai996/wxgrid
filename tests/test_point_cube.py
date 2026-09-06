@@ -1,5 +1,5 @@
-"""The point cube is a re-chunk of the run: same values, one read of the
-source per variable. The map chunks span the full grid per step, so reading
+"""The point cube is a re-chunk of the run: same values, each source chunk
+read once. The map chunks span the full grid per step, so reading
 the source in 24-row bands decompressed every chunk once per band — thirty
 times over for a global run (400 GB of reads per cycle on 2026-08-22)."""
 import numpy as np
@@ -101,3 +101,83 @@ def test_the_cube_index_is_built_once_however_many_threads_open_the_reader(tmp_p
     # after construction, no read opens a group member again: not the cube,
     # not a source array for its encoding attrs
     assert opens[built:] == []
+
+
+@pytest.mark.parametrize("chunk_steps", [1, 2])
+def test_staged_cube_preserves_raw_bits_and_reads_chunks_once(tmp_path, monkeypatch, chunk_steps):
+    monkeypatch.setattr(store, "_POINT_IN_MEMORY_BYTES", 0)
+    path = store.run_path("gfs", "2026-01-01T00", tmp_path)
+    g = zarr.open_group(path, mode="w")
+    g.attrs["variables"] = ["t2m"]
+    values = np.random.default_rng(4).normal(size=(5, 53, 29)).astype("float16")
+    values[0, 0, :4] = [np.nan, -0.0, np.inf, -np.inf]
+    src = g.create_array("t2m", data=values, chunks=(chunk_steps, 53, 29))
+    src.attrs.update(offset=273.15, scale=0.1, units="K")
+    reads = []
+    original = zarr.Array.__getitem__
+
+    def read(self, key):
+        if self.name == "/t2m":
+            reads.append(key)
+        return original(self, key)
+
+    monkeypatch.setattr(zarr.Array, "__getitem__", read)
+    assert store.build_point_cube("gfs", "2026-01-01T00", tmp_path) == 1
+    assert [key[0].start for key in reads] == list(range(0, 5, chunk_steps))
+    np.testing.assert_array_equal(g["pt/t2m"][:].view("uint16"), values.view("uint16"))
+    assert dict(g["pt/t2m"].attrs) == {"offset": 273.15, "scale": 0.1, "units": "K", "complete": True}
+    assert not list(path.glob(".point-transpose-*"))
+
+
+def test_staging_failure_closes_scratch_and_leaves_retryable_cube(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "_POINT_IN_MEMORY_BYTES", 0)
+    path = store.run_path("gfs", "2026-01-01T00", tmp_path)
+    g = zarr.open_group(path, mode="w")
+    g.attrs["variables"] = ["t2m"]
+    values = np.ones((3, 25, 7), dtype="float16")
+    g.create_array("t2m", data=values, chunks=(1, 25, 7))
+    opened = []
+    original = store.tempfile.TemporaryFile
+
+    def temporary(**kwargs):
+        f = original(**kwargs)
+        opened.append(f)
+        return f
+
+    monkeypatch.setattr(store.tempfile, "TemporaryFile", temporary)
+    with monkeypatch.context() as failure:
+        def full(file):
+            raise OSError(28, "No space left on device")
+        failure.setattr(store, "_drop_staging_cache", full)
+        with pytest.raises(OSError, match="No space"):
+            store.build_point_cube("gfs", "2026-01-01T00", tmp_path)
+    assert opened[0].closed
+    assert g["pt/t2m"].attrs["complete"] is False
+    assert not list(path.glob(".point-transpose-*"))
+    assert store.build_point_cube("gfs", "2026-01-01T00", tmp_path) == 1
+    np.testing.assert_array_equal(g["pt/t2m"][:], values)
+
+
+def test_small_cube_needs_no_staging_disk(tmp_path, monkeypatch):
+    def unexpected(**kwargs):
+        raise AssertionError("small cube should not stage")
+    monkeypatch.setattr(store.tempfile, "TemporaryFile", unexpected)
+    root, _ = _run(tmp_path, steps=1)
+    assert store.build_point_cube("gfs", "2026-01-01T00", root) == 2
+
+
+def test_staging_and_output_share_the_write_budget(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "_POINT_IN_MEMORY_BYTES", 0)
+    group = zarr.open_group(tmp_path, mode="w")
+    values = np.ones((3, 25, 7), dtype="float16")
+    src = group.create_array("src", data=values, chunks=(1, 25, 7))
+    dst = group.create_array("dst", shape=values.shape, dtype=values.dtype, chunks=(3, 24, 24))
+    charges = []
+
+    class Pacer:
+        spend = staticmethod(charges.append)
+
+    store._copy_point_variable(src, dst, tmp_path, Pacer())
+    assert sum(charges[:3]) == values.nbytes  # scratch writes
+    assert sum(charges[3:]) == values.nbytes  # destination writes
+    np.testing.assert_array_equal(dst[:], values)
