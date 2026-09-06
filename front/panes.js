@@ -1062,12 +1062,12 @@
     const gh500 = at("500", "gh"), gh1000 = at("1000", "gh");
     if (gh500 != null && gh1000 != null) {
       const dam = Math.round((gh500 - gh1000) / 10);
-      tiles.push(stat("1000–500 thickness", dam, "dam", dam <= 540 ? "#9fd0ff" : dam >= 570 ? "#ffb26b" : "#9fb0c8", `<em>${dam <= 528 ? "cold, snow" : dam <= 540 ? "snow line low" : dam >= 570 ? "warm column" : "typical"}</em>`, "Lower-half thickness; ~540 dam is the classic rain/snow line", "air"));
+      tiles.push(stat(`Thickness · ${dam <= 528 ? "cold" : dam <= 540 ? "snow line low" : dam >= 570 ? "warm column" : "typical"}`, dam, "dam", dam <= 540 ? "#9fd0ff" : dam >= 570 ? "#ffb26b" : "#9fb0c8", "", "1000–500 hPa thickness; ~540 dam is the classic rain/snow line", "air"));
     }
     const t850 = at("850", "temp"), t500 = at("500", "temp"), gh850 = at("850", "gh");
     if (t850 != null && t500 != null && gh850 != null && gh500 != null) {
       const lapse = (t850 - t500) / Math.max(0.5, (gh500 - gh850) / 1000);
-      tiles.push(stat("Lapse 850–500", lapse.toFixed(1), "°C/km", lapse >= 7.5 ? "#ff8a3d" : lapse >= 6.5 ? "#ffd166" : "#78d39a", `<em>${lapse >= 7.5 ? "unstable" : lapse >= 6.5 ? "conditional" : "stable"}</em>`, "Environmental lapse rate between 850 and 500 hPa", "air"));
+      tiles.push(stat(`Lapse · ${lapse >= 7.5 ? "unstable" : lapse >= 6.5 ? "conditional" : "stable"}`, lapse.toFixed(1), "°C/km", lapse >= 7.5 ? "#ff8a3d" : lapse >= 6.5 ? "#ffd166" : "#78d39a", "", "Environmental lapse rate between 850 and 500 hPa", "air"));
     }
     let best = null;
     for (const r of rows) { if (r.key === "sfc") continue; const w = at(r.key, "wind"); if (w != null && (!best || w > best.w)) best = { lv: r.key, w, dir: at(r.key, "wdir") }; }
