@@ -89,3 +89,45 @@ def test_without_a_key_windy_is_not_called(monkeypatch):
     calls = []
     out = webcams.near_point(49.28, -123.12, 4, get_json=lambda url, *a, **k: calls.append(url) or [], cache_get=lambda k, t, fn: fn())
     assert all("windy" not in u for u in calls) and out["providers"] == ["drivebc"]
+
+
+def test_a_dead_catalogue_is_remembered_briefly_not_for_the_catalogue_ttl():
+    # The failure path returned [] into cache_get, so one DriveBC timeout
+    # hid every BC cam for the 20-minute catalogue TTL. Now the fetch raises
+    # (nothing stored) and the empty list is remembered for FAIL_TTL_S.
+    calls, remembered, store = [], [], {}
+    def get_json(url, params, timeout):
+        calls.append(url); raise RuntimeError("read timed out")
+    def cache_get(key, ttl, fn):
+        if key in store: return store[key]
+        return fn()
+    def cache_remember(key, ttl, value):
+        remembered.append((key, ttl, value)); store[key] = value
+    assert webcams.catalogue(get_json=get_json, cache_get=cache_get, cache_remember=cache_remember) == []
+    assert webcams.catalogue(get_json=get_json, cache_get=cache_get, cache_remember=cache_remember) == []
+    assert len(calls) == len(webcams.PROVIDERS)
+    assert remembered and all(ttl == webcams.FAIL_TTL_S and value == [] for _, ttl, value in remembered)
+    assert webcams.FAIL_TTL_S < webcams.CATALOG_TTL_S
+
+
+def test_upstream_timeouts_fit_the_card_budget():
+    seen = []
+    def get_json(url, params=None, timeout=None, headers=None):
+        seen.append(timeout); return []
+    webcams.catalogue(get_json=get_json, cache_get=lambda k, t, fn: fn())
+    webcams.windy_near(49.28, -123.12, 4, key="k", get_json=lambda url, params, timeout, headers: seen.append(timeout) or {"webcams": []},
+                       cache_get=lambda k, t, fn: fn())
+    assert seen and max(seen) <= 12
+
+
+def test_windy_twins_of_a_catalogue_cam_are_dropped():
+    # Windy mirrors the DOT feeds, so a DriveBC cam came back twice: once as
+    # itself and once as "Coquihalla Summit" from windy.com 40 m away. The
+    # provider's own record wins; the mirror within WINDY_TWIN_M goes.
+    twin = _windy(1, 49.3003, -123.1002)             # ~40 m from drivebc:1
+    other = _windy(2, 49.32, -123.10)                 # 2 km away: a different cam
+    def get_json(url, params=None, timeout=None, headers=None):
+        return {"webcams": [twin, other]} if "windy" in url else [_dbc(1, -123.1, 49.3)]
+    out = webcams.near_point(49.28, -123.12, 6, get_json=get_json, cache_get=lambda k, t, fn: fn(), windy="k3y")
+    ids = [c["id"] for c in out["cams"]]
+    assert ids == ["drivebc:1", "windy:2"] and 0 < webcams.WINDY_TWIN_M <= 150

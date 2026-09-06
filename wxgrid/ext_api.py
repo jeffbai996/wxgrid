@@ -160,7 +160,7 @@ def api_normals(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., 
     """1991–2020 ERA5 daily normals for the 0.25° cell: 366 slots of high, low, mean, precip."""
     from fastapi import Response
     from wxgrid import normals
-    out = normals.normals_for(lat, lon, get_json=ext._get_json, cache_get=ext.cache.get)
+    out = normals.normals_for(lat, lon, get_json=ext._get_json, cache_get=ext.cache.get, cache_remember=ext.cache.remember)
     if out is None:
         return Response(status_code=204)
     return out
@@ -182,7 +182,7 @@ def api_webcams(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., 
                 n: int = Query(6, ge=1, le=24)):
     """Nearest public webcams to a point (DriveBC, 511 feeds), nearest first."""
     from wxgrid import webcams
-    return webcams.near_point(lat, lon, n, get_json=ext._get_json, cache_get=ext.cache.get)
+    return webcams.near_point(lat, lon, n, get_json=ext._get_json, cache_get=ext.cache.get, cache_remember=ext.cache.remember)
 
 
 @router.get("/avy/layer")

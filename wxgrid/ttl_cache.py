@@ -159,6 +159,14 @@ class _Cache:
             with self._lock:
                 self._inflight.pop(key).set()
 
+    def remember(self, key: str, ttl: float, value: Any) -> None:
+        """Store a value the caller already has, under its own TTL. The
+        negative-cache seam: a failed upstream call is remembered briefly so
+        the next request does not retry it, without the long TTL a real
+        answer would get."""
+        with self._lock:
+            self._store(key, ttl, time.time(), value)
+
     def clear(self) -> None:
         """Explicit invalidation, including persisted keys."""
         with self._lock:

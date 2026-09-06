@@ -576,6 +576,18 @@ def models_in(group: str) -> list[str]:
     return [k for k in ingest_order() if model_tier(k) == group]
 
 
+# Third-party loggers that narrate every retry: urllib3 on each broken
+# connection, multiurl with "attempt 1 of 500", ecmwf.opendata with its
+# connection-limit notice on every run. The retry budget (ecmwf_budget.py)
+# owns those decisions and logs its own outcome once.
+QUIET_LOGGERS = ("urllib3.connectionpool", "multiurl.retry", "multiurl.base", "ecmwf.opendata.utils")
+
+
+def quiet_third_party_loggers() -> None:
+    for name in QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", choices=sorted(MODELS), help="one model")
@@ -591,6 +603,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    if not args.verbose:
+        quiet_third_party_loggers()
     if args.all:
         keys = ingest_order()
     elif args.group:

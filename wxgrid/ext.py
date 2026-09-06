@@ -721,10 +721,11 @@ def nws_alerts_layer() -> dict:
 
 def _nws_point(lat: float, lon: float) -> list[dict]:
     """NWS alerts at a point, zone- and polygon-based. Outside the US the API
-    404s and we return []."""
+    404s; for a point it does not serve at all (open ocean inside the routing
+    envelope) it answers 400. Both mean "no NWS here", not an outage."""
     try:
         r = _session.get(f"{NWS}/alerts/active", params={"point": f"{lat:.4f},{lon:.4f}"}, timeout=deadline.request_timeout(20))
-        if r.status_code == 404:
+        if r.status_code in (400, 404):
             return []
         r.raise_for_status()
         deadline.remaining()

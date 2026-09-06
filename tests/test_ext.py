@@ -830,3 +830,15 @@ def test_storm_tracks_stay_continuous_across_the_dateline():
     out = ext._unwrap_lons(pts)
     assert out == [[-179.0, 37.0], [-179.8, 37.5], [-180.1, 38.0], [-180.8, 38.4], [-179.6, 39.0]]
     assert all(abs(b[0] - a[0]) < 180 for a, b in zip(out, out[1:]))
+
+
+def test_nws_point_outside_coverage_is_empty_not_an_error(monkeypatch):
+    # api.weather.gov answers 400 for a point it does not serve (open ocean
+    # inside the routing envelope); like its 404 that is "no NWS here".
+    import requests
+    class R:
+        status_code = 400
+        def raise_for_status(self): raise requests.HTTPError("400 Client Error: Bad Request")
+        def json(self): return {}
+    monkeypatch.setattr(ext._session, "get", lambda *a, **k: R())
+    assert ext._nws_point(52.0, -145.5) == []

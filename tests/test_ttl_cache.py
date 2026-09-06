@@ -92,3 +92,18 @@ def test_busy_database_does_not_fail_the_upstream_response(tmp_path):
         assert not c._inflight
     finally:
         other.rollback(); other.close(); c.close()
+
+
+def test_remember_stores_a_value_without_fetching_and_honours_its_own_ttl(tmp_path, monkeypatch):
+    # A failed upstream call is remembered for a short while under the same
+    # key, so the next card does not retry a 429 and the month-long TTL of a
+    # real answer never applies to the absence of one.
+    clock = [1000.0]
+    monkeypatch.setattr(ttl_cache.time, "time", lambda: clock[0])
+    c = _Cache(tmp_path / "c.sqlite3")
+    c.remember("normals:x", 60, None)
+    calls = []
+    assert c.get("normals:x", 3600, lambda: calls.append(1) or {"v": 1}) is None and calls == []
+    clock[0] += 61
+    assert c.get("normals:x", 3600, lambda: calls.append(1) or {"v": 1}) == {"v": 1} and calls == [1]
+    c.close()

@@ -59,3 +59,36 @@ def test_normals_for_snaps_to_the_cell_and_caches_by_it():
 def test_archive_failure_yields_none_not_an_error():
     def boom(*a, **k): raise RuntimeError("down")
     assert normals.normals_for(0, 0, get_json=boom, cache_get=lambda k, t, fn: fn()) is None
+
+
+def test_archive_failure_is_remembered_for_an_hour_not_a_month():
+    # One 429 used to be stored as "no normals" for 30 days (the failure path
+    # returned None into the same cache_get). It is now remembered under the
+    # same key for FAIL_TTL_S, and nothing is fetched again until then.
+    calls = []
+    def boom(*a, **k): calls.append(1); raise RuntimeError("429")
+    store, remembered = {}, []
+    def cache_get(key, ttl, fn):
+        if key in store: return store[key]
+        return fn()
+    def cache_remember(key, ttl, value):
+        remembered.append((key, ttl)); store[key] = value
+    assert normals.normals_for(49.28, -123.12, get_json=boom, cache_get=cache_get, cache_remember=cache_remember) is None
+    assert normals.normals_for(49.28, -123.12, get_json=boom, cache_get=cache_get, cache_remember=cache_remember) is None
+    assert len(calls) == 1 and remembered == [(f"normals:{normals.CACHE_VERSION}:49.25:-123.0", normals.FAIL_TTL_S)]
+    assert normals.FAIL_TTL_S <= 3600 < normals.CACHE_TTL_S
+
+
+def test_archive_calls_are_paced(monkeypatch):
+    # Open-Meteo's archive answers 429 to a burst (a crosshair drag asks for
+    # five cells in five seconds); consecutive requests keep a minimum gap.
+    clock = [100.0]; slept = []
+    monkeypatch.setattr(normals.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(normals.time, "sleep", lambda s: slept.append(s) or clock.__setitem__(0, clock[0] + s))
+    normals._last_call = 0.0
+    def get_json(url, params, timeout):
+        dates, t = _years(1991, 1991, lambda d: 1.0)
+        return {"daily": {"time": dates, "temperature_2m_max": t, "temperature_2m_min": t, "temperature_2m_mean": t, "precipitation_sum": t}}
+    normals.normals_for(49.0, -123.0, get_json=get_json, cache_get=lambda k, t, fn: fn())
+    normals.normals_for(50.0, -123.0, get_json=get_json, cache_get=lambda k, t, fn: fn())
+    assert slept and abs(slept[-1] - normals.MIN_GAP_S) < 1e-6

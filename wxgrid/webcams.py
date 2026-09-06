@@ -21,6 +21,16 @@ from typing import Any, Callable, Iterable
 log = logging.getLogger("wxgrid.webcams")
 
 CATALOG_TTL_S = 20 * 60
+# A provider that did not answer is remembered as empty this long, then asked
+# again. It used to be stored as a real empty catalogue for CATALOG_TTL_S.
+FAIL_TTL_S = 5 * 60
+# Fetches share the card's five-second budget with everything else on the
+# card; a provider that has not answered by now is not going to.
+FETCH_TIMEOUT_S = 12
+# Windy mirrors the DOT feeds, so a DriveBC cam came back twice. A Windy
+# record this close to a provider's own is the same camera; the provider's
+# record (live image URL, no 15-minute link expiry) wins.
+WINDY_TWIN_M = 120
 # Bump when a parser changes what it stores: the shared cache is mirrored to
 # disk and would otherwise serve the old records for a TTL after a deploy.
 CATALOG_VERSION = "v2"
@@ -122,18 +132,22 @@ def nearest(cams: Iterable[Cam], lat: float, lon: float, n: int = 6, max_km: flo
     return out
 
 
-def catalogue(*, get_json: Callable[..., Any], cache_get: Callable[..., Any]) -> list[Cam]:
+def catalogue(*, get_json: Callable[..., Any], cache_get: Callable[..., Any],
+              cache_remember: Callable[..., Any] | None = None) -> list[Cam]:
     """Every provider's cams, each list cached separately so one dead feed
     neither blocks nor evicts the others."""
     cams: list[Cam] = []
     for key, url, parse in PROVIDERS:
-        def fetch(url=url, parse=parse, key=key):
-            try:
-                return [asdict(c) for c in parse(get_json(url, None, timeout=25))]
-            except Exception as exc:              # the card just has fewer cams; the health dot notices
-                log.warning("webcam catalogue %s failed: %s", key, exc)
-                return []
-        rows = cache_get(f"webcams:{key}:{CATALOG_VERSION}", CATALOG_TTL_S, fetch) or []
+        cache_key = f"webcams:{key}:{CATALOG_VERSION}"
+        def fetch(url=url, parse=parse):
+            return [asdict(c) for c in parse(get_json(url, None, timeout=FETCH_TIMEOUT_S))]
+        try:
+            rows = cache_get(cache_key, CATALOG_TTL_S, fetch) or []
+        except Exception as exc:                  # the card just has fewer cams; the health dot notices
+            log.info("webcam catalogue %s failed: %s", key, exc)
+            if cache_remember is not None:
+                cache_remember(cache_key, FAIL_TTL_S, [])
+            rows = []
         cams.extend(Cam(**r) for r in rows)
     return cams
 
@@ -183,20 +197,28 @@ def windy_near(lat: float, lon: float, n: int, *, key: str, get_json: Callable[.
                 # no distance sort on the free tier (sortKey allows popularity/createdOn only); nearest() sorts
                 WINDY_URL, {"nearby": f"{lat:.3f},{lon:.3f},{WINDY_RADIUS_KM}", "limit": max(n * 3, 12),
                             "include": "images,location,urls"},
-                timeout=20, headers={"X-WINDY-API-KEY": key}))]
+                timeout=FETCH_TIMEOUT_S, headers={"X-WINDY-API-KEY": key}))]
         except Exception as exc:
-            log.warning("windy webcams failed: %s", exc)
+            log.info("windy webcams failed: %s", exc)
             return []
     rows = cache_get(f"webcams:windy:{cell}", WINDY_TTL_S, fetch) or []
     return [Cam(**r) for r in rows]
 
 
+def drop_windy_twins(cams: list[Cam]) -> list[Cam]:
+    """Windy records within WINDY_TWIN_M of a provider's own cam are that cam."""
+    own = [c for c in cams if c.provider != "Windy"]
+    def twin(c: Cam) -> bool:
+        return any(haversine_km(c.lat, c.lon, o.lat, o.lon) * 1000 <= WINDY_TWIN_M for o in own)
+    return own + [c for c in cams if c.provider == "Windy" and not twin(c)]
+
+
 def near_point(lat: float, lon: float, n: int, *, get_json: Callable[..., Any], cache_get: Callable[..., Any],
-               windy: str | None = None) -> dict:
-    cams = list(catalogue(get_json=get_json, cache_get=cache_get))
+               windy: str | None = None, cache_remember: Callable[..., Any] | None = None) -> dict:
+    cams = list(catalogue(get_json=get_json, cache_get=cache_get, cache_remember=cache_remember))
     providers = [p[0] for p in PROVIDERS]
     key = windy if windy is not None else windy_key()
     if key:
-        cams.extend(windy_near(lat, lon, n, key=key, get_json=get_json, cache_get=cache_get))
+        cams = drop_windy_twins(cams + windy_near(lat, lon, n, key=key, get_json=get_json, cache_get=cache_get))
         providers.append("windy")
     return {"cams": nearest(cams, lat, lon, n=n), "providers": providers}

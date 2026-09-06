@@ -14,6 +14,8 @@ leap and common years and wraps across New Year.
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from datetime import date
 from typing import Any, Callable
 
@@ -23,7 +25,16 @@ ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 PERIOD = ("1991-01-01", "2020-12-31")
 WINDOW_DAYS = 7
 CACHE_TTL_S = 30 * 24 * 3600
+# A failed archive call (429, timeout) is remembered this long under the
+# cell's key. It used to be stored as a real "no normals" answer for the
+# full 30 days, so one throttled burst blanked a cell for a month.
+FAIL_TTL_S = 3600
+# The archive answers 429 to bursts: a crosshair drag asks for five cells in
+# five seconds. One request at a time, this far apart.
+MIN_GAP_S = 1.5
 CACHE_VERSION = "v1"
+_pace_lock = threading.Lock()
+_last_call = 0.0
 _CUM = (0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335)   # leap-calendar month starts
 
 
@@ -57,26 +68,39 @@ def normals_from_daily(dates: list[str], tmax: list, tmin: list, tmean: list, pr
     return out
 
 
-def normals_for(lat: float, lon: float, *, get_json: Callable[..., Any], cache_get: Callable[..., Any]) -> dict | None:
+def _pace() -> None:
+    global _last_call
+    with _pace_lock:
+        wait = MIN_GAP_S - (time.monotonic() - _last_call)
+        if wait > 0:
+            time.sleep(wait)
+        _last_call = time.monotonic()
+
+
+def normals_for(lat: float, lon: float, *, get_json: Callable[..., Any], cache_get: Callable[..., Any],
+                cache_remember: Callable[..., Any] | None = None) -> dict | None:
     """The table for the 0.25° cell around a point, from the shared cache;
     None when the archive did not answer (the card simply says nothing)."""
     clat, clon = round(round(lat * 4) / 4, 2), round(round(lon * 4) / 4, 2)
     key = f"normals:{CACHE_VERSION}:{clat}:{clon}"
 
     def fetch():
-        try:
-            r = get_json(ARCHIVE_URL, {
-                "latitude": clat, "longitude": clon, "start_date": PERIOD[0], "end_date": PERIOD[1],
-                "daily": "temperature_2m_max,temperature_2m_min,temperature_2m_mean,precipitation_sum", "timezone": "UTC",
-            }, timeout=60)
-            d = r.get("daily") or {}
-            if not d.get("time"):
-                return None
-            out = normals_from_daily(d["time"], d.get("temperature_2m_max") or [], d.get("temperature_2m_min") or [],
-                                     d.get("temperature_2m_mean") or [], d.get("precipitation_sum") or [])
-            out["lat"], out["lon"], out["source"] = clat, clon, "ERA5 via Open-Meteo, CC BY 4.0"
-            return out
-        except Exception as exc:                  # a card without the line is the whole failure mode
-            log.warning("normals fetch failed for %s,%s: %s", clat, clon, exc)
+        _pace()
+        r = get_json(ARCHIVE_URL, {
+            "latitude": clat, "longitude": clon, "start_date": PERIOD[0], "end_date": PERIOD[1],
+            "daily": "temperature_2m_max,temperature_2m_min,temperature_2m_mean,precipitation_sum", "timezone": "UTC",
+        }, timeout=30)
+        d = r.get("daily") or {}
+        if not d.get("time"):
             return None
-    return cache_get(key, CACHE_TTL_S, fetch)
+        out = normals_from_daily(d["time"], d.get("temperature_2m_max") or [], d.get("temperature_2m_min") or [],
+                                 d.get("temperature_2m_mean") or [], d.get("precipitation_sum") or [])
+        out["lat"], out["lon"], out["source"] = clat, clon, "ERA5 via Open-Meteo, CC BY 4.0"
+        return out
+    try:
+        return cache_get(key, CACHE_TTL_S, fetch)
+    except Exception as exc:                      # a card without the line is the whole failure mode
+        log.info("normals fetch failed for %s,%s: %s", clat, clon, exc)
+        if cache_remember is not None:
+            cache_remember(key, FAIL_TTL_S, None)
+        return None
