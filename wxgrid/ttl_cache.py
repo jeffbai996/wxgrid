@@ -15,6 +15,8 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Callable
 
+from wxgrid import deadline
+
 log = logging.getLogger("wxgrid.ext")
 _MISSING = object()
 
@@ -129,6 +131,7 @@ class _Cache:
 
     def get(self, key: str, ttl: float, fn: Callable[[], Any]) -> Any:
         while True:
+            deadline.remaining()
             with self._lock:
                 hit = self._lookup(key, ttl, time.time())
                 if hit is not _MISSING:
@@ -137,9 +140,11 @@ class _Cache:
                 if waiter is None:
                     self._inflight[key] = threading.Event()
                     break
-            waiter.wait(timeout=30)
+            waiter.wait(timeout=deadline.remaining())
         try:
+            deadline.remaining()
             value = fn()
+            deadline.remaining()  # Never persist an expired/partial fill.
             with self._lock:
                 # TTL starts when the upstream answers, not before its wait.
                 self._store(key, ttl, time.time(), value)

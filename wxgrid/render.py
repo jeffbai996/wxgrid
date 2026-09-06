@@ -658,10 +658,9 @@ def field_range(layer: str, level: int | None = None) -> tuple[float, float]:
 
 
 # Field frames: lossless WebP where the client takes it, PNG otherwise. At
-# the grid's native size (1440x721) lossless WebP method 4 is ~30 % smaller
-# than PNG for ~0.5 s of encode against 0.2 s (measured 2026-09-02); the
-# ingest pre-encodes the common layers so a visit rarely pays it. The bytes
-# decode identically — the mask channel check in field.js still applies.
+# the grid's native size. The low-effort preset trades a little compression
+# for less CPU, never value precision. The ingest pre-encodes common layers;
+# decoded RGB (including the validity mask) is identical in either format.
 FIELD_FORMATS = {"png": "image/png", "webp": "image/webp"}
 
 
@@ -683,16 +682,27 @@ def encode_field(field_display: np.ndarray, layer: str, level: int | None = None
     good = np.isfinite(x)
     # nearest multiple of `step` on the full 16-bit scale, so the decoder's
     # q/65535 stays exact and the dropped bits are zero
-    q = np.rint((np.where(good, x, lo) - lo) / (hi - lo) * (65535.0 / step)) * step
-    q = np.clip(np.nan_to_num(q), 0, 65535 - 65535 % step).astype(np.uint16)
-    q[~good] = 0
+    # One owned float scratch buffer. Preserve the float32 operation order
+    # (and thus rounding) without chains of full-grid temporaries.
+    q = np.where(good, x, lo)
+    np.subtract(q, lo, out=q)
+    np.divide(q, hi - lo, out=q)
+    np.multiply(q, 65535.0 / step, out=q)
+    np.rint(q, out=q)
+    np.multiply(q, step, out=q)
+    np.nan_to_num(q, copy=False)
+    np.clip(q, 0, 65535 - 65535 % step, out=q)
+    codes = q.astype(np.uint16)
+    del q
+    codes[~good] = 0
     rgb = np.empty(x.shape + (3,), dtype=np.uint8)
-    rgb[..., 0] = q >> 8
-    rgb[..., 1] = q & 255
-    rgb[..., 2] = np.where(good, 255, 0).astype(np.uint8)
+    np.right_shift(codes, 8, out=rgb[..., 0], casting="unsafe")
+    np.bitwise_and(codes, 255, out=rgb[..., 1], casting="unsafe")
+    np.multiply(good, 255, out=rgb[..., 2], casting="unsafe")
+    del codes, good
     buf = io.BytesIO()
     if fmt == "webp":
-        Image.fromarray(rgb, "RGB").save(buf, format="WEBP", lossless=True, quality=100, method=4)
+        Image.fromarray(rgb, "RGB").save(buf, format="WEBP", lossless=True, quality=75, method=1)
     else:
         Image.fromarray(rgb, "RGB").save(buf, format="PNG", optimize=False, compress_level=6)
     return buf.getvalue()

@@ -6,6 +6,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=%h/local-projects/wxgrid
+# Match the API's bounded native pools and release completed scratch buffers.
+Environment=OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 BLOSC_NTHREADS=1
+Environment=MALLOC_ARENA_MAX=2 MALLOC_TRIM_THRESHOLD_=65536 MALLOC_MMAP_THRESHOLD_=65536
 ExecStart=%h/local-projects/wxgrid/venv/bin/python -m wxgrid.cams --refresh
 # One step at a time: peak is a ~14 MB GRIB on disk and a handful of 4 MB
 # float32 grids in memory, so this fits well inside the cap even while the

@@ -568,7 +568,8 @@
       const r = await WX.api(U(`${API}/alerts/ec?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}`));
       const hit = (r.alerts || [])[0];
       if (hit) openAlertCard(e.lngLat, hit, hit);
-    } catch (err) { /* nothing painted there, or GeoMet is having a day */ }
+      if (r.unavailable && r.unavailable.length) WX.fn.toast("Environment Canada alerts unavailable · check the official warning service", 6000, "error");
+    } catch (err) { WX.fn.toast("Environment Canada alerts unavailable", 5000, "error"); }
   }
 
   async function loadAlerts() {

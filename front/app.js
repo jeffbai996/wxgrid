@@ -2104,7 +2104,7 @@
     const got = {
       point: gotPoint, local: gotLocal,
       obs: (r) => { state.point.obs = r; renderSoon(); },
-      alerts: (r) => { state.point.alerts = r.alerts || []; renderSoon(); },
+      alerts: (r) => { state.point.alerts = r.alerts || []; state.point.alertStatus = r; renderSoon(); },
       air: (r) => { state.point.air = r; renderSoon(); },
       tides: (r) => { state.point.tides = r || false; renderSoon(); },
       prob: (r) => { if (r) { state.point.prob = r; renderSoon(); } },
@@ -2147,7 +2147,8 @@
             if (seen.has(kind)) continue;
             WX.api(`${base}?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`)
               .then((r) => { if (my === pointReq) got[kind](r); })
-              .catch(() => { if (my === pointReq && kind === "tides") got.tides(false); });
+              .catch(() => { if (my !== pointReq) return; if (kind === "tides") got.tides(false);
+                if (kind === "alerts") got.alerts({ alerts: [], complete: false, unavailable: ["Alert service"] }); });
           }
           return;
         }
@@ -2161,7 +2162,8 @@
     // local context arrives lazily and re-renders as it lands
     WX.api(`${API}/geo/reverse?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) gotLocal(r); }).catch(() => {});
     WX.api(`${API}/obs?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.obs(r); }).catch(() => {});
-    WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.alerts(r); }).catch(() => {});
+    WX.api(`${API}/alerts/point?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.alerts(r); })
+      .catch(() => { if (my === pointReq) got.alerts({ alerts: [], complete: false, unavailable: ["Alert service"] }); });
     WX.api(`${API}/air?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.air(r); }).catch(() => {});
     WX.api(`${API}/tides?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.tides(r); }).catch(() => { if (my === pointReq) got.tides(false); });
     WX.api(`${API}/prob?lat=${lat.toFixed(3)}&lon=${wlon(lon).toFixed(3)}`).then((r) => { if (my === pointReq) got.prob(r); }).catch(() => {});

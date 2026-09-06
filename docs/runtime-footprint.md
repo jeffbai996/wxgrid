@@ -37,3 +37,66 @@ retained 99.8 MiB (251.4 MiB peak). Initial catalog construction fell from
 1.7296 s to 0.0066 s. Catalog and image SHA-256 values matched. These are
 isolated process measurements, not promises about total service memory under
 all combinations of requests.
+
+## Follow-up: bounded alerts, background workers, encoding and browser storage
+
+Point-alert HTTP responses have a 5 s work budget plus 250 ms boundary grace,
+including the existing card pool's queue. Cooperative budgets also cover
+cache single-flight waits and network operations. No new resident pool is
+added. Relevant providers are selected by conservative geographic envelopes;
+official point queries/polygons still decide actual applicability. Overlapping
+providers share the remaining budget. Unsupported points and failed/partial
+providers have explicit status; empty failures are not cached as successful
+all-clears. Real warnings survive a failed detail lookup. A cold/missing
+geometry index is incomplete, not evidence that there is no warning.
+
+Socket deadlines cannot forcibly interrupt DNS or a peer dribbling bytes.
+The async HTTP boundary returns independently; running work expires
+cooperatively. At most two standalone alert jobs may be queued/running in
+the existing card pool, including jobs whose HTTP client has already left.
+Admission stays held until a worker actually exits; an expired queued job
+does no upstream IO. Further fallbacks return unavailable without enqueueing.
+The card stream continues to cancel its own queued context jobs on close.
+MeteoAlarm retains the single-flight
+until its existing eight temporary feed workers finish, so timed-out callers
+cannot stack replacement pools. Successful country feeds survive partial
+refreshes on disk inside the same byte-bounded cache. No extra geodata set
+or dependency is introduced. The cold geometry-index writer also has its
+previously missing UUID import restored.
+
+The global, regional, ensemble, aerosol and Pages units now carry the same
+native-thread/allocator limits as the API. Existing memory caps, CPU/IO
+weights, write pacing, memory gates, timers and run retention are unchanged.
+Apply via systemd drop-ins and daemon-reload; a running ingest adopts the
+settings on its next invocation, not by interrupting current work.
+
+`scripts/profile_background.py` exercises three GFS-grid steps, two variables,
+normal quantization/compression and point-cube construction in a disposable
+store. Under the same 1 GiB/one-core scope, the prior environment measured
+7.667 s, 134.9 MiB peak and 109.3 MiB retained; the bounded environment measured
+8.556 s, 94.2 MiB peak and 59.3 MiB retained. Both produced exactly 23,403,871
+stored bytes and identical data hashes. This is a bounded processing sample,
+not a measurement of a full ingest's peak or duration.
+
+The field encoder uses one owned float32 scratch buffer with unchanged
+operation order, quantization, ranges and validity mask. Lossless WebP uses
+method 1 / quality 75 (compression effort, not lossy quality). Existing field
+URLs remain valid: decoded data has not changed, so old rendered files are
+reused rather than regenerated. `scripts/profile_field_encoder.py` compares
+against a specified Git revision without writing to the model/render store.
+Against 0163bd52, fresh processes encoding HRRR 2026-09-06T00 wind measured
+2.6232 s / 256.9 MiB peak before and 1.5358 s / 245.1 MiB after. Retained RSS
+was 122.4 / 121.3 MiB; WebP bytes increased 0.50%. All 21 real wind/feels/RH
+comparisons across AIFS, AIGFS, GEM, GFS, IFS, HRRR and HRDPS had identical
+decoded pixels. File sizes increased 0.06–2.11%. Unit tests also compare legacy
+RGB for every layer, pressure-level samples, missing and clipped values.
+
+Browser shell versions no longer invalidate weather/basemap caches. Their
+independent schema versions retain the existing 220/400 entry ceilings and
+expired-run pruning. Activation moves only the newest legacy cache, one entry
+at a time; older browser cache generations are removed. API fallback data is
+capped at 128 entries (an entry-count limit, not a byte quota). The old
+unbounded API-data cache is not migrated. Card streams, current point alerts
+and health responses bypass offline fallback; no-store/NDJSON responses are
+not cached. Ordinary cached API documents retain the existing offline/stale
+notification behavior.

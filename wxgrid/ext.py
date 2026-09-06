@@ -21,9 +21,12 @@ import math
 import re
 import threading
 import time
+import uuid
 from typing import Any, Callable
 
 import requests
+
+from wxgrid import deadline
 
 log = logging.getLogger("wxgrid.ext")
 UA = "wxgrid/0.2 (+https://github.com/jeffbai996/wxgrid)"
@@ -58,8 +61,9 @@ def _mark(url: str, ok: bool, error: str = "") -> None:
 
 def _get_json(url: str, params: dict | None = None, timeout: int = 20, headers: dict | None = None) -> Any:
     try:
-        r = _session.get(url, params=params, timeout=timeout, headers=headers)
+        r = _session.get(url, params=params, timeout=deadline.request_timeout(timeout), headers=headers)
         r.raise_for_status()
+        deadline.remaining()
     except Exception as exc:
         _mark(url, False, str(exc))
         raise
@@ -74,8 +78,9 @@ def _get_json(url: str, params: dict | None = None, timeout: int = 20, headers: 
 
 def _get_text(url: str, timeout: int = 20) -> str:
     try:
-        r = _session.get(url, timeout=timeout)
+        r = _session.get(url, timeout=deadline.request_timeout(timeout))
         r.raise_for_status()
+        deadline.remaining()
     except Exception as exc:
         _mark(url, False, str(exc))
         raise
@@ -701,11 +706,16 @@ def _nws_point(lat: float, lon: float) -> list[dict]:
     """NWS alerts at a point, zone- and polygon-based. Outside the US the API
     404s and we return []."""
     try:
-        r = _session.get(f"{NWS}/alerts/active", params={"point": f"{lat:.4f},{lon:.4f}"}, timeout=20)
-        if r.status_code != 200:
+        r = _session.get(f"{NWS}/alerts/active", params={"point": f"{lat:.4f},{lon:.4f}"}, timeout=deadline.request_timeout(20))
+        if r.status_code == 404:
             return []
+        r.raise_for_status()
+        deadline.remaining()
         out = []
-        for f in r.json().get("features", []):
+        document = r.json()
+        if not isinstance(document.get("features"), list):
+            raise ValueError("invalid NWS alert response")
+        for f in document["features"]:
             p = f.get("properties", {})
             sev = _SEV.get(p.get("severity"), 0)
             out.append({"id": p.get("id"), "event": p.get("event"), "severity": p.get("severity"), "sev": sev, "color": _SEV_COLOR[sev],
@@ -720,7 +730,7 @@ def _nws_point(lat: float, lon: float) -> list[dict]:
         return out
     except Exception as exc:
         log.info("nws point alerts: %s", exc)
-        return []
+        raise
 
 
 # ── region-code → geometry indexes ───────────────────────────────────────
@@ -897,6 +907,8 @@ def _ma_parse(xml: str) -> list[dict]:
     import xml.etree.ElementTree as ET
     from datetime import datetime, timezone
     root = ET.fromstring(xml)
+    if _tag(root) != "feed":
+        raise ValueError("invalid MeteoAlarm feed")
     now = datetime.now(timezone.utc)
     seen: dict[tuple, dict] = {}
     for e in _kids(root, "entry"):
@@ -943,33 +955,57 @@ def _ma_parse(xml: str) -> list[dict]:
     return list(seen.values())
 
 
+class _PartialAlerts(Exception):
+    """Usable warnings plus an incomplete provider, never a cacheable all-clear."""
+    def __init__(self, data):
+        super().__init__("alert provider incomplete")
+        self.data = data
+
+
 def _ma_warnings() -> list[dict]:
     """Live European warnings from all 39 national feeds, fetched in parallel
     (~5 MB upstream, one country per request, failures skipped). Cached 10 min.
     Geometry is the CAP polygon where the service publishes one (Norway,
     Sweden, the UK) and the EMMA_ID region otherwise."""
     def fetch():
-        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        end = deadline.expires()
         def one(slug: str) -> list[dict]:
-            try:
-                r = _session.get(MA_ATOM.format(slug), timeout=30)
-                r.raise_for_status()
-                return _ma_parse(r.text)
-            except Exception as exc:
-                log.info("meteoalarm %s: %s", slug, exc)
-                return []
+            with deadline.budget(30, until=end):
+                # Completed countries survive a partial refresh. Failed ones
+                # retry on the next lookup without refetching all 39 feeds.
+                return cache.get(f"alerts:ma-country-v1:{slug}", 600,
+                                 lambda: _ma_parse(_get_text(MA_ATOM.format(slug), timeout=30)))
         out: list[dict] = []
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            for got in pool.map(one, MA_COUNTRIES):
-                out.extend(got)
+        incomplete = False
+        pool = ThreadPoolExecutor(max_workers=8)
+        futures = [pool.submit(one, slug) for slug in MA_COUNTRIES]
+        try:
+            for fut in as_completed(futures, timeout=deadline.remaining(240)):
+                try:
+                    out.extend(fut.result())
+                except Exception as exc:
+                    incomplete = True
+                    log.info("meteoalarm feed: %s", exc)
+        except TimeoutError:
+            incomplete = True
+        finally:
+            for fut in futures:
+                fut.cancel()
+            # Keep the single-flight held until these eight workers finish:
+            # repeated timed-out clients must not stack replacement pools.
+            # The HTTP boundary returns independently on its wall deadline.
+            pool.shutdown(wait=True, cancel_futures=True)
         regions = _emma_regions()
         for w in out:
             if not w["geometry"] and w["code"]:
                 w["geometry"] = regions.get(w["code"])
             w.pop("_sent", None)
         out.sort(key=lambda w: -w["sev"])
+        if incomplete or len(out) > 1200:
+            raise _PartialAlerts(out[:1200])
         return out[:1200]
-    return cache.get("alerts:meteoalarm", 600, fetch)
+    return cache.get("alerts:meteoalarm-v2", 600, fetch)
 
 
 def _ma_detail(url: str) -> dict:
@@ -979,19 +1015,20 @@ def _ma_detail(url: str) -> dict:
     def fetch():
         import xml.etree.ElementTree as ET
         try:
-            r = _session.get(url, timeout=20)
+            r = _session.get(url, timeout=deadline.request_timeout(20))
             r.raise_for_status()
+            deadline.remaining()
             root = ET.fromstring(r.text)
         except Exception as exc:
             log.info("meteoalarm cap %s: %s", url, exc)
-            return {}
+            raise
         infos = _kids(root, "info")
         info = next((i for i in infos if _txt(i, "language", "").lower().startswith("en")), infos[0] if infos else None)
         if info is None:
             return {}
         return {"sender": _txt(info, "senderName") or None, "description": _txt(info, "description")[:900],
                 "instruction": _txt(info, "instruction")[:400], "web": _txt(info, "web") or url}
-    return cache.get(f"alerts:ma:cap:{url}", 900, fetch)
+    return cache.get(f"alerts:ma:cap-v2:{url}", 900, fetch)
 
 
 # ── alerts (BoM, Australia) ──────────────────────────────────────────────
@@ -1136,24 +1173,37 @@ def _bom_cap_files() -> dict[str, str]:
         import ftplib
         out: dict[str, str] = {}
         try:
-            ftp = ftplib.FTP(BOM_FTP_HOST, timeout=45)
+            ftp = ftplib.FTP(BOM_FTP_HOST, timeout=deadline.request_timeout(45))
             try:
+                def check():
+                    timeout = deadline.request_timeout(45)
+                    ftp.timeout = timeout
+                    if ftp.sock:
+                        ftp.sock.settimeout(timeout)
+                check()
                 ftp.login()
+                check()
                 ftp.cwd(BOM_CAP_DIR)
+                check()
                 names = sorted({n.rsplit("/", 1)[-1] for n in ftp.nlst() if n.endswith(".cap.xml")})
                 for name in names[:80]:
+                    check()
                     buf = bytearray()
-                    ftp.retrbinary(f"RETR {name}", buf.extend)
+                    def receive(chunk):
+                        deadline.remaining()
+                        buf.extend(chunk)
+                    ftp.retrbinary(f"RETR {name}", receive)
                     out[name] = buf.decode("utf-8", "replace")
+                if len(names) > 80:
+                    raise _PartialAlerts(out)
             finally:
-                try:
-                    ftp.quit()
-                except Exception:
-                    ftp.close()
+                # QUIT is another network round trip, including on failure.
+                ftp.close()
         except Exception as exc:
             log.warning("bom ftp failed: %s", exc)
+            raise _PartialAlerts(out) from exc
         return out
-    return cache.get("alerts:bom:cap", 600, fetch)
+    return cache.get("alerts:bom:cap-v2", 600, fetch)
 
 
 def _bom_warnings() -> list[dict]:
@@ -1161,8 +1211,14 @@ def _bom_warnings() -> list[dict]:
     Land and marine warnings get a shape from the district index; river-flood
     warnings, whose catchments we don't carry, come back without one."""
     def fetch():
-        files = _bom_cap_files()
+        incomplete = False
+        try:
+            files = _bom_cap_files()
+        except _PartialAlerts as exc:
+            files, incomplete = exc.data, True
         if not files:
+            if incomplete:
+                raise _PartialAlerts([])
             return []
         regions = _bom_regions()
         out = []
@@ -1171,12 +1227,15 @@ def _bom_warnings() -> list[dict]:
                 w = _bom_parse(xml, regions)
             except Exception as exc:
                 log.info("bom cap %s: %s", name, exc)
+                incomplete = True
                 continue
             if w:
                 out.append(w)
         out.sort(key=lambda w: -w["sev"])
+        if incomplete:
+            raise _PartialAlerts(out)
         return out
-    return cache.get("alerts:bom", 600, fetch)
+    return cache.get("alerts:bom-v2", 600, fetch)
 
 
 # ── alerts (Environment Canada, GeoMet) ──────────────────────────────────
@@ -1215,7 +1274,7 @@ def ec_alerts_point(lat: float, lon: float) -> list[dict]:
     ~1 km cell; outside Canada it never leaves the process."""
     if not (EC_BBOX[0] <= lon <= EC_BBOX[2] and EC_BBOX[1] <= lat <= EC_BBOX[3]):
         return []
-    key = f"alerts:ec:{lat:.2f}:{lon:.2f}"
+    key = f"alerts:ec-v2:{lat:.2f}:{lon:.2f}"
 
     def fetch():
         x, y = _webmerc(lat, lon)
@@ -1229,9 +1288,11 @@ def ec_alerts_point(lat: float, lon: float) -> list[dict]:
                 "INFO_FORMAT": "application/json", "FEATURE_COUNT": 5}, timeout=20)
         except Exception as exc:                                   # noqa: BLE001
             log.info("geomet alerts %.2f,%.2f: %s", lat, lon, exc)
-            return []
+            raise
         out = []
-        for f in (j or {}).get("features", []):
+        if not isinstance(j, dict) or not isinstance(j.get("features"), list):
+            raise ValueError("invalid GeoMet alert response")
+        for f in j["features"]:
             p = f.get("properties") or {}
             if p.get("display_status") not in (None, "", "visible"):
                 continue
@@ -1274,6 +1335,8 @@ def alerts_layer() -> dict:
     for name, source in (("meteoalarm", _ma_warnings), ("bom", _bom_warnings)):
         try:
             feats.extend(_features(source()))
+        except _PartialAlerts as exc:
+            feats.extend(_features(exc.data))
         except Exception as exc:
             log.warning("%s alerts layer failed: %s", name, exc)
     return {"type": "FeatureCollection", "features": feats}
@@ -1288,32 +1351,110 @@ def _bbox_hit(lon: float, lat: float, geom: dict) -> bool:
     return bool(xs) and min(xs) <= lon <= max(xs) and min(ys) <= lat <= max(ys)
 
 
-def alerts_point(lat: float, lon: float) -> list[dict]:
-    """Alerts in force at a point. The NWS and GeoMet answer point queries
-    themselves; for MeteoAlarm and BoM we test the point against the polygons
-    we already hold, which costs nothing extra upstream. A MeteoAlarm hit then
-    pulls its CAP message for the text the Atom summary doesn't carry."""
-    key = f"alerts:pt-v3:{lat:.2f}:{lon:.2f}"
+ALERT_BUDGET = 5.0
+
+
+def alert_sources(lat: float, lon: float) -> list[str]:
+    """Conservative routing envelopes, NOT a promise of warning coverage.
+
+    Overlaps are intentional: official point queries/region polygons decide
+    applicability. Include islands, Alaska across the dateline and US Pacific
+    territories; don't spend a Canadian point's budget fetching Europe/AU.
+    """
+    def inside(w, s, e, n):
+        return w <= lon <= e and s <= lat <= n
+    sources = []
+    if inside(*EC_BBOX):
+        sources.append("Environment Canada")
+    nws_boxes = ((-125, 24, -95, 49.05), (-95, 24, -66, 50), (-97, 48, -94, 50),
+                 (-180, 50, -129, 72), (170, 50, 180, 72),
+                 (-180, -16, -150, 30), (-69, 17, -64, 20),
+                 (130, 0, 170, 25))
+    if any(inside(*box) for box in nws_boxes):
+        sources.append("NWS")
+    if inside(-32, 27, 61, 84):
+        sources.append("MeteoAlarm")
+    if inside(90, -60, 170, 0) or inside(45, -90, 170, -60):
+        sources.append("BoM")
+    return sources
+
+
+def alerts_unavailable(lat: float, lon: float, *, only: str | None = None) -> dict:
+    sources = alert_sources(lat, lon)
+    if only:
+        sources = [s for s in sources if s == only]
+    return {"alerts": [], "sources": sources, "unavailable": sources, "complete": False}
+
+
+def alerts_point_status(lat: float, lon: float, *, until: float | None = None, only: str | None = None) -> dict:
+    """Five-second total budget; failed/incomplete providers never mean clear.
+
+    Successful provider data remains cached; a partial point result does not.
+    No new permanent workers or whole-country geometry data is retained.
+    """
+    sources = alert_sources(lat, lon)
+    if only:
+        sources = [s for s in sources if s == only]
     def fetch():
-        out = _nws_point(lat, lon)
-        out.extend(ec_alerts_point(lat, lon))
-        for name, source in (("meteoalarm", _ma_warnings), ("bom", _bom_warnings)):
+        out, unavailable = [], []
+        def collect(name):
+            if name == "Environment Canada":
+                out.extend(ec_alerts_point(lat, lon))
+                return
+            if name == "NWS":
+                out.extend(cache.get(f"alerts:nws-v2:{lat:.2f}:{lon:.2f}", 300,
+                                     lambda: _nws_point(lat, lon)))
+                return
             try:
-                for w in source():
-                    geom = w.get("geometry")
-                    if not geom or not _bbox_hit(lon, lat, geom) or not _in_geom(lon, lat, geom):
-                        continue
-                    hit = {k: w.get(k) for k in (*_LAYER_KEYS, "description", "instruction", "url")}
-                    if w["source"] == "MeteoAlarm" and w.get("url"):
+                warnings = (_ma_warnings if name == "MeteoAlarm" else _bom_warnings)()
+            except _PartialAlerts as exc:
+                warnings = exc.data
+                unavailable.append(name)
+            for w in warnings:
+                geom = w.get("geometry")
+                if not geom:
+                    # A missing/cold index or unmodelled catchment cannot
+                    # establish whether this warning misses the point.
+                    unavailable.append(name)
+                    continue
+                if not _bbox_hit(lon, lat, geom) or not _in_geom(lon, lat, geom):
+                    continue
+                hit = {k: w.get(k) for k in (*_LAYER_KEYS, "description", "instruction", "url")}
+                out.append(hit)  # Keep the warning even if its prose fails.
+                if w["source"] == "MeteoAlarm" and w.get("url"):
+                    try:
                         detail = _ma_detail(w["url"])
                         hit.update({k: v for k, v in detail.items() if k != "web"})
                         hit["url"] = detail.get("web") or w["url"]
-                    out.append(hit)
+                    except Exception:
+                        unavailable.append(name)
+        for i, name in enumerate(sources):
+            try:
+                # Boundary overlaps must not let a slow first provider use
+                # every second intended for the other relevant provider.
+                with deadline.budget(deadline.remaining() / (len(sources) - i)):
+                    collect(name)
             except Exception as exc:
+                unavailable.append(name)
                 log.warning("%s point alerts failed: %s", name, exc)
         out.sort(key=lambda a: -(a["sev"] or 0))
-        return out
-    return cache.get(key, 300, fetch)
+        result = {"alerts": out, "sources": sources, "unavailable": sorted(set(unavailable)),
+                  "complete": bool(sources) and not unavailable}
+        if unavailable:
+            raise _PartialAlerts(result)
+        return result
+    with deadline.budget(ALERT_BUDGET, until=until):
+        try:
+            return cache.get(f"alerts:pt-v4:{only or 'all'}:{lat:.2f}:{lon:.2f}", 300, fetch)
+        except _PartialAlerts as exc:
+            return exc.data
+        except TimeoutError:
+            return alerts_unavailable(lat, lon, only=only)
+
+
+def alerts_point(lat: float, lon: float) -> list[dict]:
+    """Compatibility for internal consumers; HTTP/cards use the status too."""
+    return alerts_point_status(lat, lon)["alerts"]
 
 
 def alert_detail(aid: str, source: str = "") -> dict | None:

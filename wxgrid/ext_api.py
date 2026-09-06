@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import json
+import asyncio
+import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, HTTPException, Query
-from starlette.responses import StreamingResponse
+from starlette.responses import StreamingResponse, JSONResponse
 
 from wxgrid import ext, liveness
 
@@ -14,6 +17,9 @@ router = APIRouter(prefix="/api")
 # The card's context calls all wait on other people's servers; keep them off
 # the event loop and off each other's backs.
 _card_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="card")
+# Standalone fallbacks may occupy at most two slots, including abandoned
+# requests. A stalled native call must not grow an unbounded executor queue.
+_alert_slots = threading.BoundedSemaphore(2)
 
 
 @router.get("/card")
@@ -44,11 +50,12 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
 
     def gen():
         yield line("point", lambda: point_series(lat=lat, lon=lon, model=model, run=run))
+        alert_end = time.monotonic() + ext.ALERT_BUDGET
         jobs = {
             "local": lambda: {"place": ext.reverse(lat, lon), "elevation_m": ext.elevation(lat, lon),
                               "timezone": ext.timezone(lat, lon)},
             "obs": lambda: (lambda m: {"metar": m, "taf": ext.taf(m["station"]) if m else None})(ext.nearest_metar(lat, lon)),
-            "alerts": lambda: {"alerts": ext.alerts_point(lat, lon)},
+            "alerts": lambda: ext.alerts_point_status(lat, lon, until=alert_end),
             "air": lambda: ext.air(lat, lon),
             "tides": lambda: ext.tides(lat, lon),
             "prob": lambda: _prob(lat, lon),
@@ -198,9 +205,41 @@ def api_alerts_layer():
     return ext.alerts_layer()
 
 
+async def _point_alert_response(lat: float, lon: float, *, only: str | None = None):
+    # Reuse the card pool, not another resident pool. The deadline includes
+    # its queue and DNS/read stalls. Admission remains held until the worker
+    # exits, even if HTTP has returned; expired queued jobs do no upstream IO.
+    end = time.monotonic() + ext.ALERT_BUDGET
+    slots = _alert_slots
+    if not slots.acquire(blocking=False):
+        return JSONResponse(ext.alerts_unavailable(lat, lon, only=only), headers={"Cache-Control": "no-store"})
+
+    def work():
+        try:
+            return ext.alerts_point_status(lat, lon, until=end, only=only)
+        except Exception as exc:
+            ext.log.info("point alert worker: %s", exc)
+            return ext.alerts_unavailable(lat, lon, only=only)
+        finally:
+            slots.release()
+
+    try:
+        job = asyncio.get_running_loop().run_in_executor(_card_pool, work)
+    except Exception:
+        slots.release()
+        raise
+    try:
+        result = await asyncio.wait_for(asyncio.shield(job), timeout=ext.ALERT_BUDGET + 0.25)
+    except Exception as exc:
+        # Preserve a structured unknown state even for unexpected proxy errors.
+        ext.log.info("point alert boundary: %s", exc)
+        result = ext.alerts_unavailable(lat, lon, only=only)
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
 @router.get("/alerts/point")
-def api_alerts_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
-    return {"alerts": ext.alerts_point(lat, lon)}
+async def api_alerts_point(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
+    return await _point_alert_response(lat, lon)
 
 
 @router.get("/alerts/detail")
@@ -214,10 +253,10 @@ def api_alert_detail(id: str = Query(..., min_length=3, max_length=200), source:
 
 
 @router.get("/alerts/ec")
-def api_alerts_ec(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
+async def api_alerts_ec(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
     """Environment Canada alerts under a point. The EC layer is a raster, so a
     tap on it has no feature to read: this asks GeoMet what it painted there."""
-    return {"alerts": ext.ec_alerts_point(lat, lon)}
+    return await _point_alert_response(lat, lon, only="Environment Canada")
 
 
 @router.get("/storms")

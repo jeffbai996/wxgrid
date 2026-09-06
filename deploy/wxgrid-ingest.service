@@ -4,6 +4,9 @@ Description=wxgrid — fetch the deterministic global models into the store
 [Service]
 Type=oneshot
 WorkingDirectory=%h/local-projects/wxgrid
+# Match the API's bounded native pools and release completed scratch buffers.
+Environment=OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 BLOSC_NTHREADS=1
+Environment=MALLOC_ARENA_MAX=2 MALLOC_TRIM_THRESHOLD_=65536 MALLOC_MMAP_THRESHOLD_=65536
 # The deterministic globals only. The regionals are in wxgrid-ingest-regional
 # on an hourly timer, the ensemble in wxgrid-ingest-ensemble on a six-hourly
 # one. One pass used to fetch all three tiers, which tied an HOURLY 3 km model

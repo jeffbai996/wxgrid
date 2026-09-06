@@ -1,7 +1,7 @@
 // wxgrid service worker — offline shell, and a cache that understands what a
 // model run is.
 //
-// Three caches, three lifetimes:
+// Four caches, independently versioned lifetimes:
 //   shell    the app itself (html/js/css/fonts/vendor/icons). Cache-first;
 //            replaced wholesale when VERSION changes.
 //   runtime  /api/layer, /api/field, /api/wind, /api/isolines, /api/thunder —
@@ -20,11 +20,13 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v94";   // v94: open water names itself in the tape header (2026-09-05)
+const VERSION = "wxgrid-v95";   // v95: independent, bounded caches and explicit alert availability
 const SHELL = `${VERSION}-shell`;
-const RUNTIME = `${VERSION}-runtime`;
-const DATA = `${VERSION}-data`;
-const BASEMAP = `${VERSION}-basemap`;
+// Change these only when their own schema changes, not for a UI release.
+// Field format/version and run already live in each immutable URL.
+const RUNTIME = "wxgrid-weather-v1";
+const DATA = "wxgrid-data-v1";
+const BASEMAP = "wxgrid-basemap-v1";
 const MINE = [SHELL, RUNTIME, DATA, BASEMAP];
 
 // The basemap is somebody else's origin, so by default we keep our hands off
@@ -42,6 +44,9 @@ const BASEMAP_MAX = 400;
 // the origin quota, and Safari evicts the WHOLE origin when it hits it — the
 // shell with it. Bounded, oldest-inserted first.
 const RUNTIME_MAX = 220;
+const DATA_MAX = 128;
+// These represent current conditions or streams, not offline documents.
+const LIVE_API = /^api\/(?:card|health(?:\/sources)?|alerts\/(?:point|ec))(?:\.json)?$/;
 
 const BASE = new URL("./", self.registration.scope);
 const at = (p) => new URL(p, BASE).href;
@@ -100,6 +105,11 @@ self.addEventListener("install", (e) => {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
+    // One-time migration: move the newest legacy weather/basemap entries
+    // sequentially, one response at a time. Do not duplicate an entire cache
+    // or carry the old unbounded API-data cache into the new policy.
+    await migrateLegacy("runtime", RUNTIME, RUNTIME_MAX);
+    await migrateLegacy("basemap", BASEMAP, BASEMAP_MAX);
     for (const key of await caches.keys()) {
       if (key.startsWith("wxgrid-") && !MINE.includes(key)) await caches.delete(key);
     }
@@ -124,6 +134,24 @@ async function trim(cacheName, max) {
   const cache = await caches.open(cacheName);
   const keys = await cache.keys();                 // insertion order
   for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i]);
+}
+
+async function migrateLegacy(suffix, target, max) {
+  const names = (await caches.keys()).filter(k => new RegExp(`^wxgrid-v\\d+-${suffix}$`).test(k));
+  names.sort((a, b) => Number(b.match(/-v(\d+)/)[1]) - Number(a.match(/-v(\d+)/)[1]));
+  if (!names.length) return;
+  const old = await caches.open(names[0]), dest = await caches.open(target);
+  const keys = (await old.keys()).slice(-max);
+  for (const req of keys) {
+    try {
+      if (!await dest.match(req)) {
+        const res = await old.match(req);
+        if (res) await dest.put(req, res);
+      }
+      await old.delete(req);
+    } catch (_) { break; } // Quota trouble must not prevent activation.
+  }
+  await trim(target, max);
 }
 
 // Runs come and go (the store keeps two). Their layer URLs are immutable while
@@ -198,6 +226,7 @@ async function staleWhileRevalidate(req, cacheName, event) {
     if (res.ok) {
       const cache = await caches.open(cacheName);
       await cache.put(req, res.clone());
+      await trim(cacheName, BASEMAP_MAX);
     }
     return res;
   });
@@ -238,7 +267,13 @@ async function networkFirst(req, cacheName, key) {
     const res = await fetch(req);
     if (res.ok) {
       const cache = await caches.open(cacheName);
-      await cache.put(at_, res.clone());
+      if (/\bno-store\b/i.test(res.headers.get("cache-control") || "") ||
+          /application\/x-ndjson/i.test(res.headers.get("content-type") || "")) {
+        await cache.delete(at_);
+      } else {
+        await cache.put(at_, res.clone());
+        await trim(cacheName, DATA_MAX);
+      }
       tell("wx-online", {});
     }
     return res;
@@ -307,6 +342,7 @@ self.addEventListener("fetch", (event) => {
   if (req.mode === "navigate") { event.respondWith(navigate(req, event)); return; }
 
   const rel = url.pathname.slice(BASE.pathname.length);
+  if (LIVE_API.test(rel)) { event.respondWith(fetch(req)); return; }
   if (IMMUTABLE.test(rel)) { event.respondWith(immutable(req, event)); return; }
   if (rel.startsWith("api/")) {
     // /api/models names the runs, so it is never served stale by choice; the

@@ -1027,7 +1027,7 @@ table.wtape tr.r-feels td { color: var(--dim); font-size: 10.5px; border-top: 1p
 table.wtape tr.r-feels th.lab { border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
 table.wtape tr.r-feels td .hi { color: var(--fg-2); font-weight: 650; }
 table.wtape tr.r-rain td { color: var(--rain); font-weight: 650; position: relative; overflow: visible; height: 24px; }   /* the trace may crest above the row */
-table.wtape tr.r-rain td span { position: relative; z-index: 1; text-shadow: 0 1px 3px var(--panel-solid); }
+table.wtape tr.r-rain td span { position: relative; z-index: 1; font-size: 11px; text-shadow: 0 1px 2px color-mix(in srgb, var(--panel-solid) 65%, transparent); }   /* a notch smaller, a lighter halo (Jeff 2026-09-05) */
 table.wtape tr.r-rain td .precip-area { position: absolute; z-index: 0; inset: auto 0 0 0; width: 100%; height: 150%; pointer-events: none; overflow: visible; }
 table.wtape tr.r-rain td .precip-area .fill { fill: currentColor; opacity: .17; }
 table.wtape tr.r-rain td .precip-area .line { fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; shape-rendering: geometricPrecision; vector-effect: non-scaling-stroke; opacity: .72; }

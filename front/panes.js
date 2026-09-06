@@ -671,7 +671,12 @@
   // publish a readable page get a link out; the ones that publish an API
   // document used to send the reader to raw CAP JSON.
   function alertsHtml(pt) {
-    const al = pt.alerts; if (!al || !al.length) return "";
+    const status = pt.alertStatus;
+    const missing = status && status.unavailable || [];
+    const note = missing.length ? `<div class="note" role="status">Alerts incomplete · ${missing.map(esc).join(", ")} unavailable. Check the official warning service.</div>`
+      : status && status.complete === false && status.sources && !status.sources.length
+        ? `<div class="note">Alert coverage is not available here.</div>` : "";
+    const al = pt.alerts; if (!al || !al.length) return note;
     // The CAP headline restates the event name, both timestamps and the
     // office in one breathless sentence — everything it says is already on
     // the card in structured form, so it stays out of the summary.
@@ -705,7 +710,7 @@
         ${instr ? `<div class="al-instr"><b>What to do</b><div class="alert-text selectable">${esc(instr)}</div></div>` : ""}
       </div>`;
     };
-    return `<div class="alerts">${al.slice(0, 3).map((a) => (a.url
+    return `${note}<div class="alerts">${al.slice(0, 3).map((a) => (a.url
       ? `<a class="alert" href="${esc(a.url)}" target="_blank" rel="noopener" style="--al:${esc(a.color)}">${head(a)}</a>`
       : `<details class="alert" style="--al:${esc(a.color)}"><summary>${head(a)}</summary>${body(a)}</details>`)).join("")}${al.length > 3 ? `<div class="note">+${al.length - 3} more</div>` : ""}</div>`;
   }
