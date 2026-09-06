@@ -33,6 +33,10 @@ ENV_ZARR = "WXGRID_WN2_ZARR"
 SURFACE = {
     "2m_temperature": "t2m", "10m_u_component_of_wind": "u10", "10m_v_component_of_wind": "v10",
     "mean_sea_level_pressure": "msl", "total_precipitation_6hr": "tp6", "sea_surface_temperature": "sst",
+    # Google's model page spells the 6 h bucket `total_precipitation`; the
+    # WeatherBench-style name above is what the evaluation datasets use. The
+    # first one present wins, so either spelling is a no-op here.
+    "total_precipitation": "tp6",
 }
 LEVELS_VARS = {"temperature": "t", "u_component_of_wind": "u", "v_component_of_wind": "v", "geopotential": "gh"}
 G = 9.80665
@@ -155,25 +159,24 @@ def ingest_wn2(model: Model, run: datetime, store_root: Path = STORE_DIR, url: s
                 else:
                     writer.write(canon, step, _regrid_to_store(data, lats, lons, model))
                 written += 1
+            done: set[str] = set()
             for src, canon in SURFACE.items():
-                if src not in at or canon not in writer.variables:
+                if src not in at or canon not in writer.variables or canon in done:
                     continue
                 arr = at[src]
                 if canon == "tp6":
                     arr = arr * 1000.0                     # m → mm
                 emit(canon, arr)
-            if dlev and step % LEVEL_EVERY == 0:
+                done.add(canon)
+            if step % LEVEL_EVERY == 0:
                 for src, prefix in LEVELS_VARS.items():
-                    if src not in at:
-                        continue
                     for lvl in model.levels:
                         canon = f"{prefix}_{lvl}"
                         if canon not in writer.variables:
                             continue
-                        hits = np.where(np.asarray(at[dlev].values) == lvl)[0]
-                        if not hits.size:
+                        arr = _level_field(at, src, lvl, dlev)
+                        if arr is None:
                             continue
-                        arr = at[src].isel({dlev: int(hits[0])})
                         if prefix == "gh":
                             arr = arr / G                          # m²/s² → m
                         emit(canon, arr)
@@ -184,6 +187,17 @@ def ingest_wn2(model: Model, run: datetime, store_root: Path = STORE_DIR, url: s
         except Exception:
             log.exception("%s %s point cube failed (run still serves)", model.key, rid)
     return {"model": model.key, "run": rid, "fields": written, "counts": counts}
+
+
+def _level_field(at, src: str, lvl: int, dlev: str | None):
+    """One pressure level of `src`: sliced off a `level` dimension when the
+    dataset has one, else the flattened `{level}_{name}` variable the model
+    page documents. None when this run carries neither."""
+    if dlev and src in at:
+        hits = np.where(np.asarray(at[dlev].values) == lvl)[0]
+        return at[src].isel({dlev: int(hits[0])}) if hits.size else None
+    flat = f"{lvl}_{src}"
+    return at[flat] if flat in at else None
 
 
 def resolve_latest(model: Model, url: str | None = None, ds=None) -> datetime:

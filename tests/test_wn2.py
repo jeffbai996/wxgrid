@@ -88,3 +88,27 @@ def test_unconfigured_optional_model_stays_out_of_the_timer_passes(monkeypatch):
     assert "wn2" not in ingest.ingest_order() and "wn2" not in ingest.models_in("global")
     monkeypatch.setenv(wn2.ENV_ZARR, "/tmp/some.zarr")
     assert "wn2" in ingest.models_in("global")
+
+
+def test_published_names_are_accepted_as_well_as_the_benchmark_ones(tmp_path, model):
+    # Google's model page lists `total_precipitation` (6 h accumulated) and
+    # per-level variables as `{level}_temperature` rather than a `level`
+    # dimension. Until the box can read the real bucket, the adapter takes
+    # either spelling, so a naming difference is a no-op and not a rewrite.
+    lat = LATS[None, None, :, None]; lon = LONS[None, None, None, :]
+    base = (lat + lon / 1000.0).astype(np.float32)
+    field = np.broadcast_to(base, (1, 2, LATS.size, LONS.size)).astype(np.float32).copy()
+    ds = xr.Dataset(
+        {
+            "2m_temperature": (("time", "prediction_timedelta", "latitude", "longitude"), field),
+            "total_precipitation": (("time", "prediction_timedelta", "latitude", "longitude"), field * 0.001),
+            "500_geopotential": (("time", "prediction_timedelta", "latitude", "longitude"), field * 9.80665),
+        },
+        coords={"time": [INIT], "prediction_timedelta": np.array([0, 6], dtype="timedelta64[h]"), "latitude": LATS, "longitude": LONS},
+    )
+    out = wn2.ingest_wn2(model, datetime(2026, 9, 1, tzinfo=timezone.utc), store_root=tmp_path / "store", ds=ds)
+    assert out["fields"] == 6
+    r = RunReader("wn2", "2026-09-01T00", tmp_path / "store")
+    assert {"t2m", "tp6", "gh_500"} <= set(r.variables)
+    assert r.slab("tp6", 6)[400, 400] == pytest.approx(0.001 * (LATS[320] + LONS[1120] / 1000.0) * 1000.0, abs=0.05)
+    assert r.slab("gh_500", 6)[360, 720] == pytest.approx(0.0, abs=0.5)
