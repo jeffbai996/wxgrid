@@ -336,8 +336,8 @@
       // are relative to the mean (Jeff 2026-09-02: "a bit sparse").
       const w = s.wind[i], dir = s.wdir ? s.wdir[i] : null, g = s.gust ? s.gust[i] : null;
       const bf = w != null ? beaufort(w) : null;
-      const win = [], gwin = [];
-      for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) { if (s.wind[k] != null) win.push(s.wind[k]); if (s.gust && s.gust[k] != null) gwin.push(s.gust[k]); }
+      const win = [], gwin = [], wrows = [];
+      for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) { if (s.wind[k] != null) { win.push(s.wind[k]); wrows.push([new Date(d.valid[k]).getTime(), s.wind[k], s.gust && s.gust[k] != null ? s.gust[k] : null, s.wdir ? s.wdir[k] : null]); } if (s.gust && s.gust[k] != null) gwin.push(s.gust[k]); }
       let spark = "";
       if (win.length >= 3) {
         const top = Math.max(1, ...win, ...gwin);
@@ -357,7 +357,7 @@
       chips.push(`<span class="wind-readout" style="--wind-color:${windColor(w || 0)}">
         <span class="wind-main"><small>Wind</small><b>${f(w, (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b><em>${compass(dir)}${dir != null ? ` ${Math.round(dir)}°` : ""}${bf != null ? ` · ${BEAUFORT_NAME[bf]}` : ""}</em></span>
         ${dial}
-        <span class="wind-trend">${spark}<small>next 24 h${peakG != null ? ` · peak gusts ${speed(peakG).toFixed(0)}` : ""}</small></span>
+        <span class="wind-trend" data-rows="${esc(JSON.stringify(wrows.map((r) => [r[0], +r[1].toFixed(2), r[2] == null ? null : +r[2].toFixed(2), r[3] == null ? null : Math.round(r[3])])))}">${spark}<div class="gtip wt-tip" hidden></div><small>next 24 h${peakG != null ? ` · peak gusts ${speed(peakG).toFixed(0)}` : ""}</small></span>
         ${g != null ? `<span class="wind-gust"><small>Gusts</small><b>${speed(g).toFixed(0)} <i>${speedUnit()}</i></b></span>` : ""}
         <span class="wind-storm" id="storm-slot"></span>
       </span>`);
@@ -507,6 +507,7 @@
       if (el.isConnected) { pt.details ||= {}; pt.details[el.dataset.detail] = el.open; }
     }));
     pt.pressureCurve = pressureCurve;
+    wireWindTrendHover();
     fetchNearStorm(pt);
     fetchCams(pt);
     paintNormal(pt, d, i, todays);
@@ -1247,6 +1248,26 @@
       .catch(() => { pt.normals = null; });
   }
 
+  // The hero's wind curve answers the pointer like the precipitation bars:
+  // the hour under it, wind, gust and direction (Jeff 2026-09-06).
+  function wireWindTrendHover() {
+    const el = document.querySelector("#point-now .wind-trend"); if (!el || !el.dataset.rows) return;
+    let rows; try { rows = JSON.parse(el.dataset.rows); } catch (_) { return; }
+    const svg = el.querySelector("svg.wspark"), tip = el.querySelector(".wt-tip"); if (!svg || !tip || rows.length < 2) return;
+    const { speed, speedUnit, arrow } = W();
+    svg.addEventListener("pointermove", (e) => {
+      const r = svg.getBoundingClientRect();
+      const k = Math.max(0, Math.min(rows.length - 1, Math.round((e.clientX - r.left) / r.width * (rows.length - 1))));
+      const [t, w, g, dir] = rows[k];
+      const when = k === 0 ? "now" : new Date(t).toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }));
+      tip.innerHTML = `<i class="when">${when}</i><span><b>${Math.round(speed(w))}<small> ${speedUnit()}</small></b>${g != null ? `<i>gusts ${Math.round(speed(g))}</i>` : ""}${dir != null ? `<i>${arrow(dir)} ${Math.round(dir)}°</i>` : ""}</span>`;
+      tip.hidden = false;
+      tip.style.left = `${Math.max(40, Math.min(r.width - 40, (e.clientX - r.left)))}px`;
+      tip.style.top = "0px";
+    });
+    svg.addEventListener("pointerleave", () => { tip.hidden = true; });
+  }
+
   // ── rain now ────────────────────────────────────────────────────────────
   // The next two hours in 15-minute steps (Open-Meteo minutely_15: HRRR /
   // ICON-D2 where they exist, radar-assimilating), shown only when something
@@ -1255,47 +1276,45 @@
   let rainNowFetch = 0;
   const rainNowBust = () => Math.floor(Date.now() / 3e5);
   function rainNowHtml(nc) {
-    const step = nc.step_min || 15, n = nc.mm.length, now = nc.now || 0;
-    const kind = nc.kind || nc.mm.map((v) => (v > 0.1 ? "rain" : "dry"));
-    const rate = nc.mm.map((v) => Math.max(0, v) * 60 / step);                 // mm/h per step
+    // The chart starts at now (Jeff 2026-09-06: "be the judge" — the past
+    // hour was half a chart of dimmed bars and a line, and the card only
+    // shows when something falls, so the room is better spent ahead).
+    const step = nc.step_min || 15, now = nc.now || 0;
+    const mm = nc.mm.slice(now), kindAll = nc.kind || nc.mm.map((v) => (v > 0.1 ? "rain" : "dry"));
+    const kind = kindAll.slice(now), n = mm.length;
+    const rate = mm.map((v) => Math.max(0, v) * 60 / step);                    // mm/h per step
     const top = Math.max(7.5, ...rate) * 1.1;
     const H = 100;
     const P = (j) => rate[Math.max(0, Math.min(n - 1, j))];
-    // one spline through the step rates, sampled into bars: a bar per 5 min,
-    // fat enough to read as bars rather than a comb (Jeff 2026-09-05, "think
-    // Apple's"), while the past/future split stays crisp at the now line
+    // one spline through the step rates, sampled into a bar every 3 min; a
+    // bar is only drawn inside a step the server calls wet, so the picture and
+    // the headline share one threshold (trace amounts used to draw bars while
+    // the headline said "starting in 1 hour", Jeff 2026-09-06)
     const cr = (u) => { const k = Math.floor(u), t = u - k, p0 = P(k - 1), p1 = P(k), p2 = P(k + 1), p3 = P(k + 2);
       return Math.max(0, 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)); };
-    const per = 5, N = n * per, W_ = N;   // a bar every 3 min, packed close (Jeff: "fill it in, think Apple")
+    const per = 5, N = n * per, W_ = N;
     const bars = [];
     for (let b = 0; b < N; b++) {
-      const u = (b + 0.5) / per - 0.5, r = cr(u), k = Math.min(n - 1, Math.floor((b + 0.5) / per));
-      if (r < 0.15) continue;
+      const k = Math.min(n - 1, Math.floor((b + 0.5) / per));
+      if (kind[k] === "dry") continue;
+      const u = (b + 0.5) / per - 0.5, r = Math.max(rate[k] * 0.35, cr(u));
       const h = Math.max(3, Math.sqrt(Math.min(1, r / top)) * H);
-      const past = k < now, snowy = kind[k] === "snow";
-      // a stroked line with a round cap: the cap stays round under the
-      // stretched viewBox (a rect's rx would squash), and non-scaling stroke
-      // keeps every bar the same width on any card
-      bars.push(`<line class="${snowy ? "sn" : "rn"}${past ? " past" : ""}" data-b="${b}" data-r="${r.toFixed(1)}" data-m="${Math.round((b / per - now) * step)}" data-k="${snowy ? "snow" : "rain"}" x1="${b + 0.5}" x2="${b + 0.5}" y1="${H + 3}" y2="${(H - h).toFixed(1)}" vector-effect="non-scaling-stroke" style="opacity:${(past ? 0.28 : 0.45 + 0.55 * Math.min(1, r / top)).toFixed(2)}"/>`);
+      const snowy = kind[k] === "snow";
+      bars.push(`<line class="${snowy ? "sn" : "rn"}" data-b="${b}" data-r="${r.toFixed(1)}" data-m="${Math.round(b / per * step)}" data-k="${snowy ? "snow" : "rain"}" x1="${b + 0.5}" x2="${b + 0.5}" y1="${H + 3}" y2="${(H - h).toFixed(1)}" vector-effect="non-scaling-stroke" style="opacity:${(0.45 + 0.55 * Math.min(1, r / top)).toFixed(2)}"/>`);
     }
     const bandRows = [["light", 2.5], ["moderate", 7.5]].filter(([, r]) => r < top);
     const y = (r) => H - Math.sqrt(Math.min(1, r / top)) * H;
     const bands = bandRows.map(([, r]) => `<line class="band" x1="0" x2="${W_}" y1="${y(r).toFixed(1)}" y2="${y(r).toFixed(1)}"/>`).join("");
     const bandLabels = bandRows.map(([nm, r]) => `<span class="band-l" style="top:${y(r).toFixed(1)}%">${nm}</span>`).join("");
-    const nowX = now * per;
     const t0 = new Date(nc.times[now]);
     const tick = (mins) => { const d = new Date(t0.getTime() + mins * 6e4); return d.toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric", minute: "2-digit" })).replace(/\s?[ap]m$/i, (m) => m.trim().toLowerCase()); };
     const labels = [];
-    for (let k = 0; k < n; k += 4) { const m = (k - now) * step; labels.push(`<span class="${m === 0 ? "now" : ""}" style="left:${(k * per / W_ * 100).toFixed(1)}%">${m === 0 ? "now" : m < 0 ? `${m / 60 === -1 ? "1 h ago" : `${-m} min ago`}` : `${tick(m)}`}</span>`); }
-    const snowAny = kind.some((k) => k === "snow"), rainAny = kind.some((k) => k === "rain");
-    // The heading is the group name; the right-hand note says what the
-    // window is, and the data credit lives in its tooltip.
+    for (let k = 0; k < n; k += 4) { const m = k * step; labels.push(`<span class="${m === 0 ? "now" : ""}" style="left:${(k * per / W_ * 100).toFixed(1)}%">${m === 0 ? "now" : tick(m)}</span>`); }
     const span = `${step} min. steps`;
-    return `<div class="rn-head"><small class="sect-h">Precipitation${snowAny && !rainAny ? " · snow" : snowAny ? " · rain & snow" : ""}</small><i title="${nc.source || "Open-Meteo"} (HRRR / ICON-D2 where they run, radar-assimilating)">${span}</i></div>
+    return `<div class="rn-head"><small class="sect-h">Precipitation</small><i title="${nc.source || "Open-Meteo"} (HRRR / ICON-D2 where they run, radar-assimilating)">${span}</i></div>
       <b class="rn-line">${nc.headline || ""}</b>
       <div class="rn-wrap">${bandLabels}<svg class="rn-chart" viewBox="0 0 ${W_} ${H}" preserveAspectRatio="none" aria-hidden="true">
         ${bands}${bars.join("")}
-        <line class="now" x1="${nowX}" x2="${nowX}" y1="0" y2="${H}"/>
       </svg><div class="rn-tip" hidden></div></div><div class="rn-x">${labels.join("")}</div>`;
   }
   // Hover on the bars: the bar under the pointer brightens and a small plate
@@ -1303,7 +1322,7 @@
   function wireRainNowHover(el, nc) {
     const svg = el.querySelector(".rn-chart"), tip = el.querySelector(".rn-tip"), wrap = el.querySelector(".rn-wrap");
     if (!svg || !tip || !wrap) return;
-    const step = nc.step_min || 15, per = 5, N = nc.mm.length * per, now = nc.now || 0, t0 = new Date(nc.times[now]);
+    const step = nc.step_min || 15, per = 5, now = nc.now || 0, N = (nc.mm.length - now) * per, t0 = new Date(nc.times[now]);
     const band = (r) => (r < 2.5 ? "light" : r < 7.5 ? "moderate" : "heavy");
     let hot = null;
     const clear = () => { tip.hidden = true; svg.classList.remove("hovering"); if (hot) { hot.classList.remove("hot"); hot = null; } };
@@ -1311,14 +1330,14 @@
       const rect = svg.getBoundingClientRect();
       const b = Math.max(0, Math.min(N - 1, Math.floor((e.clientX - rect.left) / rect.width * N)));
       const bar = svg.querySelector(`line[data-b="${b}"]`);
-      const mins = Math.round((b / per - now) * step);
+      const mins = Math.round(b / per * step);
       const when = new Date(t0.getTime() + mins * 6e4).toLocaleTimeString(undefined, W().units.timeOpts({ hour: "numeric", minute: "2-digit" }));
       const r = bar ? Number(bar.dataset.r) : 0;
       if (hot && hot !== bar) hot.classList.remove("hot");
       hot = bar; if (bar) bar.classList.add("hot");
       svg.classList.add("hovering");
       // time on top, the reading under it (Jeff 2026-09-05)
-      tip.innerHTML = `<i class="when">${when}${mins < 0 ? " · was" : ""}</i>` + (bar
+      tip.innerHTML = `<i class="when">${mins === 0 ? "now" : when}</i>` + (bar
         ? `<span><b>${r.toFixed(1)}<small>${bar.dataset.k === "snow" ? " cm/h" : " mm/h"}</small></b><i>${band(r)}</i></span>`
         : `<span><b>dry</b></span>`);
       tip.hidden = false;

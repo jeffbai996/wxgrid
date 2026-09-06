@@ -623,7 +623,9 @@ def test_the_hero_carries_a_rain_now_strip_only_when_something_falls():
     # dry window: no headline, no strip
     assert "if (!nc || !nc.headline) { el.hidden = true; return; }" in panes
     # thin bars from one spline, the past dimmed, snow in its own colour, bands and a now line
-    assert "const per = 5, N = n * per" in panes and 'class="now"' in panes and '["light", 2.5], ["moderate", 7.5]' in panes
+    assert "const per = 5, N = n * per" in panes and '["light", 2.5], ["moderate", 7.5]' in panes
+    # from now on: no past hour, no now line, and a bar only inside a step the server calls wet
+    assert "const mm = nc.mm.slice(now)" in panes and 'if (kind[k] === "dry") continue;' in panes and '<line class="now"' not in panes
     # full width of the card, "Precipitation" heading, a window note instead of a bare source name
     assert ".rainnow { flex: 0 0 100%;" in css and '<small class="sect-h">Precipitation' in panes and "const span = `${step} min. steps`;" in panes
     # round-capped bars of a fixed pixel width: stroked lines, not rects
@@ -762,7 +764,7 @@ def test_precipitation_band_labels_float_on_plates_over_full_width_bars():
     plate = css.split(".rainnow .band-l {", 1)[1].split("}", 1)[0]
     assert "translateY(-50%)" in plate and "backdrop-filter: blur(4px)" in plate and "z-index: 1" in plate
     # the headline keeps its weight; near-normal says nothing on the hero
-    assert "#point-now .rainnow .rn-line { display: block; margin: 4px 0 7px; font: 700 13px/1.3" in css
+    assert "#point-now .rainnow .rn-line { display: block; margin: 4px 0 7px; font: 700 14px/1.3" in css   # a notch up (2026-09-06)
     assert 'if (Math.abs(dT) < 1) { el.hidden = true; return; }' in panes and '"near normal"' not in panes
 
 
@@ -864,3 +866,11 @@ def test_the_sun_group_always_has_company():
     panes = _read("panes.js")
     assert 'normal.push(stat("Daylight", `${Math.floor(dayMin / 60)}h' in panes and 'normal.push(stat("Solar noon", noonTxt' in panes
     assert "min/day" in panes and "° up" in panes
+
+
+def test_precip_heading_has_no_suffix_and_the_wind_trend_answers_the_pointer():
+    panes = _read("panes.js"); css = _read("styles.css")
+    assert '<small class="sect-h">Precipitation</small>' in panes and "Precipitation${" not in panes
+    assert "function wireWindTrendHover()" in panes and 'class="wind-trend" data-rows=' in panes and '<div class="gtip wt-tip" hidden></div>' in panes
+    assert "#point-now .rainnow .rn-line { display: block; margin: 4px 0 7px; font: 700 14px/1.3" in css
+    assert ".wind-trend { position: relative;" in css

@@ -1203,7 +1203,8 @@ table.wtape tr.r-dir td { height: 20px; }
 .wind-dial .needle { fill: none; stroke: color-mix(in srgb, var(--fg) 70%, transparent); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round;
   transform-origin: 24px 24px; transform: rotate(var(--rot)); transition: transform .3s cubic-bezier(.32,.72,.24,1); }
 .wind-main em, .wind-gust em { font: 600 9px var(--font-display); color: var(--fg-2); font-style: normal; letter-spacing: 0; text-transform: none; white-space: nowrap; }
-.wind-trend { display: flex; flex-direction: column; min-width: 0; gap: 2px; align-self: stretch; justify-content: center; }
+.wind-trend { position: relative; display: flex; flex-direction: column; min-width: 0; gap: 2px; align-self: stretch; justify-content: center; }
+.wind-trend svg.wspark { cursor: crosshair; }
 .wind-trend small { font: 600 8px var(--font-display); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wspark { width: 100%; height: 24px; display: block; }
 .wspark .a { fill: color-mix(in srgb, var(--wind-color) 28%, transparent); }
@@ -1388,7 +1389,7 @@ table.wtape th.day .model-handoff { display: inline-flex; margin-left: 6px; padd
 .rainnow .rn-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .rainnow .rn-head .sect-h { margin: 0; font: 700 7.5px var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }   /* same voice as the section headings below */
 .rainnow .rn-head i { font: 500 8.5px var(--font-display); font-style: normal; color: var(--dim); letter-spacing: .02em; }
-#point-now .rainnow .rn-line { display: block; margin: 4px 0 7px; font: 700 13px/1.3 var(--font-display); color: var(--fg); }
+#point-now .rainnow .rn-line { display: block; margin: 4px 0 7px; font: 700 14px/1.3 var(--font-display); color: var(--fg); }
 .rainnow .rn-wrap { position: relative; }
 .rainnow .rn-chart { display: block; width: 100%; height: 46px; overflow: hidden; }   /* hidden: the bottom cap of each bar is clipped flat */
 .rainnow .rn-chart .rn, .rainnow .rn-chart .sn { stroke-width: 4px; stroke-linecap: round; fill: none; }
