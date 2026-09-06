@@ -130,6 +130,19 @@ def test_missing_geometry_is_incomplete_not_all_clear(monkeypatch):
     assert ext.alerts_point_status(-37.5, 144.5)["unavailable"] == ["BoM"]
 
 
+def test_cold_geometry_does_not_poison_the_ten_minute_warning_cache(monkeypatch):
+    monkeypatch.setattr(ext, "MA_COUNTRIES", ("austria",))
+    monkeypatch.setattr(ext, "_get_text", lambda *a, **kw: "<feed/>")
+    warning = {"geometry": None, "code": "AT1", "sev": 3}
+    monkeypatch.setattr(ext, "_ma_parse", lambda *a: [dict(warning)])
+    monkeypatch.setattr(ext, "_emma_regions", lambda: {})
+    with pytest.raises(ext._PartialAlerts):
+        ext._ma_warnings()
+    shape = {"type": "Polygon", "coordinates": []}
+    monkeypatch.setattr(ext, "_emma_regions", lambda: {"AT1": shape})
+    assert ext._ma_warnings()[0]["geometry"] == shape
+
+
 def test_meteoalarm_successful_countries_survive_partial_refresh(monkeypatch):
     calls = []
     monkeypatch.setattr(ext, "MA_COUNTRIES", ("austria", "germany"))

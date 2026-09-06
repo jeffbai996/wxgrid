@@ -1000,6 +1000,8 @@ def _ma_warnings() -> list[dict]:
         for w in out:
             if not w["geometry"] and w["code"]:
                 w["geometry"] = regions.get(w["code"])
+                if not regions and not w["geometry"]:
+                    incomplete = True  # Retry hydration once the cold index lands.
             w.pop("_sent", None)
         out.sort(key=lambda w: -w["sev"])
         if incomplete or len(out) > 1200:
@@ -1231,6 +1233,8 @@ def _bom_warnings() -> list[dict]:
                 continue
             if w:
                 out.append(w)
+                if not regions and not w.get("geometry"):
+                    incomplete = True
         out.sort(key=lambda w: -w["sev"])
         if incomplete:
             raise _PartialAlerts(out)

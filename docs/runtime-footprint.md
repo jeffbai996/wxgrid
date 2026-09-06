@@ -100,3 +100,9 @@ unbounded API-data cache is not migrated. Card streams, current point alerts
 and health responses bypass offline fallback; no-store/NDJSON responses are
 not cached. Ordinary cached API documents retain the existing offline/stale
 notification behavior.
+
+Final follow-up validation: 695 pytest tests passed, 20 skipped, including
+18 Node frontend runtime tests, under a 1536 MiB/one-core scope. The four
+installed scheduled units (global/regional/ensemble/Pages) have verified live
+drop-ins; the aerosol unit template is updated but that service is not
+installed on this host. No browser surface was available for visual QA.
