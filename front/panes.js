@@ -948,16 +948,26 @@
   function renderAirgram(d, i) {
     const c = $("#airgram"), ctx = c.getContext("2d");
     const { speed, speedUnit } = W();
-    const W_ = c.width, H = c.height, padL = 44, padR = 8, padT = 8, padB = 22;
-    ctx.clearRect(0, 0, W_, H);
     const levels = (d.levels || []).slice().sort((a, b) => b - a);   // 925 bottom → 250 top
     const rows = [...levels.map((l) => ({ key: String(l), label: `${l}` })), ];
     if (d.series.wind) rows.unshift({ key: "sfc", label: "sfc" });
-    const n = Math.min(d.steps.length, 28);                           // 7 days is enough on a phone
     if (!rows.length) { $("#airgram-note").textContent = "No pressure-level data in this run."; return; }
+    // The grid takes the room it has: full card width, and a row height that
+    // makes every cell legible (26 px) instead of a fixed 640×260 backing
+    // store squashed into 150 px (Jeff 2026-09-06, "expand the airgram").
+    // Drawn at device pixels so the numbers stay crisp on a retina screen.
+    const padL = 44, padR = 8, padT = 8, padB = 22, ROW_H = 26;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W_ = Math.max(320, c.clientWidth || c.parentElement.clientWidth || 640);
+    const H = padT + padB + rows.length * ROW_H;
+    if (c.width !== Math.round(W_ * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W_ * dpr); c.height = Math.round(H * dpr); }
+    c.style.height = `${H}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W_, H);
+    const n = Math.min(d.steps.length, W_ >= 900 ? 40 : 28);          // 7 days on a phone, 10 on a wide card
     const cw = (W_ - padL - padR) / n, rh = (H - padT - padB) / rows.length;
     const tcol = (tK) => { const t = tK - K; const stops = [[-50, [70, 30, 120]], [-30, [50, 80, 200]], [-15, [40, 150, 220]], [0, [100, 200, 200]], [10, [110, 210, 110]], [20, [240, 220, 80]], [30, [240, 130, 40]], [40, [200, 30, 30]]]; let a = stops[0], b = stops[stops.length - 1]; for (let k = 0; k < stops.length - 1; k++) if (t >= stops[k][0] && t <= stops[k + 1][0]) { a = stops[k]; b = stops[k + 1]; break; } const q = Math.max(0, Math.min(1, (t - a[0]) / (b[0] - a[0] || 1))); return `rgb(${a[1].map((x, k) => Math.round(x + (b[1][k] - x) * q)).join(",")})`; };
-    ctx.font = "600 10px 'Geist Mono', ui-monospace, monospace"; ctx.textBaseline = "middle";
+    ctx.font = "600 11px 'Geist Mono', ui-monospace, monospace"; ctx.textBaseline = "middle";
     rows.forEach((r, ri) => {
       const y = padT + (rows.length - 1 - ri) * rh;
       ctx.fillStyle = "#8b93a1"; ctx.textAlign = "right"; ctx.fillText(r.label, padL - 6, y + rh / 2);
@@ -974,7 +984,7 @@
           const dx = Math.sin(ang) * len, dy = -Math.cos(ang) * len;
           ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke();
           ctx.beginPath(); ctx.moveTo(cx + dx, cy + dy); ctx.lineTo(cx + dx - Math.sin(ang - 0.5) * 4, cy + dy + Math.cos(ang - 0.5) * 4); ctx.moveTo(cx + dx, cy + dy); ctx.lineTo(cx + dx - Math.sin(ang + 0.5) * 4, cy + dy + Math.cos(ang + 0.5) * 4); ctx.stroke();
-          if (cw > 20) { ctx.fillStyle = "rgba(0,0,0,0.75)"; ctx.textAlign = "center"; ctx.font = "700 9px 'Geist Mono', ui-monospace, monospace"; ctx.fillText(String(Math.round(speed(spd))), cx, y + rh - 6); ctx.font = "600 10px 'Geist Mono', ui-monospace, monospace"; }
+          if (cw > 20) { ctx.fillStyle = "rgba(0,0,0,0.75)"; ctx.textAlign = "center"; ctx.font = "700 9.5px 'Geist Mono', ui-monospace, monospace"; ctx.fillText(String(Math.round(speed(spd))), cx, y + rh - 6); ctx.font = "600 11px 'Geist Mono', ui-monospace, monospace"; }
         }
       }
     });

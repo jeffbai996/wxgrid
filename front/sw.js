@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v97";   // v97: precip row only when it rains; fold easing without overshoot; no blurred ghost on the away glide (2026-09-06)
+const VERSION = "wxgrid-v98";   // v98: airgram fills the card, crisp at device pixels (2026-09-06)
 const SHELL = `${VERSION}-shell`;
 // Change these only when their own schema changes, not for a UI release.
 // Field format/version and run already live in each immutable URL.

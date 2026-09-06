@@ -820,3 +820,10 @@ def test_precip_row_hides_when_dry_fold_does_not_overshoot_and_the_away_box_is_i
     assert "transition: height .38s cubic-bezier(.32,.72,.24,1)" in css and "height .38s cubic-bezier(.22,1,.36,1)" not in css
     away = css.split("#timebar.tape-anim-away {", 1)[1].split("}", 1)[0]
     assert "backdrop-filter: none" in away and "box-shadow: none" in away
+
+
+def test_airgram_takes_the_card_width_and_a_legible_row_height_at_device_pixels():
+    panes = _read("panes.js"); css = _read("styles.css")
+    assert "const padL = 44, padR = 8, padT = 8, padB = 22, ROW_H = 26;" in panes
+    assert "ctx.setTransform(dpr, 0, 0, dpr, 0, 0);" in panes and "const H = padT + padB + rows.length * ROW_H;" in panes
+    assert "#airgram { width: 100%; display: block; margin-top: 6px; }" in css and "height: 150px" not in css.split("#airgram {", 1)[1].split("}", 1)[0]

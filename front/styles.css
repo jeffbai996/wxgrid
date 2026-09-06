@@ -996,7 +996,7 @@ table.bands .dirarrow { width: 11px; height: 11px; margin-right: 4px; }
 .snowline b { font: 700 15px var(--font-display); }
 .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font: 700 10px var(--font-display); background: rgba(255,255,255,.08); color: var(--fg-2); }
 .pill.snow { background: rgba(157,211,255,.2); color: #cfe8ff; } .pill.rain { background: rgba(108,182,255,.18); color: #9fcbff; } .pill.mixed { background: rgba(255,180,84,.18); color: #ffd39a; }
-#airgram { width: 100%; height: 150px; display: block; margin-top: 6px; }
+#airgram { width: 100%; display: block; margin-top: 6px; }   /* height is set by the renderer: 26 px per level */
 /* Sideways only. The strip picked up a vertical scroll of a few pixels and
    the tab labels drifted out of their own pills. */
 .point-tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
