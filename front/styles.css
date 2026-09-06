@@ -398,10 +398,14 @@ button:focus:not(:focus-visible) { outline: none; }
    their natural full height. */
 #timebar.mini { height: auto !important; }
 /* the fold glide: an explicit height + clip while sliding between states */
-#timebar.tape-anim, #timebar.mini.tape-anim { height: var(--tape-anim-h) !important; transition: height .38s cubic-bezier(.32,.72,.24,1), background-color .3s ease, border-color .3s ease, box-shadow .3s ease; overflow: hidden; will-change: height; }
+/* The grip sits 9 px above the box. overflow:hidden clipped its top half for
+   the length of every glide and drag, then it popped back (Jeff 2026-09-06).
+   A clip-path inset with a negative top keeps the rows clipped at the box's
+   sides and bottom while the grip stays whole. */
+#timebar.tape-anim, #timebar.mini.tape-anim { height: var(--tape-anim-h) !important; transition: height .38s cubic-bezier(.32,.72,.24,1), background-color .3s ease, border-color .3s ease, box-shadow .3s ease; overflow: visible; clip-path: inset(-14px 0 0 0); will-change: height; }
 /* a drag is a transform, never a height per frame: the box sits at its ceiling
    and slides; everything that rides it (sheet, locate) slides with it */
-#timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: hidden; transition: none !important; will-change: transform; }
+#timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: visible; clip-path: inset(-14px 0 0 0); transition: none !important; will-change: transform; }
 .tape-riding { transition: none !important; will-change: transform; }
 body.resizing-tape #timebar { z-index: 7; }
 /* the slider and the rows fade with the box instead of cutting: a display:none

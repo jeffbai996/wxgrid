@@ -851,3 +851,10 @@ def test_skewt_headline_names_the_model_when_no_ascent_is_available():
     snd = _read("sounding.js")
     assert "const hasObsLine = !!(obs && obs.levels && obs.levels.length > 4);" in snd
     assert "Model sounding from the ${String(d.model || \"\").toUpperCase()}" in snd
+
+
+def test_the_grip_is_not_clipped_during_a_glide_or_a_drag():
+    css = _read("styles.css")
+    for sel in ("#timebar.tape-anim, #timebar.mini.tape-anim {", "#timebar.tape-dragging {"):
+        rule = css.split(sel, 1)[1].split("}", 1)[0]
+        assert "clip-path: inset(-14px 0 0 0)" in rule and "overflow: hidden" not in rule
