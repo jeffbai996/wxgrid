@@ -398,7 +398,7 @@ button:focus:not(:focus-visible) { outline: none; }
    their natural full height. */
 #timebar.mini { height: auto !important; }
 /* the fold glide: an explicit height + clip while sliding between states */
-#timebar.tape-anim, #timebar.mini.tape-anim { height: var(--tape-anim-h) !important; transition: height .38s cubic-bezier(.22,1,.36,1), background-color .3s ease, border-color .3s ease, box-shadow .3s ease; overflow: hidden; will-change: height; }
+#timebar.tape-anim, #timebar.mini.tape-anim { height: var(--tape-anim-h) !important; transition: height .38s cubic-bezier(.32,.72,.24,1), background-color .3s ease, border-color .3s ease, box-shadow .3s ease; overflow: hidden; will-change: height; }
 /* a drag is a transform, never a height per frame: the box sits at its ceiling
    and slides; everything that rides it (sheet, locate) slides with it */
 #timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: hidden; transition: none !important; will-change: transform; }
@@ -409,7 +409,11 @@ body.resizing-tape #timebar { z-index: 7; }
 #timebar #step, #timebar .tape-head, #timebar .tape { transition: opacity .22s ease; }
 #timebar.tape-anim #step { opacity: 0; }
 #timebar.tape-anim-away .tape-head, #timebar.tape-anim-away .tape { opacity: 0; }
-#timebar.tape-anim-away { background: transparent; border-color: transparent; }
+/* the away glide: the box itself goes invisible at once (background, border,
+   blur, shadow); only the fading rows and the arriving pill are seen. With the
+   blur left on, a transparent box with a backdrop blur slid down the screen as
+   a blurry row-shaped ghost (Jeff 2026-09-06). */
+#timebar.tape-anim-away { background: transparent; border-color: transparent; backdrop-filter: none; box-shadow: none; }
 /* out of the way entirely: only the grip is left to pull it back */
 /* Away: the slab is gone. What stays is the grip and one pill at the foot of
    the map saying what time the map shows, which is also the way back. */

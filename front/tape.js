@@ -408,6 +408,9 @@
       const path = `M${pts[0]} ${pts.slice(1).map((p) => `L${p}`).join(" ")}`;
       return `<svg class="precip-area" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="fill" d="${path} L100 100 L0 100 Z"></path><path class="line" d="${path}"></path></svg>`;
     };
+    // a row of dashes says nothing: the precip row only appears when some
+    // column in the tape actually carries rain or snow (Jeff 2026-09-06)
+    const anyPrecip = dates.some((_, i) => ((s.tp6 && s.tp6[i]) || 0) >= 0.1 || ((s.sf6 && s.sf6[i]) || 0) >= 0.3);
     const rainRow = dates.map((_, i) => { const r = s.tp6 ? s.tp6[i] : null, sn = s.sf6 ? s.sf6[i] : 0; if (r == null) return cell(i, rainArea(i), "rain"); if (sn >= 0.3) return cell(i, `${rainArea(i)}<span class="snow">${WX.units.snow(sn).v}</span>`, "rain snowy"); return cell(i, `${rainArea(i)}${r >= 0.1 ? `<span>${WX.units.precip(r).v}</span>` : ""}`, "rain"); }).join("");
     // Chance of rain, from the members, only where it says something —
     // a row of zeros is noise dressed as information
@@ -430,7 +433,7 @@
       <tr class="r-icon">${label("")}${iconRow}</tr>
       <tr class="r-temp">${label("Air temp", WX.units.tempUnit)}${tempRow}</tr>
       <tr class="r-feels">${label("Feels like", WX.units.tempUnit)}${feelsRow}</tr>
-      <tr class="r-rain">${label("Precip", `${WX.units.precipUnit} · ${WX.units.snowUnit}`)}${rainRow}</tr>
+      ${anyPrecip ? `<tr class="r-rain">${label("Precip", `${WX.units.precipUnit} · ${WX.units.snowUnit}`)}${rainRow}</tr>` : ""}
       ${probRow ? `<tr class="r-prob">${label("Chance", "%")}${probRow}</tr>` : ""}
       <tr class="r-wind">${label("Wind", speedUnit())}${windRow}</tr>
       ${gustRow ? `<tr class="r-wind">${label("Gusts", speedUnit())}${gustRow}</tr>` : ""}

@@ -461,7 +461,7 @@ def test_tape_drag_is_frame_paced_and_stops_at_its_natural_content_height():
     assert 'const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : null;' in app
     assert 'if (dragging || animating) return;' in app
     assert '#timebar.user-sized table.wtape { min-height: 0; }' in css
-    assert 'height .38s cubic-bezier(.22,1,.36,1)' in css
+    assert 'height .38s cubic-bezier(.32,.72,.24,1)' in css   # no-overshoot curve since 2026-09-06
 
 
 def test_collapsed_tape_pill_reports_time_slice_field_and_centre_value():
@@ -811,3 +811,12 @@ def test_tape_precip_number_is_a_notch_smaller_with_a_lighter_halo():
 def test_hero_region_line_is_a_size_down_and_a_weight_up():
     css = _read("styles.css")
     assert "#point-local { font: 600 12px var(--font-mono);" in css
+
+
+def test_precip_row_hides_when_dry_fold_does_not_overshoot_and_the_away_box_is_invisible():
+    tape = _read("tape.js"); css = _read("styles.css")
+    assert "const anyPrecip = dates.some(" in tape and '${anyPrecip ? `<tr class="r-rain">' in tape
+    # cubic-bezier(.22,1,.36,1) rises past 1 before settling: that was the overshoot on the click glide
+    assert "transition: height .38s cubic-bezier(.32,.72,.24,1)" in css and "height .38s cubic-bezier(.22,1,.36,1)" not in css
+    away = css.split("#timebar.tape-anim-away {", 1)[1].split("}", 1)[0]
+    assert "backdrop-filter: none" in away and "box-shadow: none" in away
