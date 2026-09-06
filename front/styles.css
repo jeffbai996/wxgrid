@@ -1006,8 +1006,6 @@ table.bands .dirarrow { width: 11px; height: 11px; margin-right: 4px; }
 .pill.snow { background: rgba(157,211,255,.2); color: #cfe8ff; } .pill.rain { background: rgba(108,182,255,.18); color: #9fcbff; } .pill.mixed { background: rgba(255,180,84,.18); color: #ffd39a; }
 #airgram { width: 100%; display: block; margin-top: 6px; }   /* height is set by the renderer: 26 px per level */
 .airgram-wrap { position: relative; }
-#airgram-stats { display: block; margin-top: 8px; }
-#airgram-stats .sect-grid { display: grid; width: 100%; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
 /* a hover plate shared by the charts: time on top, the reading under it */
 .gtip { position: absolute; z-index: 2; pointer-events: none; white-space: nowrap; transform: translate(-50%, calc(-100% - 8px));
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 4px 8px 4px 7px; border-radius: 8px;

@@ -826,7 +826,7 @@ def test_precip_row_hides_when_dry_fold_does_not_overshoot_and_the_away_box_is_i
 
 def test_airgram_takes_the_card_width_and_a_legible_row_height_at_device_pixels():
     panes = _read("panes.js"); css = _read("styles.css")
-    assert "const padL = 44, padR = 8, padT = 8, padB = 22, ROW_H = 26;" in panes
+    assert "const padL = 44, padR = wide ? 104 : 70, padT = 8, padB = 22, ROW_H = 26;" in panes
     assert "ctx.setTransform(dpr, 0, 0, dpr, 0, 0);" in panes and "const H = padT + padB + rows.length * ROW_H;" in panes
     assert "#airgram { width: 100%; display: block; margin-top: 6px; }" in css and "height: 150px" not in css.split("#airgram {", 1)[1].split("}", 1)[0]
 
@@ -840,11 +840,15 @@ def test_skewt_captions_read_like_a_forecaster_not_a_spec():
 
 
 def test_airgram_carries_more_than_the_grid_and_the_skewt_note_hides_its_nerd_half():
+    # The column's numbers live in the chart's right margin, at the row they
+    # belong to; the shelf of tiles under the grid is gone (Jeff 2026-09-06,
+    # "we've been overdoing this card paradigm").
     panes = _read("panes.js"); snd = _read("sounding.js"); html = _read("index.html"); css = _read("styles.css")
-    assert "function renderAirgramStats(d, i, rows, n)" in panes and "function wireAirgramHover(c, d, rows, n, g)" in panes
-    assert "stat(`Thickness · ${" in panes and "stat(`Lapse · ${" in panes and '", the pale line is the freezing level"' in panes
-    assert "#airgram-stats { display: block;" in css
-    assert 'id="airgram-stats"' in html and 'id="airgram-tip" class="gtip"' in html
+    assert "function drawAirgramGutter(ctx, d, k, rows, g)" in panes and "function wireAirgramHover(c, d, rows, n, g)" in panes
+    assert "renderAirgramStats" not in panes and "airgram-stats" not in html and "airgram-stats" not in css
+    assert "thickness, ${word}" in panes and "lapse, ${word}" in panes and "strongest, ${best.key} hPa" in panes
+    assert '", the pale line is the freezing level"' in panes and "The margin reads the selected hour." in panes
+    assert 'id="airgram-tip" class="gtip"' in html
     assert "return { ok: true, caption, headline, detail," in snd
     assert '<span class="info" tabindex="0" role="note"' in panes and ".note .info:hover .info-pop, .note .info:focus-visible .info-pop { opacity: 1;" in css
 

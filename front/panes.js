@@ -971,9 +971,15 @@
     // makes every cell legible (26 px) instead of a fixed 640×260 backing
     // store squashed into 150 px (Jeff 2026-09-06, "expand the airgram").
     // Drawn at device pixels so the numbers stay crisp on a retina screen.
-    const padL = 44, padR = 8, padT = 8, padB = 22, ROW_H = 26;
+    // The right gutter is where the column's numbers live (freezing level,
+    // 850 temp, max wind at their own rows; thickness and lapse on a bracket
+    // down the side). A shelf of tiles under the grid was two paradigms glued
+    // together (Jeff 2026-09-06, "overdoing the card paradigm"). Narrow cards
+    // get numbers only, wide ones the words too.
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const W_ = Math.max(320, c.clientWidth || c.parentElement.clientWidth || 640);
+    const wide = W_ >= 440;
+    const padL = 44, padR = wide ? 104 : 70, padT = 8, padB = 22, ROW_H = 26;
     const H = padT + padB + rows.length * ROW_H;
     if (c.width !== Math.round(W_ * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W_ * dpr); c.height = Math.round(H * dpr); }
     c.style.height = `${H}px`;
@@ -1018,24 +1024,93 @@
       return null;
     };
     if (fzs) {
-      ctx.strokeStyle = "rgba(190, 236, 255, 0.85)"; ctx.lineWidth = 1.5; ctx.setLineDash([]); ctx.beginPath(); let pen = false, lastPt = null;
+      ctx.strokeStyle = "rgba(190, 236, 255, 0.85)"; ctx.lineWidth = 1.5; ctx.setLineDash([]); ctx.beginPath(); let pen = false;
       for (let k = 0; k < n; k++) {
         const hm = fzs[k]; const y = hm == null ? null : yForHeight(k, hm);
         if (y == null) { pen = false; continue; }
         const x = padL + k * cw + cw / 2;
         if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
-        lastPt = [x, y];
       }
-      ctx.stroke();
-      if (lastPt) { ctx.fillStyle = "rgba(190, 236, 255, 0.95)"; ctx.font = "700 9px 'Geist Mono', ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("0°C", lastPt[0] - 3, lastPt[1] - 7); }
+      ctx.stroke();                                   // the margin names the line; no tag on its end
     }
     // day ticks + selected step
     ctx.fillStyle = "#8b93a1"; ctx.textAlign = "left"; let lastDay = null;
     d.valid.slice(0, n).forEach((iso, k) => { const dt = new Date(iso), day = dt.toDateString(); if (day !== lastDay) { lastDay = day; ctx.fillRect(padL + k * cw, padT, 1, H - padT - padB); ctx.fillText(dt.toLocaleDateString(undefined, { weekday: "short" }), padL + k * cw + 3, H - 8); } });
     if (i < n) { ctx.strokeStyle = "#6cb6ff"; ctx.lineWidth = 2; ctx.strokeRect(padL + i * cw + 1, padT + 1, cw - 2, H - padT - padB - 2); }
-    $("#airgram-note").textContent = `Rows are pressure levels, colour is temperature, arrows are wind in ${speedUnit()}${fzs ? ", the pale line is the freezing level" : ""}.`;
-    renderAirgramStats(d, i, rows, n);
+    $("#airgram-note").textContent = `Rows are pressure levels, colour is temperature, arrows are wind in ${speedUnit()}${fzs ? ", the pale line is the freezing level" : ""}. The margin reads the selected hour.`;
+    drawAirgramGutter(ctx, d, Math.min(i, n - 1), rows, { padL, padT, padB, cw, rh, rowY, W: W_, H, wide, yForHeight });
     wireAirgramHover(c, d, rows, n, { padL, padT, cw, rh, rowY });
+  }
+
+  // The selected column's numbers, written in the margin at the height they
+  // belong to, the way a forecaster annotates a printed airgram: freezing
+  // level and 850 hPa temperature at their rows, the strongest wind tagged on
+  // its level, 1000–500 thickness and 850–500 lapse on one bracket down the
+  // side. Labels that would overlap slide to the nearest free slot.
+  function drawAirgramGutter(ctx, d, k, rows, g) {
+    const U = W().units, { speed, speedUnit, arrow } = W();
+    const al = d.aloft || {};
+    const at = (lv, f) => (al[lv] && al[lv][f] ? al[lv][f][k] : null);
+    const rowIndex = (key) => rows.findIndex((r) => r.key === key);
+    const x0 = g.W - (g.wide ? 104 : 70);                // the grid's right edge, where the margin begins
+    const gx = x0 + 6;                                    // where the margin starts
+    const MONO = (px, w = 700) => `${w} ${px}px 'Geist Mono', ui-monospace, monospace`;
+    const WORD = (px, w = 600) => `${w} ${px}px 'Urbanist', 'DM Sans', sans-serif`;
+    const notes = [];                                     // { y, lines: [[text, font, colour]], h }
+    const line = (text, font, colour) => [text, font, colour];
+    const fz = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[k] : null;
+    const yFz = fz == null ? null : g.yForHeight(k, fz);
+    if (yFz != null) notes.push({ y: yFz, key: "fz", tick: true, lines: [line(`0°C ${U.alt(fz).v} ${U.alt(fz).unit}`, MONO(10), "rgba(190,236,255,.95)")] });
+    const t850 = at("850", "temp"), r850 = rowIndex("850");
+    if (t850 != null && r850 >= 0) notes.push({ y: g.rowY(r850), key: "t850", tick: true,
+      lines: [line(`${U.temp(t850).v}°`, MONO(11), "#ffd166"), ...(g.wide ? [line("850 hPa air", WORD(9), "#8b93a1")] : [])] });
+    let best = null;
+    for (const r of rows) { if (r.key === "sfc") continue; const w = at(r.key, "wind"); if (w != null && (!best || w > best.w)) best = { key: r.key, w, dir: at(r.key, "wdir") }; }
+    if (best) {
+      const ri = rowIndex(best.key);
+      notes.push({ y: g.rowY(ri), key: "wind", tick: true,
+        lines: [line(`${Math.round(speed(best.w))} ${speedUnit()}${best.dir != null ? ` ${arrow(best.dir)}` : ""}`, MONO(10.5), "#8ec5f0"),
+                ...(g.wide ? [line(`strongest, ${best.key} hPa`, WORD(9), "#8b93a1")] : [])] });
+      // and the cell itself is ringed, so the eye finds it in the grid
+      const x = g.padL + k * g.cw, y = g.padT + (rows.length - 1 - ri) * g.rh;
+      ctx.strokeStyle = "rgba(142,197,240,.95)"; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+      ctx.strokeRect(x + 1.5, y + 1.5, g.cw - 3, g.rh - 3);
+    }
+    // the bracket: 1000 → 500 with thickness, 850 → 500 lapse on the same side
+    const gh500 = at("500", "gh"), gh1000 = at("1000", "gh"), gh850 = at("850", "gh"), t500 = at("500", "temp");
+    const r1000 = rowIndex("1000"), r500 = rowIndex("500");
+    const bracket = [];
+    if (gh500 != null && gh1000 != null) {
+      const dam = Math.round((gh500 - gh1000) / 10);
+      const word = dam <= 528 ? "cold" : dam <= 540 ? "snow line low" : dam >= 570 ? "warm column" : "typical";
+      bracket.push(line(`${dam} dam`, MONO(10.5), dam <= 540 ? "#9fd0ff" : dam >= 570 ? "#ffb26b" : "#c9d3e0"), ...(g.wide ? [line(`thickness, ${word}`, WORD(9), "#8b93a1")] : []));
+    }
+    if (t850 != null && t500 != null && gh850 != null && gh500 != null) {
+      const lapse = (t850 - t500) / Math.max(0.5, (gh500 - gh850) / 1000);
+      const word = lapse >= 7.5 ? "unstable" : lapse >= 6.5 ? "conditional" : "stable";
+      bracket.push(line(`${lapse.toFixed(1)}°/km`, MONO(10.5), lapse >= 7.5 ? "#ff8a3d" : lapse >= 6.5 ? "#ffd166" : "#78d39a"), ...(g.wide ? [line(`lapse, ${word}`, WORD(9), "#8b93a1")] : []));
+    }
+    if (bracket.length && r1000 >= 0 && r500 >= 0) {
+      const yA = g.rowY(r1000), yB = g.rowY(r500);
+      ctx.strokeStyle = "rgba(139,147,161,.55)"; ctx.lineWidth = 1; ctx.beginPath();
+      ctx.moveTo(gx + 3, yA); ctx.lineTo(gx, yA); ctx.lineTo(gx, yB); ctx.lineTo(gx + 3, yB); ctx.stroke();
+      notes.push({ y: (yA + yB) / 2, key: "bracket", tick: false, lines: bracket });
+    }
+    // lay the notes out: each wants its own y; nudge apart, top to bottom
+    const LH = 12;
+    for (const nt of notes) nt.h = nt.lines.length * LH;
+    notes.sort((a, b) => a.y - b.y);
+    const top = g.padT + 2, bottom = g.H - g.padB - 2;
+    let cursor = top;
+    for (const nt of notes) { nt.top = Math.max(cursor, nt.y - nt.h / 2); cursor = nt.top + nt.h + 3; }
+    let overflow = cursor - 3 - bottom;                   // push back up from the bottom if the column ran out
+    for (let j = notes.length - 1; j >= 0 && overflow > 0; j--) { const nt = notes[j]; const up = Math.min(overflow, nt.top - (j ? notes[j - 1].top + notes[j - 1].h + 3 : top)); nt.top -= up; overflow -= up; }
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    for (const nt of notes) {
+      const tx = gx + (nt.key === "bracket" ? 7 : 4);
+      if (nt.tick) { ctx.strokeStyle = "rgba(139,147,161,.6)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0 + 1, nt.y); ctx.lineTo(tx - 2, nt.top + nt.h / 2); ctx.stroke(); }
+      nt.lines.forEach(([text, font, colour], j) => { ctx.font = font; ctx.fillStyle = colour; ctx.fillText(text, tx, nt.top + LH * j + LH / 2); });
+    }
   }
 
   // What the column under the pointer says, level by level: time, pressure,
@@ -1061,34 +1136,6 @@
       tip.style.top = `${Math.max(0, g.padT + (rows.length - 1 - ri) * g.rh)}px`;
     };
     c.onpointerleave = () => { tip.hidden = true; };
-  }
-
-  // The selected hour's column, read the way a forecaster reads a sounding
-  // table: freezing level, 1000–500 thickness, 850–500 lapse rate, the
-  // strongest wind aloft, and 850 hPa temperature.
-  function renderAirgramStats(d, i, rows, n) {
-    const box = $("#airgram-stats"); if (!box) return;
-    const U = W().units, { speed, speedUnit, arrow } = W();
-    const k = Math.min(i, n - 1), al = d.aloft || {};
-    const at = (lv, f) => (al[lv] && al[lv][f] ? al[lv][f][k] : null);
-    const tiles = [];
-    const fz = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[k] : null;
-    if (fz != null) tiles.push(stat("Freezing level", U.alt(fz).v, U.alt(fz).unit, "#bfe9ff", "", "Height of the 0 °C isotherm", "air"));
-    const gh500 = at("500", "gh"), gh1000 = at("1000", "gh");
-    if (gh500 != null && gh1000 != null) {
-      const dam = Math.round((gh500 - gh1000) / 10);
-      tiles.push(stat(`Thickness · ${dam <= 528 ? "cold" : dam <= 540 ? "snow line low" : dam >= 570 ? "warm column" : "typical"}`, dam, "dam", dam <= 540 ? "#9fd0ff" : dam >= 570 ? "#ffb26b" : "#9fb0c8", "", "1000–500 hPa thickness; ~540 dam is the classic rain/snow line", "air"));
-    }
-    const t850 = at("850", "temp"), t500 = at("500", "temp"), gh850 = at("850", "gh");
-    if (t850 != null && t500 != null && gh850 != null && gh500 != null) {
-      const lapse = (t850 - t500) / Math.max(0.5, (gh500 - gh850) / 1000);
-      tiles.push(stat(`Lapse · ${lapse >= 7.5 ? "unstable" : lapse >= 6.5 ? "conditional" : "stable"}`, lapse.toFixed(1), "°C/km", lapse >= 7.5 ? "#ff8a3d" : lapse >= 6.5 ? "#ffd166" : "#78d39a", "", "Environmental lapse rate between 850 and 500 hPa", "air"));
-    }
-    let best = null;
-    for (const r of rows) { if (r.key === "sfc") continue; const w = at(r.key, "wind"); if (w != null && (!best || w > best.w)) best = { lv: r.key, w, dir: at(r.key, "wdir") }; }
-    if (best) tiles.push(stat(`Max wind · ${best.lv} hPa`, Math.round(speed(best.w)), speedUnit(), "#8ec5f0", best.dir != null ? `<em>${arrow(best.dir)} ${Math.round(best.dir)}°</em>` : "", "Strongest wind on any level in this column", "air"));
-    if (t850 != null) tiles.push(stat("850 hPa temp", `${U.temp(t850).v}°`, "", "#ffd166", "", "A clean read of the air mass, above the boundary layer", "air"));
-    box.innerHTML = tiles.length ? `<div class="sect-grid">${tiles.join("")}</div>` : "";
   }
 
   // ── Winter: new snow, snow depth, levels, wind loading, avalanche forecast
