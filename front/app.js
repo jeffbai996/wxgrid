@@ -1827,8 +1827,9 @@
     const st = pill.querySelector(".status"); if (st) st.classList.toggle("away", status !== "Now");   // red offset, same as the Now pill
     const value = pill.querySelector(".value"), sub = pill.querySelector(".sub");
     // "13kt", not "13 kt": the chin is a one-line readout, the unit hugs the number (Jeff 2026-09-05)
-    const tight = (txt) => (txt || "").replace(/(\d)\s+(?=[a-z°%\/]+$)/i, "$1");
-    if (value) { value.textContent = tight(reading && reading.text); value.hidden = !(reading && reading.text); }
+    const escT = (t) => String(t == null ? "" : t).replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
+    const tight = (txt) => escT(txt).replace(/(\d)\s+([a-z°%\/]+)$/i, "$1<small>$2</small>");   // the unit hugs the number, a size down
+    if (value) { value.innerHTML = tight(reading && reading.text); value.hidden = !(reading && reading.text); }
     if (sub) { sub.textContent = reading && reading.sub || ""; sub.hidden = !(reading && reading.sub); }
     pill.setAttribute("aria-label", ["Show forecast timeline", time, status, field,
       reading && reading.text, reading && reading.sub].filter(Boolean).join(", "));

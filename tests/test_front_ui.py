@@ -749,7 +749,8 @@ def test_outbound_card_links_have_a_hover_state():
 
 def test_the_minimized_pill_reads_in_urbanist_with_tight_units_and_a_visible_play_ring():
     app = _read("app.js"); css = _read("styles.css")
-    assert 'const tight = (txt) => (txt || "").replace(' in app and "value.textContent = tight(reading && reading.text)" in app
+    assert 'const tight = (txt) => escT(txt).replace(' in app and "value.innerHTML = tight(reading && reading.text)" in app
+    assert ".tape-pill .value small { font-size: 10.5px;" in css and "font-weight: 650" in css.split(".tape-pill .field {", 1)[1].split("}", 1)[0]
     for sel in (".tape-pill .t {", ".tape-pill .value {", ".tape-pill .sub {"):
         assert "var(--font-display)" in css.split(sel, 1)[1].split("}", 1)[0] and "font-mono" not in css.split(sel, 1)[1].split("}", 1)[0]
     assert "border: 1px solid var(--line-strong)" in css.split(".tape-pill .pp {", 1)[1].split("}", 1)[0]
