@@ -844,3 +844,9 @@ def test_airgram_carries_more_than_the_grid_and_the_skewt_note_hides_its_nerd_ha
     assert 'id="airgram-stats"' in html and 'id="airgram-tip" class="gtip"' in html
     assert "return { ok: true, caption, headline, detail," in snd
     assert '<span class="info" tabindex="0" role="note"' in panes and ".note .info:hover .info-pop, .note .info:focus-visible .info-pop { opacity: 1;" in css
+
+
+def test_skewt_headline_names_the_model_when_no_ascent_is_available():
+    snd = _read("sounding.js")
+    assert "const hasObsLine = !!(obs && obs.levels && obs.levels.length > 4);" in snd
+    assert "Model sounding from the ${String(d.model || \"\").toUpperCase()}" in snd

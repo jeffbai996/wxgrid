@@ -500,7 +500,11 @@
       notes.unshift(`${st.name || st.id || "Nearest"} sounding${st.distance_km != null ? `, ${Math.round(st.distance_km)} km away` : ""}${when ? `, ${when}` : ""}. Observed temperature in white, observed dew point dashed blue; the model run is orange and green.`);
     }
     const caption = notes.join(" ");
-    const headline = notes[0] || "", detail = notes.slice(1).join(" ");
+    // One plain line up front; the reasoning goes behind the info dot. With a
+    // real ascent the station line leads, otherwise a line naming the model.
+    const hasObsLine = !!(obs && obs.levels && obs.levels.length > 4);
+    const headline = hasObsLine ? notes[0] : `Model sounding from the ${String(d.model || "").toUpperCase()} ${d.run ? `${d.run.slice(11, 13)}Z` : ""} run.`.replace(/\s+/g, " ");
+    const detail = (hasObsLine ? notes.slice(1) : notes).join(" ");
     ctx.fillStyle = P.dim; ctx.font = `500 9px ${P.mono}`; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     const short = prof.hasDewAloft ? "T (orange), Td (green), parcel (dashed), barbs in kt"
                                    : "T (orange), surface Td (green dot), parcel (dashed), barbs in kt — no dew-point profile aloft";
