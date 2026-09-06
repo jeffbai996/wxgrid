@@ -94,6 +94,37 @@ def test_reverse_does_not_name_the_ocean_when_the_geocoder_is_down(monkeypatch):
     assert ext.reverse(50.116, -122.957)["name"] == "Whistler"
 
 
+def test_open_water_never_waits_for_elevation_or_overpass(monkeypatch):
+    monkeypatch.setattr(ext, "_nominatim", lambda *a, **kw: {})
+    def unexpected(*a, **kw):
+        raise AssertionError("open ocean must not make secondary network calls")
+    monkeypatch.setattr(ext, "elevation", unexpected)
+    monkeypatch.setattr(ext, "nearby_named_water", unexpected)
+    monkeypatch.setattr(ext, "water_nodes", unexpected)
+    monkeypatch.setattr(ext.requests, "post", unexpected)
+    ext.cache.clear()
+    assert ext.reverse(30, -150)["name"] == "North Pacific Ocean"
+    assert ext.reverse(42, 51)["name"] == "Caspian Sea"
+    ext.cache.get("water-in-v1:30.000:-151.000", 30 * 24 * 3600, lambda: "Known water")
+    assert ext.reverse(30, -151)["name"] == "Known water"
+
+
+def test_marine_context_does_not_wait_for_metadata_or_invent_elevation(monkeypatch):
+    monkeypatch.setattr(ext, "_nominatim", lambda *a, **kw: {})
+    def unexpected(*a, **kw): raise AssertionError("metadata must not block marine name")
+    monkeypatch.setattr(ext, "elevation", unexpected)
+    monkeypatch.setattr(ext, "timezone", unexpected)
+    ext.cache.clear()
+    result = ext.local_context(30, -150)
+    assert result["place"]["name"] == "North Pacific Ocean"
+    assert result["elevation_m"] is None
+    assert result["timezone"]["source"] == "longitude"
+    ext.cache.get("elev:30.000:-150.000", 100, lambda: -5)
+    ext.cache.get("tz:30.0:-150.0", 100, lambda: {"source": "known"})
+    result = ext.local_context(30, -150)
+    assert result["elevation_m"] == -5 and result["timezone"]["source"] == "known"
+
+
 def test_nearest_metar_picks_closest_station(monkeypatch):
     fake = [{"icaoId": "CYVR", "lat": 49.19, "lon": -123.18, "temp": 17.0, "rawOb": "METAR CYVR", "reportTime": "t"},
             {"icaoId": "CWWA", "lat": 49.347, "lon": -123.193, "temp": 17.4, "rawOb": "METAR CWWA", "reportTime": "t"}]

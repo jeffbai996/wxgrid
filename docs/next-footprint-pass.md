@@ -1,8 +1,10 @@
 # Next footprint pass: items 3–5
 
-Status: specification only, 2026-09-06. Items 1–2 (disk-staged point-cube
-transpose and streaming step writes) are implemented separately. Do not ship
-the changes below as part of that batch.
+Status, 2026-09-06: items 3 and 5 implemented and verified; item 4 implemented
+on the separate `codex/field-cache-acceptance` candidate, awaiting visual
+sign-off before production deployment. Items 1–2 shipped in the previous
+batch. The contracts below remain the acceptance checklist. See
+`runtime-footprint.md` for measured evidence and rollout limitations.
 
 ## Invariants
 

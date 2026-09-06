@@ -19,8 +19,11 @@ def test_warm_layers_writes_the_request_paths(tmp_path, monkeypatch):
     import wxgrid.config as config
     monkeypatch.setattr(config, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(api_mod, "CACHE_DIR", tmp_path, raising=False)
+    gates = []
+    monkeypatch.setattr(ingest, "wait_for_step_gate", lambda: gates.append(True))
     n = ingest.warm_layers("gem", "2026-01-02T00", STORE_DIR)
     assert n == 6                                       # 3 available layers × 2 steps (gust/tcc/msl absent → skipped)
+    assert len(gates) == 7  # before the first missing frame and after each write
     for layer in ("wind", "temp", "tp6"):
         # The client explicitly accepts lossless WebP and warm_layers now
         # pre-encodes that common path; PNG remains the on-demand fallback.
@@ -32,3 +35,39 @@ def test_warm_layers_writes_the_request_paths(tmp_path, monkeypatch):
         assert not (tmp_path / "gem" / "2026-01-02T00" / render.layer_cache_name(0, layer, None)[0]).exists()
     # a second pass renders nothing: the names are the cache
     assert ingest.warm_layers("gem", "2026-01-02T00", STORE_DIR) == 0
+    assert len(gates) == 7
+
+
+def test_gate_sees_no_frame_arrays_and_abort_leaves_completed_cache(tmp_path, monkeypatch):
+    import weakref
+    from types import SimpleNamespace
+    import pytest
+    import wxgrid.api as api
+    import wxgrid.config as config
+    import wxgrid.store as store
+    refs = []
+    gates = []
+    monkeypatch.setattr(store, "RunReader", lambda *a, **kw: SimpleNamespace(steps=[0, 1]))
+    monkeypatch.setattr(ingest, "WARM_LAYERS", ("temp",))
+    monkeypatch.setattr(config, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(api, "_available", lambda *a: True)
+    monkeypatch.setattr(api, "_level_step", lambda r, step, *a: step)
+    def field(*args):
+        a = np.ones((3, 3), np.float32)
+        refs.append(weakref.ref(a))
+        return a
+    monkeypatch.setattr(api, "field_for", field)
+    monkeypatch.setitem(render.DISPLAY, "temp", lambda a: a)
+    monkeypatch.setattr(render, "encode_field", lambda *a, **kw: b"encoded")
+    def gate():
+        assert all(ref() is None for ref in refs)
+        gates.append(True)
+        if len(gates) == 2:
+            raise RuntimeError("pressure gate abort")
+    monkeypatch.setattr(ingest, "wait_for_step_gate", gate)
+    with pytest.raises(RuntimeError, match="pressure gate"):
+        ingest.warm_layers("gfs", "run", tmp_path)
+    assert len(list(tmp_path.rglob("*.webp"))) == 1
+    assert not list(tmp_path.rglob("*.tmp"))
+    monkeypatch.setattr(ingest, "wait_for_step_gate", lambda: None)
+    assert ingest.warm_layers("gfs", "run", tmp_path) == 1

@@ -22,6 +22,7 @@ from urllib3.util.retry import Retry
 from wxgrid.config import GRIB_DIR
 from wxgrid.models import LEVEL_EVERY, Model
 from wxgrid.store import _Pacer
+from wxgrid.ecmwf_budget import BoundedECMWF, FetchDeferred, valid_grib
 
 log = logging.getLogger(__name__)
 
@@ -82,9 +83,7 @@ def _run_dir(model: Model, run: datetime, root: Path) -> Path:
 # ── ECMWF ─────────────────────────────────────────────────────────────────
 
 def ecmwf_latest_run(model: Model) -> datetime:
-    from ecmwf.opendata import Client
-
-    client = Client(source="ecmwf", model=model.ecmwf_model, resol="0p25")
+    client = BoundedECMWF(model)
     when = client.latest(type="fc", step=model.steps[1], param=list(model.sfc_params)[:2])
     return when.replace(tzinfo=timezone.utc)
 
@@ -94,9 +93,7 @@ def fetch_ecmwf(model: Model, run: datetime, root: Path = GRIB_DIR,
     """Per step: one surface GRIB and one pressure-level GRIB. A param the
     run does not carry (e.g. gust at some steps) is retried without it rather
     than failing the whole step."""
-    from ecmwf.opendata import Client
-
-    client = Client(source="ecmwf", model=model.ecmwf_model, resol="0p25")
+    client = BoundedECMWF(model)
     out_dir = _run_dir(model, run, root)
     got: list[tuple[int, list[Path]]] = []
     for step in model.steps:
@@ -126,13 +123,14 @@ def fetch_ecmwf_wave(client, model: Model, run: datetime, step: int, out_dir: Pa
     if not model.wave_params or step % LEVEL_EVERY:
         return None
     wv = out_dir / f"step{step:03d}-wave.grib2"
-    if _ecmwf_get(client, model, run, step, wv, dict(stream="wave", param=list(model.wave_params))):
+    if _ecmwf_get(client, model, run, step, wv, dict(stream="wave", param=list(model.wave_params)), optional=True):
         return wv
     return None
 
 
-def _ecmwf_get(client, model: Model, run: datetime, step: int, target: Path, req: dict) -> bool:
-    if target.exists() and target.stat().st_size > 0:
+def _ecmwf_get(client, model: Model, run: datetime, step: int, target: Path, req: dict, *, optional=False) -> bool:
+    if valid_grib(target):
+        log.info("%s step %d: reused %d GRIB bytes", model.key, step, target.stat().st_size)
         return True
     target.unlink(missing_ok=True)
     temporary = target.with_name(f".{target.name}.part")
@@ -142,6 +140,8 @@ def _ecmwf_get(client, model: Model, run: datetime, step: int, target: Path, req
         try:
             client.retrieve(type="fc", date=run.strftime("%Y%m%d"), time=run.hour, step=step,
                             target=str(temporary), **{**req, "param": params})
+            if not valid_grib(temporary):
+                raise FetchDeferred("ECMWF returned an invalid or truncated GRIB")
             size = temporary.stat().st_size
             temporary.replace(target)
             # The ECMWF client streams the file itself; charge it afterwards
@@ -152,15 +152,21 @@ def _ecmwf_get(client, model: Model, run: datetime, step: int, target: Path, req
             return True
         except Exception as exc:
             temporary.unlink(missing_ok=True)
+            if isinstance(exc, FetchDeferred):
+                raise
             msg = str(exc)
+            if optional and isinstance(exc, ValueError) and msg.startswith("Cannot find index entries matching"):
+                return False
             # "No index entries for param=10fg" → drop that one param and retry.
             missing = None
             for p in params:
-                if f"param={p}" in msg or f"'{p}'" in msg:
+                if msg.startswith("No index entries") and (f"param={p}" in msg or f"'{p}'" in msg):
                     missing = p
                     break
-            if missing is None or len(params) == 1:
-                log.warning("%s %s step %d: %s", model.key, run, step, msg.splitlines()[0][:160])
+            if missing is None:
+                raise FetchDeferred("ECMWF required product unavailable") from exc
+            if len(params) == 1:
+                log.info("%s step %d: optional parameter absent: %s", model.key, step, missing)
                 return False
             params.remove(missing)
     temporary.unlink(missing_ok=True)

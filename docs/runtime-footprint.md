@@ -175,3 +175,72 @@ scope. New tests cover chunk-once reads, exact raw bits/encoding attributes,
 odd edge bands, staging failure/cleanup/retry, scratch/output pacing, bounded
 decoded-field lifetimes, last-message-wins, derived values, partial spread
 decode and release of final accumulations before the point-cube phase.
+
+## Retry budgets, warming gates and marine names (2026-09-06)
+
+`ecmwf_budget.py` centralizes latest/retrieve policy. SDK/multiurl are limited
+to one attempt; the wrapper allows four operation attempts within a 300-second
+transfer deadline, a 60-second latest probe, and 900 cumulative retry-wait
+seconds per fetch client. Multi-part/index requests remain necessary within
+an operation; four attempts is not a claim of four total HTTP calls per model.
+Numeric/date Retry-After is respected, never shortened to retry early.
+Environment overrides: `WXGRID_ECMWF_ATTEMPTS`,
+`WXGRID_ECMWF_TRANSFER_SECONDS`, `WXGRID_ECMWF_RETRY_WAIT_SECONDS`.
+
+The session checks stream deadlines with bounded connect/read timeouts;
+blocked DNS/OS calls are still a cooperative-cancellation limitation. No
+timeout thread or process pool was added. Deferred required products leave
+the run incomplete, retain completed GRIB downloads, and let the CLI advance
+to other models. Reuse validates concatenated GRIB2 headers/lengths/trailers.
+Optional absent wave products are distinguished from required failures.
+Resumption is at whole completed-file granularity, not byte-range or decoded
+step checkpointing. The 24-hour orphan sweep now respects the run lock.
+
+Warming uses the existing pressure gate before its first missing frame and
+after each published frame, after the encoder frame/arrays have been released.
+Cache hits do not invoke the gate. All warm layers/steps are unchanged.
+`WXGRID_PHASE_METRICS=1` enables bounded local journal phase summaries and
+at-most-minute progress: wall/user/system time, completed/cache-skip counts,
+gate waiting, RSS, lifetime RSS high water, cgroup current/lifetime peak
+memory/swap and IO deltas. These are boundary snapshots, not a new sampler.
+Nested decode/write phase totals are inclusive in fetch/decode; do not add
+both together. Lifetime and logged-boundary peaks are not phase-local peaks.
+The three ingest unit templates enable this; active jobs adopt environment
+changes only on their next invocation.
+
+Open-water naming no longer waits for elevation, a 35-second local Overpass
+query and a possible 120-second global water-node refresh. A successful
+no-address Nominatim response uses cached detailed water names or the existing
+local sea seeds/ocean divisions. Geocoder failure still cannot label land as
+ocean. Marine card/reverse responses use cached elevation/timezone metadata;
+otherwise elevation is unknown and timezone explicitly uses the pre-existing
+longitude fallback. Land and coastal-boundary containment logic is unchanged.
+
+Evidence: a cold preview request at 30.24/-150.24 returned North Pacific Ocean
+in 0.889 s, HTTP 200. This is an after measurement, not a controlled before/
+after claim; initial Nominatim latency can still vary. A real AIFS 2026-09-06T12
+sample (2t, step 0) fetched through the bounded transport in 4.922 s and passed
+GRIB framing validation (617,135 bytes); scratch was removed. Fake clock/HTTP
+tests cover retry limits, Retry-After, stream timeout, required/optional failure,
+resumption and lock-safe cleanup. Combined candidate tests: 738 passed,
+20 skipped under a one-core/1536 MiB scope. Whole scheduled-cycle acceptance
+and metrics overhead measurements remain outstanding; no full-run improvement
+is claimed from those small probes.
+
+### Browser candidate: visual acceptance pending
+
+The separate `codex/field-cache-acceptance` candidate lowers decoded CPU
+residency from 96 to 80 MiB (including decode reservations) and bounds field
+textures at 40 MiB. Only displayed textures remain allocated; CPU data still
+supports exact sampling. Speculative work yields, cancelled decodes cannot
+re-enter the cache, and context loss/allocation failure releases accounting.
+Actual browser decoder/canvas/driver overhead is additional to these counters.
+
+Node tests cover 100-step scrubbing, late completions, context restoration,
+allocation failure and unchanged sampled values. The in-app browser loaded
+the WebGL2 path and exercised HRRR playback with no reported field fallback.
+Screenshot capture was unavailable and runtime counters were not accessible
+through the browser's read-only evaluation surface. Therefore visual/p95
+playback acceptance is not asserted, and the candidate stays out of production
+until the operator confirms the preview. Its shell version is v105; production
+keeps the current frontend version until that separate deployment.

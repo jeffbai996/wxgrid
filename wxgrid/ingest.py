@@ -15,6 +15,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from wxgrid.ens import wind_speed_spread
 from wxgrid.grib import iter_fields
 from wxgrid.models import MODELS, SWELL_VAR, WAVE_BAND_INPUTS, Model, get_model
 from wxgrid.store import RunWriter, build_point_cube, list_runs, prune, run_id, run_lock, run_path
+from wxgrid.phase_metrics import Phase, current as current_phase
 
 log = logging.getLogger("wxgrid.ingest")
 
@@ -41,7 +43,13 @@ def wait_for_step_gate() -> None:
     command = os.environ.get("WXGRID_STEP_GATE_COMMAND", "").strip()
     if not command:
         return
-    subprocess.run(shlex.split(command), check=True)
+    started = time.monotonic()
+    try:
+        subprocess.run(shlex.split(command), check=True)
+    finally:
+        phase = current_phase.get()
+        if phase is not None:
+            phase.gate_seconds += time.monotonic() - started
 
 
 def accumulation_bucket(mode: str, step: int, start_step: int, accum: np.ndarray,
@@ -88,8 +96,7 @@ def _resolve_run(model: Model, run: str | None) -> datetime:
         from wxgrid import wn2
         return wn2.resolve_latest(model)
     if model.source == "ecmwf":
-        from ecmwf.opendata import Client
-        client = Client(source="ecmwf", model=model.ecmwf_model, resol="0p25")
+        client = fetch.BoundedECMWF(model)
         # Asking for the LAST step means "latest run that is fully published".
         when = client.latest(type="fc", step=model.steps[-1], param=list(model.sfc_params)[:1])
         return when.replace(tzinfo=timezone.utc)
@@ -119,7 +126,7 @@ def _resolve_run(model: Model, run: str | None) -> datetime:
 
 
 def sweep_orphan_gribs(grib_root: Path, max_age_hours: int = 24,
-                       now: datetime | None = None) -> list[Path]:
+                       now: datetime | None = None, store_root: Path = STORE_DIR) -> list[Path]:
     """Remove run dirs under grib_root/<model>/<run> older than max_age_hours.
 
     Catches the GRIBs an interrupted ingest_run left behind (see the
@@ -143,8 +150,17 @@ def sweep_orphan_gribs(grib_root: Path, max_age_hours: int = 24,
             except OSError:
                 continue
             if mtime < cutoff:
-                shutil.rmtree(run_dir, ignore_errors=True)
-                removed.append(run_dir)
+                try:
+                    stamp = datetime.strptime(run_dir.name, "%Y%m%dT%H")
+                except ValueError:
+                    try:
+                        stamp = datetime.strptime(run_dir.name, "%Y-%m-%dT%H")
+                    except ValueError:
+                        continue
+                with run_lock(model_dir.name, stamp.strftime("%Y-%m-%dT%H"), store_root) as held:
+                    if held:
+                        shutil.rmtree(run_dir, ignore_errors=True)
+                        removed.append(run_dir)
     return removed
 
 
@@ -245,6 +261,8 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
                 # decoded, drop the file so the next cycle re-fetches it.
                 log.warning("unreadable GRIB %s, dropping it", p.name, exc_info=True)
                 p.unlink(missing_ok=True)
+                if model.source == "ecmwf":
+                    raise fetch.FetchDeferred("ECMWF GRIB decode failed; refetch required")
 
     def write_step(step: int, paths: list[Path]) -> None:
         # The ensemble-spread GRIB decodes to the same shortNames as the mean,
@@ -317,7 +335,9 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         log.info("%s %s step %03d written", model.key, rid, step)
 
     def on_step(step: int, paths: list[Path]) -> None:
-        write_step(step, paths)
+        with Phase(model.key, rid, "decode_write") as phase:
+            write_step(step, paths)
+            phase.tick()
         # The write stack and its decoded arrays are gone before waiting, so a
         # pressure pause does not pin the just-completed step in RAM. Gating
         # the final step matters too: the point-cube build that follows is the
@@ -333,8 +353,11 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
     # dirs are keyed by run id, so nothing later ever revisits or cleans
     # them). try/finally makes the cleanup unconditional; keep_grib still
     # opts a run out of it either way.
+    deferred = False
     try:
-        got = fetcher(model, run, grib_root, on_step=on_step)
+        with Phase(model.key, rid, "fetch_decode") as phase:
+            got = fetcher(model, run, grib_root, on_step=on_step)
+            phase.count = len(got)
         # No later phase deaccumulates another step. Do not carry the final
         # rain/snow arrays through point-cube construction and warming.
         prev_accum.clear()
@@ -350,11 +373,15 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
             except Exception:
                 log.exception("gefs %s probability failed (run ships without it)", rid)
         try:
-            build_point_cube(model.key, rid, store_root, step_gate=wait_for_step_gate)
+            with Phase(model.key, rid, "point_cube") as phase:
+                phase.count = build_point_cube(model.key, rid, store_root, step_gate=wait_for_step_gate)
         except Exception:
             log.exception("%s %s point cube failed (point reads fall back to the step layout)", model.key, rid)
+    except fetch.FetchDeferred:
+        deferred = True
+        raise
     finally:
-        if not keep_grib:
+        if not keep_grib and not deferred:
             shutil.rmtree(grib_root / model.key / run.strftime("%Y%m%dT%H"), ignore_errors=True)
     removed = prune(model.key, root=store_root)
     log.info("%s %s done: %d/%d steps, coverage %s, pruned %s",
@@ -378,6 +405,11 @@ WARM_LAYERS = ("wind", "temp", "gust", "tp6", "tcc", "msl")
 
 
 def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
+    with Phase(model_key, rid, "warming") as phase:
+        return _warm_layers(model_key, rid, store_root, phase)
+
+
+def _warm_layers(model_key: str, rid: str, store_root: Path, phase: Phase) -> int:
     """Pre-encode the field files the browser asks for (/api/field). The
     coloured PNGs of /api/layer are the fallback for clients without WebGL
     and render on first request; warming both would double the warm time
@@ -389,6 +421,15 @@ def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
 
     r = RunReader(model_key, rid, root=store_root)
     done = 0
+
+    def frame(path, step, layer):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        try:
+            tmp.write_bytes(render.encode_field(render.DISPLAY[layer](field_for(r, layer, None, step)), layer, fmt="webp"))
+            tmp.replace(path)
+        finally:
+            tmp.unlink(missing_ok=True)
     for layer in WARM_LAYERS:
         if not _available(r, layer, None):
             continue
@@ -400,12 +441,14 @@ def warm_layers(model_key: str, rid: str, store_root: Path = STORE_DIR) -> int:
             # the odd client without it.
             path = CACHE_DIR / model_key / rid / render.field_cache_name(step, layer, "webp")
             if path.exists():
+                phase.tick(skipped=True)
                 continue
-            path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = path.with_suffix(path.suffix + ".tmp")
-            tmp.write_bytes(render.encode_field(render.DISPLAY[layer](field_for(r, layer, None, step)), layer, fmt="webp"))
-            tmp.replace(path)
+            if done == 0:
+                wait_for_step_gate()
+            frame(path, step, layer)
             done += 1
+            wait_for_step_gate()
+            phase.tick()
     log.info("%s %s warmed %d fields", model_key, rid, done)
     return done
 
@@ -446,8 +489,7 @@ def _augment_waves_locked(model: Model, rid: str, grib_root: Path, store_root: P
             g.create_array(var, shape=(len(steps), *shape), dtype="float32",
                            chunks=(1, *shape), compressors=codec, fill_value=np.nan,
                            dimension_names=("step", "latitude", "longitude"))
-    from ecmwf.opendata import Client
-    client = Client(source="ecmwf", model=model.ecmwf_model, resol="0p25")
+    client = fetch.BoundedECMWF(model)
     run = datetime.strptime(rid, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
     out_dir = grib_root / model.key / run.strftime("%Y%m%dT%H")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -582,6 +624,10 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             try:
                 run = _resolve_run(model, args.run)
+            except fetch.FetchDeferred as exc:
+                log.warning("%s deferred: %s", key, exc)
+                rc = 1
+                continue
             except RuntimeError as exc:
                 # Nothing published yet for this model. With --all that is a
                 # normal race against the producers, not a failure.
@@ -594,6 +640,9 @@ def main(argv: list[str] | None = None) -> int:
             # 0.2 s (2026-08-28: three models' newest runs had none after a
             # lock bug). Idempotent, cheap when the cube is there.
             repair_cubes(model)
+        except fetch.FetchDeferred as exc:
+            log.warning("%s deferred; completed GRIBs retained: %s", key, exc)
+            rc = 1
         except Exception:
             log.exception("%s failed", key)
             rc = 1

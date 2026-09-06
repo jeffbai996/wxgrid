@@ -55,14 +55,14 @@ def test_ecmwf_get_charges_the_file_after_retrieve(tmp_path, monkeypatch):
     class Client:
         def retrieve(self, **kw):
             retrieve_targets.append(Path(kw["target"]))
-            Path(kw["target"]).write_bytes(b"z" * 5000)
+            Path(kw["target"]).write_bytes(b"GRIB\x00\x00\x00\x02" + (5000).to_bytes(8, "big") + b"z" * 4980 + b"7777")
     from wxgrid.models import get_model
     from datetime import datetime
     target = tmp_path / "s.grib2"
     ok = fetch._ecmwf_get(Client(), get_model("aifs"), datetime(2026, 1, 1), 0, target, {"param": ["2t"]})
     assert ok and spent == [5000]
     assert retrieve_targets == [tmp_path / ".s.grib2.part"]
-    assert target.read_bytes() == b"z" * 5000
+    assert fetch.valid_grib(target)
     assert not retrieve_targets[0].exists()
 
 
@@ -76,8 +76,7 @@ def test_ecmwf_get_removes_a_partial_download_after_failure(tmp_path):
     from datetime import datetime
     target = tmp_path / "s.grib2"
 
-    assert not fetch._ecmwf_get(
-        Client(), get_model("aifs"), datetime(2026, 1, 1), 0, target, {"param": ["2t"]}
-    )
+    with pytest.raises(fetch.FetchDeferred):
+        fetch._ecmwf_get(Client(), get_model("aifs"), datetime(2026, 1, 1), 0, target, {"param": ["2t"]})
     assert not target.exists()
     assert not (tmp_path / ".s.grib2.part").exists()

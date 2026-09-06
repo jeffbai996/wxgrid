@@ -129,6 +129,12 @@ class _Cache:
         except sqlite3.Error as exc:
             log.debug("ext cache write failed: %s", exc)
 
+    def peek(self, key: str, ttl: float, default=None) -> Any:
+        """Read an existing value without fetching or waiting on single-flight."""
+        with self._lock:
+            value = self._lookup(key, ttl, time.time())
+        return default if value is _MISSING else value
+
     def get(self, key: str, ttl: float, fn: Callable[[], Any]) -> Any:
         while True:
             deadline.remaining()

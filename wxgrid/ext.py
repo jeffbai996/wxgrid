@@ -352,6 +352,15 @@ def reverse(lat: float, lon: float) -> dict:
         place = _latin_first(nd.get("name:en"), _reverse_place_name(a, h.get("name") or ""))
         region = _latin_first(a.get("state"), a.get("province"), "")
         country = a.get("country") or a.get("country_code", "").upper()
+        if not place and not country:
+            # A successful no-address response is open water, not a reason to
+            # block the card on elevation + local Overpass + a planet-wide
+            # node refresh. Reuse known detailed names, otherwise local seeds.
+            # Geocoder failure still exits through _GeocoderDown below.
+            nodes = cache.peek("water-nodes-v2", 30 * 24 * 3600, [])
+            water = cache.peek(f"water-in-v1:{lat:.3f}:{lon:.3f}", 30 * 24 * 3600, "")
+            return {"name": water or nearest_water(lat, lon, _with_seeds(nodes)),
+                    "region": "", "country": "", "display": "", "water": True}
         # Marine coordinates often inherit a town/county boundary. Only ask
         # the exact OSM containment areas for sea-level boundary results; land
         # gets no matching water area and keeps its administrative place.
@@ -361,10 +370,6 @@ def reverse(lat: float, lon: float) -> dict:
         water = nearby_named_water(lat, lon) if likely_water or (consider_water and not place and not country) else ""
         if water:
             return {"name": water, "region": "", "country": "", "display": "", "water": True}
-        if not place and not country:
-            # No address at all means open water.
-            return {"name": nearest_water(lat, lon, water_nodes()), "region": "", "country": "",
-                    "display": "", "water": True}
         return {"name": place, "region": region, "country": country,
                 "display": h.get("display_name", "")}
     try:
@@ -373,6 +378,18 @@ def reverse(lat: float, lon: float) -> dict:
         # Nothing cached: the next request asks again. A transient failure
         # once named Whistler "North Pacific Ocean" for a day.
         return {"name": "", "region": "", "country": "", "display": "", "error": "geocoder unavailable"}
+
+
+def local_context(lat: float, lon: float) -> dict:
+    """The name must not queue behind optional marine metadata providers."""
+    place = reverse(lat, lon)
+    if place.get("water"):
+        return {"place": place,
+                "elevation_m": cache.peek(f"elev:{lat:.3f}:{lon:.3f}", 30 * 24 * 3600),
+                "timezone": cache.peek(f"tz:{lat:.1f}:{lon:.1f}", 30 * 24 * 3600,
+                                       {"tz": None, "abbr": None, "offset_s": int(round(lon / 15.0)) * 3600,
+                                        "source": "longitude"})}
+    return {"place": place, "elevation_m": elevation(lat, lon), "timezone": timezone(lat, lon)}
 
 
 def station_info(ids: str) -> list[dict]:

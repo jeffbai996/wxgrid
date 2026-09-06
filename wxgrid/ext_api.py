@@ -52,8 +52,7 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
         yield line("point", lambda: point_series(lat=lat, lon=lon, model=model, run=run))
         alert_end = time.monotonic() + ext.ALERT_BUDGET
         jobs = {
-            "local": lambda: {"place": ext.reverse(lat, lon), "elevation_m": ext.elevation(lat, lon),
-                              "timezone": ext.timezone(lat, lon)},
+            "local": lambda: ext.local_context(lat, lon),
             "obs": lambda: (lambda m: {"metar": m, "taf": ext.taf(m["station"]) if m else None})(ext.nearest_metar(lat, lon)),
             "alerts": lambda: ext.alerts_point_status(lat, lon, until=alert_end),
             "air": lambda: ext.air(lat, lon),
@@ -135,8 +134,7 @@ def api_station(ids: str = Query(..., min_length=3, max_length=60)):
 
 @router.get("/geo/reverse")
 def api_reverse(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180)):
-    return {"place": ext.reverse(lat, lon), "elevation_m": ext.elevation(lat, lon),
-            "timezone": ext.timezone(lat, lon)}
+    return ext.local_context(lat, lon)
 
 
 @router.get("/obs")

@@ -3,6 +3,7 @@ Description=wxgrid — fetch the ensemble into the store
 
 [Service]
 Type=oneshot
+Environment=WXGRID_PHASE_METRICS=1
 WorkingDirectory=%h/local-projects/wxgrid
 # Match the API's bounded native pools and release completed scratch buffers.
 Environment=OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 BLOSC_NTHREADS=1
