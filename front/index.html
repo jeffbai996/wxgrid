@@ -145,7 +145,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
       <canvas id="meteogram" width="640" height="220"></canvas>
     </section>
     <section data-pane="aloft" hidden><div id="aloft"></div></section>
-    <section data-pane="air" hidden><canvas id="airgram" width="640" height="260"></canvas><div id="airgram-note" class="note"></div></section>
+    <section data-pane="air" hidden><div class="airgram-wrap"><canvas id="airgram" width="640" height="260"></canvas><div id="airgram-tip" class="gtip" hidden></div></div><div id="airgram-stats" class="meta"></div><div id="airgram-note" class="note"></div></section>
     <section data-pane="skewt" hidden><canvas id="skewt" width="640" height="520"></canvas><div id="skewt-note" class="note"></div></section>
     <section data-pane="winter" hidden><div id="winter"></div></section>
     <section data-pane="out" hidden><div id="outdoors"></div></section>

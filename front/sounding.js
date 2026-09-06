@@ -500,12 +500,13 @@
       notes.unshift(`${st.name || st.id || "Nearest"} sounding${st.distance_km != null ? `, ${Math.round(st.distance_km)} km away` : ""}${when ? `, ${when}` : ""}. Observed temperature in white, observed dew point dashed blue; the model run is orange and green.`);
     }
     const caption = notes.join(" ");
+    const headline = notes[0] || "", detail = notes.slice(1).join(" ");
     ctx.fillStyle = P.dim; ctx.font = `500 9px ${P.mono}`; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     const short = prof.hasDewAloft ? "T (orange), Td (green), parcel (dashed), barbs in kt"
                                    : "T (orange), surface Td (green dot), parcel (dashed), barbs in kt — no dew-point profile aloft";
     ctx.fillText(short.slice(0, 116), F.left, F.h - 8);
 
-    return { ok: true, caption, hasDewAloft: prof.hasDewAloft, levels: prof.env.length,
+    return { ok: true, caption, headline, detail, hasDewAloft: prof.hasDewAloft, levels: prof.env.length,
              surface: { p: prof.psfc, t: prof.sfc.t, td: prof.sfc.td, elevation_m: prof.elev },
              freezing_m: fzM, freezing_hpa: fz ? Math.round(fz.p) : null,
              lcl_hpa: par ? Math.round(par.lcl.p) : null, cape_est: par ? Math.round(par.cape) : null,

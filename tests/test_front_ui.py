@@ -835,3 +835,12 @@ def test_skewt_captions_read_like_a_forecaster_not_a_spec():
     assert "so the green dew-point line stops at the ground" in snd and "Observed temperature in white" in snd
     captions = "\n".join(l for l in snd.splitlines() if "notes.push(" in l or "notes.unshift(" in l)
     assert "so a thin inversion between two of them will not show" in captions and "pseudoadiabatic" not in captions
+
+
+def test_airgram_carries_more_than_the_grid_and_the_skewt_note_hides_its_nerd_half():
+    panes = _read("panes.js"); snd = _read("sounding.js"); html = _read("index.html"); css = _read("styles.css")
+    assert "function renderAirgramStats(d, i, rows, n)" in panes and "function wireAirgramHover(c, d, rows, n, g)" in panes
+    assert 'stat("1000–500 thickness"' in panes and 'stat("Lapse 850–500"' in panes and '", the pale line is the freezing level"' in panes
+    assert 'id="airgram-stats"' in html and 'id="airgram-tip" class="gtip"' in html
+    assert "return { ok: true, caption, headline, detail," in snd
+    assert '<span class="info" tabindex="0" role="note"' in panes and ".note .info:hover .info-pop, .note .info:focus-visible .info-pop { opacity: 1;" in css

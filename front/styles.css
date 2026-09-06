@@ -997,6 +997,27 @@ table.bands .dirarrow { width: 11px; height: 11px; margin-right: 4px; }
 .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font: 700 10px var(--font-display); background: rgba(255,255,255,.08); color: var(--fg-2); }
 .pill.snow { background: rgba(157,211,255,.2); color: #cfe8ff; } .pill.rain { background: rgba(108,182,255,.18); color: #9fcbff; } .pill.mixed { background: rgba(255,180,84,.18); color: #ffd39a; }
 #airgram { width: 100%; display: block; margin-top: 6px; }   /* height is set by the renderer: 26 px per level */
+.airgram-wrap { position: relative; }
+#airgram-stats { margin-top: 8px; }
+#airgram-stats .sect-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+/* a hover plate shared by the charts: time on top, the reading under it */
+.gtip { position: absolute; z-index: 2; pointer-events: none; white-space: nowrap; transform: translate(-50%, calc(-100% - 8px));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 4px 8px 4px 7px; border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-solid) 90%, transparent); backdrop-filter: blur(6px);
+  box-shadow: 0 6px 18px rgba(0,0,0,.35), inset 0 0 0 1px var(--line); animation: pill-in .14s cubic-bezier(.32,.72,.24,1) both; }
+.gtip b { font: 700 12px var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; }
+.gtip i { font: 600 8.5px var(--font-display); font-style: normal; color: var(--dim); letter-spacing: .06em; text-transform: uppercase; }
+.gtip span { display: inline-flex; align-items: baseline; gap: 6px; }
+.gtip .when { color: var(--fg-2); }
+/* the info dot: one letter in a ring, the long note appears on hover or focus */
+.note .info { position: relative; display: inline-grid; place-items: center; width: 14px; height: 14px; margin-left: 6px; vertical-align: -2px; border-radius: 50%;
+  border: 1px solid var(--line-strong); color: var(--dim); cursor: help; transition: color .15s, border-color .15s; }
+.note .info i { font: 700 9px var(--font-display); font-style: normal; line-height: 1; }
+.note .info:hover, .note .info:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+.note .info .info-pop { position: absolute; left: 0; bottom: calc(100% + 8px); width: min(380px, 78vw); padding: 8px 10px; border-radius: 10px; z-index: 6;
+  background: var(--panel-solid); box-shadow: 0 10px 28px rgba(0,0,0,.4), inset 0 0 0 1px var(--line); color: var(--fg-2); font: 500 11px/1.45 var(--font-body); text-align: left; white-space: normal;
+  opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity .15s ease, transform .15s ease; }
+.note .info:hover .info-pop, .note .info:focus-visible .info-pop { opacity: 1; transform: none; pointer-events: auto; }
 /* Sideways only. The strip picked up a vertical scroll of a few pixels and
    the tab labels drifted out of their own pills. */
 .point-tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;

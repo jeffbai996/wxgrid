@@ -988,11 +988,92 @@
         }
       }
     });
+    // The freezing level as a pale line through the grid: the derived height
+    // per step is placed between the two level rows whose geopotential
+    // heights bracket it (Jeff 2026-09-06: "enough other stuff to put in there").
+    const fzs = (d.derived && d.derived.freezing_level_m) || null;
+    const rowY = (ri) => padT + (rows.length - 1 - ri) * rh + rh / 2;
+    const levelRows = rows.map((r, ri) => ({ ri, key: r.key })).filter((r) => r.key !== "sfc");
+    const yForHeight = (k, hm) => {
+      const pts = levelRows.map((r) => ({ ri: r.ri, gh: d.aloft[r.key].gh ? d.aloft[r.key].gh[k] : null })).filter((q) => q.gh != null);
+      for (let j = 0; j + 1 < pts.length; j++) {
+        const a = pts[j], b = pts[j + 1];
+        if (hm >= a.gh && hm <= b.gh) return rowY(a.ri) + (rowY(b.ri) - rowY(a.ri)) * ((hm - a.gh) / Math.max(1, b.gh - a.gh));
+      }
+      return null;
+    };
+    if (fzs) {
+      ctx.strokeStyle = "rgba(190, 236, 255, 0.85)"; ctx.lineWidth = 1.5; ctx.setLineDash([]); ctx.beginPath(); let pen = false, lastPt = null;
+      for (let k = 0; k < n; k++) {
+        const hm = fzs[k]; const y = hm == null ? null : yForHeight(k, hm);
+        if (y == null) { pen = false; continue; }
+        const x = padL + k * cw + cw / 2;
+        if (!pen) { ctx.moveTo(x, y); pen = true; } else ctx.lineTo(x, y);
+        lastPt = [x, y];
+      }
+      ctx.stroke();
+      if (lastPt) { ctx.fillStyle = "rgba(190, 236, 255, 0.95)"; ctx.font = "700 9px 'Geist Mono', ui-monospace, monospace"; ctx.textAlign = "right"; ctx.fillText("0°C", lastPt[0] - 3, lastPt[1] - 7); }
+    }
     // day ticks + selected step
     ctx.fillStyle = "#8b93a1"; ctx.textAlign = "left"; let lastDay = null;
     d.valid.slice(0, n).forEach((iso, k) => { const dt = new Date(iso), day = dt.toDateString(); if (day !== lastDay) { lastDay = day; ctx.fillRect(padL + k * cw, padT, 1, H - padT - padB); ctx.fillText(dt.toLocaleDateString(undefined, { weekday: "short" }), padL + k * cw + 3, H - 8); } });
     if (i < n) { ctx.strokeStyle = "#6cb6ff"; ctx.lineWidth = 2; ctx.strokeRect(padL + i * cw + 1, padT + 1, cw - 2, H - padT - padB - 2); }
-    $("#airgram-note").textContent = `Rows are pressure levels, colour is temperature, arrows are wind in ${speedUnit()}.`;
+    $("#airgram-note").textContent = `Rows are pressure levels, colour is temperature, arrows are wind in ${speedUnit()}${fzs ? ", the pale line is the freezing level" : ""}.`;
+    renderAirgramStats(d, i, rows, n);
+    wireAirgramHover(c, d, rows, n, { padL, padT, cw, rh, rowY });
+  }
+
+  // What the column under the pointer says, level by level: time, pressure,
+  // temperature, wind. Same plate as the precipitation bars.
+  function wireAirgramHover(c, d, rows, n, g) {
+    const tip = $("#airgram-tip"); if (!tip) return;
+    const U = W().units, { speed, speedUnit, arrow } = W();
+    c.onpointermove = (e) => {
+      const r = c.getBoundingClientRect();
+      const x = e.clientX - r.left, y = e.clientY - r.top;
+      const k = Math.floor((x - g.padL) / g.cw), ri = rows.length - 1 - Math.floor((y - g.padT) / g.rh);
+      if (k < 0 || k >= n || ri < 0 || ri >= rows.length) { tip.hidden = true; return; }
+      const row = rows[ri];
+      const t = row.key === "sfc" ? (d.series.t2m ? d.series.t2m[k] : null) : d.aloft[row.key].temp[k];
+      const spd = row.key === "sfc" ? d.series.wind[k] : d.aloft[row.key].wind[k];
+      const dir = row.key === "sfc" ? d.series.wdir[k] : d.aloft[row.key].wdir[k];
+      const gh = row.key === "sfc" ? null : (d.aloft[row.key].gh ? d.aloft[row.key].gh[k] : null);
+      const when = new Date(d.valid[k]).toLocaleString(undefined, U.timeOpts({ weekday: "short", hour: "numeric" }));
+      tip.innerHTML = `<i class="when">${when} · ${row.key === "sfc" ? "surface" : `${row.key} hPa${gh != null ? ` · ${U.alt(gh).txt}` : ""}`}</i>`
+        + `<span><b>${t == null ? "—" : `${U.temp(t).v}°`}</b>${spd != null && dir != null ? `<i>${Math.round(speed(spd))} ${speedUnit()} ${arrow(dir)} ${Math.round(dir)}°</i>` : ""}</span>`;
+      tip.hidden = false;
+      tip.style.left = `${Math.max(60, Math.min(r.width - 60, g.padL + (k + 0.5) * g.cw))}px`;
+      tip.style.top = `${Math.max(0, g.padT + (rows.length - 1 - ri) * g.rh)}px`;
+    };
+    c.onpointerleave = () => { tip.hidden = true; };
+  }
+
+  // The selected hour's column, read the way a forecaster reads a sounding
+  // table: freezing level, 1000–500 thickness, 850–500 lapse rate, the
+  // strongest wind aloft, and 850 hPa temperature.
+  function renderAirgramStats(d, i, rows, n) {
+    const box = $("#airgram-stats"); if (!box) return;
+    const U = W().units, { speed, speedUnit, arrow } = W();
+    const k = Math.min(i, n - 1), al = d.aloft || {};
+    const at = (lv, f) => (al[lv] && al[lv][f] ? al[lv][f][k] : null);
+    const tiles = [];
+    const fz = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[k] : null;
+    if (fz != null) tiles.push(stat("Freezing level", U.alt(fz).v, U.alt(fz).unit, "#bfe9ff", "", "Height of the 0 °C isotherm", "air"));
+    const gh500 = at("500", "gh"), gh1000 = at("1000", "gh");
+    if (gh500 != null && gh1000 != null) {
+      const dam = Math.round((gh500 - gh1000) / 10);
+      tiles.push(stat("1000–500 thickness", dam, "dam", dam <= 540 ? "#9fd0ff" : dam >= 570 ? "#ffb26b" : "#9fb0c8", `<em>${dam <= 528 ? "cold, snow" : dam <= 540 ? "snow line low" : dam >= 570 ? "warm column" : "typical"}</em>`, "Lower-half thickness; ~540 dam is the classic rain/snow line", "air"));
+    }
+    const t850 = at("850", "temp"), t500 = at("500", "temp"), gh850 = at("850", "gh");
+    if (t850 != null && t500 != null && gh850 != null && gh500 != null) {
+      const lapse = (t850 - t500) / Math.max(0.5, (gh500 - gh850) / 1000);
+      tiles.push(stat("Lapse 850–500", lapse.toFixed(1), "°C/km", lapse >= 7.5 ? "#ff8a3d" : lapse >= 6.5 ? "#ffd166" : "#78d39a", `<em>${lapse >= 7.5 ? "unstable" : lapse >= 6.5 ? "conditional" : "stable"}</em>`, "Environmental lapse rate between 850 and 500 hPa", "air"));
+    }
+    let best = null;
+    for (const r of rows) { if (r.key === "sfc") continue; const w = at(r.key, "wind"); if (w != null && (!best || w > best.w)) best = { lv: r.key, w, dir: at(r.key, "wdir") }; }
+    if (best) tiles.push(stat(`Max wind · ${best.lv} hPa`, Math.round(speed(best.w)), speedUnit(), "#8ec5f0", best.dir != null ? `<em>${arrow(best.dir)} ${Math.round(best.dir)}°</em>` : "", "Strongest wind on any level in this column", "air"));
+    if (t850 != null) tiles.push(stat("850 hPa temp", `${U.temp(t850).v}°`, "", "#ffd166", "", "A clean read of the air mass, above the boundary layer", "air"));
+    box.innerHTML = tiles.length ? `<div class="sect-grid">${tiles.join("")}</div>` : "";
   }
 
   // ── Winter: new snow, snow depth, levels, wind loading, avalanche forecast
@@ -1534,7 +1615,11 @@
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; c.style.width = w + "px"; c.style.height = h + "px"; }
     const r = window.WXSounding.draw(c, d, i, { elevation_m: ((pt && pt.local) || {}).elevation_m,
                                                 observed: pt && pt.sonde ? pt.sonde : null });
-    $("#skewt-note").textContent = (r && r.caption) || "";
+    // The first line is for everyone; the rest is the nerd note behind an
+    // info dot (Jeff 2026-09-06: "no real UI slaps that in the user's face")
+    const note = $("#skewt-note");
+    if (!r || !r.headline) note.textContent = (r && r.caption) || "";
+    else note.innerHTML = `${esc(r.headline)}${r.detail ? ` <span class="info" tabindex="0" role="note" aria-label="How this chart is built"><i>i</i><span class="info-pop">${esc(r.detail)}</span></span>` : ""}`;
   }
 
   // ── Outdoors ──────────────────────────────────────────────────────────
