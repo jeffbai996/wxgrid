@@ -1481,12 +1481,19 @@ def alert_detail(aid: str, source: str = "") -> dict | None:
             if src and src != name.upper():
                 continue
             try:
-                for w in warnings():
+                try:
+                    available = warnings()
+                except _PartialAlerts as exc:
+                    available = exc.data
+                for w in available:
                     if w.get("id") != aid:
                         continue
                     hit = {k: w.get(k) for k in (*_LAYER_KEYS, "description", "instruction", "url")}
                     if w["source"] == "MeteoAlarm" and w.get("url"):
-                        detail = _ma_detail(w["url"])
+                        try:
+                            detail = _ma_detail(w["url"])
+                        except Exception:
+                            detail = {}  # Preserve the warning and official link.
                         hit.update({k: v for k, v in detail.items() if k != "web"})
                         hit["url"] = detail.get("web") or w["url"]
                     return hit

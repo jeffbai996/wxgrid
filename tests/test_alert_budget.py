@@ -125,6 +125,23 @@ def test_partial_warning_and_failed_detail_remain_visible(monkeypatch):
     assert result["unavailable"] == ["MeteoAlarm"] and not result["complete"]
 
 
+@pytest.mark.parametrize("detail_fails", [False, True])
+def test_map_alert_detail_preserves_a_warning_from_a_partial_feed(monkeypatch, detail_fails):
+    warning = {"id": "one", "source": "MeteoAlarm", "sev": 3, "event": "wind", "url": "https://example.test/cap"}
+    def partial():
+        raise ext._PartialAlerts([warning])
+    def detail(url):
+        if detail_fails:
+            raise TimeoutError("CAP unavailable")
+        return {"description": "Strong wind"}
+    monkeypatch.setattr(ext, "_ma_warnings", partial)
+    monkeypatch.setattr(ext, "_ma_detail", detail)
+    result = ext.alert_detail("one", "MeteoAlarm")
+    assert result["id"] == "one" and result["url"] == warning["url"]
+    if not detail_fails:
+        assert result["description"] == "Strong wind"
+
+
 def test_missing_geometry_is_incomplete_not_all_clear(monkeypatch):
     monkeypatch.setattr(ext, "_bom_warnings", lambda: [{"geometry": None}])
     assert ext.alerts_point_status(-37.5, 144.5)["unavailable"] == ["BoM"]
