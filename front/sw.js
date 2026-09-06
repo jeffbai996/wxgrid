@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v95";   // v95: independent, bounded caches and explicit alert availability
+const VERSION = "wxgrid-v96";   // v96: hero region line 600/12 (2026-09-05)
 const SHELL = `${VERSION}-shell`;
 // Change these only when their own schema changes, not for a UI release.
 // Field format/version and run already live in each immutable URL.

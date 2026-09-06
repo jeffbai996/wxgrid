@@ -890,7 +890,7 @@ table.bandtape .nil { color: var(--line-strong); }
 @keyframes wx-pulse { 0% { transform: scale(.55); opacity: .9; } 70% { transform: scale(1.6); opacity: 0; } 100% { transform: scale(1.6); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .wx-marker::after { animation: none; opacity: .5; } }
 
-#point-local { font: 500 13px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#point-local { font: 600 12px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* a size down, a weight up (Jeff 2026-09-05) */
 #point-local b { color: var(--fg-2); font-weight: 600; }
 #point-local .loc { font-family: var(--font-display); }
 #point-local .sep { margin: 0 6px; opacity: .5; }

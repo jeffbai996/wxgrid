@@ -800,3 +800,14 @@ def test_the_tape_names_the_map_centre_instead_of_saying_map_centre():
     assert "WX.api(`${API}/geo/reverse?lat=${lat}&lon=${lon}`)" in tape and "const centrePlaces = new Map();" in tape
     # "map centre" survives only as the placeholder while the first answer is in flight
     assert tape.count('el.textContent = "map centre"') == 1
+
+
+def test_tape_precip_number_is_a_notch_smaller_with_a_lighter_halo():
+    css = _read("styles.css")
+    rule = css.split("table.wtape tr.r-rain td span {", 1)[1].split("}", 1)[0]
+    assert "font-size: 11px" in rule and "color-mix(in srgb, var(--panel-solid) 65%, transparent)" in rule
+
+
+def test_hero_region_line_is_a_size_down_and_a_weight_up():
+    css = _read("styles.css")
+    assert "#point-local { font: 600 12px var(--font-mono);" in css
