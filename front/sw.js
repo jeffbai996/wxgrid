@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v93";   // v93: the tape names the map centre (2026-09-05)
+const VERSION = "wxgrid-v94";   // v94: open water names itself in the tape header (2026-09-05)
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const DATA = `${VERSION}-data`;

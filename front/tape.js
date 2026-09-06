@@ -99,7 +99,8 @@
     const my = ++centreReq, [lat, lon] = key.split(",").map(Number);
     WX.api(`${API}/geo/reverse?lat=${lat}&lon=${lon}`).then((r) => {
       const pl = r && r.place;
-      centrePlaces.set(key, pl && pl.name && !pl.water ? { name: pl.name, region: pl.region || "" } : null);
+      // open water names itself too ("North Pacific Ocean"); only a blank answer falls back to coordinates
+      centrePlaces.set(key, pl && pl.name ? { name: pl.name, region: pl.region || "" } : null);
       if (my === centreReq && !state.point && centrePlaceKey() === key) renderTapePlace();
     }).catch(() => { centrePlaces.delete(key); });
   }
