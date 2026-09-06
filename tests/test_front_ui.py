@@ -792,3 +792,11 @@ def test_jump_to_now_glides_and_the_chin_chip_is_the_same_control():
     assert 'pillStatus.onclick = (e) => { e.stopPropagation(); jumpToNow(); };' in app
     assert "const GLIDE_STEPS = 4;" in app and "if (jumpRaf) { cancelAnimationFrame(jumpRaf); jumpRaf = 0; }" in app.split("function togglePlay() {", 1)[1][:600]
     assert ".tape-pill .status:hover { background: var(--accent); color: var(--accent-ink); }" in css
+
+
+def test_the_tape_names_the_map_centre_instead_of_saying_map_centre():
+    tape = _read("tape.js")
+    assert "function renderCentrePlace(el)" in tape and "if (!state.point) { renderCentrePlace(el); return; }" in tape
+    assert "WX.api(`${API}/geo/reverse?lat=${lat}&lon=${lon}`)" in tape and "const centrePlaces = new Map();" in tape
+    # "map centre" survives only as the placeholder while the first answer is in flight
+    assert tape.count('el.textContent = "map centre"') == 1

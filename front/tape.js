@@ -71,10 +71,42 @@
       if (my === tapeAIReq && key === tapeAIKey) tapeAIKey = "";
     }
   }
+  // In crosshair mode the tape reads the map centre; name it the way a pin
+  // is named (Jeff 2026-09-05: "we have all that anyway"). One reverse
+  // lookup per ~2 km cell, remembered for the session; "map centre" only
+  // while the first answer is on its way, coordinates over open water.
+  const centrePlaces = new Map();
+  let centreReq = 0;
+  function centrePlaceKey() { const c = M().getCenter(); return `${c.lat.toFixed(2)},${WX.wlon(c.lng).toFixed(2)}`; }
+  function paintPlace(el, name, region) {
+    el.replaceChildren();
+    el.append(document.createTextNode(name));
+    if (region && region.toLocaleLowerCase() !== name.toLocaleLowerCase()) {
+      const suffix = document.createElement("span");
+      suffix.className = "tape-region";
+      suffix.textContent = `, ${region}`;
+      el.append(suffix);
+    }
+  }
+  function renderCentrePlace(el) {
+    const key = centrePlaceKey();
+    const known = centrePlaces.get(key);
+    if (known) { paintPlace(el, known.name, known.region); return; }
+    if (known === null) { const c = M().getCenter(); paintPlace(el, WX.fmtCoords(c.lat, c.lng), ""); return; }
+    el.textContent = "map centre";
+    if (centrePlaces.has(key)) return;               // already in flight
+    centrePlaces.set(key, undefined);
+    const my = ++centreReq, [lat, lon] = key.split(",").map(Number);
+    WX.api(`${API}/geo/reverse?lat=${lat}&lon=${lon}`).then((r) => {
+      const pl = r && r.place;
+      centrePlaces.set(key, pl && pl.name && !pl.water ? { name: pl.name, region: pl.region || "" } : null);
+      if (my === centreReq && !state.point && centrePlaceKey() === key) renderTapePlace();
+    }).catch(() => { centrePlaces.delete(key); });
+  }
   function renderTapePlace() {
     const el = $("#tape-where");
     el.replaceChildren();
-    if (!state.point) { el.textContent = "map centre"; return; }
+    if (!state.point) { renderCentrePlace(el); return; }
     const name = state.point.name || WX.fmtCoords(state.point.lat, state.point.lon);
     el.append(document.createTextNode(name));
     const region = state.point.local && state.point.local.place && state.point.local.place.region;
