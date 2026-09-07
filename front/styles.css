@@ -903,8 +903,8 @@ table.bandtape .nil { color: var(--line-strong); }
 .wx-marker .mflag { position: absolute; left: 50%; bottom: calc(100% + 9px); transform: translateX(-50%);
   display: inline-flex; align-items: baseline; gap: 4px; padding: 3px 8px 4px; border-radius: 8px; white-space: nowrap;
   background: var(--panel-solid); border: 1px solid var(--line-strong); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
-.wx-marker .mflag b { font: 700 12.5px var(--font-num); color: var(--fg); font-variant-numeric: tabular-nums; }
-.wx-marker .mflag span { font: 600 9.5px var(--font-display); color: var(--fg-2); }
+.wx-marker .mflag b { font: 700 12.5px var(--font-display); color: var(--fg); font-variant-numeric: tabular-nums; }
+.wx-marker .mflag span { font: 600 10.5px var(--font-display); color: var(--fg-2); }
 .wx-marker .mflag::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
   border: 4px solid transparent; border-top-color: var(--line-strong); }
 
@@ -1298,7 +1298,11 @@ details.alert[open] { padding-bottom: 9px; }
 #probe { position: absolute; left: 0; top: 0; z-index: 7; pointer-events: none; display: flex; align-items: baseline; gap: 6px;
   background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 8px; padding: 4px 8px; box-shadow: 0 6px 20px rgba(0,0,0,.35);
   font: 700 12.5px var(--font-display); color: var(--fg); will-change: transform; }
-#probe span { font: 500 10.5px var(--font-mono); color: var(--dim); }
+/* one face for the value plates: hover chip, point flag and pin flag all set
+   the number 700/12.5 and the direction 600/10.5 in Urbanist (Jeff
+   2026-09-06: "use urbanist for both") */
+#probe b { font: 700 12.5px var(--font-display); font-variant-numeric: tabular-nums; }
+#probe span { font: 600 10.5px var(--font-display); color: var(--dim); }
 #probe[hidden] { display: none; }
 
 .menu .menu-pop .row.range { cursor: default; }

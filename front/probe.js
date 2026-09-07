@@ -127,12 +127,21 @@
     last = ll;
     if (!chip) { chip = document.createElement("div"); chip.id = "probe"; chip.hidden = true; document.body.appendChild(chip); }
     if (!ll) { chip.hidden = true; return; }
+    // A tap in hover mode opens the point card, whose marker carries the same
+    // value on its own flag; the chip sitting next to it read as a duplicate
+    // (Jeff 2026-09-06). Stay hidden while the pointer is on that marker.
+    const pt = WX.state && WX.state.point;
+    if (pt && nearPoint(ll, pt.lon, pt.lat, 36)) { chip.hidden = true; return; }
     const v = valueAt(ll.lng, ll.lat);
     if (!v) { chip.hidden = true; return; }
     chip.innerHTML = `<b>${v.text}</b>${v.sub ? `<span>${v.sub}</span>` : ""}`;
     chip.hidden = false;
     const p = WX.map.project(ll);
     chip.style.transform = `translate(${Math.round(p.x + 14)}px, ${Math.round(p.y + 14)}px)`;
+  }
+  function nearPoint(ll, lon, lat, px) {
+    try { const a = WX.map.project(ll), b = WX.map.project([lon, lat]); return Math.hypot(a.x - b.x, a.y - b.y) < px; }
+    catch (_) { return false; }
   }
   function hover(ll) {
     cancelAnimationFrame(raf);

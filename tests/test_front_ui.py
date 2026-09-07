@@ -937,3 +937,13 @@ def test_webkit_gets_overflow_clipping_and_a_repaint_nudge_after_the_glide():
     assert "#timebar.tape-anim, #timebar.mini.tape-anim, #timebar.tape-dragging { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--panel-solid); will-change: auto; }" in css
     end = app.split('tb.classList.remove("tape-anim", "tape-anim-away");', 1)[1].split("restorePointPanelSize();", 1)[0]
     assert 'tb.style.transform = "translateZ(0)";' in end and 'requestAnimationFrame(() => { tb.style.transform = ""; });' in end
+
+
+def test_value_plates_share_one_face_and_the_chip_yields_to_the_point_flag():
+    # Hover chip and the point marker's flag showed the same reading in two
+    # faces and both at once after a tap in hover mode (Jeff 2026-09-06).
+    css = _read("styles.css"); probe = _read("probe.js"); app = _read("app.js")
+    assert "#probe b { font: 700 12.5px var(--font-display);" in css and "#probe span { font: 600 10.5px var(--font-display);" in css
+    assert ".wx-marker .mflag b { font: 700 12.5px var(--font-display);" in css and ".wx-marker .mflag span { font: 600 10.5px var(--font-display);" in css
+    assert "if (pt && nearPoint(ll, pt.lon, pt.lat, 36)) { chip.hidden = true; return; }" in probe
+    assert "openPoint(e.lngLat.lat, e.lngLat.lng);\n      if (WX.probe) WX.probe.hover(null);" in app

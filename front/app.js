@@ -294,6 +294,7 @@
       const resort = feats.find((x) => ["resort-icon", "resort-pts", "resort-all-pts"].includes(x.layer.id));
       if (resort) { WX.ov.selectResort(resort.properties.id); return; }
       openPoint(e.lngLat.lat, e.lngLat.lng);
+      if (WX.probe) WX.probe.hover(null);      // the marker's flag takes over from the chip
       const avy = feats.find((x) => x.layer.id === "avy-fill");
       if (avy) { state.tab = "winter"; }
     });

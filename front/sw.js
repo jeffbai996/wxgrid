@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v113";   // v113: WebKit keeps the clip, drops the glass during glides (2026-09-06)
+const VERSION = "wxgrid-v114";   // v114: value plates in one face; chip yields to the point flag (2026-09-06)
 const SHELL = `${VERSION}-shell`;
 // Change these only when their own schema changes, not for a UI release.
 // Field format/version and run already live in each immutable URL.
