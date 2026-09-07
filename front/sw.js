@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v109";   // v109: airgram ink per theme (2026-09-06)
+const VERSION = "wxgrid-v110";   // v110: particle fade and age paced by time, not frames (2026-09-06)
 const SHELL = `${VERSION}-shell`;
 // Change these only when their own schema changes, not for a UI release.
 // Field format/version and run already live in each immutable URL.

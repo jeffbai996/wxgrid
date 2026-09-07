@@ -900,3 +900,12 @@ def test_only_bottom_anchored_panels_ride_the_tape_drag():
     app = _read("app.js"); css = _read("styles.css")
     assert 'const riders = () => [$("#point"), $(".locate-btn")].filter((el) => el && getComputedStyle(el).top === "auto");' in app
     assert "#timebar.tape-dragging #step { opacity: 0; }" in css
+
+
+def test_particle_trails_and_ages_are_paced_by_time_not_frames():
+    # Per-frame fade and age halved the trail length on a 120 Hz display
+    # (Jeff 2026-09-06, "worms crawling around instead of a wind map").
+    p = _read("particles.js")
+    assert "const k = Math.min(3, dtMs > 0 ? dtMs / (1000 / 60) : 1);" in p
+    assert "ctx.fillStyle = `rgba(0,0,0,${1 - Math.pow(1 - fadeBase, k)})`;" in p
+    assert "p.age += k;" in p and "p.age += 1;" not in p

@@ -359,6 +359,12 @@
       const dtMs = t - (this.lastFrame || t);
       const dt = Math.min(50, dtMs) / 1000;   // s, capped for tab wake-ups
       this.lastFrame = t;
+      // Trail fade and particle age used to be per FRAME: on a 120 Hz display
+      // the canvas faded twice as often and every particle died at half the
+      // age, so the wind map turned into short worms (Jeff 2026-09-06). Both
+      // now scale by this frame's share of a 60 Hz frame, so a trail lives
+      // the same number of milliseconds on any refresh rate.
+      const k = Math.min(3, dtMs > 0 ? dtMs / (1000 / 60) : 1);
       // Adaptive relief for weak compositors (iPad Safari, 2026-08-21): when
       // frames are already late while the map is being dragged, painting
       // particles every frame just makes the drag fight for the same budget.
@@ -384,7 +390,8 @@
       // every meridian into one disc, so its trails need a shorter visual
       // half-life even after reducing the particle count.
       ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = `rgba(0,0,0,${this._fastFade ? 0.3 : polarView ? 0.12 : 0.06})`;
+      const fadeBase = this._fastFade ? 0.3 : polarView ? 0.12 : 0.06;
+      ctx.fillStyle = `rgba(0,0,0,${1 - Math.pow(1 - fadeBase, k)})`;
       this._fastFade = false;
       ctx.fillRect(0, 0, w, h);
       ctx.globalCompositeOperation = "source-over";
@@ -431,7 +438,7 @@
       const speed = 9.0 * zf / pxPerDeg;         // deg/s per m/s (before the cos-lat correction)
       const buckets = new Map();     // colour → path, batched draw calls
       for (const p of this.particles) {
-        p.age += 1;
+        p.age += k;
         const uv = this.sample(p.lon, p.lat);
         // out of the view by more than a world? it can never come back — respawn
         if (!uv || p.age > p.maxAge || p.lat > 89.5 || p.lat < -89.5 || p.lon < b.w - 360 || p.lon > b.e + 360 || (cull && cull(p.lon, p.lat))) { Object.assign(p, respawn()); continue; }
