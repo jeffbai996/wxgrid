@@ -909,3 +909,20 @@ def test_particle_trails_and_ages_are_paced_by_time_not_frames():
     assert "const k = Math.min(3, dtMs > 0 ? dtMs / (1000 / 60) : 1);" in p
     assert "ctx.fillStyle = `rgba(0,0,0,${1 - Math.pow(1 - fadeBase, k)})`;" in p
     assert "p.age += k;" in p and "p.age += 1;" not in p
+
+
+def test_the_tool_strip_fills_its_height_and_trims_extras_before_the_core():
+    # The strip stopped at four core buttons plus whatever was on, leaving the
+    # column half empty on a tall window (Jeff 2026-09-06). It now shows the
+    # inventory in order and trims from the bottom: extras first, the core set
+    # after them, never what is on. Buttons a notch denser.
+    ts = _read("toolstrip.js"); css = _read("styles.css")
+    assert 'const BTN = "32px";' in ts and "b.classList.toggle(\"on\", on); b.hidden = false;" in ts
+    assert "const candidates = all.filter(b => off(b) && !RAIL.has(keyOf(b))).concat(all.filter(b => off(b) && RAIL.has(keyOf(b))));" in ts
+    assert "--strip-btn: 32px;" in css and "gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 5px;" in css
+
+
+def test_the_layer_rail_is_not_held_open_by_its_sliders():
+    css = _read("styles.css")
+    assert ".rail-opacity input { flex: 1; width: 0; min-width: 0;" in css
+    assert "padding: 8px 11px 8px 10px; border-radius: 10px; font: 600 13.5px var(--font-display);" in css
