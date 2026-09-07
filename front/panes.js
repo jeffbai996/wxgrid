@@ -980,6 +980,9 @@
     const W_ = Math.max(320, c.clientWidth || c.parentElement.clientWidth || 640);
     const wide = W_ >= 440;
     const padL = 44, padR = wide ? 104 : 70, padT = 8, padB = 22, ROW_H = 26;
+    // One palette per theme. The dark one had been the only one: pale ink
+    // and 85 % cells read as faded on a white card (Jeff 2026-09-06).
+    const P = airgramPalette();
     const H = padT + padB + rows.length * ROW_H;
     if (c.width !== Math.round(W_ * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W_ * dpr); c.height = Math.round(H * dpr); }
     c.style.height = `${H}px`;
@@ -991,21 +994,21 @@
     ctx.font = "600 11px 'Geist Mono', ui-monospace, monospace"; ctx.textBaseline = "middle";
     rows.forEach((r, ri) => {
       const y = padT + (rows.length - 1 - ri) * rh;
-      ctx.fillStyle = "#8b93a1"; ctx.textAlign = "right"; ctx.fillText(r.label, padL - 6, y + rh / 2);
+      ctx.fillStyle = P.label; ctx.textAlign = "right"; ctx.fillText(r.label, padL - 6, y + rh / 2);
       for (let k = 0; k < n; k++) {
         const x = padL + k * cw;
         const t = r.key === "sfc" ? (d.series.t2m ? d.series.t2m[k] : null) : d.aloft[r.key].temp[k];
         const spd = r.key === "sfc" ? d.series.wind[k] : d.aloft[r.key].wind[k];
         const dir = r.key === "sfc" ? d.series.wdir[k] : d.aloft[r.key].wdir[k];
-        if (t != null) { ctx.fillStyle = tcol(t); ctx.globalAlpha = 0.85; ctx.fillRect(x + 0.5, y + 0.5, cw - 1, rh - 1); ctx.globalAlpha = 1; }
+        if (t != null) { ctx.fillStyle = tcol(t); ctx.globalAlpha = P.cellAlpha; ctx.fillRect(x + 0.5, y + 0.5, cw - 1, rh - 1); ctx.globalAlpha = 1; }
         if (spd != null && dir != null) {
           const len = Math.min(rh, cw) * 0.36 * Math.min(1, 0.4 + spd / 25);
           const ang = (dir + 180) * Math.PI / 180;               // TO direction, screen y down: north = up
           const cx = x + cw / 2, cy = y + rh / 2;
           const dx = Math.sin(ang) * len, dy = -Math.cos(ang) * len;
-          ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke();
+          ctx.strokeStyle = P.arrow; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx - dx, cy - dy); ctx.lineTo(cx + dx, cy + dy); ctx.stroke();
           ctx.beginPath(); ctx.moveTo(cx + dx, cy + dy); ctx.lineTo(cx + dx - Math.sin(ang - 0.5) * 4, cy + dy + Math.cos(ang - 0.5) * 4); ctx.moveTo(cx + dx, cy + dy); ctx.lineTo(cx + dx - Math.sin(ang + 0.5) * 4, cy + dy + Math.cos(ang + 0.5) * 4); ctx.stroke();
-          if (cw > 20) { ctx.fillStyle = "rgba(0,0,0,0.75)"; ctx.textAlign = "center"; ctx.font = "700 9.5px 'Geist Mono', ui-monospace, monospace"; ctx.fillText(String(Math.round(speed(spd))), cx, y + rh - 6); ctx.font = "600 11px 'Geist Mono', ui-monospace, monospace"; }
+          if (cw > 20) { ctx.fillStyle = P.cellNum; ctx.textAlign = "center"; ctx.font = "700 9.5px 'Geist Mono', ui-monospace, monospace"; ctx.fillText(String(Math.round(speed(spd))), cx, y + rh - 6); ctx.font = "600 11px 'Geist Mono', ui-monospace, monospace"; }
         }
       }
     });
@@ -1024,7 +1027,7 @@
       return null;
     };
     if (fzs) {
-      ctx.strokeStyle = "rgba(190, 236, 255, 0.85)"; ctx.lineWidth = 1.5; ctx.setLineDash([]); ctx.beginPath(); let pen = false;
+      ctx.strokeStyle = P.fzLine; ctx.lineWidth = 1.5; ctx.setLineDash([]); ctx.beginPath(); let pen = false;
       for (let k = 0; k < n; k++) {
         const hm = fzs[k]; const y = hm == null ? null : yForHeight(k, hm);
         if (y == null) { pen = false; continue; }
@@ -1034,12 +1037,21 @@
       ctx.stroke();                                   // the margin names the line; no tag on its end
     }
     // day ticks + selected step
-    ctx.fillStyle = "#8b93a1"; ctx.textAlign = "left"; let lastDay = null;
+    ctx.fillStyle = P.label; ctx.textAlign = "left"; let lastDay = null;
     d.valid.slice(0, n).forEach((iso, k) => { const dt = new Date(iso), day = dt.toDateString(); if (day !== lastDay) { lastDay = day; ctx.fillRect(padL + k * cw, padT, 1, H - padT - padB); ctx.fillText(dt.toLocaleDateString(undefined, { weekday: "short" }), padL + k * cw + 3, H - 8); } });
-    if (i < n) { ctx.strokeStyle = "#6cb6ff"; ctx.lineWidth = 2; ctx.strokeRect(padL + i * cw + 1, padT + 1, cw - 2, H - padT - padB - 2); }
+    if (i < n) { ctx.strokeStyle = P.select; ctx.lineWidth = 2; ctx.strokeRect(padL + i * cw + 1, padT + 1, cw - 2, H - padT - padB - 2); }
     $("#airgram-note").textContent = `Rows are pressure levels, colour is temperature, arrows are wind in ${speedUnit()}${fzs ? ", the pale line is the freezing level" : ""}. The margin reads the selected hour.`;
-    drawAirgramGutter(ctx, d, Math.min(i, n - 1), rows, { padL, padT, padB, cw, rh, rowY, W: W_, H, wide, yForHeight });
+    drawAirgramGutter(ctx, d, Math.min(i, n - 1), rows, { padL, padT, padB, cw, rh, rowY, W: W_, H, wide, yForHeight, P });
     wireAirgramHover(c, d, rows, n, { padL, padT, cw, rh, rowY });
+  }
+
+  function airgramPalette() {
+    const light = document.documentElement.dataset.theme === "light";
+    return light
+      ? { label: "#3d4653", word: "#5b6573", cellAlpha: 1, arrow: "rgba(16,20,28,.85)", cellNum: "rgba(0,0,0,.8)", fzLine: "#0b6fb8", select: "#1565b0",
+          fz: "#0b6fb8", warm: "#b45309", wind: "#1565b0", cold: "#1565b0", hot: "#c2410c", neutral: "#3d4653", good: "#15803d", rule: "rgba(61,70,83,.6)" }
+      : { label: "#8b93a1", word: "#8b93a1", cellAlpha: 0.85, arrow: "rgba(255,255,255,0.9)", cellNum: "rgba(0,0,0,0.75)", fzLine: "rgba(190, 236, 255, 0.85)", select: "#6cb6ff",
+          fz: "rgba(190,236,255,.95)", warm: "#ffd166", wind: "#8ec5f0", cold: "#9fd0ff", hot: "#ff8a3d", neutral: "#c9d3e0", good: "#78d39a", rule: "rgba(139,147,161,.6)" };
   }
 
   // The selected column's numbers, written in the margin at the height they
@@ -1056,24 +1068,25 @@
     const gx = x0 + 6;                                    // where the margin starts
     const MONO = (px, w = 700) => `${w} ${px}px 'Geist Mono', ui-monospace, monospace`;
     const WORD = (px, w = 600) => `${w} ${px}px 'Urbanist', 'DM Sans', sans-serif`;
+    const P = g.P;
     const notes = [];                                     // { y, lines: [[text, font, colour]], h }
     const line = (text, font, colour) => [text, font, colour];
     const fz = d.derived && d.derived.freezing_level_m ? d.derived.freezing_level_m[k] : null;
     const yFz = fz == null ? null : g.yForHeight(k, fz);
-    if (yFz != null) notes.push({ y: yFz, key: "fz", tick: true, lines: [line(`0°C ${U.alt(fz).v} ${U.alt(fz).unit}`, MONO(10), "rgba(190,236,255,.95)")] });
+    if (yFz != null) notes.push({ y: yFz, key: "fz", tick: true, lines: [line(`0°C ${U.alt(fz).v} ${U.alt(fz).unit}`, MONO(10), P.fz)] });
     const t850 = at("850", "temp"), r850 = rowIndex("850");
     if (t850 != null && r850 >= 0) notes.push({ y: g.rowY(r850), key: "t850", tick: true,
-      lines: [line(`${U.temp(t850).v}°`, MONO(11), "#ffd166"), ...(g.wide ? [line("850 hPa air", WORD(9), "#8b93a1")] : [])] });
+      lines: [line(`${U.temp(t850).v}°`, MONO(11), P.warm), ...(g.wide ? [line("850 hPa air", WORD(9), P.word)] : [])] });
     let best = null;
     for (const r of rows) { if (r.key === "sfc") continue; const w = at(r.key, "wind"); if (w != null && (!best || w > best.w)) best = { key: r.key, w, dir: at(r.key, "wdir") }; }
     if (best) {
       const ri = rowIndex(best.key);
       notes.push({ y: g.rowY(ri), key: "wind", tick: true,
-        lines: [line(`${Math.round(speed(best.w))} ${speedUnit()}${best.dir != null ? ` ${arrow(best.dir)}` : ""}`, MONO(10.5), "#8ec5f0"),
-                ...(g.wide ? [line(`strongest, ${best.key} hPa`, WORD(9), "#8b93a1")] : [])] });
+        lines: [line(`${Math.round(speed(best.w))} ${speedUnit()}${best.dir != null ? ` ${arrow(best.dir)}` : ""}`, MONO(10.5), P.wind),
+                ...(g.wide ? [line(`strongest, ${best.key} hPa`, WORD(9), P.word)] : [])] });
       // and the cell itself is ringed, so the eye finds it in the grid
       const x = g.padL + k * g.cw, y = g.padT + (rows.length - 1 - ri) * g.rh;
-      ctx.strokeStyle = "rgba(142,197,240,.95)"; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+      ctx.strokeStyle = P.wind; ctx.lineWidth = 1.5; ctx.setLineDash([]);
       ctx.strokeRect(x + 1.5, y + 1.5, g.cw - 3, g.rh - 3);
     }
     // the bracket: 1000 → 500 with thickness, 850 → 500 lapse on the same side
@@ -1083,16 +1096,16 @@
     if (gh500 != null && gh1000 != null) {
       const dam = Math.round((gh500 - gh1000) / 10);
       const word = dam <= 528 ? "cold" : dam <= 540 ? "snow line low" : dam >= 570 ? "warm column" : "typical";
-      bracket.push(line(`${dam} dam`, MONO(10.5), dam <= 540 ? "#9fd0ff" : dam >= 570 ? "#ffb26b" : "#c9d3e0"), ...(g.wide ? [line(`thickness, ${word}`, WORD(9), "#8b93a1")] : []));
+      bracket.push(line(`${dam} dam`, MONO(10.5), dam <= 540 ? P.cold : dam >= 570 ? P.hot : P.neutral), ...(g.wide ? [line(`thickness, ${word}`, WORD(9), P.word)] : []));
     }
     if (t850 != null && t500 != null && gh850 != null && gh500 != null) {
       const lapse = (t850 - t500) / Math.max(0.5, (gh500 - gh850) / 1000);
       const word = lapse >= 7.5 ? "unstable" : lapse >= 6.5 ? "conditional" : "stable";
-      bracket.push(line(`${lapse.toFixed(1)}°/km`, MONO(10.5), lapse >= 7.5 ? "#ff8a3d" : lapse >= 6.5 ? "#ffd166" : "#78d39a"), ...(g.wide ? [line(`lapse, ${word}`, WORD(9), "#8b93a1")] : []));
+      bracket.push(line(`${lapse.toFixed(1)}°/km`, MONO(10.5), lapse >= 7.5 ? P.hot : lapse >= 6.5 ? P.warm : P.good), ...(g.wide ? [line(`lapse, ${word}`, WORD(9), P.word)] : []));
     }
     if (bracket.length && r1000 >= 0 && r500 >= 0) {
       const yA = g.rowY(r1000), yB = g.rowY(r500);
-      ctx.strokeStyle = "rgba(139,147,161,.55)"; ctx.lineWidth = 1; ctx.beginPath();
+      ctx.strokeStyle = P.rule; ctx.lineWidth = 1; ctx.beginPath();
       ctx.moveTo(gx + 3, yA); ctx.lineTo(gx, yA); ctx.lineTo(gx, yB); ctx.lineTo(gx + 3, yB); ctx.stroke();
       notes.push({ y: (yA + yB) / 2, key: "bracket", tick: false, lines: bracket });
     }
@@ -1108,7 +1121,7 @@
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
     for (const nt of notes) {
       const tx = gx + (nt.key === "bracket" ? 7 : 4);
-      if (nt.tick) { ctx.strokeStyle = "rgba(139,147,161,.6)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0 + 1, nt.y); ctx.lineTo(tx - 2, nt.top + nt.h / 2); ctx.stroke(); }
+      if (nt.tick) { ctx.strokeStyle = P.rule; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0 + 1, nt.y); ctx.lineTo(tx - 2, nt.top + nt.h / 2); ctx.stroke(); }
       nt.lines.forEach(([text, font, colour], j) => { ctx.font = font; ctx.fillStyle = colour; ctx.fillText(text, tx, nt.top + LH * j + LH / 2); });
     }
   }

@@ -849,6 +849,9 @@ def test_airgram_carries_more_than_the_grid_and_the_skewt_note_hides_its_nerd_ha
     assert "renderAirgramStats" not in panes and "airgram-stats" not in html and "airgram-stats" not in css
     assert "thickness, ${word}" in panes and "lapse, ${word}" in panes and "strongest, ${best.key} hPa" in panes
     assert '", the pale line is the freezing level"' in panes and "The margin reads the selected hour." in panes
+    # the light theme gets its own ink: the dark palette read as faded on a white card
+    assert 'const light = document.documentElement.dataset.theme === "light";' in panes and "const P = airgramPalette();" in panes
+    assert "cellAlpha: 1, arrow: \"rgba(16,20,28,.85)\"" in panes and 'ctx.globalAlpha = P.cellAlpha;' in panes
     assert 'id="airgram-tip" class="gtip"' in html
     assert "return { ok: true, caption, headline, detail," in snd
     assert '<span class="info" tabindex="0" role="note"' in panes and ".note .info:hover .info-pop, .note .info:focus-visible .info-pop { opacity: 1;" in css
