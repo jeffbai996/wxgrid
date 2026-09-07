@@ -1,10 +1,16 @@
 # Next footprint pass: items 3–5
 
-Status, 2026-09-06: items 3 and 5 implemented and verified; item 4 implemented
-on the separate `codex/field-cache-acceptance` candidate, awaiting visual
-sign-off before production deployment. Items 1–2 shipped in the previous
-batch. The contracts below remain the acceptance checklist. See
-`runtime-footprint.md` for measured evidence and rollout limitations.
+Status, 2026-09-06: items 3, 4 and 5 implemented and verified; items 1–2
+shipped in the previous batch. Item 4 merged after a real-browser check
+(headless Chromium, SwiftShader GL, one run at a time on an otherwise idle
+box): every model stays on the GPU path, HRRR peaks at 64.2 MiB decoded and
+16.0 MiB of textures against the 80/40 MiB budgets, sampled values match the
+unbounded path exactly, and a 48-step HRRR scrub took 77–88 s cold and
+70–71 s warm against 73 s and 69 s before, so within the warm-delay tolerance
+and a small cold cost from prefetch yielding at HRRR sizes. Software GL
+dominates those absolute times; they are a relative comparison only. The
+contracts below remain the acceptance checklist. See `runtime-footprint.md`
+for measured evidence and rollout limitations.
 
 ## Invariants
 

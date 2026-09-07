@@ -558,9 +558,6 @@ explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
 - Topic packs on the card: garden and farm (growing degree days, frost, ET₀,
   spray windows), fire weather (Fosberg, Haines), sky tonight, run and ride,
   drone.
-- Browser field memory as separate CPU and GPU budgets (implemented on a
-  branch; a cold HRRR scrub was slower under it, so it waits for a better
-  prefetch policy). See `docs/next-footprint-pass.md`.
 - ICON (needs icosahedral regrid weights), hourly GFS surface tier, GFS waves
   (WW3).
 - Self-hosted AI model via ECMWF `ai-models` (Aurora / GraphCast-small).
@@ -569,7 +566,9 @@ explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
 
 Short version; the commit log is the long one.
 
-- **2026-09-06** — the airgram fills the card, draws the freezing line, answers
+- **2026-09-06** — the browser keeps decoded fields and GPU textures under
+  separate budgets (80 / 40 MiB), prefetch yields at HRRR sizes, only the
+  displayed pair holds textures. The airgram fills the card, draws the freezing line, answers
   the pointer, and writes the selected hour's freezing level, 850 hPa
   temperature, strongest wind, thickness and lapse in its margin. Skew-T
   captions in one voice, the reasoning behind an info dot. Daylight and solar
