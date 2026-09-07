@@ -934,6 +934,6 @@ def test_webkit_gets_overflow_clipping_and_a_repaint_nudge_after_the_glide():
     # overflow hidden, and the glide end forces a fresh compositing layer.
     css = _read("styles.css"); app = _read("app.js")
     assert "@supports (-webkit-touch-callout: none) {" in css
-    assert "#timebar.tape-anim, #timebar.mini.tape-anim, #timebar.tape-dragging { clip-path: none; overflow: hidden; will-change: auto; }" in css
+    assert "#timebar.tape-anim, #timebar.mini.tape-anim, #timebar.tape-dragging { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--panel-solid); will-change: auto; }" in css
     end = app.split('tb.classList.remove("tape-anim", "tape-anim-away");', 1)[1].split("restorePointPanelSize();", 1)[0]
     assert 'tb.style.transform = "translateZ(0)";' in end and 'requestAnimationFrame(() => { tb.style.transform = ""; });' in end

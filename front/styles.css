@@ -413,7 +413,11 @@ button:focus:not(:focus-visible) { outline: none; }
    time the grip was tapped (Jeff 2026-09-06). WebKit gets the old clip:
    overflow hidden, the grip's top half hidden for the length of the glide. */
 @supports (-webkit-touch-callout: none) {
-  #timebar.tape-anim, #timebar.mini.tape-anim, #timebar.tape-dragging { clip-path: none; overflow: hidden; will-change: auto; }
+  /* v112 swapped the clip for overflow:hidden, which halved the grip for the
+     length of every glide. The bug needs both clip-path AND backdrop-filter on
+     the same layer, so keep the clip and drop the glass for the 0.4 s instead:
+     the box goes opaque while it moves and frosts again when it lands. */
+  #timebar.tape-anim, #timebar.mini.tape-anim, #timebar.tape-dragging { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--panel-solid); will-change: auto; }
 }
 .tape-riding { transition: none !important; will-change: transform; }
 body.resizing-tape #timebar { z-index: 7; }
