@@ -1107,6 +1107,11 @@
         tapeAnim = setTimeout(() => {
           tb.classList.remove("tape-anim", "tape-anim-away");
           tb.style.removeProperty("--tape-anim-h");
+          // WebKit can leave the box's compositing layer stale after the
+          // clip/height transition ends (frosted box, no rows). Nudge a
+          // fresh layer once the classes are gone.
+          tb.style.transform = "translateZ(0)";
+          requestAnimationFrame(() => { tb.style.transform = ""; });
           tb.style.height = s === "full" && sized ? sized : "";
           if (s === "away") { tb.classList.remove("mini"); tb.classList.add("tape-away"); }
           const pill = $("#tape-pill");

@@ -926,3 +926,14 @@ def test_the_layer_rail_is_not_held_open_by_its_sliders():
     css = _read("styles.css")
     assert ".rail-opacity input { flex: 1; width: 0; min-width: 0;" in css
     assert "padding: 8px 11px 8px 10px; border-radius: 10px; font: 600 13.5px var(--font-display);" in css
+
+
+def test_webkit_gets_overflow_clipping_and_a_repaint_nudge_after_the_glide():
+    # iPadOS Safari: clip-path + backdrop-filter left the tape box frosted and
+    # empty after every grip tap (Jeff 2026-09-06). WebKit falls back to
+    # overflow hidden, and the glide end forces a fresh compositing layer.
+    css = _read("styles.css"); app = _read("app.js")
+    assert "@supports (-webkit-touch-callout: none) {" in css
+    assert "#timebar.tape-anim, #timebar.mini.tape-anim, #timebar.tape-dragging { clip-path: none; overflow: hidden; will-change: auto; }" in css
+    end = app.split('tb.classList.remove("tape-anim", "tape-anim-away");', 1)[1].split("restorePointPanelSize();", 1)[0]
+    assert 'tb.style.transform = "translateZ(0)";' in end and 'requestAnimationFrame(() => { tb.style.transform = ""; });' in end

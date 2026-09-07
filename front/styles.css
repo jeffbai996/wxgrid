@@ -408,6 +408,13 @@ button:focus:not(:focus-visible) { outline: none; }
 /* a drag is a transform, never a height per frame: the box sits at its ceiling
    and slides; everything that rides it (sheet, locate) slides with it */
 #timebar.tape-dragging { height: var(--tape-drag-height) !important; overflow: visible; clip-path: inset(-14px 0 0 0); transition: none !important; will-change: transform; }
+/* iPadOS Safari: a clip-path on an element that also has a backdrop-filter
+   left the box frosted and its children unpainted after the glide, every
+   time the grip was tapped (Jeff 2026-09-06). WebKit gets the old clip:
+   overflow hidden, the grip's top half hidden for the length of the glide. */
+@supports (-webkit-touch-callout: none) {
+  #timebar.tape-anim, #timebar.mini.tape-anim, #timebar.tape-dragging { clip-path: none; overflow: hidden; will-change: auto; }
+}
 .tape-riding { transition: none !important; will-change: transform; }
 body.resizing-tape #timebar { z-index: 7; }
 /* the slider and the rows fade with the box instead of cutting: a display:none
