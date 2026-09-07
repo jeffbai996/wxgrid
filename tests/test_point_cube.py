@@ -32,15 +32,22 @@ def test_point_cube_matches_the_source(tmp_path):
         assert g["pt"][var].chunks[0] == fields[var].shape[0]
 
 
-def test_point_cube_reads_each_variable_once(tmp_path, monkeypatch):
+def test_point_cube_reads_each_source_chunk_once(tmp_path, monkeypatch):
+    # Every source step chunk is decompressed exactly once, whether the
+    # variable transposes in memory (chunk by chunk into one array) or
+    # through the staging file; no latitude-band re-reads of the map.
+    import math
     root, fields = _run(tmp_path)
     reads = []
     orig = zarr.Array.__getitem__
     monkeypatch.setattr(zarr.Array, "__getitem__",
-                        lambda self, key: reads.append(self.name) or orig(self, key))
+                        lambda self, key: reads.append((self.name, repr(key))) or orig(self, key))
     store.build_point_cube("gfs", "2026-01-01T00", root)
-    src_reads = [n for n in reads if not n.startswith("/pt")]
-    assert sorted(src_reads) == sorted(f"/{v}" for v in fields)
+    src_reads = [r for r in reads if not r[0].startswith("/pt")]
+    assert len(src_reads) == len(set(src_reads))                   # nothing read twice
+    g = zarr.open_group(store.run_path("gfs", "2026-01-01T00", root), mode="r")
+    for v in fields:
+        assert sum(1 for n, _ in src_reads if n == f"/{v}") == math.ceil(g[v].shape[0] / g[v].chunks[0])
 
 
 def test_point_cube_checks_the_gate_between_variables(tmp_path):
@@ -181,3 +188,13 @@ def test_staging_and_output_share_the_write_budget(tmp_path, monkeypatch):
     assert sum(charges[:3]) == values.nbytes  # scratch writes
     assert sum(charges[3:]) == values.nbytes  # destination writes
     np.testing.assert_array_equal(dst[:], values)
+
+
+def test_a_65_step_global_variable_transposes_in_memory():
+    # 65 × 721 × 1440 float16 = 135 MB: the pressure-level variables of every
+    # global model. They were all staged through disk at the 32 MB threshold.
+    import numpy as np
+    from wxgrid import store
+    assert 65 * 721 * 1440 * np.dtype("float16").itemsize <= store._POINT_IN_MEMORY_BYTES
+    assert store._POINT_IN_MEMORY_BYTES <= 200 * 1024 * 1024
+    assert 105 * 721 * 1440 * 2 > store._POINT_IN_MEMORY_BYTES     # 105-step surface fields still stage

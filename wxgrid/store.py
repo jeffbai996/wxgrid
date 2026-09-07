@@ -369,7 +369,13 @@ def run_lock(model: str, rid: str, root: Path = STORE_DIR):
 
 
 POINT_TILE = 24    # point-cube spatial chunk (24 × 24 gridpoints = 6° × 6°)
-_POINT_IN_MEMORY_BYTES = 32 * 1024 * 1024
+# Variables up to this size transpose in RAM; larger ones stage through a
+# scratch file. At 32 MB every global variable went through the file: ~190 GB
+# of raw scratch a day on a QLC system disk, more than the store itself
+# (Jeff 2026-09-06). 160 MB keeps every 65-step 0.25° variable (135 MB) in
+# memory inside a ~200 MB peak; the 105-step GFS/GEM surface variables and
+# the regional models still stage.
+_POINT_IN_MEMORY_BYTES = 160 * 1024 * 1024
 _POINT_DIRTY_BYTES = 16 * 1024 * 1024
 
 
@@ -391,7 +397,14 @@ def _copy_point_variable(src, arr, directory: Path, pacer) -> None:
     output band, not all forecast hours. No mmap or persistent scratch."""
     nt, ny, nx = src.shape
     if np.prod(src.shape) * src.dtype.itemsize <= _POINT_IN_MEMORY_BYTES:
-        full = src[:]
+        # One step at a time into a preallocated array: `src[:]` decoded the
+        # whole variable into a second buffer first, and the peak was 1.8× the
+        # variable (230 MiB for 129 MiB). Chunk by chunk it is the variable
+        # plus one decoded step.
+        full = np.empty(src.shape, dtype=src.dtype)
+        for t0 in range(0, nt, src.chunks[0]):
+            t1 = min(t0 + src.chunks[0], nt)
+            full[t0:t1] = src[t0:t1]
         for y0 in range(0, ny, POINT_TILE):
             band = full[:, y0:y0 + POINT_TILE, :]
             pacer.spend(band.nbytes)
