@@ -21,6 +21,14 @@ _card_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="card")
 # requests. A stalled native call must not grow an unbounded executor queue.
 _alert_slots = threading.BoundedSemaphore(2)
 
+# How long the card will hold its connection for the forecast alone, after the
+# 6 s context budget has expired. The forecast has no second request on the
+# client, so it gets a longer rope than the upstreams do — but not an infinite
+# one, or a wedged read pins the connection for as long as the browser will
+# hold it. A cold Zarr read of a run whose point cube is still building is the
+# slow case this covers; past this it is a failure, and the card says so.
+POINT_BUDGET = 25.0
+
 
 @router.get("/card")
 def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180),
@@ -29,9 +37,17 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
 
     The card used to fire six requests on open, and over HTTP/1.1 they queued
     behind the map's tiles on the browser's per-origin connection cap. One
-    response, one connection slot: the forecast line lands first (it is a local
-    Zarr read), the external lookups follow in completion order, and a line
-    whose upstream fails is a {"error": ...} rather than a dropped connection.
+    response, one connection slot: every line lands in completion order, and a
+    line whose upstream fails is a {"error": ...} rather than a dropped
+    connection.
+
+    The forecast is a job like the rest, not the head of the stream. Yielding
+    it first also meant SUBMITTING the others after it returned, so the place
+    name, the station and the tides all waited on a Zarr read they have nothing
+    to do with — and the point read is the one part of this card allowed to be
+    slow (Jeff 2026-09-09: "its ok for it to take a bit longer, i want some
+    stuff to load quick tho like the geographical name"). The name now answers
+    on its own clock.
     """
     from wxgrid.api import point_series, prob_point   # circular at module load, fine at call
 
@@ -49,7 +65,6 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
             return json.dumps({"kind": kind, "error": str(exc)[:120]}) + "\n"
 
     def gen():
-        yield line("point", lambda: point_series(lat=lat, lon=lon, model=model, run=run))
         alert_end = time.monotonic() + ext.ALERT_BUDGET
         jobs = {
             "local": lambda: ext.local_context(lat, lon),
@@ -60,18 +75,39 @@ def api_card(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=
             "prob": lambda: _prob(lat, lon),
         }
         futures = {_card_pool.submit(line, k, fn): k for k, fn in jobs.items()}
+        # Submitted last so the context lookups get the pool's free threads
+        # first; it is the only job that reads local disk rather than waiting
+        # on someone else's server.
+        point = _card_pool.submit(
+            line, "point", lambda: point_series(lat=lat, lon=lon, model=model, run=run))
+        futures[point] = "point"
         from concurrent.futures import TimeoutError as FutTimeout, as_completed
         # A straggler must not hold this connection: the browser gives an
         # HTTP/1.1 origin six slots, and a stream pinned open on a slow
         # geocoder queues every other request behind it (seen 2026-08-19,
         # "takes ages to load anything"). Ship what landed within the budget,
         # name the rest "pending", close; the client fetches those alone.
+        #
+        # The forecast gets a longer budget, not an unlimited one: the client
+        # has no second request for it, so "pending" would leave the card with
+        # no forecast at all, but an unbounded wait pins the connection.
+        sent = set()
         try:
-            for fut in as_completed(futures, timeout=6):
+            for fut in as_completed(list(futures), timeout=6):
+                sent.add(fut)
                 yield fut.result()
         except FutTimeout:
             for fut, kind in futures.items():
-                if not fut.done():
+                if fut in sent:
+                    continue
+                if fut.done():
+                    yield fut.result()
+                elif kind == "point":
+                    try:
+                        yield fut.result(timeout=POINT_BUDGET)
+                    except Exception as exc:                       # noqa: BLE001
+                        yield json.dumps({"kind": "point", "error": str(exc)[:120] or "timed out"}) + "\n"
+                else:
                     yield json.dumps({"kind": kind, "pending": True}) + "\n"
         finally:
             # A closed/expired card has no use for jobs still in the queue.

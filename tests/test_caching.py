@@ -60,18 +60,23 @@ def test_every_request_logs_timing_and_cache_outcome(client, caplog):
 
 
 def test_card_stream_still_carries_the_point(client):
-    """The card opens from one NDJSON stream whose first line is the point
-    series, produced by calling the series function directly. Adding an HTTP
-    `request` parameter to the route broke that call and the card went
-    'point forecast unavailable' while /api/point itself still answered
-    (2026-08-22) — the route and the function are separate now, and this
-    guards the seam."""
+    """The card opens from one NDJSON stream carrying the point series,
+    produced by calling the series function directly. Adding an HTTP `request`
+    parameter to the route broke that call and the card went 'point forecast
+    unavailable' while /api/point itself still answered (2026-08-22) — the
+    route and the function are separate now, and this guards the seam.
+
+    Found by kind, not by position: the lines arrive in completion order, and
+    the point is deliberately not the head of the stream any more. Holding it
+    there also held back the context lookups, so the place name waited on a
+    Zarr read (Jeff 2026-09-09)."""
     import json
     r = client.get("/api/card", params={"lat": 49.2, "lon": -123.1, "model": "gfs", "run": RID})
     assert r.status_code == 200
-    first = json.loads(r.text.splitlines()[0])
-    assert first["kind"] == "point" and "error" not in first, first
-    assert first["data"]["available"] and first["data"]["series"]["t2m"]
+    rows = [json.loads(line) for line in r.text.splitlines() if line.strip()]
+    point = next(row for row in rows if row["kind"] == "point")
+    assert "error" not in point, point
+    assert point["data"]["available"] and point["data"]["series"]["t2m"]
     assert api.point_series(lat=49.2, lon=-123.1, model="gfs", run=RID)["available"]
 
 
