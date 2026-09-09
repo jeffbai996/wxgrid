@@ -103,6 +103,19 @@
   };
   let map, wind, catalog, playTimer = null, playRaf = 0, playFrom = 0, marker = null;
   let restorePointPanelSize = () => {};
+  // WebKit can leave the tape's compositing layer stale (frosted box, no
+  // rows): after a glide, on load, on a bfcache restore, on tab return. A
+  // fresh layer for one frame repaints it. v115 fires it on the page events
+  // too, after the tape stayed blank at rest on an iPhone (Jeff 2026-09-09).
+  const nudgeTapeLayer = () => {
+    const tb = $("#timebar");
+    if (!tb) return;
+    tb.style.transform = "translateZ(0)";
+    requestAnimationFrame(() => { tb.style.transform = ""; });
+  };
+  addEventListener("pageshow", () => setTimeout(nudgeTapeLayer, 50));
+  addEventListener("load", () => setTimeout(nudgeTapeLayer, 300));
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) setTimeout(nudgeTapeLayer, 50); });
   let restoreSheetHeight = () => {};
   let focusMobileSheet = () => {};
   let pointTapeReturn = null;
@@ -1111,8 +1124,7 @@
           // WebKit can leave the box's compositing layer stale after the
           // clip/height transition ends (frosted box, no rows). Nudge a
           // fresh layer once the classes are gone.
-          tb.style.transform = "translateZ(0)";
-          requestAnimationFrame(() => { tb.style.transform = ""; });
+          nudgeTapeLayer();
           tb.style.height = s === "full" && sized ? sized : "";
           if (s === "away") { tb.classList.remove("mini"); tb.classList.add("tape-away"); }
           const pill = $("#tape-pill");
