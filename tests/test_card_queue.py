@@ -50,7 +50,10 @@ def test_the_place_name_does_not_wait_on_the_forecast(monkeypatch):
     release = threading.Event()
 
     def slow_point(**kw):
-        assert release.wait(5), "the context jobs never ran while point blocked"
+        # Generous: _card_pool is shared and eight wide, so on a loaded box the
+        # geocoder job can wait for a thread. The point is that it runs at all
+        # while point blocks, not that it runs within any particular time.
+        assert release.wait(30), "the context jobs never ran while point blocked"
         return {"available": True}
 
     monkeypatch.setattr(api, "point_series", slow_point)

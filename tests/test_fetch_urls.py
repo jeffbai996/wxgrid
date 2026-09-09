@@ -205,3 +205,23 @@ def test_hrrr_urls_and_since_start_accumulation_selection():
         "2:100:d=x:WEASD:surface:0-0 day acc fcst:\n"
     )
     assert len(fetch.hrrr_wanted(analysis, 0)) == 2
+
+
+def test_gfs_stops_at_day_ten_and_aigfs_carries_the_rest():
+    """Jeff 2026-09-09, "trim to 240h". The tail past day ten was 24 of GFS's
+    105 steps — 23% of the largest model in the fleet, and about 9 GB/day once
+    the point cube mirrors it — for a physics forecast at day fourteen that
+    nobody should act on. AI-GFS publishes the same window at the same
+    six-hourly resolution, so the long range moves rather than disappears.
+    """
+    from wxgrid.models import get_model
+    gfs, aigfs = get_model("gfs"), get_model("aigfs")
+    assert max(gfs.steps) == 240, "GFS should stop at day ten"
+    assert gfs.steps == sorted(set(gfs.steps)), "steps must stay sorted and unique"
+    assert all(s % 3 == 0 for s in gfs.steps), "GFS is 3-hourly to 240"
+    # Nothing may fall out of the fleet's coverage: everything GFS dropped is
+    # still published by AI-GFS.
+    covered = set(aigfs.steps)
+    assert all(s in covered for s in range(246, 385, 6)), \
+        "AI-GFS no longer covers the window GFS gave up"
+    assert max(aigfs.steps) == 384

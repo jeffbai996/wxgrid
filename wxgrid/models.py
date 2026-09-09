@@ -38,10 +38,14 @@ from dataclasses import dataclass, field
 STEPS_6H = list(range(0, 241, 6))
 STEPS_IFS = list(range(0, 145, 3)) + list(range(150, 241, 6))   # IFS open data: 3-hourly to 144 h, then 6-hourly
 STEPS_3H = list(range(0, 241, 3))                                # GEM, GEFS: ten days
-# GFS alone publishes past day ten: 3-hourly to 240, then 6-hourly to 384.
-# GEM GDPS and the GEFS products we read both stop at 240, so they keep the
-# short list rather than 404 their way through a day of steps that do not exist.
-STEPS_GFS = STEPS_3H + list(range(246, 385, 6))
+# GFS publishes past day ten, 6-hourly to 384, and we stop reading it at 240
+# (Jeff 2026-09-09, "trim to 240h"). AI-GFS already carries 246-384 at the same
+# six-hourly resolution, so the long range is not lost — it is served by the
+# model that is worth reading there. A physics GFS at day fourteen is a number
+# nobody should act on, and it cost 24 of the run's 105 steps: 23% of the
+# largest model in the fleet, about 9 GB/day once the point cube mirrors it.
+# GEM GDPS and the GEFS products we read both stop at 240 anyway.
+STEPS_GFS = STEPS_3H
 # AI-GFS publishes 6-hourly out to 384 h. The extra six days are the cheapest
 # long range we have anywhere, so it keeps them.
 STEPS_AI = list(range(0, 385, 6))
