@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -369,88 +368,49 @@ def run_lock(model: str, rid: str, root: Path = STORE_DIR):
 
 
 POINT_TILE = 24    # point-cube spatial chunk (24 × 24 gridpoints = 6° × 6°)
-# Variables up to this size transpose in RAM; larger ones stage through a
-# scratch file. At 32 MB every global variable went through the file: ~190 GB
-# of raw scratch a day on a QLC system disk, more than the store itself
-# (Jeff 2026-09-06). 160 MB keeps every 65-step 0.25° variable (135 MB) in
-# memory inside a ~200 MB peak; the 105-step GFS/GEM surface variables and
-# the regional models still stage.
-_POINT_IN_MEMORY_BYTES = 160 * 1024 * 1024
-_POINT_DIRTY_BYTES = 16 * 1024 * 1024
+# Latitude bands buffered per pass over a variable. The transpose holds this
+# many bytes of the destination at once and reads the source once per pass.
+#
+# There used to be two paths with opposite failure modes. Variables under a
+# size threshold transposed whole in RAM: one write per byte kept, but the
+# peak was the variable (222 MB for a 105-step 0.25° field). Larger ones staged
+# through a scratch file, which held 34 MB and wrote the variable to disk in
+# 69 KB pieces at strided offsets — read-modify-write on every partly filled
+# page, then the whole file read back. Measured over 26 h on 2026-09-09, the
+# point-cube phase wrote 203 GB and read 236 GB to produce ~68 GB of cube.
+#
+# Band groups are bounded on both axes: the buffer is this budget, and the only
+# writes are the cube's own chunks. The cost is re-decoding the source once per
+# pass, which is compressed reads against uncompressed writes. Measured on one
+# 105-step 0.25° surface field (218 MB raw, 109 MB of cube):
+#
+#   staged      34 MB peak   330 MB written   6.5 s
+#   in RAM     222 MB peak   111 MB written   3.2 s
+#   40 MB      108 MB peak   111 MB written   3.8 s   ← 7 passes
+#
+# 40 MB lands under the old in-memory peak, which is the one that set the
+# ingest's high-water mark, and takes the writes with it.
+_POINT_BUFFER_BYTES = 40 * 1024 * 1024
 
 
-def _drop_staging_cache(file) -> None:
-    # Dirty pages cannot be discarded. Keep staging out of tmpfs and make
-    # pages clean before advising eviction, or disk staging just moves the
-    # same memory charge from anonymous RSS into the ingest's page cache.
-    os.fsync(file.fileno())
-    if hasattr(os, "posix_fadvise"):
-        try:
-            os.posix_fadvise(file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
-        except OSError:
-            pass  # Advisory only; correctness does not depend on eviction.
-
-
-def _copy_point_variable(src, arr, directory: Path, pacer) -> None:
-    """Transpose once through disk for large variables, never reread map
-    chunks per latitude band. Peak buffers are one source chunk plus one
-    output band, not all forecast hours. No mmap or persistent scratch."""
+def _copy_point_variable(src, arr, pacer) -> None:
+    """Transpose a map-chunked variable into point chunks, band group at a
+    time. Peak buffer is `_POINT_BUFFER_BYTES` plus one decoded source chunk;
+    a variable that fits the budget whole is one pass and one read each."""
     nt, ny, nx = src.shape
-    if np.prod(src.shape) * src.dtype.itemsize <= _POINT_IN_MEMORY_BYTES:
-        # One step at a time into a preallocated array: `src[:]` decoded the
-        # whole variable into a second buffer first, and the peak was 1.8× the
-        # variable (230 MiB for 129 MiB). Chunk by chunk it is the variable
-        # plus one decoded step.
-        full = np.empty(src.shape, dtype=src.dtype)
+    band_bytes = nt * POINT_TILE * nx * src.dtype.itemsize
+    rows = max(1, _POINT_BUFFER_BYTES // band_bytes) * POINT_TILE
+    for y0 in range(0, ny, rows):
+        height = min(rows, ny - y0)
+        buf = np.empty((nt, height, nx), dtype=src.dtype)
         for t0 in range(0, nt, src.chunks[0]):
             t1 = min(t0 + src.chunks[0], nt)
-            full[t0:t1] = src[t0:t1]
-        for y0 in range(0, ny, POINT_TILE):
-            band = full[:, y0:y0 + POINT_TILE, :]
+            buf[t0:t1] = src[t0:t1, y0:y0 + height, :]
+        for b0 in range(0, height, POINT_TILE):
+            band = buf[:, b0:b0 + POINT_TILE, :]
             pacer.spend(band.nbytes)
-            arr[:, y0:y0 + POINT_TILE, :] = band
-        return
-
-    # Layout: latitude band, step, row, longitude. Source chunks are read
-    # exactly once; destination chunks are compressed exactly once. The
-    # anonymous file is removed even on exceptions or process death.
-    with tempfile.TemporaryFile(dir=directory, prefix=".point-transpose-", buffering=0) as stage:
-        dirty = 0
-        for t0 in range(0, nt, src.chunks[0]):
-            slab = src[t0:min(t0 + src.chunks[0], nt), :, :]
-            # Scratch writes are real host IO too; share the existing write
-            # budget with the destination instead of bursting a whole cube.
-            pacer.spend(slab.nbytes)
-            for y0 in range(0, ny, POINT_TILE):
-                rows = min(POINT_TILE, ny - y0)
-                for i, field in enumerate(slab):
-                    stage.seek((y0 * nt + (t0 + i) * rows) * nx * src.dtype.itemsize)
-                    data = memoryview(field[y0:y0 + rows, :]).cast("B")
-                    while data:
-                        size = stage.write(data)
-                        if not size:
-                            raise OSError("short point-cube staging write")
-                        data = data[size:]
-            dirty += slab.nbytes
-            del data, field, slab
-            if dirty >= _POINT_DIRTY_BYTES:
-                _drop_staging_cache(stage)
-                dirty = 0
-        _drop_staging_cache(stage)
-        stage.seek(0)
-        for y0 in range(0, ny, POINT_TILE):
-            rows = min(POINT_TILE, ny - y0)
-            band = np.empty((nt, rows, nx), dtype=src.dtype)
-            data = memoryview(band).cast("B")
-            while data:
-                size = stage.readinto(data)
-                if not size:
-                    raise OSError("short point-cube staging read")
-                data = data[size:]
-            pacer.spend(band.nbytes)
-            arr[:, y0:y0 + rows, :] = band
-            del data, band
-            _drop_staging_cache(stage)
+            arr[:, y0 + b0:y0 + b0 + band.shape[1], :] = band
+        del buf
 
 
 def build_point_cube(
@@ -496,7 +456,7 @@ def _build_point_cube_locked(
                               fill_value=np.nan, dimension_names=("step", "latitude", "longitude"))
         attrs = {k: src.attrs[k] for k in ("offset", "scale", "units") if k in src.attrs}
         arr.attrs.update({**attrs, "complete": False})
-        _copy_point_variable(src, arr, run_path(model, rid, root), _Pacer())
+        _copy_point_variable(src, arr, _Pacer())
         arr.attrs["complete"] = True
         n += 1
         if step_gate:
