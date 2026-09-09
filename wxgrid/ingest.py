@@ -334,10 +334,25 @@ def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store
         write_spread(writer, model, step, spread_paths, got)
         log.info("%s %s step %03d written", model.key, rid, step)
 
+    # ECMWF alone resumes from its downloads: a deferred run keeps its
+    # validated GRIBs and re-decodes them next invocation, so those files have
+    # to outlive the step. Every other source re-downloads from scratch, and
+    # the run directory is removed in the finally below either way.
+    release_gribs = model.source != "ecmwf" and not keep_grib
+
     def on_step(step: int, paths: list[Path]) -> None:
         with Phase(model.key, rid, "decode_write") as phase:
             write_step(step, paths)
             phase.tick()
+        # A decoded GRIB is dead weight: nothing reads it again, and the whole
+        # run used to sit on disk until the finally below (3.5 GB for GFS).
+        # Unlinking here also spares most of the write: the pages are seconds
+        # old and well inside vm.dirty_expire_centisecs, so writeback has not
+        # claimed them yet and truncation drops them before they reach the
+        # platter. Measured 50 GB of GRIB scratch over 30 h on 2026-09-09.
+        if release_gribs:
+            for path in paths:
+                path.unlink(missing_ok=True)
         # The write stack and its decoded arrays are gone before waiting, so a
         # pressure pause does not pin the just-completed step in RAM. Gating
         # the final step matters too: the point-cube build that follows is the

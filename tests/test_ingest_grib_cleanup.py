@@ -136,3 +136,69 @@ def test_grib_dir_is_kept_on_raise_when_keep_grib_is_set(tmp_path, monkeypatch):
         )
 
     assert run_dir.exists()
+
+
+def _step_harness(tmp_path, monkeypatch, model_key, source=None):
+    """One model, one step, a GRIB on disk, everything after decode stubbed."""
+    model = replace(ingest.get_model(model_key), steps=[0])
+    if source:
+        model = replace(model, source=source)
+    grib_root = tmp_path / "grib"
+    run_dir = grib_root / model.key / "20260828T12"
+    run_dir.mkdir(parents=True)
+    grib = run_dir / "step000.grib2"
+    grib.write_bytes(b"x")
+
+    class Writer:
+        variables = []
+        def __init__(self, *args, **kwargs): pass
+        def write(self, *args, **kwargs): pass
+        def finish(self): return {}
+
+    seen = {}
+
+    def fetcher(model, run, root, on_step):
+        on_step(0, [grib])
+        seen["after_step"] = grib.exists()
+        return [(0, [grib])]
+
+    monkeypatch.setattr(ingest, "RunWriter", Writer)
+    for name in ("fetch_gfs", "fetch_ecmwf", "fetch_hrrr"):
+        monkeypatch.setattr(ingest.fetch, name, fetcher)
+    monkeypatch.setattr(ingest, "wait_for_step_gate", lambda: None)
+    monkeypatch.setattr(ingest, "build_point_cube", lambda *a, **k: 0)
+    monkeypatch.setattr(ingest, "prune", lambda *a, **k: [])
+    monkeypatch.setattr(ingest, "warm_layers", lambda *a, **k: 0)
+    monkeypatch.setattr(ingest, "write_step", None, raising=False)
+    return model, grib_root, grib, seen
+
+
+def test_a_decoded_grib_is_released_before_the_next_step(tmp_path, monkeypatch):
+    """The whole run's downloads used to sit on disk until the finally — 3.5 GB
+    for GFS, and 50 GB of scratch a day across the fleet. Nothing reads a GRIB
+    after its step decodes, so it goes then."""
+    model, grib_root, grib, seen = _step_harness(tmp_path, monkeypatch, "gfs")
+    ingest._ingest_locked(model, datetime(2026, 8, 28, 12, tzinfo=timezone.utc),
+                          "2026-08-28T12", grib_root, tmp_path / "store", False)
+    assert seen["after_step"] is False
+    assert not grib.exists()
+
+
+def test_an_ecmwf_grib_outlives_its_step(tmp_path, monkeypatch):
+    """ECMWF is the one source that resumes from its downloads: a deferred run
+    keeps validated GRIBs and re-decodes them next invocation. Releasing them
+    per step would make every 429 a full re-download."""
+    model, grib_root, grib, seen = _step_harness(tmp_path, monkeypatch, "ifs")
+    assert model.source == "ecmwf"
+    ingest._ingest_locked(model, datetime(2026, 8, 28, 12, tzinfo=timezone.utc),
+                          "2026-08-28T12", grib_root, tmp_path / "store", False)
+    assert seen["after_step"] is True
+
+
+def test_keep_grib_still_keeps_every_step(tmp_path, monkeypatch):
+    """`--keep-grib` is for inspecting what a run actually downloaded."""
+    model, grib_root, grib, seen = _step_harness(tmp_path, monkeypatch, "gfs")
+    ingest._ingest_locked(model, datetime(2026, 8, 28, 12, tzinfo=timezone.utc),
+                          "2026-08-28T12", grib_root, tmp_path / "store", True)
+    assert seen["after_step"] is True
+    assert grib.exists()
