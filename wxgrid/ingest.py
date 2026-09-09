@@ -23,7 +23,7 @@ import numpy as np
 import requests
 
 from wxgrid import fetch
-from wxgrid.config import GRIB_DIR, STORE_DIR
+from wxgrid.config import GRIB_DIR, GRIB_RAM_DIR, GRIB_RAM_MIN_FREE, STORE_DIR
 from wxgrid.ens import wind_speed_spread
 from wxgrid.grib import iter_fields
 from wxgrid.models import MODELS, SWELL_VAR, WAVE_BAND_INPUTS, Model, get_model
@@ -123,6 +123,54 @@ def _resolve_run(model: Model, run: str | None) -> datetime:
                 continue
         raise RuntimeError(f"no fully published {model.key} run found in the last day")
     raise ValueError(model.source)
+
+
+def _fs_type(path: Path) -> str:
+    """Filesystem type backing `path`, by longest matching mount point."""
+    best, kind = "", ""
+    try:
+        with open("/proc/mounts", encoding="utf-8") as handle:
+            for line in handle:
+                parts = line.split()
+                if len(parts) < 3:
+                    continue
+                point, fstype = parts[1], parts[2]
+                text = str(path)
+                if (text == point or text.startswith(point.rstrip("/") + "/")) \
+                        and len(point) > len(best):
+                    best, kind = point, fstype
+    except OSError:
+        return ""
+    return kind
+
+
+def grib_root_for(model: Model, grib_root: Path, *, keep_grib: bool = False) -> Path:
+    """Where this model's downloads land.
+
+    RAM for everything that reads a GRIB once and drops it. Disk for ECMWF,
+    which resumes from validated downloads after a 429, and for --keep-grib,
+    which exists so a human can go and look at what a run fetched.
+
+    Falls back to `grib_root` whenever the RAM disk is missing, not actually a
+    RAM disk, or too full to be safe: a failed download is a worse outcome than
+    a written byte.
+    """
+    if keep_grib or model.source == "ecmwf":
+        return grib_root
+    try:
+        GRIB_RAM_DIR.mkdir(parents=True, exist_ok=True)
+        if _fs_type(GRIB_RAM_DIR) not in ("tmpfs", "ramfs"):
+            return grib_root
+        st = os.statvfs(GRIB_RAM_DIR)
+        if st.f_bavail * st.f_frsize < GRIB_RAM_MIN_FREE:
+            log.warning("grib RAM disk %s below %d bytes free; using %s",
+                        GRIB_RAM_DIR, GRIB_RAM_MIN_FREE, grib_root)
+            return grib_root
+    except OSError as exc:
+        log.warning("grib RAM disk %s unusable (%s); using %s",
+                    GRIB_RAM_DIR, exc, grib_root)
+        return grib_root
+    return GRIB_RAM_DIR
 
 
 def sweep_orphan_gribs(grib_root: Path, max_age_hours: int = 24,
@@ -235,6 +283,9 @@ def write_spread(writer: RunWriter, model: Model, step: int, paths: list[Path],
 
 
 def _ingest_locked(model: Model, run: datetime, rid: str, grib_root: Path, store_root: Path, keep_grib: bool) -> dict:
+    # Chosen once and used for the fetch, the per-step release and the cleanup
+    # below, so all three agree on where the files actually are.
+    grib_root = grib_root_for(model, grib_root, keep_grib=keep_grib)
 
     writer = RunWriter(model.key, rid, model.steps, model.store_variables(),
                        attribution=model.attribution, root=store_root)
@@ -628,7 +679,10 @@ def main(argv: list[str] | None = None) -> int:
         keys = [args.model] if args.model else []
     if not keys:
         ap.error("--model, --group or --all")
+    # Both roots: a run killed mid-fetch leaves its downloads behind, and on
+    # the RAM disk that is memory nobody is using.
     swept = sweep_orphan_gribs(GRIB_DIR)
+    swept += sweep_orphan_gribs(GRIB_RAM_DIR)
     if swept:
         log.info("swept %d orphan grib run dir(s)", len(swept))
     rc = 0

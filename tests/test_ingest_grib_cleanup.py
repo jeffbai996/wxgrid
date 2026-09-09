@@ -57,7 +57,11 @@ def test_sweep_uses_the_now_argument_for_the_cutoff(tmp_path):
 def test_grib_dir_is_removed_even_when_ingest_raises(tmp_path, monkeypatch):
     """The rmtree used to run only after a clean pass through _ingest_locked.
     An exception anywhere in fetch/write/cube-build skipped it and left the
-    run's GRIBs on disk forever. It must now run in a finally."""
+    run's GRIBs on disk forever. It must now run in a finally.
+
+    Pinned to the disk root: this is about the cleanup running, not about where
+    the downloads were routed, and gfs now routes to RAM."""
+    monkeypatch.setattr(ingest, "_fs_type", lambda p: "ext4")
     model = replace(ingest.get_model("gfs"), steps=[0])
     grib_root = tmp_path / "grib"
     run_dir = grib_root / model.key / "20260828T12"
@@ -162,6 +166,7 @@ def _step_harness(tmp_path, monkeypatch, model_key, source=None):
         seen["after_step"] = grib.exists()
         return [(0, [grib])]
 
+    monkeypatch.setattr(ingest, "_fs_type", lambda p: "ext4")   # pin to the disk root
     monkeypatch.setattr(ingest, "RunWriter", Writer)
     for name in ("fetch_gfs", "fetch_ecmwf", "fetch_hrrr"):
         monkeypatch.setattr(ingest.fetch, name, fetcher)
@@ -202,3 +207,70 @@ def test_keep_grib_still_keeps_every_step(tmp_path, monkeypatch):
                           "2026-08-28T12", grib_root, tmp_path / "store", True)
     assert seen["after_step"] is True
     assert grib.exists()
+
+
+# ---------------------------------------------------- downloads land in RAM
+
+def test_a_read_once_source_downloads_into_ram(tmp_path, monkeypatch):
+    """A GRIB is written once, decoded once and deleted. Unlinking it early
+    saved nothing — ext4 mounts data=ordered and its five-second journal commit
+    forces the pages out before the unlink (measured 2026-09-09). The only way
+    not to write them is not to put them on a disk."""
+    ram = tmp_path / "ram"
+    monkeypatch.setattr(ingest, "GRIB_RAM_DIR", ram)
+    monkeypatch.setattr(ingest, "_fs_type", lambda p: "tmpfs")
+    assert ingest.grib_root_for(ingest.get_model("gfs"), tmp_path / "disk") == ram
+
+
+def test_ecmwf_keeps_its_downloads_on_disk(tmp_path, monkeypatch):
+    """It is the one source that resumes from validated downloads after a 429,
+    and RAM does not survive the process."""
+    ram = tmp_path / "ram"
+    disk = tmp_path / "disk"
+    monkeypatch.setattr(ingest, "GRIB_RAM_DIR", ram)
+    monkeypatch.setattr(ingest, "_fs_type", lambda p: "tmpfs")
+    for key in ("ifs", "aifs"):
+        model = ingest.get_model(key)
+        assert model.source == "ecmwf"
+        assert ingest.grib_root_for(model, disk) == disk
+
+
+def test_keep_grib_still_puts_them_where_a_human_can_look(tmp_path, monkeypatch):
+    monkeypatch.setattr(ingest, "GRIB_RAM_DIR", tmp_path / "ram")
+    monkeypatch.setattr(ingest, "_fs_type", lambda p: "tmpfs")
+    disk = tmp_path / "disk"
+    assert ingest.grib_root_for(ingest.get_model("gfs"), disk, keep_grib=True) == disk
+
+
+def test_a_ram_disk_that_is_not_one_is_refused(tmp_path, monkeypatch):
+    """If /dev/shm is missing or someone points the env at a real directory,
+    writing there would be the same bytes on the same platter, silently."""
+    monkeypatch.setattr(ingest, "GRIB_RAM_DIR", tmp_path / "ram")
+    monkeypatch.setattr(ingest, "_fs_type", lambda p: "ext4")
+    disk = tmp_path / "disk"
+    assert ingest.grib_root_for(ingest.get_model("gfs"), disk) == disk
+
+
+def test_a_full_ram_disk_falls_back_to_disk(tmp_path, monkeypatch):
+    """Filling /dev/shm pushes the box into swap, which is worse than the
+    writes. A failed download is worse than both."""
+    import os as _os
+    monkeypatch.setattr(ingest, "GRIB_RAM_DIR", tmp_path / "ram")
+    monkeypatch.setattr(ingest, "_fs_type", lambda p: "tmpfs")
+    monkeypatch.setattr(ingest, "GRIB_RAM_MIN_FREE", 2 * 1024 ** 3)
+    real = _os.statvfs
+
+    class Tiny:
+        f_bavail = 1
+        f_frsize = 4096
+    monkeypatch.setattr(_os, "statvfs", lambda p: Tiny() if str(p).endswith("ram") else real(p))
+    disk = tmp_path / "disk"
+    assert ingest.grib_root_for(ingest.get_model("gfs"), disk) == disk
+
+
+def test_the_sweep_reclaims_the_ram_root_too(tmp_path):
+    """A run killed mid-fetch leaves downloads behind; on the RAM disk that is
+    memory nobody is using."""
+    old = _touch_run_dir(tmp_path, "gfs", "2026-08-01T00", age_hours=48)
+    assert ingest.sweep_orphan_gribs(tmp_path, max_age_hours=24) == [old]
+    assert not old.exists()

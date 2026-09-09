@@ -12,6 +12,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("WXGRID_DATA_DIR", BASE_DIR / "data"))
 STORE_DIR = DATA_DIR / "store"          # Zarr, one group per model run
 GRIB_DIR = DATA_DIR / "grib"            # transient downloads, wiped after ingest
+# A GRIB is written once, decoded once and deleted. On this host that round
+# trip was ~36 GB a day onto the store disk for nothing: measured 2026-09-09,
+# unlinking each file as its step decoded saved not one byte, because ext4
+# mounts data=ordered and its five-second journal commit forces the pages out
+# well before the unlink. The only way not to write them is not to put them on
+# a disk. One step's files at a time (~100 MB at the worst source) so RAM holds
+# it easily. ECMWF is excluded: it alone resumes from validated downloads after
+# a deferral, and those have to outlive the process.
+GRIB_RAM_DIR = Path(os.environ.get("WXGRID_GRIB_RAM_DIR", "/dev/shm/wxgrid-grib"))
+# Below this much free space the RAM disk is refused and downloads go to
+# GRIB_DIR. Filling /dev/shm would push the box into swap, which is a worse
+# problem than the writes.
+GRIB_RAM_MIN_FREE = int(os.environ.get("WXGRID_GRIB_RAM_MIN_FREE", 2 * 1024 ** 3))
 # Rendered PNG/JSON, keyed by (model, run, step, var). Separately overridable
 # so a second instance can read a live store without writing into its cache.
 CACHE_DIR = Path(os.environ.get("WXGRID_CACHE_DIR", DATA_DIR / "cache"))
