@@ -2,6 +2,12 @@
 Description=wxgrid — fetch the ensemble into the store
 
 [Service]
+# GRIB/scratch tempfiles are high-churn and default TMPDIR is /tmp on the
+# budgeted Intel 660p (394 GB/day storm, 2026-09-10). Bulk scratch goes to the
+# platter disk per the host storage-placement rule; mkdir because tempfile silently
+# falls back to /tmp when TMPDIR does not exist.
+Environment=TMPDIR=/mnt/wsl-storage/scratch/wxgrid
+ExecStartPre=/bin/mkdir -p /mnt/wsl-storage/scratch/wxgrid
 Type=oneshot
 Environment=WXGRID_PHASE_METRICS=1
 WorkingDirectory=%h/local-projects/wxgrid
