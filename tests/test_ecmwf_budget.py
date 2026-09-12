@@ -147,7 +147,13 @@ def test_sweeper_skips_locked_old_run(tmp_path, monkeypatch):
     assert path.exists()
 
 
-def test_cli_continues_other_models_after_deferral(monkeypatch):
+def test_cli_continues_other_models_after_deferral(monkeypatch, tmp_path):
+    # The default ingest mode is "simple", which walks one global model. This
+    # test is about what a deferral does to the REST of a pass, so it asks for
+    # the full fleet explicitly.
+    monkeypatch.setenv("WXGRID_STATE_DIR", str(tmp_path / "state"))
+    from wxgrid import mode as ingest_mode
+    ingest_mode.write_mode("detailed")
     seen = []
     monkeypatch.setattr(ingest, "sweep_orphan_gribs", lambda *a: [])
     monkeypatch.setattr(ingest, "_resolve_run", lambda *a: datetime(2026, 1, 1))

@@ -317,6 +317,30 @@ redistributed per meteoalarm.org terms, BoM products are © Commonwealth of
 Australia, and the met-service badge names whoever forecasts for the country
 under the cursor.
 
+### Ingest mode
+
+How much weather this instance fetches, one switch in the settings drawer:
+
+| mode | what runs |
+|---|---|
+| `paused` | nothing — every scheduled pass logs `paused` and exits 0 |
+| `simple` | one global and one regional model, 00z and 12z only, no ensemble |
+| `detailed` | every configured model, every cycle |
+
+`simple` is the default. The mode lives in `$WXGRID_STATE_DIR/mode.json`
+(default `~/.local/state/wxgrid/`) deliberately outside the data dir: a switch
+that stops the ingest must be readable when the store's disk is not.
+
+`--model X` ignores the mode — a human asked for that model — and so does
+`--group ... --force`, which is what the drawer's `Refresh now` button uses.
+
+```
+GET  /api/mode              {mode, models, last_run}
+POST /api/mode {mode}
+POST /api/ingest/refresh    starts this mode's units, --no-block
+GET  /api/ingest/status     per-unit active|inactive|failed
+```
+
 ## API
 
 All endpoints are `GET` unless noted. Model, run, step and layer names come
@@ -516,9 +540,22 @@ Put the repo on the consumer's `PYTHONPATH` (or copy `wxgrid/reader.py`,
 
 `scripts/publish_pages.sh` builds `dist-pages/` with `wxgrid.static_demo` (one
 model, 12-hourly, coarse point tiles, prebuilt resort details) and pushes it
-to `gh-pages`; `deploy/wxgrid-pages.timer` does it twice a day. The front end
-detects the snapshot and answers point and profile queries from the tiles;
-feeds that need a server degrade quietly.
+to `gh-pages`. The front end detects the snapshot and answers point and
+profile queries from the tiles; feeds that need a server degrade quietly.
+
+**The demo's weather is frozen.** By default both the script and
+`python -m wxgrid.static_demo` rebuild only `index.html` and the front assets
+and leave `dist-pages/api/` untouched (`--reuse-data`), so a UI fix ships
+without re-rendering a map nobody is reading it for — and without the data
+disk. The `Static demo · run <built>Z` toast says how old the numbers are.
+Refreshing them is manual and needs a complete run in the store:
+
+```bash
+scripts/publish_pages.sh --refresh-data
+```
+
+Server-side settings do not appear in the snapshot: the ingest-mode control
+is gated on the static build, because Pages has no ingest to switch.
 
 ## Development
 
