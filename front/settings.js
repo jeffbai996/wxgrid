@@ -80,10 +80,103 @@
   #settings kbd{font:600 10.5px var(--font-mono);background:var(--bg-3,rgba(255,255,255,.08));border:1px solid var(--line);
     border-radius:5px;padding:1px 6px;color:var(--fg)}
   #settings .utility .note{display:block;margin:8px 2px 0;line-height:1.35}
+  #settings .ingest-foot{display:flex;align-items:center;gap:10px;padding:8px 10px;border-top:1px solid var(--line)}
+  #settings .ingest-foot button{border:1px solid var(--line);background:rgba(127,127,127,.06);color:var(--fg-2);
+    padding:5px 11px;border-radius:8px;font:600 11.5px var(--font-display);cursor:pointer;white-space:nowrap}
+  #settings .ingest-foot button:hover{background:rgba(127,127,127,.12);border-color:var(--line-strong)}
+  #settings .ingest-foot button[disabled]{opacity:.45;cursor:default}
+  #settings .ingest-foot .ingest-state{margin-left:auto;font:600 11px var(--font-mono);color:var(--dim);text-align:right}
+  #settings .ingest-foot .ingest-state b{display:block;font:600 11px var(--font-mono);color:var(--fg-2)}
   @media (max-width:540px){#settings{width:100%}}
   @media (max-width:380px){#settings .preset{padding:10px 8px}#settings .preset small{font-size:8.5px}}
   `;
   document.head.appendChild(style);
+
+  // ── Ingest ──────────────────────────────────────────────────────────
+  // How much weather this instance fetches. Absent from the public demo: the
+  // Pages build has no server to switch and its data is deliberately frozen.
+  const INGEST_MODES = [["paused", "Paused"], ["simple", "Simple"], ["detailed", "Detailed"]];
+  let ingestTimer = 0, ingestStartedAt = "";
+
+  function ingestBlock() {
+    if (window.WXStatic) return "";
+    return `<div class="grp"><h4>Ingest</h4><div class="setting-list">
+      <div class="row"><span>Mode</span><div class="seg" data-key="ingest-mode" role="group" aria-label="Ingest mode">
+        ${INGEST_MODES.map(([v, t]) => `<button type="button" data-v="${v}">${t}</button>`).join("")}
+      </div></div>
+      <div class="ingest-foot">
+        <button type="button" id="ingest-refresh">Refresh now</button>
+        <span class="ingest-state" id="ingest-state"></span>
+      </div>
+    </div></div>`;
+  }
+
+  function wireIngest(el) {
+    if (window.WXStatic) return;
+    el.querySelectorAll('.seg[data-key="ingest-mode"] button').forEach((b) => b.onclick = async () => {
+      try {
+        const r = await fetch("/api/mode", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: b.dataset.v }) });
+        if (r.ok) paintIngest(await r.json());
+      } catch (e) { /* the switch is advisory; the drawer stays usable */ }
+    });
+    const go = el.querySelector("#ingest-refresh");
+    if (go) go.onclick = async () => {
+      go.disabled = true;
+      try {
+        const r = await fetch("/api/ingest/refresh", { method: "POST" });
+        const j = await r.json();
+        if (j.started) { ingestStartedAt = clockNow(); pollIngest(); }
+      } catch (e) { /* ignore */ }
+      go.disabled = false;
+    };
+    loadIngest();
+  }
+
+  const clockNow = () => new Date().toTimeString().slice(0, 5);
+
+  async function loadIngest() {
+    try { paintIngest(await (await fetch("/api/mode")).json()); } catch (e) { /* ignore */ }
+    pollIngest();
+  }
+
+  function paintIngest(body) {
+    const el = $("#settings"); if (!el || !body) return;
+    const seg = el.querySelector('.seg[data-key="ingest-mode"]'); if (!seg) return;
+    seg.querySelectorAll("button").forEach((b) => {
+      const on = b.dataset.v === body.mode;
+      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
+    });
+    const run = body.last_run && body.last_run.run;
+    const node = $("#ingest-state");
+    if (node && run) node.dataset.run = `data as of ${run}Z`;
+    paintIngestState(null);
+  }
+
+  function paintIngestState(status) {
+    const node = $("#ingest-state"); if (!node) return;
+    const as = node.dataset.run || "";
+    let line = "";
+    if (status) {
+      const failed = Object.values(status.units || {}).some((v) => v === "failed");
+      if (status.running) line = ingestStartedAt ? `running · started ${ingestStartedAt}` : "running";
+      else if (failed) line = "failed";
+      else if (ingestStartedAt) line = "done";
+    }
+    node.innerHTML = `${line ? `<b>${line}</b>` : ""}${as}`;
+  }
+
+  // A 10 s beat while the drawer is open, stopped when it closes: the status
+  // route shells out to systemctl, and nobody needs it behind a closed drawer.
+  function pollIngest() {
+    clearTimeout(ingestTimer);
+    if (window.WXStatic) return;
+    const el = $("#settings");
+    if (!el || el.hidden) return;
+    fetch("/api/ingest/status").then((r) => r.json()).then((j) => {
+      paintIngestState(j);
+      if (!j.running) ingestStartedAt = j.running ? ingestStartedAt : ingestStartedAt;
+    }).catch(() => {}).finally(() => { ingestTimer = setTimeout(pollIngest, 10000); });
+  }
 
   function build() {
     if ($("#settings")) return;
@@ -114,6 +207,7 @@
             <button type="button" data-v="1400">Slow</button><button type="button" data-v="900">Normal</button><button type="button" data-v="450">Fast</button></div></div>
         </div>
         </div>
+        ${ingestBlock()}
         <details class="utility"><summary>Keyboard shortcuts</summary><div class="utility-body">
           <div class="krow"><span>Step forward / back</span><span><kbd>←</kbd> <kbd>→</kbd></span></div>
           <div class="krow"><span>Play / pause</span><span><kbd>space</kbd></span></div>
@@ -139,7 +233,11 @@
       el.querySelector("details.advanced").open = false;
       paint();
     });
-    el.querySelectorAll(".seg").forEach((seg) => seg.querySelectorAll("button").forEach((b) => b.onclick = () => pick(seg.dataset.key, b.dataset.v)));
+    el.querySelectorAll(".seg").forEach((seg) => {
+      if (seg.dataset.key === "ingest-mode") return;   // its own handler, its own endpoint
+      seg.querySelectorAll("button").forEach((b) => b.onclick = () => pick(seg.dataset.key, b.dataset.v));
+    });
+    wireIngest(el);
     paint();
   }
 
@@ -162,6 +260,7 @@
     };
     el.querySelectorAll(".seg").forEach((seg) => {
       const k = seg.dataset.key;
+      if (k === "ingest-mode") return;              // painted from /api/mode
       seg.querySelectorAll("button").forEach((b) => {
         const on = String(cur[k]) === b.dataset.v;
         b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
@@ -190,12 +289,13 @@
     const candidate = opener instanceof HTMLElement ? opener : document.activeElement;
     if (candidate instanceof HTMLElement && candidate !== document.body && !el.contains(candidate)) returnFocus = candidate;
     clearTimeout(closeTimer); el.hidden = false; s.hidden = false; paint();
+    loadIngest();
     const code = $("#embed-code"); if (code) code.value = embedCode();
     requestAnimationFrame(() => { el.classList.add("on"); s.classList.add("on"); $("#settings-close").focus({ preventScroll: true }); });
   }
   function close() {
     const el = $("#settings"), s = $("#settings-scrim"); if (!el || el.hidden) return;
-    el.classList.remove("on"); s.classList.remove("on");
+    el.classList.remove("on"); s.classList.remove("on"); clearTimeout(ingestTimer);
     closeTimer = setTimeout(() => { el.hidden = true; s.hidden = true; if (returnFocus && returnFocus.isConnected) returnFocus.focus({ preventScroll: true }); }, 220);
   }
   // The desktop strip is rebuilt by app.js as controls change. Delegate its
