@@ -27,6 +27,7 @@ from wxgrid.config import GRIB_DIR, GRIB_RAM_DIR, GRIB_RAM_MIN_FREE, STORE_DIR
 from wxgrid.ens import wind_speed_spread
 from wxgrid.grib import iter_fields
 from wxgrid.models import MODELS, SWELL_VAR, WAVE_BAND_INPUTS, Model, get_model
+from wxgrid import mode as ingest_mode
 from wxgrid.store import RunWriter, build_point_cube, list_runs, prune, run_id, run_lock, run_path
 from wxgrid.phase_metrics import Phase, current as current_phase
 
@@ -660,6 +661,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--all", action="store_true", help="every model")
     ap.add_argument("--group", choices=TIERS,
                     help="every model of one refresh tier: regional, global or ensemble")
+    ap.add_argument("--force", action="store_true",
+                    help="run a group or full pass even when the ingest mode would skip it")
     ap.add_argument("--run", default="auto", help="YYYY-MM-DDTHH (UTC) or 'auto'")
     ap.add_argument("--keep-grib", action="store_true")
     ap.add_argument("--augment-waves", action="store_true", help="add wave fields to runs already in the store")
@@ -679,6 +682,24 @@ def main(argv: list[str] | None = None) -> int:
         keys = [args.model] if args.model else []
     if not keys:
         ap.error("--model, --group or --all")
+    # A scheduled pass — a group or the full fleet — obeys the ingest mode.
+    # `--model X` does not: a human typed a model name, and the switch is for
+    # the timers, not for them. `--force` is the same exemption for the
+    # refresh-now button, which is also a human asking.
+    scheduled = bool(args.group or args.all) and not args.force
+    mode = ingest_mode.read_mode() if scheduled else "detailed"
+    if scheduled:
+        if mode == "paused":
+            log.info("ingest paused; nothing to do")
+            return 0
+        group = args.group or ""
+        if group:
+            keys = ingest_mode.models_for_mode(mode, group, keys)
+        elif mode == "simple":
+            keys = [k for k in keys if k in ingest_mode.SIMPLE_MODELS]
+        if not keys:
+            log.info("ingest mode %s: nothing to do for %s", mode, group or "all")
+            return 0
     # Both roots: a run killed mid-fetch leaves its downloads behind, and on
     # the RAM disk that is memory nobody is using.
     swept = sweep_orphan_gribs(GRIB_DIR)
@@ -717,6 +738,10 @@ def main(argv: list[str] | None = None) -> int:
                 log.warning("%s: %s", key, exc)
                 if not args.all:
                     rc = 1
+                continue
+            if not ingest_mode.cycle_allowed(mode, run.hour):
+                log.info("%s %02dz skipped: mode %s runs %s only",
+                         key, run.hour, mode, "/".join(f"{h:02d}z" for h in ingest_mode.SIMPLE_CYCLES))
                 continue
             ingest_run(model, run, keep_grib=args.keep_grib)
             # A served run without its point cube is a 10 s card instead of
