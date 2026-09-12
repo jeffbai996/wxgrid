@@ -61,11 +61,13 @@ def test_the_demo_bundle_never_carries_the_ingest_control_markup(tmp_path):
     # The gate is `if (window.WXStatic) return ""` inside ingestBlock(); the
     # demo's page sets WXStatic, so the markup is never produced. Prove the
     # gate shipped rather than that the string is absent from the source.
+    import re
     assert "function ingestBlock()" in bundle
-    head = bundle[bundle.index("function ingestBlock()"):]
-    assert head[:120].replace("\n", " ").strip().startswith(
-        'function ingestBlock() { if (window.WXStatic) return "";'.split("{")[0].strip())
-    assert "if (window.WXStatic) return \"\";" in head[:200]
+    head = bundle[bundle.index("function ingestBlock()"):bundle.index("function ingestBlock()") + 200]
+    # the gate must be the FIRST statement, whatever the bundler did to the
+    # whitespace — a block that builds its markup before checking is a block
+    # the demo would render.
+    assert re.match(r'function ingestBlock\(\)\s*\{\s*if \(window\.WXStatic\) return "";', head)
 
 
 def test_cli_defaults_to_reusing_data_and_can_still_be_told_to_refresh():

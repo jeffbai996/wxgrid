@@ -159,8 +159,7 @@
     if (status) {
       const failed = Object.values(status.units || {}).some((v) => v === "failed");
       if (status.running) line = ingestStartedAt ? `running · started ${ingestStartedAt}` : "running";
-      else if (failed) line = "failed";
-      else if (ingestStartedAt) line = "done";
+      else if (ingestStartedAt) line = failed ? "failed" : "done";
     }
     node.innerHTML = `${line ? `<b>${line}</b>` : ""}${as}`;
   }
@@ -174,7 +173,6 @@
     if (!el || el.hidden) return;
     fetch("/api/ingest/status").then((r) => r.json()).then((j) => {
       paintIngestState(j);
-      if (!j.running) ingestStartedAt = j.running ? ingestStartedAt : ingestStartedAt;
     }).catch(() => {}).finally(() => { ingestTimer = setTimeout(pollIngest, 10000); });
   }
 

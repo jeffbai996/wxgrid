@@ -25,7 +25,7 @@ def test_the_block_is_gated_on_static_mode_so_the_demo_never_renders_it():
     s = _read("settings.js")
     # Same gate the rest of the front uses for the Pages build.
     assert "window.WXStatic" in s
-    gate = re.search(r"function ingestBlock\(\)\s*\{\s*\n?\s*if \(window\.WXStatic\) return \"\";", s)
+    gate = re.search(r'function ingestBlock\(\)\s*\{\s*if \(window\.WXStatic\) return "";', s)
     assert gate, "the ingest block must return empty markup in static mode"
 
 
