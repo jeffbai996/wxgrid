@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # Build the static demo and force-push it to the gh-pages branch as an orphan
-# commit (no history — the snapshot is regenerated daily and old ones have no
-# value). Run from the repo root; needs the venv and a complete run in the store.
+# commit (no history — old snapshots have no value). Run from the repo root.
+#
+# The demo's WEATHER IS FROZEN. By default this rebuilds only index.html and
+# the front assets and leaves dist-pages/api/ exactly as it is: the demo shows
+# the UI, and re-rendering the same map twice a day was disk burn for nothing
+# (Jeff 2026-09-12). The `Static demo · run <built>Z` toast stays honest about
+# the age of the numbers. So the default path needs the venv and this repo —
+# no data disk.
+#
+# Refreshing the data is manual and needs a complete run in the store:
+#     scripts/publish_pages.sh --refresh-data
 set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT="${WXGRID_PAGES_OUT:-$PWD/dist-pages}"
@@ -13,6 +22,8 @@ REMOTE="${WXGRID_PAGES_REMOTE:-origin}"
 SNAP="$(mktemp -d /tmp/wxgrid-pages.XXXXXX)"
 trap 'git worktree remove --force "$SNAP" 2>/dev/null || true; rm -rf "$SNAP"' EXIT
 git worktree add --detach -q "$SNAP" HEAD
+# dist-pages/api survives a front-only build, so the output dir is reused
+# rather than rebuilt; static_demo refuses if there is no data there to keep.
 ( cd "$SNAP" && WXGRID_DATA_DIR="$OLDPWD/data" PYTHONPATH="$SNAP" "$OLDPWD/venv/bin/python" -m wxgrid.static_demo --out "$OUT" "$@" )
 cd "$OUT"
 rm -rf .git
