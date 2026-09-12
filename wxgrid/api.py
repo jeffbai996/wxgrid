@@ -32,7 +32,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from wxgrid import coast, render
+from wxgrid import coast, ingest_control, mode as ingest_mode, render
 from wxgrid.config import CACHE_DIR, FRONT_DIR, PUBLIC
 from wxgrid.models import LEVEL_EVERY, LEVELS, MODELS
 from wxgrid.store import RunManifest, RunReader, list_runs, parse_run_id, run_path, store_summary
@@ -1136,6 +1136,66 @@ async def _access_and_defaults(request: Request, call_next):
     _access.info("%s %s %d cache=%s %.0fms", request.method, request.url.path, response.status_code,
                  getattr(request.state, "cache", "-"), ms)
     return response
+
+
+# The ingest-mode routes. The handlers stay thin on purpose: which models a
+# mode covers lives in mode.py, and which units to poke in ingest_control.py.
+# `_systemctl` is a module attribute so a test can swap the runner out without
+# a systemd on the box.
+_systemctl = ingest_control.systemctl
+
+
+def _mode_models(mode: str) -> list[str]:
+    """The model keys this mode would actually fetch, in pass order."""
+    from wxgrid.ingest import ingest_order, model_tier
+    keys = ingest_order()
+    if mode != "simple":
+        return keys
+    return [k for k in keys if k in ingest_mode.SIMPLE_MODELS and model_tier(k) != "ensemble"]
+
+
+def _last_run() -> dict:
+    """The newest run the store is serving, from the catalog we already build.
+    Never touches the store directly: /api/models is warmed and cached, and on
+    a box whose data disk is unreadable this route must still answer."""
+    try:
+        catalog = api_models()
+    except Exception:                                        # noqa: BLE001
+        return {}
+    for entry in catalog.get("models", []):
+        for run in entry.get("runs", []):
+            return {"model": entry["key"], "run": run["run"]}
+    return {}
+
+
+@app.get("/api/mode")
+def api_mode_get() -> dict:
+    mode = ingest_mode.read_mode()
+    return {"mode": mode, "models": _mode_models(mode), "last_run": _last_run()}
+
+
+@app.post("/api/mode")
+async def api_mode_set(request: Request) -> dict:
+    try:
+        body = await request.json()
+    except Exception:                                        # noqa: BLE001
+        body = {}
+    want = (body or {}).get("mode")
+    try:
+        mode = ingest_mode.write_mode(want)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"mode": mode, "models": _mode_models(mode), "last_run": _last_run()}
+
+
+@app.post("/api/ingest/refresh")
+def api_ingest_refresh() -> dict:
+    return ingest_control.refresh_now(lambda argv: _systemctl(argv))
+
+
+@app.get("/api/ingest/status")
+def api_ingest_status() -> dict:
+    return ingest_control.status(lambda argv: _systemctl(argv))
 
 
 @app.get("/healthz")
