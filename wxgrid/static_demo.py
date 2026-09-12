@@ -85,6 +85,59 @@ def _rewrite_index(html: str) -> str:
             raise RuntimeError(f"static build could not patch index.html: {pattern!r} matched {n} times")
     return html
 
+
+# Everything in the output that is NOT weather data. A front-only rebuild
+# replaces exactly this set and leaves api/ alone.
+_FRONT_KEEP = {"api"}
+
+
+def _write_front(out: Path) -> None:
+    """Copy front/ into `out`, patch index.html, and write bundle.js.
+
+    Idempotent: any file a previous build put here is removed first, so a
+    renamed or deleted module cannot survive as a stale asset on Pages.
+    """
+    for item in out.iterdir():
+        if item.name in _FRONT_KEEP:
+            continue
+        shutil.rmtree(item) if item.is_dir() else item.unlink()
+    for item in FRONT_DIR.iterdir():
+        if item.name == "private":
+            continue
+        if item.is_dir():
+            shutil.copytree(item, out / item.name)
+        else:
+            shutil.copy2(item, out / item.name)
+    (out / "index.html").write_text(_rewrite_index((out / "index.html").read_text()))
+    # the live server builds /bundle.js on request; a static host needs the file
+    from wxgrid import bundle as _bundle
+    body, _ = _bundle.build(FRONT_DIR)
+    (out / "bundle.js").write_bytes(body)
+    (out / ".nojekyll").write_text("")
+
+
+def build_front_only(out: Path) -> dict:
+    """Rebuild the shell over an existing snapshot, keeping its weather data.
+
+    The demo's job is to show the UI, and re-rendering the same map twice a day
+    was disk the store could not spare (Jeff 2026-09-12: "just keep the weather
+    data on that static cus the UI is the main demonstration"). The `Static
+    demo · run <built>Z` toast keeps the age of the numbers honest.
+
+    Needs no data disk at all — which is the other half of why it is the
+    default: a front fix can ship while the store is unreadable.
+    """
+    catalog = out / "api" / "models.json"
+    if not catalog.exists():
+        raise SystemExit(f"no data to reuse in {out}: run a --refresh-data build first")
+    _write_front(out)
+    built = (json.loads(catalog.read_text()).get("static") or {}).get("built")
+    size_mb = sum(p.stat().st_size for p in out.rglob("*") if p.is_file()) / 1e6
+    summary = {"front_only": True, "run": built, "size_mb": round(size_mb, 1)}
+    log.info("done: %s", summary)
+    return summary
+
+
 def build(out: Path, model_key: str, hours: list[int], scale: int = 2, fields: bool = False) -> dict:
     model = MODELS[model_key]
     runs = list_runs(model_key)
@@ -98,21 +151,7 @@ def build(out: Path, model_key: str, hours: list[int], scale: int = 2, fields: b
         shutil.rmtree(out)
     out.mkdir(parents=True)
 
-    # ── front ────────────────────────────────────────────────────────
-    for item in FRONT_DIR.iterdir():
-        if item.name == "private":
-            continue
-        if item.is_dir():
-            shutil.copytree(item, out / item.name)
-        else:
-            shutil.copy2(item, out / item.name)
-    html = _rewrite_index((out / "index.html").read_text())
-    (out / "index.html").write_text(html)
-    # the live server builds /bundle.js on request; a static host needs the file
-    from wxgrid import bundle as _bundle
-    body, _ = _bundle.build(FRONT_DIR)
-    (out / "bundle.js").write_bytes(body)
-    (out / ".nojekyll").write_text("")
+    _write_front(out)
 
     api = out / "api"
     # ── catalog ──────────────────────────────────────────────────────
@@ -246,10 +285,22 @@ def main(argv=None) -> int:
     ap.add_argument("--hours", default="0:96:12", help="start:stop:step forecast hours")
     ap.add_argument("--scale", type=int, default=2, help="downsample layers by this factor")
     ap.add_argument("--fields", action="store_true", help="also write the 16-bit field files (GPU shading in the demo; doubles the payload)")
+    # The demo's weather is frozen on purpose. A refresh re-renders every layer
+    # and point tile out of the live store, so it needs the data disk; the
+    # front-only path needs nothing but this repo.
+    data = ap.add_mutually_exclusive_group()
+    data.add_argument("--reuse-data", dest="refresh_data", action="store_false", default=False,
+                      help="rebuild index.html and the front assets only, keeping dist-pages/api (default)")
+    data.add_argument("--refresh-data", dest="refresh_data", action="store_true",
+                      help="re-render the weather from the live store; needs a complete run in it")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    out = Path(args.out)
+    if not args.refresh_data:
+        print(json.dumps(build_front_only(out)))
+        return 0
     a, b, c = (int(x) for x in args.hours.split(":"))
-    print(json.dumps(build(Path(args.out), args.model, list(range(a, b + 1, c)), args.scale, fields=args.fields)))
+    print(json.dumps(build(out, args.model, list(range(a, b + 1, c)), args.scale, fields=args.fields)))
     return 0
 
 
