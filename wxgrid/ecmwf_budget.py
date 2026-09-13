@@ -97,7 +97,16 @@ class BoundedECMWF:
         self.client = client
         client.session.close()
         client.session = DeadlineSession()
-        self.attempts = max(1, int(os.getenv("WXGRID_ECMWF_ATTEMPTS", "4")))
+        # 4 made the other two budgets unreachable. Backoff is 5/10/20s, so
+        # four attempts give up after ~35s of waiting no matter what
+        # RETRY_WAIT_SECONDS says — a 900s allowance that could never be spent,
+        # and a transient 429 killed the run (2026-09-13: ECMWF throttled for
+        # ~2 min, we quit after 35s and deferred aifs at step 042).
+        # This is a backstop against a pathological loop, not the real bound:
+        # the per-transfer deadline (`delay >= left`) and the model-wide wait
+        # budget (`delay > self.wait_left`) below are, and both are checked
+        # every pass. Retry-After is honoured ahead of the backoff throughout.
+        self.attempts = max(1, int(os.getenv("WXGRID_ECMWF_ATTEMPTS", "8")))
         self.seconds = max(1, float(os.getenv("WXGRID_ECMWF_TRANSFER_SECONDS", "300")))
         self.wait_left = max(0, float(os.getenv("WXGRID_ECMWF_RETRY_WAIT_SECONDS", "900")))
         log.info("ECMWF budget: attempts=%d transfer_s=%g retry_wait_s=%g", self.attempts, self.seconds, self.wait_left)

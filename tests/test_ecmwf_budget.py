@@ -51,7 +51,11 @@ def test_retry_once_then_success(monkeypatch):
     assert sleeps == [12] and len(calls) == 2 and client.wait_left == 888
 
 
-@pytest.mark.parametrize("status,header,attempts", [(429, "301", 1), (429, "1", 4), (503, "1", 4), (403, None, 1), (404, None, 1)])
+# 429/503 with a 1s Retry-After now run the full attempt backstop (8, raised
+# from 4 so the transfer deadline and wait budget are what actually bind).
+# A 301s Retry-After still defers on the first look: it exceeds the probe
+# deadline, which is the guard that should stop it, not the attempt count.
+@pytest.mark.parametrize("status,header,attempts", [(429, "301", 1), (429, "1", 8), (503, "1", 8), (403, None, 1), (404, None, 1)])
 def test_retry_bounds(monkeypatch, status, header, attempts):
     calls = []
     def fail(**kw):
@@ -163,8 +167,42 @@ def test_cli_continues_other_models_after_deferral(monkeypatch, tmp_path):
         if len(seen) == 1:
             raise budget.FetchDeferred("budget")
     monkeypatch.setattr(ingest, "ingest_run", run)
-    assert ingest.main(["--group", "global"]) == 1
+    # EX_TEMPFAIL, not 1: a deferral is recoverable and resumes next pass, so
+    # the unit must not read as failed. 1 stays reserved for a real break.
+    assert ingest.main(["--group", "global"]) == ingest.EX_TEMPFAIL
     assert len(seen) > 1
+
+
+def test_a_real_failure_outranks_a_deferral(monkeypatch, tmp_path):
+    """Deferral is 75, but a genuine exception in the same pass must still
+    exit 1 — otherwise one throttled model would mask a broken one."""
+    monkeypatch.setenv("WXGRID_STATE_DIR", str(tmp_path / "state"))
+    from wxgrid import mode as ingest_mode
+    ingest_mode.write_mode("detailed")
+    seen = []
+    monkeypatch.setattr(ingest, "sweep_orphan_gribs", lambda *a: [])
+    monkeypatch.setattr(ingest, "_resolve_run", lambda *a, **k: datetime(2026, 1, 1))
+    monkeypatch.setattr(ingest, "repair_cubes", lambda *a: [])
+
+    def run(model, *args, **kw):
+        seen.append(model.key)
+        if len(seen) == 1:
+            raise budget.FetchDeferred("throttled")
+        if len(seen) == 2:
+            raise RuntimeError("actually broken")
+    monkeypatch.setattr(ingest, "ingest_run", run)
+    assert ingest.main(["--group", "global"]) == 1
+
+
+def test_a_clean_pass_still_exits_zero(monkeypatch, tmp_path):
+    monkeypatch.setenv("WXGRID_STATE_DIR", str(tmp_path / "state"))
+    from wxgrid import mode as ingest_mode
+    ingest_mode.write_mode("detailed")
+    monkeypatch.setattr(ingest, "sweep_orphan_gribs", lambda *a: [])
+    monkeypatch.setattr(ingest, "_resolve_run", lambda *a, **k: datetime(2026, 1, 1))
+    monkeypatch.setattr(ingest, "repair_cubes", lambda *a: [])
+    monkeypatch.setattr(ingest, "ingest_run", lambda *a, **k: None)
+    assert ingest.main(["--group", "global"]) == 0
 
 
 def test_optional_missing_wave_does_not_hide_required_failure(tmp_path):

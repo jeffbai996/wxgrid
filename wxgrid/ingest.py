@@ -33,6 +33,11 @@ from wxgrid.phase_metrics import Phase, current as current_phase
 
 log = logging.getLogger("wxgrid.ingest")
 
+# sysexits.h EX_TEMPFAIL: "the operation failed, but may succeed on retry".
+# Exactly what a throttled fetch is. The unit lists it under SuccessExitStatus
+# so a deferral does not mark the service failed, while 1 still does.
+EX_TEMPFAIL = 75
+
 
 def wait_for_step_gate() -> None:
     """Run the optional host-pressure gate at a safe ingest boundary.
@@ -728,6 +733,12 @@ def main(argv: list[str] | None = None) -> int:
     if swept:
         log.info("swept %d orphan grib run dir(s)", len(swept))
     rc = 0
+    # A deferral is not a failure. ECMWF throttles, we keep the GRIBs already
+    # fetched and the next pass resumes from them — a designed, self-healing
+    # outcome that exited 1 exactly like a crash, so systemd showed `failed`
+    # and the unit cried wolf on a run that did the right thing. EX_TEMPFAIL
+    # keeps the two distinguishable; the unit marks 75 a success.
+    deferred_any = False
     for key in keys:
         model = get_model(key)
         try:
@@ -751,7 +762,7 @@ def main(argv: list[str] | None = None) -> int:
                 run = _resolve_run(model, args.run, allowed_hours=ingest_mode.allowed_cycles(mode))
             except fetch.FetchDeferred as exc:
                 log.warning("%s deferred: %s", key, exc)
-                rc = 1
+                deferred_any = True
                 continue
             except RuntimeError as exc:
                 # Nothing published yet for this model. With --all that is a
@@ -771,11 +782,12 @@ def main(argv: list[str] | None = None) -> int:
             repair_cubes(model)
         except fetch.FetchDeferred as exc:
             log.warning("%s deferred; completed GRIBs retained: %s", key, exc)
-            rc = 1
+            deferred_any = True
         except Exception:
             log.exception("%s failed", key)
             rc = 1
-    return rc
+    # A real failure anywhere outranks a deferral: 1 still means "look at me".
+    return rc or (EX_TEMPFAIL if deferred_any else 0)
 
 
 def repair_cubes(model: Model, store_root: Path = STORE_DIR) -> list[str]:
