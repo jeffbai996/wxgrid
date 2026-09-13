@@ -31,7 +31,7 @@ def walked(monkeypatch):
     monkeypatch.setattr(ingest, "ingest_order", lambda: ["hrdps", "hrrr", "ifs", "aifs", "gfs", "gefs"])
     import datetime as _dt
     monkeypatch.setattr(ingest, "_resolve_run",
-                        lambda model, run: _dt.datetime(2026, 1, 1, 12, tzinfo=_dt.timezone.utc))
+                        lambda model, run, allowed_hours=None: _dt.datetime(2026, 1, 1, 12, tzinfo=_dt.timezone.utc))
     return seen
 
 
@@ -64,13 +64,47 @@ def test_simple_makes_the_ensemble_group_a_no_op(walked):
     assert walked == []
 
 
-def test_simple_skips_a_cycle_that_is_not_00z_or_12z(walked, monkeypatch):
+def test_simple_falls_back_to_the_newest_00z_or_12z_run(walked, monkeypatch):
+    """Cold start on a fresh disk with 18z newest: skipping would leave the
+    store empty until tomorrow. Simple mode asks the resolver for the newest
+    run in its cycles instead (2026-09-12, the QVO rebuild)."""
     import datetime as _dt
-    monkeypatch.setattr(ingest, "_resolve_run",
-                        lambda model, run: _dt.datetime(2026, 1, 1, 18, tzinfo=_dt.timezone.utc))
+    asked: list = []
+
+    def _resolve(model, run, allowed_hours=None):
+        asked.append(allowed_hours)
+        hour = 12 if allowed_hours else 18
+        return _dt.datetime(2026, 1, 1, hour, tzinfo=_dt.timezone.utc)
+
+    monkeypatch.setattr(ingest, "_resolve_run", _resolve)
     m.write_mode("simple")
     assert ingest.main(["--group", "global"]) == 0
-    assert walked == []
+    assert walked == ["aifs"]
+    assert asked == [m.SIMPLE_CYCLES]
+    walked.clear(); asked.clear()
+    m.write_mode("detailed")
+    assert ingest.main(["--group", "global"]) == 0
+    assert asked == [None, None, None]
+
+
+def test_resolver_skips_http_candidates_outside_the_allowed_cycles(monkeypatch):
+    import datetime as _dt
+    from wxgrid import fetch
+    from wxgrid.models import get_model
+    cands = [_dt.datetime(2026, 1, 1, h, tzinfo=_dt.timezone.utc) for h in (18, 12, 6, 0)]
+    monkeypatch.setattr(fetch, "hrdps_candidate_runs", lambda: cands)
+
+    class _Resp:
+        status_code = 200
+
+    class _Sess:
+        def head(self, *a, **k):
+            return _Resp()
+
+    monkeypatch.setattr(fetch, "new_session", lambda: _Sess())
+    model = get_model("hrdps")
+    assert ingest._resolve_run(model, None).hour == 18
+    assert ingest._resolve_run(model, None, allowed_hours=(0, 12)).hour == 12
 
 
 def test_detailed_walks_every_model_of_the_group(walked):

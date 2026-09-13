@@ -87,6 +87,11 @@ def models_for_mode(mode: str, group: str, keys: list[str]) -> list[str]:
     return [k for k in keys if k in SIMPLE_MODELS]
 
 
+def allowed_cycles(mode: str) -> tuple[int, ...] | None:
+    """The cycle hours a mode is willing to fetch; None means any."""
+    return SIMPLE_CYCLES if mode == "simple" else None
+
+
 def cycle_allowed(mode: str, hour: int) -> bool:
     """Whether a run at this UTC cycle hour is worth fetching in this mode."""
     return hour in SIMPLE_CYCLES if mode == "simple" else True

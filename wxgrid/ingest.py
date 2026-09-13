@@ -90,7 +90,14 @@ def derive_swell(got: dict) -> None:
         got[SWELL_VAR] = sw
 
 
-def _resolve_run(model: Model, run: str | None) -> datetime:
+def _resolve_run(model: Model, run: str | None,
+                 allowed_hours: tuple[int, ...] | None = None) -> datetime:
+    """Newest fully published run, optionally restricted to given cycle hours.
+
+    `allowed_hours` is how simple mode asks for "the newest 00z or 12z" rather
+    than "the newest, then skip it": on a fresh disk with 18z newest, skipping
+    left the store empty until the next day (2026-09-12, the QVO rebuild).
+    """
     if run and run != "auto":
         return datetime.strptime(run, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
     if model.source == "weathernext":
@@ -99,8 +106,20 @@ def _resolve_run(model: Model, run: str | None) -> datetime:
     if model.source == "ecmwf":
         client = fetch.BoundedECMWF(model)
         # Asking for the LAST step means "latest run that is fully published".
-        when = client.latest(type="fc", step=model.steps[-1], param=list(model.sfc_params)[:1])
-        return when.replace(tzinfo=timezone.utc)
+        # ECMWF open data takes `time` to pin the cycle; ask per allowed hour
+        # and keep the newest answer.
+        req = dict(type="fc", step=model.steps[-1], param=list(model.sfc_params)[:1])
+        if not allowed_hours:
+            return client.latest(**req).replace(tzinfo=timezone.utc)
+        found: list[datetime] = []
+        for hour in allowed_hours:
+            try:
+                found.append(client.latest(time=hour, **req).replace(tzinfo=timezone.utc))
+            except Exception as exc:  # one cycle missing is not a failure
+                log.debug("%s %02dz not published: %s", model.key, hour, exc)
+        if not found:
+            raise RuntimeError(f"no fully published {model.key} run in cycles {allowed_hours}")
+        return max(found)
     # For the HTTP sources, "latest" = the newest cycle whose LAST step is
     # already on the server; probing that one file is enough.
     probes = {
@@ -117,6 +136,8 @@ def _resolve_run(model: Model, run: str | None) -> datetime:
         candidates, url_for = probes[model.source]
         s = fetch.new_session()
         for cand in candidates():
+            if allowed_hours and cand.hour not in allowed_hours:
+                continue
             try:
                 if s.head(url_for(cand), timeout=30, allow_redirects=True).status_code == 200:
                     return cand
@@ -727,7 +748,7 @@ def main(argv: list[str] | None = None) -> int:
                     log.info("point cube gefs %s: %d variables", rid, build_point_cube("gefs", rid))
                 continue
             try:
-                run = _resolve_run(model, args.run)
+                run = _resolve_run(model, args.run, allowed_hours=ingest_mode.allowed_cycles(mode))
             except fetch.FetchDeferred as exc:
                 log.warning("%s deferred: %s", key, exc)
                 rc = 1

@@ -156,7 +156,7 @@ def test_cli_continues_other_models_after_deferral(monkeypatch, tmp_path):
     ingest_mode.write_mode("detailed")
     seen = []
     monkeypatch.setattr(ingest, "sweep_orphan_gribs", lambda *a: [])
-    monkeypatch.setattr(ingest, "_resolve_run", lambda *a: datetime(2026, 1, 1))
+    monkeypatch.setattr(ingest, "_resolve_run", lambda *a, **k: datetime(2026, 1, 1))
     monkeypatch.setattr(ingest, "repair_cubes", lambda *a: [])
     def run(model, *args, **kw):
         seen.append(model.key)
