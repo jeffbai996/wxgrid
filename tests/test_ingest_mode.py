@@ -49,10 +49,11 @@ def test_paused_also_stops_the_no_arg_full_pass(walked):
     assert walked == []
 
 
-def test_simple_walks_only_the_simple_model_of_that_group(walked):
+def test_simple_walks_only_the_simple_models_of_that_group(walked):
     m.write_mode("simple")
     assert ingest.main(["--group", "global"]) == 0
-    assert walked == ["aifs"]
+    # Both simple globals, and still not gfs or gem (2026-09-15: ifs added).
+    assert walked == ["ifs", "aifs"]
     walked.clear()
     assert ingest.main(["--group", "regional"]) == 0
     assert walked == ["hrdps"]
@@ -79,8 +80,9 @@ def test_simple_falls_back_to_the_newest_00z_or_12z_run(walked, monkeypatch):
     monkeypatch.setattr(ingest, "_resolve_run", _resolve)
     m.write_mode("simple")
     assert ingest.main(["--group", "global"]) == 0
-    assert walked == ["aifs"]
-    assert asked == [m.SIMPLE_CYCLES]
+    assert walked == ["ifs", "aifs"]
+    # One ask per simple global, each constrained to the simple cycles.
+    assert asked == [m.SIMPLE_CYCLES, m.SIMPLE_CYCLES]
     walked.clear(); asked.clear()
     m.write_mode("detailed")
     assert ingest.main(["--group", "global"]) == 0

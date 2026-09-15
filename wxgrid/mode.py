@@ -25,11 +25,18 @@ log = logging.getLogger("wxgrid.mode")
 MODES = ("paused", "simple", "detailed")
 DEFAULT_MODE = "simple"
 
-# Simple mode's fleet: the best global per byte fetched, and the regional that
-# ages fastest and is cheapest to pull. Exported as a constant because the
-# ingest filter, the /api/mode payload and the tests must not each carry their
-# own idea of what "simple" means.
-SIMPLE_MODELS = ("aifs", "hrdps")
+# Simple mode's fleet: the best global per byte fetched, the physics global,
+# and the regional that ages fastest and is cheapest to pull. Exported as a
+# constant because the ingest filter, the /api/mode payload and the tests must
+# not each carry their own idea of what "simple" means.
+#
+# ifs joined on 2026-09-15 (Jeff). It is not free: 9 km against aifs's 28 km,
+# 65 steps against 41, plus ten wave fields no other model in the fleet has, so
+# a run lands nearer 3-4 GB than aifs's 1.9. Two cycles a day puts it in the
+# 6-8 GB/day range. That was accepted deliberately for the better physics run
+# and the wave data; if the write budget gets tight again this is the first
+# entry to drop, not the cycles.
+SIMPLE_MODELS = ("aifs", "ifs", "hrdps")
 # The two cycles every producer in the fleet publishes. 06z/18z double the
 # fetch for half a day's extra freshness, which is the trade simple declines.
 SIMPLE_CYCLES = (0, 12)
