@@ -50,21 +50,13 @@ def test_a_corrupt_or_unknown_file_reads_as_the_default():
     assert m.read_mode() == "simple"
 
 
-def test_simple_keeps_two_globals_and_one_regional_model():
-    # aifs is the best global per byte fetched; ifs was added 2026-09-15 (Jeff)
-    # because it is the physics run at 9 km and the only model in the fleet
-    # carrying waves. hrdps is the regional that ages fastest and is cheapest.
-    # Ensemble is still skipped entirely in simple -- that is what keeps this
-    # "simple" rather than "detailed with fewer cycles".
-    assert m.SIMPLE_MODELS == ("aifs", "ifs", "hrdps")
-    assert m.models_for_mode("simple", "global", ["ifs", "aifs", "gfs", "gem"]) == ["ifs", "aifs"]
+def test_simple_keeps_one_global_and_one_regional_model():
+    # aifs is the best global per byte fetched; hrdps is the regional that ages
+    # fastest and is cheapest. Ensemble is skipped entirely in simple.
+    assert m.SIMPLE_MODELS == ("aifs", "hrdps")
+    assert m.models_for_mode("simple", "global", ["ifs", "aifs", "gfs", "gem"]) == ["aifs"]
     assert m.models_for_mode("simple", "regional", ["hrdps", "hrrr"]) == ["hrdps"]
     assert m.models_for_mode("simple", "ensemble", ["gefs"]) == []
-
-
-def test_simple_still_declines_the_expensive_globals():
-    """The point of the filter is that adding ifs did not open the gate."""
-    assert m.models_for_mode("simple", "global", ["gfs", "gem"]) == []
 
 
 def test_detailed_and_paused_do_not_filter_the_model_list():
