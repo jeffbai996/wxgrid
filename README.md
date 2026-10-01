@@ -324,7 +324,7 @@ How much weather this instance fetches, one switch in the settings drawer:
 | mode | what runs |
 |---|---|
 | `paused` | nothing — every scheduled pass logs `paused` and exits 0 |
-| `simple` | one global and one regional model, 00z and 12z only, no ensemble |
+| `simple` | AIFS, WN ensemble mean when configured, and HRDPS; 00z and 12z only |
 | `detailed` | every configured model, every cycle |
 
 `simple` is the default. The mode lives in `$WXGRID_STATE_DIR/mode.json`

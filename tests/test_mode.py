@@ -50,11 +50,11 @@ def test_a_corrupt_or_unknown_file_reads_as_the_default():
     assert m.read_mode() == "simple"
 
 
-def test_simple_keeps_one_global_and_one_regional_model():
+def test_simple_keeps_aifs_weathernext_mean_and_hrdps():
     # aifs is the best global per byte fetched; hrdps is the regional that ages
     # fastest and is cheapest. Ensemble is skipped entirely in simple.
-    assert m.SIMPLE_MODELS == ("aifs", "hrdps")
-    assert m.models_for_mode("simple", "global", ["ifs", "aifs", "gfs", "gem"]) == ["aifs"]
+    assert m.SIMPLE_MODELS == ("aifs", "wn2", "hrdps")
+    assert m.models_for_mode("simple", "global", ["ifs", "aifs", "wn2", "gfs", "gem"]) == ["aifs", "wn2"]
     assert m.models_for_mode("simple", "regional", ["hrdps", "hrrr"]) == ["hrdps"]
     assert m.models_for_mode("simple", "ensemble", ["gefs"]) == []
 
