@@ -81,7 +81,7 @@
     ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
   const bigGlyph = (cloud, precip, tK, night) => {
     const knownCloud = cloud != null && Number.isFinite(cloud), wet = precip > 0.2;
-    if (!knownCloud && !wet) return '<svg class="glyph" viewBox="0 0 46 46" role="img" aria-label="Cloud forecast unavailable"><text x="23" y="31" text-anchor="middle" fill="currentColor" font-size="28">—</text></svg>';
+    if (!knownCloud && !wet) return '<svg class="glyph unknown-weather" viewBox="0 0 46 46" role="img" aria-label="Cloud forecast unavailable"><title>Cloud forecast unavailable</title><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="23" cy="23" r="16"/><path d="M18 18a5 5 0 0 1 10 0c0 4-5 4-5 8"/></g><circle cx="23" cy="31" r="1.4" fill="currentColor"/></svg>';
     const c = knownCloud ? cloud : 1;
     const snow = tK != null && tK - K < 1 && wet, cloudy = c > 0.25 || wet;
     const cx = cloudy ? 15 : 23, cy = cloudy ? 15 : 23;

@@ -523,6 +523,7 @@ body.resizing-tape #timebar { z-index: 7; }
 .tape-col.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-glow); }
 .tape-hour { font: 500 10px var(--font-mono); color: var(--dim); }
 .tape-glyph { width: 20px; height: 14px; }
+.unknown-weather { color: var(--fg-2); opacity: 1; }
 input#step { width: 100%; accent-color: var(--accent); height: 12px; margin: 0; display: block; }
 
 /* ── point card ──────────────────────────────────────────────────────── */

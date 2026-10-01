@@ -69,3 +69,16 @@ test('WN permalink preserves its internal numeric model ID and legacy links',()=
  assert.equal(parse('#49.28,-123.12,5;wn2;temp;s19;p49.28,-123.12').step,19);
  assert.equal(parse('#49.28,-123.12,5;aifs;wind').model,'aifs');
 });
+
+test('unknown conditions have a visible vector glyph in hero and compact cards',()=>{
+ const big=h.bigGlyph(null,0,280,false);
+ assert.match(big,/unknown-weather/);assert.match(big,/<circle/);assert.match(big,/<path/);
+ assert.doesNotMatch(big,/<text/);assert.doesNotMatch(big,/#ffd166/);
+ const c={window:{WX:{state:{}}},localStorage:{getItem:()=>null}};
+ vm.runInNewContext(fs.readFileSync('front/tape.js','utf8'),c);
+ const small=c.window.WX.tape.glyph(null,0,280,true);
+ assert.match(small,/unknown-weather/);assert.match(small,/<path/);
+ assert.doesNotMatch(small,/<text/);
+ assert.match(c.window.WX.tape.glyph(null,1,280,false),/#69b9ff/);
+ assert.match(c.window.WX.tape.glyph(0,0,280,false),/#ffd166/);
+});
