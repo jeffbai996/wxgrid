@@ -60,3 +60,12 @@ test('missing WN diagnostics are named without inventing values',()=>{
  assert.match(h.diagnosticNote(d([0])),/cloud cover, dew point, gusts, CAPE, waves/);
  assert.equal(h.diagnosticNote({...d([0]),model:'aifs'}),'');
 });
+
+test('WN permalink preserves its internal numeric model ID and legacy links',()=>{
+ const app=fs.readFileSync('front/app.js','utf8');
+ const fn=app.match(/function readHash\(\) \{[\s\S]*?\n  \}/)[0];
+ const parse=hash=>vm.runInNewContext('('+fn+')()', {location:{hash}});
+ assert.equal(parse('#49.28,-123.12,5;wn2;temp;s19;p49.28,-123.12').model,'wn2');
+ assert.equal(parse('#49.28,-123.12,5;wn2;temp;s19;p49.28,-123.12').step,19);
+ assert.equal(parse('#49.28,-123.12,5;aifs;wind').model,'aifs');
+});
