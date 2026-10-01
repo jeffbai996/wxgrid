@@ -260,9 +260,13 @@ continue on AI-GFS; every continuation day is labelled `AI`.
 **WeatherNext 2** is Google DeepMind's FGN ensemble (64 members, 15 days,
 ~2 h after init). Google gates the data behind a GCP project and a data-request
 form; once approved, `WXGRID_WN2_ZARR=gs://weathernext/weathernext_2_0_0_mean/zarr`
-(with `gcsfs` installed and credentials on the box) makes `wxgrid/wn2.py` read
-the Zarr straight into the store, no GRIB involved. The model is `optional`:
-the catalog omits it until a run exists. Historic data is CC BY 4.0; real-time
+(with `gcsfs` installed and credentials on the box) makes `wxgrid/wn2.py`
+discover completed per-run `predictions.zarr` stores beneath the year partitions.
+The reader normalizes scalar `init_time` and forecast `time` into separate
+initialization and lead axes. Direct Zarr URLs and legacy multi-init stores
+remain supported; no GRIB is involved. See the
+[WeatherNext dry-run plan](docs/weathernext-dry-run.md) before enabling ingest.
+The model is `optional`: the catalog omits it until a run exists. Historic data is CC BY 4.0; real-time
 data carries Google's separate experimental terms — check them before serving
 it publicly.
 
@@ -440,7 +444,7 @@ Everything is an environment variable with a working default.
 | `WXGRID_WRITE_MBPS` | `60` | ingest write pacing |
 | `WXGRID_DOWNLOAD_MBPS` | `20` | ingest download pacing |
 | `WXGRID_WINDY_WEBCAMS_KEY` | unset | Windy Webcams API key; unset = DriveBC cams only |
-| `WXGRID_WN2_ZARR` | unset | WeatherNext 2 Zarr URL (`gs://…` or a local path); unset = model not ingested |
+| `WXGRID_WN2_ZARR` | unset | WeatherNext 2 collection or direct Zarr URL (`gs://…` or a local path); unset = model not ingested |
 | `WXGRID_STEP_GATE_COMMAND` | unset | optional host-pressure gate run between ingest steps and warmed frames; non-zero exit aborts the pass, completed downloads stay reusable |
 | `WXGRID_ECMWF_ATTEMPTS`, `WXGRID_ECMWF_TRANSFER_SECONDS`, `WXGRID_ECMWF_RETRY_WAIT_SECONDS` | `4`, `300`, `900` | the ECMWF retry budget: attempts per operation, seconds per transfer, cumulative retry wait per run; a deferred product keeps its finished downloads for the next pass |
 | `WXGRID_PHASE_METRICS` | unset | `1` logs one structured line per ingest phase (fetch, decode, point cube, warm) with wall, CPU, RSS and cgroup deltas |
