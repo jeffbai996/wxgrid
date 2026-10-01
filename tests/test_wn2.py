@@ -112,3 +112,20 @@ def test_published_names_are_accepted_as_well_as_the_benchmark_ones(tmp_path, mo
     assert {"t2m", "tp6", "gh_500"} <= set(r.variables)
     assert r.slab("tp6", 6)[400, 400] == pytest.approx(0.001 * (LATS[320] + LONS[1120] / 1000.0) * 1000.0, abs=0.05)
     assert r.slab("gh_500", 6)[360, 720] == pytest.approx(0.0, abs=0.5)
+
+
+def test_six_hour_precipitation_is_bucket_amount_not_cumulative(tmp_path):
+    shape = (1, 2, LATS.size, LONS.size)
+    rain = np.broadcast_to(np.array([0.002, 0.001], dtype=np.float32)[None, :, None, None], shape)
+    ds = xr.Dataset(
+        {"total_precipitation_6hr": (("time", "prediction_timedelta", "latitude", "longitude"), rain)},
+        coords={"time": [INIT], "prediction_timedelta": np.array([6, 12], dtype="timedelta64[h]"),
+                "latitude": LATS, "longitude": LONS},
+    )
+    model = dataclasses.replace(MODELS["wn2"], steps=[6, 12], levels=(), pl_params={},
+                                sfc_params={"total_precipitation_6hr": "tp"})
+    root = tmp_path / "store"
+    result = wn2.ingest_wn2(model, datetime(2026, 9, 1, tzinfo=timezone.utc), store_root=root, ds=ds)
+    reader = RunReader("wn2", "2026-09-01T00", root)
+    assert result["counts"]["tp6"] == 2
+    assert reader.point("tp6", 49.25, -123).tolist() == pytest.approx([2.0, 1.0], abs=0.01)

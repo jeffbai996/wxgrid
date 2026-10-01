@@ -9,8 +9,45 @@
   const K = 273.15;
   // Sum of the per-step buckets in (steps[i], steps[i]+hours] — the tape can be
   // 3 h or 6 h per column, so "next 24 h" is by hours, not by column count.
-  const sumWindow = (arr, steps, i, hours) => { if (!arr) return null; let t = 0, n = 0; for (let k = i + 1; k < steps.length; k++) { if (steps[k] > steps[i] + hours) break; t += arr[k] || 0; n++; } return n ? t : null; };
+  // Buckets end at valid time. Missing buckets are unknown, never dry.
+  function bucketWindow(arr, steps, i, hours) {
+    let total = 0, covered = 0, previous = steps[i];
+    if (!arr) return { total: null, hours: 0, complete: false };
+    for (let k = i + 1; k < steps.length && steps[k] <= steps[i] + hours; k++) {
+      const span = steps[k] - previous;
+      if (span <= 0 || span > 6 || arr[k] == null || !Number.isFinite(arr[k])) break;
+      total += arr[k]; covered += span; previous = steps[k];
+    }
+    return { total: covered ? total : null, hours: covered, complete: covered === hours };
+  }
+  const sumWindow = (arr, steps, i, hours) => {
+    const window = bucketWindow(arr, steps, i, hours);
+    return window.complete ? window.total : null;
+  };
+  function dryWindow(d, i, hours = 48) {
+    const s = d.series;
+    let covered = 0, previous = d.steps[i];
+    for (let k = i + 1; k < d.steps.length && d.steps[k] <= d.steps[i] + hours; k++) {
+      const span = d.steps[k] - previous;
+      if (span <= 0 || span > 6 || !s.tp6 || s.tp6[k] == null || !Number.isFinite(s.tp6[k]) ||
+          (s.sf6 && (s.sf6[k] == null || !Number.isFinite(s.sf6[k])))) break;
+      if (s.tp6[k] + (s.sf6 ? s.sf6[k] : 0) >= 0.3)
+        return { hours: covered, wetIn: d.steps[k] - d.steps[i] };
+      covered += span; previous = d.steps[k];
+    }
+    return { hours: covered, wetIn: null };
+  }
   const stepHrs = (d, i) => (d.steps[i + 1] != null ? d.steps[i + 1] - d.steps[i] : d.steps[i] - (d.steps[i - 1] || 0)) || 6;
+  function completeDay(d, ks) {
+    return ks.length > 0 && ks.every((k) => d.series.t2m[k] != null) &&
+      ks.reduce((hours, k) => hours + Math.min(6, stepHrs(d, k)), 0) >= 24;
+  }
+  function diagnosticNote(d) {
+    if (d.model !== "wn2") return "";
+    const missing = [["tcc", "cloud cover"], ["d2m", "dew point"], ["gust", "gusts"],
+      ["cape", "CAPE"], ["swh", "waves"]].filter(([key]) => !d.series[key]).map(([, label]) => label);
+    return missing.length ? '<div class="note">WN ensemble mean. Unavailable in this forecast: ' + missing.join(", ") + '.</div>' : "";
+  }
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const countryName = (v) => ({ CA: "Canada", US: "United States", MX: "Mexico" })[String(v || "").toUpperCase()] || v || "";
   const stationName = (v) => String(v || "").replace(/,\s*(AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)\s*,\s*CA$/i,
@@ -43,7 +80,9 @@
   const compass = (deg) => deg == null ? "variable" :
     ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
   const bigGlyph = (cloud, precip, tK, night) => {
-    const c = cloud == null ? 0 : cloud, wet = precip > 0.2;
+    const knownCloud = cloud != null && Number.isFinite(cloud), wet = precip > 0.2;
+    if (!knownCloud && !wet) return '<svg class="glyph" viewBox="0 0 46 46" role="img" aria-label="Cloud forecast unavailable"><text x="23" y="31" text-anchor="middle" fill="currentColor" font-size="28">—</text></svg>';
+    const c = knownCloud ? cloud : 1;
     const snow = tK != null && tK - K < 1 && wet, cloudy = c > 0.25 || wet;
     const cx = cloudy ? 15 : 23, cy = cloudy ? 15 : 23;
     const rays = [0,45,90,135,180,225,270,315].map((a) => `<line x1="${cx+11.5*Math.cos(a*Math.PI/180)}" y1="${cy+11.5*Math.sin(a*Math.PI/180)}" x2="${cx+14*Math.cos(a*Math.PI/180)}" y2="${cy+14*Math.sin(a*Math.PI/180)}"/>`).join("");
@@ -155,7 +194,8 @@
       } else if (damp.length) {
         say("rain", `Dry, bar ${snowAt(damp[0]) > rainAt(damp[0]) ? "the odd flurry" : "a stray shower"}.`);
       } else {
-        say("rain", (at(end) - at(i)) / 3600e3 >= 36 ? "Dry for the next couple of days." : "Dry through tomorrow.");
+        const dry = dryWindow(d, i);
+        if (dry.hours) say("rain", `No wet forecast bucket for the next ${dry.hours} hours of available coverage.`);
       }
     }
     if (windy && !windSaid) {
@@ -328,6 +368,7 @@
     const day = new Date(d.valid[i]).toDateString();
     const todays = d.valid.map((v, k) => k).filter((k) => new Date(d.valid[k]).toDateString() === day && s.t2m && s.t2m[k] != null);
     const hi = todays.length ? Math.max(...todays.map((k) => s.t2m[k])) - K : null, lo = todays.length ? Math.min(...todays.map((k) => s.t2m[k])) - K : null;
+    const partialToday = !completeDay(d, todays);
     const chips = [];
     if (s.wind) {
       // The wind box carries the story, not just the number: a compass rose
@@ -389,13 +430,16 @@
     // 24 h totals and changes, from the step after this one to +24 h
     const freezing = d.derived && d.derived.freezing_level_m && d.derived.freezing_level_m[i];
     const ahead = (arr) => { const out = []; for (let k = i + 1; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) if (arr[k] != null) out.push(arr[k]); return out; };
-    if (s.tp6) { const r24 = ahead(s.tp6).reduce((a, b) => a + b, 0); if (r24 >= 0.5) normal.push(stat("Rain 24 h", W().units.precip(r24).v, W().units.precipUnit, "#5aa9ff", "", "", "precip")); }
+    if (s.tp6) {
+      const rain = bucketWindow(s.tp6, d.steps, i, 24);
+      if (rain.total >= 0.5) normal.push(stat(`Rain ${rain.hours} h`, W().units.precip(rain.total).v, W().units.precipUnit, "#5aa9ff", "",
+        rain.complete ? "Next 24 hours" : `Only ${rain.hours} hours of continuous precipitation coverage available`, "precip"));
+    }
     // when the next rain arrives, or that the next two days stay dry
-    if (s.tp6 && (s.tp6[i] || 0) < 0.2) {
-      let k = i + 1; while (k < d.steps.length && d.steps[k] <= d.steps[i] + 48 && ((s.tp6[k] || 0) + (s.sf6 ? s.sf6[k] || 0 : 0)) < 0.3) k++;
-      const soon = k < d.steps.length && d.steps[k] <= d.steps[i] + 48;
-      const hrs = soon ? d.steps[k] - d.steps[i] : null;
-      normal.push(stat(soon ? "Next rain" : "Dry spell", soon ? (hrs < 24 ? `${hrs}` : `${Math.round(hrs / 24)}`) : "48", soon ? (hrs < 24 ? "h" : "d") : "h+", soon ? "#5aa9ff" : "#9fb0c8", "", soon ? "Hours until the next wet step" : "No rain in the next two days", "precip"));
+    if (s.tp6 && s.tp6[i] != null && s.tp6[i] < 0.2) {
+      const dry = dryWindow(d, i);
+      if (dry.wetIn != null) normal.push(stat("Next rain", String(dry.wetIn), "h", "#5aa9ff", "", "Hours until the next wet forecast bucket", "precip"));
+      else if (dry.hours) normal.push(stat("Dry spell", String(dry.hours), "h", "#9fb0c8", "", "Limited to available precipitation coverage", "precip"));
     }
     if (freezing != null && s.sf6 && ahead(s.sf6).some((v) => v >= 0.3)) normal.push(stat("Snow level ≈", W().units.alt(Math.max(0, freezing - 300)).v, W().units.altUnit, "#cfe8ff", "", "Freezing level less ~300 m, where snow turns to rain", "precip"));
     if (t != null && s.d2m && s.d2m[i] != null) {
@@ -490,14 +534,15 @@
         ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
         <div class="big" style="--temp-color:${t != null ? tempColor(t - K) : "var(--fg)"}">${t == null ? "—" : W().units.temp(t).v}<span class="deg">°</span></div>
         <div class="hl">
-          ${hi != null ? `<div class="hilo"><span class="hi"><i>high</i>${W().units.tempC(hi).v}°</span><span class="rule"></span><span class="lo"><i>low</i>${W().units.tempC(lo).v}°</span></div>` : ""}
+          ${hi != null ? `<div class="hilo"><span class="hi"><i>${partialToday ? "sample high" : "high"}</i>${W().units.tempC(hi).v}°</span><span class="rule"></span><span class="lo"><i>${partialToday ? "sample low" : "low"}</i>${W().units.tempC(lo).v}°</span></div>` : ""}
           ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span><i class="brk" aria-hidden="true"></i>${sun.len ? `<span class="len" title="Daylight">${W_ICONS.day || ""}${sun.len}</span>` : ""}<span class="moon" title="${moon.name}, ${moon.pct}% lit">${moon.glyph} ${moon.pct}%</span></div>` : ""}
           <div class="vs-normal" id="normal-slot" hidden></div>
         </div>
       </div>
-      ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>next 48 h</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
+      ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>forecast outlook</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
       ${window.WXStatic ? "" : `<div id="rainnow-slot" class="rainnow" hidden></div>`}
       <div class="meta">${chips.filter((c) => !c.startsWith('<div class="stat')).join("")}${sections(chips.filter((c) => c.startsWith('<div class="stat')), pt)}</div>
+      ${diagnosticNote(d)}
       ${contextCues(pt, d, i)}
       ${daysStrip(pt, d, i)}
       ${contextCards(pt, d, i)}
@@ -624,11 +669,13 @@
     const primaryEnd = Math.max(...d.valid.map((v) => new Date(v).getTime()));
     if (pt.ai && pt.ai.model === "aigfs") addDays(pt.ai, "aigfs", true, primaryEnd, primaryKeys);
     const cur = new Date(d.valid[i]).toDateString();
-    const usable = [...days.values()].filter(({ src, ks }) => ks.filter((k) => src.series.t2m[k] != null).length >= 2).slice(0, 16);
+    const usable = [...days.values()].filter(({ src, ks }) => ks.some((k) => src.series.t2m[k] != null)).slice(0, 16);
     const cells = usable.map(({ dt, ks, src, model, ai }) => {
       const s = src.series;
       const ts = ks.map((k) => s.t2m[k]).filter((x) => x != null);
       const hi = Math.max(...ts) - K, lo = Math.min(...ts) - K;
+      const partial = !completeDay(src, ks);
+      const periodNote = partial ? " · partial day, available forecast periods only" : "";
       const rain = ks.reduce((a, k) => a + ((s.tp6 && s.tp6[k]) || 0), 0), snow = ks.reduce((a, k) => a + ((s.sf6 && s.sf6[k]) || 0), 0);
       const wmax = s.wind ? Math.max(...ks.map((k) => s.wind[k] || 0)) : null;
       const noon = ks.reduce((b, k) => Math.abs(new Date(src.valid[k]).getHours() - 13) < Math.abs(new Date(src.valid[b]).getHours() - 13) ? k : b, ks[0]);
@@ -636,10 +683,10 @@
       const g = W().tape && W().tape.glyph ? W().tape.glyph(cl, (rain + snow) / Math.max(1, ks.length) * (24 / 6), s.t2m[noon], false) : "";
       const on = model === primaryModel && dt.toDateString() === cur;
       const wet = snow >= 1 ? `<span class="sn">${W().units.snow(snow).txt}</span>` : rain >= 0.5 ? W().units.precip(rain).txt : "";
-      return `<button class="day${on ? " on" : ""}${ai ? " ai" : ""}" data-k="${noon}" data-model="${model}" data-valid="${src.valid[noon]}" title="${dt.toDateString()}${ai ? " · NOAA AI-GFS" : ""}">
-        <span class="dn">${dt.toLocaleDateString(undefined, { weekday: "short" })}${ai ? `<i>AI</i>` : ""}</span>
+      return `<button class="day${on ? " on" : ""}${ai ? " ai" : ""}${partial ? " partial" : ""}" data-k="${noon}" data-model="${model}" data-valid="${src.valid[noon]}" title="${dt.toDateString()}${ai ? " · NOAA AI-GFS" : ""}${periodNote}">
+        <span class="dn">${dt.toLocaleDateString(undefined, { weekday: "short" })}${ai ? `<i>AI</i>` : ""}${partial ? `<i>partial</i>` : ""}</span>
         <span class="dg">${g}</span>
-        <span class="hl"><b style="color:${tempColor(hi)}">${W().units.tempC(hi).v}°</b><i>${W().units.tempC(lo).v}°</i></span>
+        <span class="hl"><b style="color:${tempColor(hi)}">${W().units.tempC(hi).v}°</b><i>${ts.length > 1 ? `${W().units.tempC(lo).v}°` : "—"}</i></span>
         <span class="pr">${wet || "&nbsp;"}</span>
         ${wmax != null ? `<span class="wd" style="background:${W().rampColor("wind", wmax, 0.55)}">${Math.round(W().speed(wmax))}<em>${W().speedUnit()}</em></span>` : ""}</button>`;
     }).join("");
@@ -656,6 +703,8 @@
       const first = extended[0].dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
       note = `<div class="days-note"><b>AI-GFS</b> generated forecast from ${first}</div>`;
     }
+    if (usable.some(({ src, ks }) => !completeDay(src, ks)))
+      note += '<div class="days-note">Partial days show available forecast periods, not full-day highs, lows or rain totals.</div>';
     return `<i class="kicker">long range forecast</i><div class="days${usable.length > 8 ? " extended" : ""}">${cells}</div>${note}`;
   }
 
