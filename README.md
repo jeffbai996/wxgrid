@@ -257,18 +257,49 @@ CAPE, gust, snow or snow-depth fields, so those layers are absent rather than
 inferred. When a shorter physics run ends, the card's later daily outlook can
 continue on AI-GFS; every continuation day is labelled `AI`.
 
-**WeatherNext 2** is Google DeepMind's FGN ensemble (64 members, 15 days,
-~2 h after init). Google gates the data behind a GCP project and a data-request
-form; once approved, `WXGRID_WN2_ZARR=gs://weathernext/weathernext_2_0_0_mean/zarr`
-(with `gcsfs` installed and credentials on the box) makes `wxgrid/wn2.py`
-discover completed per-run `predictions.zarr` stores beneath the year partitions.
-The reader normalizes scalar `init_time` and forecast `time` into separate
-initialization and lead axes. Direct Zarr URLs and legacy multi-init stores
-remain supported; no GRIB is involved. See the
-[WeatherNext dry-run plan](docs/weathernext-dry-run.md) before enabling ingest.
-The model is `optional`: the catalog omits it until a run exists. Historic data is CC BY 4.0; real-time
-data carries Google's separate experimental terms — check them before serving
-it publicly.
+**WeatherNext appears as WN** in the model picker. wxgrid reads Google's
+published ensemble mean into its compact store, then serves it through the
+existing maps, weather tape and point forecast card. Temperature, 10 m wind,
+mean sea-level pressure and six-hour rain are available in the surface preview.
+No model runs locally, and the mean does not provide member spread.
+
+The current deployment starts with one bounded run: eight six-hour forecast
+steps through lead 48, surface fields only, with no pressure levels or
+historical backfill. The catalog advertises the steps and layers actually
+stored. This preview is separate from the adapter's full configuration below;
+automatic WN refresh is not configured on the current deployment.
+
+**WeatherNext setup.** Access to the Google Cloud dataset must already be
+approved for the identity used by wxgrid. Install the optional `gcsfs`
+dependency in the wxgrid environment and use that identity's existing
+Application Default Credentials (ADC). If ADC is not yet established, the
+operator can authorize it with:
+
+```sh
+gcloud auth application-default login --no-launch-browser
+```
+
+ADC normally lives at `~/.config/gcloud/application_default_credentials.json`.
+An explicit `GOOGLE_APPLICATION_CREDENTIALS` takes precedence; the deployment
+template's service-account path must not be assumed to work with personal ADC.
+Keep credentials out of the repository.
+
+`WXGRID_WN2_ZARR=gs://weathernext/weathernext_2_0_0_mean/zarr` configures the
+source for subsequent ingests. The adapter discovers completed per-run
+`predictions.zarr` stores beneath the year partitions and normalizes scalar
+`init_time` and forecast `time` into separate initialization and lead axes.
+Direct Zarr URLs and legacy multi-init stores remain supported; no GRIB is
+involved. A regional crop can still require a global source chunk.
+
+WN is eligible for simple mode alongside AIFS and HRDPS when its source is
+configured. Simple mode selects 00Z and 12Z cycles; it does not itself trim WN
+fields or horizon. The default model definition supports six-hour leads through
+360 hours, sea-surface temperature and pressure-level fields, so enabling the
+normal scheduled ingest is a separate step from trying the bounded preview.
+See the [WeatherNext dry-run plan](docs/weathernext-dry-run.md) before enabling
+refresh. WN remains optional: the catalog omits it until a stored run exists.
+Historic data is CC BY 4.0; real-time data carries Google's separate
+experimental terms — check them before serving it publicly.
 
 **GEFS** is the `geavg` ensemble-mean member. Surface comes from the 0.25°
 `pgrb2s` product; pressure levels come from the 0.5° `pgrb2a` product and are
