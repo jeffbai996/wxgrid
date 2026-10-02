@@ -260,14 +260,25 @@ continue on AI-GFS; every continuation day is labelled `AI`.
 **WeatherNext appears as WN** in the model picker. wxgrid reads Google's
 published ensemble mean into its compact store, then serves it through the
 existing maps, weather tape and point forecast card. Temperature, 10 m wind,
-mean sea-level pressure and six-hour rain are available in the surface preview.
+mean sea-level pressure and six-hour rain are available in the surface maps.
 No model runs locally, and the mean does not provide member spread.
 
-The current deployment starts with one bounded run: eight six-hour forecast
-steps through lead 48, surface fields only, with no pressure levels or
-historical backfill. The catalog advertises the steps and layers actually
-stored. This preview is separate from the adapter's full configuration below;
-automatic WN refresh is not configured on the current deployment.
+The current deployment uses one bounded five-day run: six-hour forecast steps
+from lead 6 through 120, sea-surface temperature, and temperature, wind and
+geopotential at 1000, 925, 850, 700, 500 and 300 hPa. These levels support the
+airgram and a freezing-level estimate; SST supplies nearby sea-temperature
+readings where available. No historical backfill or automatic WN refresh is
+configured. This selective run is separate from the adapter's full configuration
+below; the catalog advertises only the stored steps, layers and levels.
+
+Rain is a six-hour bucket ending at each forecast time, converted to millimetres,
+not a running total since initialization. Rain-window labels report covered
+hours, dry-spell claims stop at missing data or the forecast end, and partial
+calendar days stay visible with sampled highs/lows and precipitation explicitly
+marked. Missing cloud forecasts use an unavailable indicator rather than a
+clear-sky icon. WN's mapped fields do not supply cloud cover, dew point, gusts,
+CAPE or waves; these diagnostics are listed as unavailable rather than invented.
+The ensemble mean does not supply member-based rain probabilities.
 
 **WeatherNext setup.** Access to the Google Cloud dataset must already be
 approved for the identity used by wxgrid. Install the optional `gcsfs`

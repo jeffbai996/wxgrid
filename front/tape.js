@@ -604,7 +604,9 @@
   }
 
   function glyph(cloud, precip, tK, night) {
-    const c = cloud == null ? 0 : cloud, wet = precip > 0.2;
+    const knownCloud = cloud != null && Number.isFinite(cloud), wet = precip > 0.2;
+    if (!knownCloud && !wet) return '<svg class="tape-glyph unknown-weather" viewBox="0 0 24 18" role="img" aria-label="Cloud forecast unavailable"><title>Cloud forecast unavailable</title><g fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><circle cx="12" cy="9" r="7"/><path d="M9.7 6.5a2.3 2.3 0 0 1 4.6 0c0 1.8-2.3 1.8-2.3 3.7"/></g><circle cx="12" cy="12.5" r=".7" fill="currentColor"/></svg>';
+    const c = knownCloud ? cloud : 1;
     const snow = tK != null && tK - 273.15 < 1 && wet, cloudy = c > 0.25 || wet;
     const cx = cloudy ? 8 : 12, cy = cloudy ? 7 : 9;
     const body = night

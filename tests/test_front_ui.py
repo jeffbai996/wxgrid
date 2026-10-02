@@ -635,7 +635,7 @@ def test_the_hero_carries_a_rain_now_strip_only_when_something_falls():
     assert 'kind[k] === "snow"' in panes
     assert ".rainnow .rn-chart .sn" in css and ".rainnow .rn-chart .band" in css and "box-shadow: inset 0 0 0 1px var(--line); }" in css
     # the card sits with the readings, not between the hero and its report
-    assert panes.index('id="rainnow-slot"') > panes.index('<i>next 48 h</i>')
+    assert panes.index('id="rainnow-slot"') > panes.index('<i>forecast outlook</i>')
 
 
 def test_the_now_button_holds_still_because_live_fills_the_lead_slot():
