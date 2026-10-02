@@ -127,3 +127,18 @@ def test_force_ignores_the_mode_on_a_group_pass(walked):
     m.write_mode("simple")
     assert ingest.main(["--group", "global", "--force"]) == 0
     assert walked == ["ifs", "aifs", "gfs"]
+
+
+def test_simple_walks_configured_weathernext_mean(walked, monkeypatch):
+    monkeypatch.setattr(ingest, "models_in", lambda group: ["ifs", "aifs", "wn2", "gfs"])
+    m.write_mode("simple")
+    assert ingest.main(["--group", "global"]) == 0
+    assert walked == ["aifs", "wn2"]
+
+
+def test_weathernext_still_requires_source_configuration(monkeypatch):
+    from wxgrid import wn2
+    monkeypatch.setattr(wn2, "zarr_url", lambda: None)
+    assert not ingest.configured("wn2")
+    monkeypatch.setattr(wn2, "zarr_url", lambda: "gs://example/predictions.zarr")
+    assert ingest.configured("wn2")

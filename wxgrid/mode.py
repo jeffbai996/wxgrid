@@ -4,7 +4,7 @@ Three settings, one file, no schema:
 
   paused    every scheduled pass exits 0 immediately. The switch you reach for
             when the box, the network or the disk needs the ingest to stop.
-  simple    one global model and one regional, 00z and 12z only, no ensemble.
+  simple    AIFS, optional WeatherNext mean and HRDPS, 00z and 12z only.
             The default: it keeps the map useful on a fraction of the bytes.
   detailed  every configured model, every cycle — the historical behaviour.
 
@@ -25,11 +25,11 @@ log = logging.getLogger("wxgrid.mode")
 MODES = ("paused", "simple", "detailed")
 DEFAULT_MODE = "simple"
 
-# Simple mode's fleet: the best global per byte fetched, and the regional that
+# Simple mode's fleet: AIFS, the optional WeatherNext mean, and the regional that
 # ages fastest and is cheapest to pull. Exported as a constant because the
 # ingest filter, the /api/mode payload and the tests must not each carry their
 # own idea of what "simple" means.
-SIMPLE_MODELS = ("aifs", "hrdps")
+SIMPLE_MODELS = ("aifs", "wn2", "hrdps")
 # The two cycles every producer in the fleet publishes. 06z/18z double the
 # fetch for half a day's extra freshness, which is the trade simple declines.
 SIMPLE_CYCLES = (0, 12)

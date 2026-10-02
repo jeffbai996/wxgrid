@@ -228,7 +228,7 @@ MODELS: dict[str, Model] = {
         attribution="NOAA NCEP GFS via NOMADS, public domain",
     ),
     "wn2": Model(
-        key="wn2", label="Google WeatherNext 2 (AI ensemble mean)", short="WN2", grid="28km", source="weathernext",
+        key="wn2", label="Google WeatherNext 2 (AI ensemble mean)", short="WN", grid="28km", source="weathernext",
         steps=list(range(0, 361, 6)), optional=True,
         # WeatherNext names → canonical; the adapter (wxgrid/wn2.py) maps them,
         # this table only declares what the store carries.
