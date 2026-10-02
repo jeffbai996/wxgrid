@@ -25,19 +25,30 @@ def client(monkeypatch):
     return c
 
 
-def test_get_mode_defaults_to_simple_and_names_its_models(client):
+@pytest.mark.parametrize("wn_configured", [False, True])
+def test_get_mode_defaults_to_simple_and_names_its_models(client, monkeypatch, wn_configured):
+    if wn_configured:
+        monkeypatch.setenv("WXGRID_WN2_ZARR", "/synthetic/wn2.zarr")
+    else:
+        monkeypatch.delenv("WXGRID_WN2_ZARR", raising=False)
     body = client.get("/api/mode").json()
     assert body["mode"] == "simple"
-    # pass order (regional first), not the constant's order
-    assert sorted(body["models"]) == sorted(m.SIMPLE_MODELS)
+    # WN is eligible in simple mode but still needs a configured source.
+    assert sorted(body["models"]) == sorted(["aifs", "hrdps"] + (["wn2"] if wn_configured else []))
     assert "last_run" in body
 
 
-def test_get_mode_in_detailed_names_every_configured_model(client):
+@pytest.mark.parametrize("wn_configured", [False, True])
+def test_get_mode_in_detailed_names_every_configured_model(client, monkeypatch, wn_configured):
+    if wn_configured:
+        monkeypatch.setenv("WXGRID_WN2_ZARR", "/synthetic/wn2.zarr")
+    else:
+        monkeypatch.delenv("WXGRID_WN2_ZARR", raising=False)
     m.write_mode("detailed")
     body = client.get("/api/mode").json()
     assert body["mode"] == "detailed"
-    assert set(body["models"]) >= set(m.SIMPLE_MODELS)
+    assert {"aifs", "hrdps"} <= set(body["models"])
+    assert ("wn2" in body["models"]) == wn_configured
     assert len(body["models"]) > len(m.SIMPLE_MODELS)
 
 
