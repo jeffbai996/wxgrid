@@ -1783,7 +1783,7 @@ body.embed #embed-brand:hover { border-color: var(--line-strong); }
 .cam-pin .ring { display: none; }
 @keyframes campin-in { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes campin-breathe { 0%, 100% { opacity: 1; transform: none; } 50% { opacity: .72; transform: scale(1.08); } }
-.cam-view { border: 1px solid var(--line-strong); border-radius: 14px; padding: 0; background: var(--panel-solid); color: var(--fg); width: min(94vw, 720px); max-width: 94vw; box-shadow: 0 24px 80px rgba(0,0,0,.6); }
+.cam-view { container-type: inline-size; border: 1px solid var(--line-strong); border-radius: 14px; padding: 0; background: var(--panel-solid); color: var(--fg); width: min(94vw, 720px); max-width: 94vw; box-shadow: 0 24px 80px rgba(0,0,0,.6); }
 .cam-view::backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(4px); }
 .cam-view-head { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; }
 .cam-view-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -1793,8 +1793,18 @@ body.embed #embed-brand:hover { border-color: var(--line-strong); }
   padding: 0 !important; border-radius: 50% !important; display: grid !important; place-items: center; line-height: 0; }
 .cam-view-close svg { display: block; width: 14px; height: 14px; }
 .cam-view img { display: block; width: 100%; height: auto; max-height: 76vh; object-fit: contain; background: #000; }
-.cam-view-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 12px 10px; font: 500 11px var(--font-mono); color: var(--fg-2); }
-.cam-view-foot a { color: var(--accent); text-decoration: none; }
+.cam-view-foot { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline;
+  gap: 5px 16px; padding: 10px 14px 12px; border-top: 1px solid var(--line);
+  font: 500 11px/1.45 "DM Sans", "Inter", system-ui, sans-serif; color: var(--fg-2); }
+.cam-view-updated { grid-column: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cam-view-credit { grid-column: 2; text-align: center; text-wrap: balance; }
+.cam-view-foot a { grid-column: 3; color: var(--accent); font-weight: 650; white-space: nowrap; text-decoration: none; }
+@container (max-width: 560px) {
+  .cam-view-foot { grid-template-columns: 1fr auto; gap: 4px 12px; }
+  .cam-view-updated { grid-row: 1; }
+  .cam-view-foot a { grid-column: 2; grid-row: 1; }
+  .cam-view-credit { grid-column: 1 / -1; grid-row: 2; text-align: left; }
+}
 /* Outbound links on cards (storm "Public advisory ↗", webcam "Windy ↗", the
    avalanche bulletin, resort cams) answer the pointer: a soft plate and an
    underline, no layout shift. They used to do nothing on hover (Jeff 2026-09-05). */

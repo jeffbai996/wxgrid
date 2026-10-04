@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v116";   // v116: ingest mode switch in settings (2026-09-12)
+const VERSION = "wxgrid-v117";   // v117: compact webcam footer
 const SHELL = `${VERSION}-shell`;
 // Change these only when their own schema changes, not for a UI release.
 // Field format/version and run already live in each immutable URL.

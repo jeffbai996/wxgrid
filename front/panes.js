@@ -1530,9 +1530,10 @@
     // Sized by the picture, never by the caption: a long title used to
     // stretch the box and leave a small still alone on the left (Jeff 2026-09-04).
     dlg.style.width = "";
+    const credit = c.provider === "Windy" ? "" : (c.credit || "").replace(`${c.provider} · `, "");
     dlg.innerHTML = `<div class="cam-view-head"><div class="cam-view-titles"><b>${esc(c.name)}</b>${c.caption ? `<span>${esc(c.caption)}</span>` : ""}</div><button class="icon cam-view-close" type="button" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg></button></div>
       <img src="${esc(c.image)}${c.image.includes("?") ? "&" : "?"}t=${camBust()}" alt="${esc(c.name)}">
-      <div class="cam-view-foot"><span>${[c.updated ? `updated ${new Date(c.updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "", c.provider === "Windy" ? "" : esc(c.credit)].filter(Boolean).join(" · ")}</span><a href="${esc(c.page)}" target="_blank" rel="noopener">${esc(c.provider)} ↗</a></div>`;
+      <div class="cam-view-foot">${c.updated ? `<span class="cam-view-updated">Updated ${new Date(c.updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>` : ""}${credit ? `<span class="cam-view-credit">${esc(credit)}</span>` : ""}<a href="${esc(c.page)}" target="_blank" rel="noopener">${esc(c.provider)} ↗</a></div>`;
     const img = dlg.querySelector("img");
     // small provider stills (Windy previews are 400 px) get scaled up to a
     // real viewing size; big ones keep their own width
