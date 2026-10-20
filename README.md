@@ -46,7 +46,8 @@ installs to a phone, and works offline on what it last loaded.
 **Eight models on one grid.** Six global (ECMWF IFS and AIFS, NOAA GFS, AI-GFS
 and GEFS mean, ECCC GEM) and two regional (ECCC HRDPS 2.5 km, NOAA HRRR 3 km),
 ten pressure levels, 16 days out, all switchable while the map holds the same
-valid time.
+valid time. The optional WeatherNext 2 mean makes a ninth; it needs approved
+Google Cloud access.
 
 **The field, not a picture of it.** `/api/field` ships each frame as 16-bit
 data on the model's own grid; the browser colours it on the GPU, mixes the two
@@ -281,8 +282,8 @@ CAPE or waves; these diagnostics are listed as unavailable rather than invented.
 The ensemble mean does not supply member-based rain probabilities.
 
 **WeatherNext setup.** Access to the Google Cloud dataset must already be
-approved for the identity used by wxgrid. Install the optional `gcsfs`
-dependency in the wxgrid environment and use that identity's existing
+approved for the identity used by wxgrid. `gcsfs` is pinned in
+`requirements.txt`, so the normal install includes it. Use that identity's existing
 Application Default Credentials (ADC). If ADC is not yet established, the
 operator can authorize it with:
 
@@ -442,6 +443,11 @@ tier must not starve a fast one.
 | `wxgrid-cams.timer` | GEFS-Aerosol | four times daily |
 | `wxgrid-pages.timer` | static demo publish | twice daily |
 | `wxgrid-public.service` | second instance with `WXGRID_PUBLIC=1` | optional |
+
+The units hard-code the checkout and venv path (`%h/local-projects/wxgrid`)
+and, for the ingest units, a scratch directory for temporary files. Edit
+`WorkingDirectory`, `ExecStart` and the scratch paths to match your machine
+before copying them.
 
 ```bash
 cp deploy/*.service deploy/*.timer ~/.config/systemd/user/
@@ -623,7 +629,8 @@ scratch data dir; outbound sockets are refused unless a test carries
 so collection never walks the model store. `tests/visual/` looks at the
 running app with Playwright: cropped golden images for the interface, painted
 properties for the map, and overlay checks paired with what the API says it
-has; its README explains why each is checked the way it is.
+has; its README explains why each is checked the way it is. Playwright is not in
+`requirements-dev.txt`; install it separately for that suite.
 
 Conventions: conventional commits, one logical change per commit, comments
 explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
@@ -647,7 +654,8 @@ explain why. `python -m wxgrid.liveness` runs the upstream probes by hand.
 
 ## Changelog
 
-Short version; the commit log is the long one.
+Short version; the commit log is the long one. Entries stop at 2026-09-06;
+later work, including the WeatherNext 2 support, is only in the commit log.
 
 - **2026-09-06** — the browser keeps decoded fields and GPU textures under
   separate budgets (80 / 40 MiB), prefetch yields at HRRR sizes, only the
@@ -705,7 +713,7 @@ carries no such obligation.
 Bundled third-party work keeps its own licence and notices:
 `front/vendor/maplibre-gl.js` (BSD-3-Clause), the typefaces in `front/fonts/`
 (SIL OFL 1.1, see `front/fonts/LICENSES.md`), and the Natural Earth polygons in
-`data/countries.json` (public domain). Model data belongs to the producing
+`front/data/countries.json` (public domain). Model data belongs to the producing
 agency and is credited per model in the interface. Releases up to and
 including `826f5db` were published under the MIT licence and remain available
 under it.
