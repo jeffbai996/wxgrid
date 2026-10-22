@@ -723,6 +723,15 @@ def main(argv: list[str] | None = None) -> int:
             keys = ingest_mode.models_for_mode(mode, group, keys)
         elif mode == "simple":
             keys = [k for k in keys if k in ingest_mode.SIMPLE_MODELS]
+        # A deployment can keep its scheduled workload smaller than the full
+        # catalog without changing what an explicit --model request can fetch.
+        selection = os.environ.get("WXGRID_INGEST_MODELS", "").strip()
+        if selection:
+            selected = {key.strip() for key in selection.split(",") if key.strip()}
+            unknown = selected.difference(MODELS)
+            if unknown:
+                ap.error("unknown WXGRID_INGEST_MODELS: " + ", ".join(sorted(unknown)))
+            keys = [key for key in keys if key in selected]
         if not keys:
             log.info("ingest mode %s: nothing to do for %s", mode, group or "all")
             return 0

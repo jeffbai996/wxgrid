@@ -52,6 +52,13 @@ spread(["ifs", "aifs", "gfs"], "t2m", 49.3, -123.1)
 drawer or with `GET/POST /api/mode`. `--model X` and `--group … --force`
 ignore the mode. Definitions: `wxgrid/mode.py`.
 
+Set `WXGRID_INGEST_MODELS` to a comma-separated list of model keys to restrict
+scheduled passes further, for example `ifs,aifs,gfs,hrdps,hrrr`. Unset or empty
+keeps the normal catalog. This selection intersects the active mode and
+applies to both `--group` and `--all`; explicit `--model` and `--force` requests
+bypass it. Unknown keys fail before fetching. Set the same value on each
+ingest unit so a separate ensemble timer cannot fetch excluded models.
+
 ## Deployment
 
 Units and timers are in `deploy/`; each timer runs

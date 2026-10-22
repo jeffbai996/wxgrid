@@ -12,6 +12,7 @@ from wxgrid import ingest, mode as m
 @pytest.fixture(autouse=True)
 def _state_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("WXGRID_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.delenv("WXGRID_INGEST_MODELS", raising=False)
     yield
 
 
@@ -142,3 +143,30 @@ def test_weathernext_still_requires_source_configuration(monkeypatch):
     assert not ingest.configured("wn2")
     monkeypatch.setattr(wn2, "zarr_url", lambda: "gs://example/predictions.zarr")
     assert ingest.configured("wn2")
+
+
+@pytest.mark.parametrize("args, expected", [
+    (["--group", "global"], ["ifs", "gfs"]),
+    (["--all"], ["hrrr", "ifs", "gfs"]),
+    (["--group", "ensemble"], []),
+])
+def test_scheduled_pass_obeys_the_deployment_model_selection(walked, monkeypatch, args, expected):
+    monkeypatch.setenv("WXGRID_INGEST_MODELS", " ifs, gfs, hrrr ")
+    m.write_mode("detailed")
+    assert ingest.main(args) == 0
+    assert walked == expected
+
+
+def test_explicit_model_can_fetch_outside_the_deployment_selection(walked, monkeypatch):
+    monkeypatch.setenv("WXGRID_INGEST_MODELS", "ifs")
+    assert ingest.main(["--model", "gfs"]) == 0
+    assert walked == ["gfs"]
+
+
+def test_unknown_deployment_model_fails_before_fetching(walked, monkeypatch):
+    monkeypatch.setenv("WXGRID_INGEST_MODELS", "aifs,typo")
+    m.write_mode("detailed")
+    with pytest.raises(SystemExit) as exc:
+        ingest.main(["--all"])
+    assert exc.value.code == 2
+    assert walked == []
