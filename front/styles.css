@@ -1314,6 +1314,7 @@ details.alert[open] { padding-bottom: 9px; }
    2026-09-06: "use urbanist for both") */
 #probe b { font: 700 12.5px var(--font-display); font-variant-numeric: tabular-nums; }
 #probe span { font: 600 10.5px var(--font-display); color: var(--dim); }
+.wind-compass { font-size: .85em; color: var(--dim); }
 #probe[hidden] { display: none; }
 
 .menu .menu-pop .row.range { cursor: default; }

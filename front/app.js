@@ -2216,7 +2216,7 @@
     const v = WX.probe && WX.probe.valueAt ? WX.probe.valueAt(ll.lng, ll.lat) : null;
     if (!v || v.text === "—") { el.hidden = true; return; }
     el.hidden = false;
-    el.innerHTML = `<b>${v.text}</b>${v.sub ? `<span>${v.sub}</span>` : ""}`;
+    el.innerHTML = `<b>${v.text}</b>${v.sub ? `<span>${v.sub}${v.compass ? ` <small class="wind-compass">${v.compass}</small>` : ""}</span>` : ""}`;
   }
   function renderPoint() {
     const d = state.point && state.point.data; if (!d || !window.WXPanes) return;

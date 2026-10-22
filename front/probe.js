@@ -74,6 +74,8 @@
     im.src = url;
   }
 
+  const compass = (deg) => ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(deg / 22.5) % 16];
+
   function valueAt(lng, lat) {
     const layer = WX.state.layer;
     if (["wind", "waves"].includes(layer) && WX.windLayer && WX.windLayer.field) {
@@ -82,7 +84,7 @@
       const spd = Math.hypot(uv[0], uv[1]);
       const dir = (270 - Math.atan2(uv[1], uv[0]) * 180 / Math.PI) % 360;      // FROM, wind convention
       if (layer === "waves") { const h = spd / 3; return { text: WX.units.alt(h, 1).txt, sub: `${WX.arrow((dir + 180) % 360)} ${Math.round((dir + 180) % 360)}°` }; }
-      return { text: `${Math.round(WX.speed(spd))} ${WX.speedUnit()}`, sub: `${WX.arrow(dir)} ${Math.round(dir)}°` };
+      return { text: `${Math.round(WX.speed(spd))} ${WX.speedUnit()}`, sub: `${WX.arrow(dir)} ${Math.round(dir)}°`, compass: compass(dir) };
     }
     const r = ramp(layer, WX.state.level); if (!r) return null;
     // Layers whose "nothing here" is a real zero rather than an absence.
@@ -134,7 +136,7 @@
     if (pt && nearPoint(ll, pt.lon, pt.lat, 36)) { chip.hidden = true; return; }
     const v = valueAt(ll.lng, ll.lat);
     if (!v) { chip.hidden = true; return; }
-    chip.innerHTML = `<b>${v.text}</b>${v.sub ? `<span>${v.sub}</span>` : ""}`;
+    chip.innerHTML = `<b>${v.text}</b>${v.sub ? `<span>${v.sub}${v.compass ? ` <small class="wind-compass">${v.compass}</small>` : ""}</span>` : ""}`;
     chip.hidden = false;
     const p = WX.map.project(ll);
     chip.style.transform = `translate(${Math.round(p.x + 14)}px, ${Math.round(p.y + 14)}px)`;
@@ -160,7 +162,7 @@
     const ll = pinMarker.getLngLat();
     const v = valueAt(ll.lng, ll.lat);
     const el = pinMarker.getElement().querySelector(".val");
-    el.innerHTML = v ? `<b>${v.text}</b>${v.sub ? `<span>${v.sub}</span>` : ""}` : "…";
+    el.innerHTML = v ? `<b>${v.text}</b>${v.sub ? `<span>${v.sub}${v.compass ? ` <small class="wind-compass">${v.compass}</small>` : ""}</span>` : ""}` : "…";
     // the layer image may still be decoding on first placement
     clearTimeout(pinRetry);
     if (!v) pinRetry = setTimeout(() => { refresh(); pinUpdate(); }, 900);
