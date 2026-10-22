@@ -124,6 +124,9 @@ button { font: inherit; color: inherit; }
   background: var(--accent); pointer-events: none; will-change: transform,width; }
 .seg.sliding .seg-cursor.ready { transition: transform .24s cubic-bezier(.22,.8,.25,1), width .24s cubic-bezier(.22,.8,.25,1), opacity .12s ease; }
 .seg.sliding button.on { background: transparent; }
+/* The plate owns the motion; interpolating its label from the hover color
+   leaves a pale flash on the orange selection. */
+.seg.sliding button { transition: background .15s ease; }
 #models button { white-space: nowrap; }   /* "AI-GFS" was breaking across two lines */
 #models button .grid { font: 600 10px var(--font-display); font-style: normal; margin-left: 3px; opacity: .65; letter-spacing: 0; }
 /* the badge pads INSIDE its own clipped box: an outside margin survived
@@ -1052,6 +1055,9 @@ table.bands .dirarrow { width: 11px; height: 11px; margin-right: 4px; }
 
 /* ── tape table ──────────────────────────────────────────────────────── */
 .tape { border-top: 0; padding-top: 0; }
+.tape-snapshot { position: absolute; z-index: 4; overflow: hidden; pointer-events: none;
+  background: var(--panel-solid); animation: tape-snapshot-out .26s cubic-bezier(.22,.8,.25,1) forwards; }
+@keyframes tape-snapshot-out { to { opacity: 0; } }
 table.wtape { border-collapse: separate; border-spacing: 0; font: 500 11.5px var(--font-num); color: var(--fg-2); }
 table.wtape th, table.wtape td { padding: 0; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
 table.wtape th.lab { position: sticky; left: 0; z-index: 2; background: var(--panel-solid); text-align: left; font: 500 10.5px var(--font-body); color: var(--dim); padding: 0 10px 0 4px; min-width: 84px; }

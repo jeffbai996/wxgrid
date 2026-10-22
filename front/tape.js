@@ -127,6 +127,34 @@
   // what the whole period did.
   let tapeRes = Number(localStorage.getItem("wxgrid.tapeRes") || 0);      // 0 = the model's own steps
   let fineSelectedValid = null;
+  let tapeTransition = null;
+  function animateTapeChange(tape, render) {
+    if (tapeTransition) tapeTransition();
+    const old = tape.firstElementChild;
+    if (!old || !tape.animate || matchMedia("(prefers-reduced-motion: reduce)").matches) { render(); return; }
+    // Keep the old viewport above the new layout while it fades. The snapshot
+    // lives outside #tape so its cells never enter selection or click handling.
+    const rect = tape.getBoundingClientRect(), parent = tape.parentElement;
+    const box = parent.getBoundingClientRect(), snapshot = document.createElement("div");
+    snapshot.className = "tape-snapshot";
+    snapshot.inert = true;
+    snapshot.style.left = `${rect.left - box.left - (parent.clientLeft || 0)}px`;
+    snapshot.style.top = `${rect.top - box.top - (parent.clientTop || 0)}px`;
+    snapshot.style.width = `${tape.clientWidth}px`;
+    snapshot.style.height = `${tape.clientHeight}px`;
+    const copy = old.cloneNode(true);
+    copy.style.width = `${old.getBoundingClientRect().width}px`;
+    snapshot.append(copy);
+    parent.append(snapshot);
+    snapshot.scrollLeft = tape.scrollLeft;
+    snapshot.scrollTop = tape.scrollTop;
+    render();
+    const animation = tape.animate([{ opacity: 0, transform: "translateY(4px)" },
+      { opacity: 1, transform: "translateY(0)" }], { duration: 260, easing: "cubic-bezier(.22,.8,.25,1)" });
+    const cleanup = () => { snapshot.remove(); animation.cancel(); if (tapeTransition === cleanup) tapeTransition = null; };
+    tapeTransition = cleanup;
+    animation.onfinish = cleanup;
+  }
   const nativeStep = (d) => (d && d.steps && d.steps.length > 1 ? d.steps[1] - d.steps[0] : 3);
   function renderRes(d) {
     const box = $("#tape-res"); if (!box) return;
@@ -134,7 +162,11 @@
     const opts = [[1, "1 h"], [2, "2 h"], [0, `${native} h`], [6, "6 h"], [12, "12 h"], [24, "24 h"]]
       .filter(([v]) => v === 0 || (v < native ? v : v > native));
     box.innerHTML = opts.map(([v, t]) => `<button data-v="${v}" class="${v === tapeRes ? "on" : ""}">${t}</button>`).join("");
-    box.querySelectorAll("button").forEach((b) => b.onclick = () => { tapeRes = Number(b.dataset.v); localStorage.setItem("wxgrid.tapeRes", tapeRes); renderTape(); renderTapeSelection(); queueTapeAI(); });
+    box.querySelectorAll("button").forEach((b) => b.onclick = () => {
+      const res = Number(b.dataset.v); if (res === tapeRes) return;
+      tapeRes = res; localStorage.setItem("wxgrid.tapeRes", tapeRes);
+      animateTapeChange($("#tape"), renderTape);
+    });
   }
 
   // ── column resolution ────────────────────────────────────────────────
