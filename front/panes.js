@@ -1799,6 +1799,7 @@
     const flTrend = fl != null && fl24o != null && Math.abs(fl24o - fl) > 150 ? (fl24o < fl ? " ↓" : " ↑") : "";
     const chance = probMax(W().state.point, d, i, "prob_rain", 24);
     const ptype = rain != null && rain > 0.2 ? (t != null && t < 1 ? "snow" : t != null && t < 3 ? "rain/snow" : "rain") : "dry";
+    const precipName = ptype === "rain/snow" ? "Rain and snow" : ptype.charAt(0).toUpperCase() + ptype.slice(1);
     const j1 = (() => { let k = i; while (k + 1 < d.steps.length && d.steps[k + 1] <= d.steps[i] + 24) k++; return k; })();
     const rain24 = sumWindow(s.tp6, d.steps, i, 24);
     const gusts = s.gust ? s.gust.slice(i, j1 + 1).filter((v) => v != null) : [];
@@ -1811,20 +1812,20 @@
       ["Precip now", `${ptype}${rain != null && rain > 0 ? ` · ${W().units.precip(rain).txt}/6h` : ""}`, ptype === "dry" ? "good" : ptype === "snow" ? "meh" : ""],
       ["Next 24 h rain", rain24 != null ? W().units.precip(rain24).txt : "—", rain24 == null ? "" : rain24 < 1 ? "good" : rain24 < 10 ? "meh" : "bad"],
       ["Freezing level", fl != null ? `${W().units.alt(fl).txt}${flTrend}` : "—", flTrend === " ↓" ? "good" : ""],
-      ["Snow level (≈)", snowLevel != null ? W().units.alt(Math.round(snowLevel / 50) * 50).txt : "—", ""],
+      ["Snow level", snowLevel != null ? `~${W().units.alt(Math.round(snowLevel / 50) * 50).txt}` : "—", ""],
       ...(chance != null ? [["Precip chance 24 h", `${chance}% <span class="dim">of 30 members</span>`, ""]] : []),
       ["Wind / gust", w != null ? `${speed(w).toFixed(0)}${g != null ? ` · gusts ${speed(g).toFixed(0)}` : ""} ${speedUnit()}` : "—", w == null ? "" : speed(w) < calm ? "good" : "meh"],
       ["Max gust 24 h", gustMax24 != null ? `${speed(gustMax24).toFixed(0)} ${speedUnit()}` : "—", gustMax24 == null ? "" : speed(gustMax24) < gusty ? "good" : "bad"],
       ["Feels like", chill != null ? `${W().units.tempC(chill).v}° (wind chill)` : humidex != null ? `${W().units.tempC(humidex).v}° (humidex)` : t != null ? `${W().units.tempC(t).v}°` : "—", (chill != null && chill < -10) || (humidex != null && humidex > 35) ? "bad" : ""],
       ["Cloud", cloud != null ? `${(cloud * 100).toFixed(0)}%` : "—", cloud == null ? "" : cloud < 0.3 ? "good" : ""],
-      ["Thunder risk (CAPE)", s.cape && s.cape[i] != null ? `${s.cape[i].toFixed(0)} J/kg` : "n/a", capeClass(s.cape && s.cape[i])],
+      ["Thunder risk (CAPE)", s.cape && s.cape[i] != null ? `${s.cape[i].toFixed(0)} J/kg` : "—", capeClass(s.cape && s.cape[i])],
       ["UV index (model est.)", s.uvi && s.uvi[i] != null ? `${s.uvi[i].toFixed(0)} ${uvWord(s.uvi[i])}` : "—", s.uvi && s.uvi[i] != null ? (s.uvi[i] < 3 ? "good" : s.uvi[i] < 8 ? "meh" : "bad") : ""],
       ...(s.swh && s.swh[i] != null ? [["Sea state", `${W().units.alt(s.swh[i], 1).txt}${s.mwp && s.mwp[i] != null ? ` · ${s.mwp[i].toFixed(0)} s` : ""}${s.mwd && s.mwd[i] != null ? ` from ${Math.round(s.mwd[i])}°` : ""}`, s.swh[i] < 1 ? "good" : s.swh[i] < 2.5 ? "meh" : "bad"]] : []),
       ["Dry, calm hours (3 d)", dryH ? `${dryH} h of ${totH}` : "none", dryH > 36 ? "good" : dryH ? "meh" : "bad"],
       // cloud base from the dew-point spread: the number a pilot or a
       // view-hunter actually wants, ~125 m per °C of spread
       ["Cloud base (≈)", t != null && s.d2m && s.d2m[i] != null && cloud != null && cloud > 0.15
-        ? W().units.alt(Math.round(125 * Math.max(0, t - (s.d2m[i] - K)) / 50) * 50).txt : "clear or n/a", ""],
+        ? W().units.alt(Math.round(125 * Math.max(0, t - (s.d2m[i] - K)) / 50) * 50).txt : cloud != null && cloud <= 0.15 ? "Clear" : "—", ""],
       ...(s.vis && s.vis[i] != null ? [["Visibility", `${(s.vis[i] / 1000).toFixed(s.vis[i] < 5000 ? 1 : 0)} km`, s.vis[i] > 9000 ? "good" : s.vis[i] > 3000 ? "meh" : "bad"]] : []),
     ];
     // The verdict: the worst of the calls the rows already made, said once at
@@ -1832,7 +1833,8 @@
     // name. The old two-word verdict told nobody what to watch.
     const flagged = rows.filter((r) => r[2] === "bad" || r[2] === "meh");
     const worst = flagged.some((r) => r[2] === "bad") ? "bad" : flagged.length ? "meh" : "good";
-    const nameOf = (r) => `${r[0].toLowerCase().replace(/ \(.*\)| 24 h| \/ gust|,.*/g, "")} ${r[1].replace(/<[^>]+>/g, "")}`;
+    const nameOf = (r) => r[0] === "Precip now" ? `${precipName}${rain != null && rain > 0 ? ` · ${W().units.precip(rain).txt} / 6 h` : ""}`
+      : `${r[0].toLowerCase().replace(/ \(.*\)| 24 h| \/ gust|,.*/g, "")} ${r[1].replace(/<[^>]+>/g, "")}`;
     const why = flagged.filter((r) => r[2] === worst).slice(0, 3).map(nameOf).join(" · ");
     const verdict = worst === "bad" ? ["Rough out there", "bad"] : worst === "meh" ? ["Workable", "meh"] : ["Looks good", "good"];
     // The best window in the next 48 h: dry, calm and in daylight for 3 h+.
@@ -1881,11 +1883,11 @@
     // under it in plain words: one glance says 28, the next says km/h, the
     // third says which. Green is not painted on — a fine reading is the
     // quiet default; only meh/bad earn a colour and a rule.
-    const lead = (v) => { const m = String(v).match(/^(—|[-+]?\d[\d.,]*\s?(?:°[CF]?|%|h(?=\s|$))?)(.*)$/s); return m ? `<b>${m[1]}</b>${m[2].trim() ? `<small>${m[2].trim()}</small>` : ""}` : `<b class="word">${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}</b>`; };
+    const lead = (v) => { const m = String(v).match(/^(—|~?[-+]?\d[\d.,]*\s?(?:°[CF]?|%|h(?=\s|$))?)(.*)$/s); return m ? `<b>${m[1]}</b>${m[2].trim() ? `<small>${m[2].trim()}</small>` : ""}` : `<b class="word">${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}</b>`; };
     // Each card carries its glyph in the corner and, where the reading is a
     // share of something, a gauge under the number: cloud is a share of the
     // sky, dry hours a share of three days, UV a share of the 11-point scale.
-    const glyphFor = (k) => k.startsWith("Precip now") ? "drop" : k.startsWith("Next 24 h rain") ? "drop" : k.startsWith("Precip chance") ? "dice"
+    const glyphFor = (k) => k.startsWith("Precip now") ? (ptype === "snow" || ptype === "rain/snow" ? "flake" : "drop") : k.startsWith("Next 24 h rain") ? "drop" : k.startsWith("Precip chance") ? "dice"
       : k.startsWith("Cloud base") ? "base" : k.startsWith("Cloud") ? "cloud" : k.startsWith("Thunder") ? "bolt" : k.startsWith("Visibility") ? "eye"
       : k.startsWith("UV") ? "sun" : k.startsWith("Wind") ? "wind" : k.startsWith("Max gust") ? "gust" : k.startsWith("Feels") ? "thermo"
       : k.startsWith("Dry, calm") ? "clock" : k.startsWith("Freezing") ? "flake" : k.startsWith("Snow level") ? "peak" : k.startsWith("Sea") ? "wave" : "";
@@ -1900,7 +1902,9 @@
       return null;
     };
     const kv = (rs) => rs.length ? `<div class="kv">${rs.map(([k, v, cls]) => { const gg = gaugeFor(k, v), gl = glyphFor(k);
-      return `<div class="stat ${cls || ""}${gl ? ` g-${gl}` : ""}">${gl ? `<i class="glyph">${OD_GLYPHS[gl] || ""}</i>` : ""}<span class="v">${lead(v)}</span><span class="k">${k.replace(/ \(≈\)/, " ≈").replace("Precip", "Precip.")}</span>${gg != null ? `<i class="gauge"><b style="width:${(gg * 100).toFixed(0)}%"></b></i>` : ""}</div>`; }).join("")}</div>` : "";
+      const precip = k === "Precip now";
+      const value = precip ? `<b class="word">${precipName}</b>${rain != null && rain > 0 ? `<small class="precip-amount">${W().units.precip(rain).txt} / 6 h</small>` : ""}` : lead(v);
+      return `<div class="stat ${cls || ""}${gl ? ` g-${gl}` : ""}${precip ? ` precip-now precip-${ptype === "rain/snow" ? "mixed" : ptype}` : ""}">${gl ? `<i class="glyph">${OD_GLYPHS[gl] || ""}</i>` : ""}<span class="v">${value}</span><span class="k">${k.replace(/ \(≈\)/, " ≈").replace("Precip", "Precip.")}</span>${gg != null ? `<i class="gauge"><b style="width:${(gg * 100).toFixed(0)}%"></b></i>` : ""}</div>`; }).join("")}</div>` : "";
     const section = (title, graphic, rs, note) => `<section class="od"><h4>${title}${note ? `<span>${note}</span>` : ""}</h4>${graphic || ""}${kv(rs)}</section>`;
     const cold = fl != null && (t == null || t < 12 || snowLevel < 3000);
     const brief = outdoorsBrief(d, i, { rain24, chance, gustMax24, fl, snowLevel, cold, calm, gusty });

@@ -20,7 +20,7 @@
 // under that same prefix.
 "use strict";
 
-const VERSION = "wxgrid-v121";   // v121: week-long wind charts and inline normal comparison
+const VERSION = "wxgrid-v122";   // v122: clearer precipitation and estimated snow level cards
 const SHELL = `${VERSION}-shell`;
 // Change these only when their own schema changes, not for a UI release.
 // Field format/version and run already live in each immutable URL.

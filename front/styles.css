@@ -625,6 +625,14 @@ table.aloft td.dir .dirarrow { width: 11px; height: 11px; margin-right: 5px; }
 .od .kv .stat.meh .gauge b { background: var(--warm); } .od .kv .stat.bad .gauge b { background: var(--bad); }
 .od .kv .stat.meh { border-left-color: var(--warm); } .od .kv .stat.meh .v b { color: var(--warm); }
 .od .kv .stat.bad { border-left-color: var(--bad); } .od .kv .stat.bad .v b { color: var(--bad); }
+.od .kv .stat.precip-now { --precip-color: var(--rain); border-left-color: var(--precip-color);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--precip-color) 28%, transparent); }
+.od .kv .stat.precip-snow { --precip-color: #a9d9f5; }
+.od .kv .stat.precip-mixed { --precip-color: #b8b0f4; }
+.od .kv .stat.precip-dry { --precip-color: var(--fg-2); }
+.od .kv .stat.precip-now .glyph { --c: var(--precip-color); }
+.od .kv .stat.precip-now .v b { color: var(--precip-color); }
+.od .kv .stat.precip-now .precip-amount { flex-basis: 100%; margin: 3px 0; }
 .hstrip { margin: 2px 0 2px; }
 .hstrip .cells { display: flex; gap: 1px; height: 26px; border-radius: 6px; position: relative; cursor: crosshair; touch-action: pan-y; }
 .hstrip .cells i.n::after { content: ""; position: absolute; inset: 0; background: rgba(20,28,48,.28); pointer-events: none; }
