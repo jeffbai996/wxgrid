@@ -1820,3 +1820,22 @@ body.embed #embed-brand:hover { border-color: var(--line-strong); }
 .mapcard .mc-foot .qp-link:hover, .quake-pop .qp-link:hover, .cam-view-foot a:hover, .avy a:hover, .resort-cams .cams-head a:hover, .resort-head a:hover {
   background: var(--accent-soft); text-decoration-color: currentColor; }
 .mapcard .mc-foot .qp-link:focus-visible, .quake-pop .qp-link:focus-visible, .cam-view-foot a:focus-visible, .avy a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Browser-painted arrows ignore control padding. Own only the closed face. */
+select:not([multiple]):not([size]):not(.appearance-none), select:not([multiple])[size="1"]:not(.appearance-none) {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-inline-end: 36px !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2 4 4 4 4-4' fill='none' stroke='%2379828d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-position: right 12px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 12px 12px !important;
+}
+select:not([multiple]):not(.appearance-none):dir(rtl) { background-position: left 12px center !important; }
+@media (forced-colors: active) {
+  select:not([multiple]):not([size]):not(.appearance-none), select:not([multiple])[size="1"]:not(.appearance-none) {
+    -webkit-appearance: auto;
+    appearance: auto;
+    background-image: none !important;
+  }
+}
