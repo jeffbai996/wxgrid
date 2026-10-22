@@ -936,7 +936,9 @@ def test_webkit_gets_overflow_clipping_and_a_repaint_nudge_after_the_glide():
     assert "@supports (-webkit-touch-callout: none) {" in css
     assert "#timebar.tape-anim, #timebar.mini.tape-anim, #timebar.tape-dragging { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--panel-solid); will-change: auto; }" in css
     end = app.split('tb.classList.remove("tape-anim", "tape-anim-away");', 1)[1].split("restorePointPanelSize();", 1)[0]
-    assert 'tb.style.transform = "translateZ(0)";' in end and 'requestAnimationFrame(() => { tb.style.transform = ""; });' in end
+    assert "nudgeTapeLayer();" in end
+    nudge = app.split("const nudgeTapeLayer = () => {", 1)[1].split("\n  };", 1)[0]
+    assert 'tb.style.transform = "translateZ(0)";' in nudge and 'requestAnimationFrame(() => { tb.style.transform = ""; });' in nudge
 
 
 def test_value_plates_share_one_face_and_the_chip_yields_to_the_point_flag():
