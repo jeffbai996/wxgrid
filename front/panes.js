@@ -354,6 +354,23 @@
     </div>`;
   }
 
+  // Use the native forecast samples over a week, rather than stretching four
+  // or eight six-hour intervals across an entire wind chart.
+  function windRows(d, i, hours = 168) {
+    const s = d.series, rows = [];
+    for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + hours; k++) {
+      if (!s.wind || !Number.isFinite(s.wind[k])) continue;
+      rows.push([new Date(d.valid[k]).getTime(), s.wind[k],
+        s.gust && Number.isFinite(s.gust[k]) ? s.gust[k] : null, s.wdir ? s.wdir[k] : null]);
+    }
+    return rows;
+  }
+  function windPeriod(rows) {
+    if (rows.length < 2) return "forecast end";
+    const hours = Math.round((rows[rows.length - 1][0] - rows[0][0]) / 3600e3);
+    return `next ${hours >= 48 && hours % 24 === 0 ? `${hours / 24} days` : `${hours} h`}`;
+  }
+
   // ── Now: hero, local context, station obs, meteogram ─────────────────
   function renderNow(pt, d, i) {
     // A data arrival can beat the native toggle event. Capture the actual
@@ -373,19 +390,19 @@
     if (s.wind) {
       // The wind box carries the story, not just the number: a compass rose
       // with the arrow on it and the bearing in degrees, the Beaufort word,
-      // the next 24 h of speed as a curve, and the gusts with how gusty they
+      // the next week of speed as a curve, and the gusts with how gusty they
       // are relative to the mean (Jeff 2026-09-02: "a bit sparse").
       const w = s.wind[i], dir = s.wdir ? s.wdir[i] : null, g = s.gust ? s.gust[i] : null;
       const bf = w != null ? beaufort(w) : null;
-      const win = [], gwin = [], wrows = [];
-      for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + 24; k++) { if (s.wind[k] != null) { win.push(s.wind[k]); wrows.push([new Date(d.valid[k]).getTime(), s.wind[k], s.gust && s.gust[k] != null ? s.gust[k] : null, s.wdir ? s.wdir[k] : null]); } if (s.gust && s.gust[k] != null) gwin.push(s.gust[k]); }
+      const wrows = windRows(d, i), win = wrows.map((r) => r[1]), gwin = wrows.map((r) => r[2]).filter((v) => v != null);
       let spark = "";
       if (win.length >= 3) {
         const top = Math.max(1, ...win, ...gwin);
-        const pts = (arr) => arr.map((v, k) => `${(k / (arr.length - 1) * 100).toFixed(1)},${(22 - v / top * 20).toFixed(1)}`).join(" ");
+        const start = wrows[0][0], span = Math.max(1, wrows[wrows.length - 1][0] - start);
+        const pts = (key) => wrows.map((r) => `${((r[0] - start) / span * 100).toFixed(1)},${(22 - r[key] / top * 20).toFixed(1)}`).join(" ");
         spark = `<svg class="wspark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
-          ${gwin.length === win.length ? `<polyline class="g" points="${pts(gwin)}"/>` : ""}
-          <polygon class="a" points="0,24 ${pts(win)} 100,24"/><polyline class="w" points="${pts(win)}"/></svg>`;
+          ${gwin.length === win.length ? `<polyline class="g" points="${pts(2)}"/>` : ""}
+          <polygon class="a" points="0,24 ${pts(1)} 100,24"/><polyline class="w" points="${pts(1)}"/></svg>`;
       }
       const peakG = gwin.length ? Math.max(...gwin) : null;
       // A labelled rose with one open, unbroken needle. The line crosses the
@@ -398,7 +415,7 @@
       chips.push(`<span class="wind-readout" style="--wind-color:${windColor(w || 0)}">
         <span class="wind-main"><small>Wind</small><b>${f(w, (v) => speed(v).toFixed(0))} <i>${speedUnit()}</i></b><em>${compass(dir)}${dir != null ? ` ${Math.round(dir)}°` : ""}${bf != null ? ` · ${BEAUFORT_NAME[bf]}` : ""}</em></span>
         ${dial}
-        <span class="wind-trend" data-rows="${esc(JSON.stringify(wrows.map((r) => [r[0], +r[1].toFixed(2), r[2] == null ? null : +r[2].toFixed(2), r[3] == null ? null : Math.round(r[3])])))}">${spark}<div class="gtip wt-tip" hidden></div><small>next 24 h${peakG != null ? ` · peak gusts ${speed(peakG).toFixed(0)}` : ""}</small></span>
+        <span class="wind-trend" data-rows="${esc(JSON.stringify(wrows.map((r) => [r[0], +r[1].toFixed(2), r[2] == null ? null : +r[2].toFixed(2), r[3] == null ? null : Math.round(r[3])])))}">${spark}<div class="gtip wt-tip" hidden></div><small>${windPeriod(wrows)}${peakG != null ? ` · peak gusts ${speed(peakG).toFixed(0)}` : ""}</small></span>
         ${g != null ? `<span class="wind-gust"><small>Gusts</small><b>${speed(g).toFixed(0)} <i>${speedUnit()}</i></b></span>` : ""}
         <span class="wind-storm" id="storm-slot"></span>
       </span>`);
@@ -534,9 +551,8 @@
         ${bigGlyph(s.tcc ? s.tcc[i] : null, (s.tp6 ? s.tp6[i] : 0) + (s.sf6 ? s.sf6[i] : 0), t, night)}
         <div class="big" style="--temp-color:${t != null ? tempColor(t - K) : "var(--fg)"}">${t == null ? "—" : W().units.temp(t).v}<span class="deg">°</span></div>
         <div class="hl">
-          ${hi != null ? `<div class="hilo"><span class="hi"><i>${partialToday ? "sample high" : "high"}</i>${W().units.tempC(hi).v}°</span><span class="rule"></span><span class="lo"><i>${partialToday ? "sample low" : "low"}</i>${W().units.tempC(lo).v}°</span></div>` : ""}
+          ${hi != null ? `<div class="hilo"><span class="hi"><i>${partialToday ? "sample high" : "high"}</i>${W().units.tempC(hi).v}°</span><span class="rule"></span><span class="lo"><i>${partialToday ? "sample low" : "low"}</i>${W().units.tempC(lo).v}°</span><div class="vs-normal" id="normal-slot" hidden></div></div>` : ""}
           ${sun ? `<div class="sun"><span>${W_ICONS.rise}${sun.rise}</span><span>${W_ICONS.set}${sun.set}</span><i class="brk" aria-hidden="true"></i>${sun.len ? `<span class="len" title="Daylight">${W_ICONS.day || ""}${sun.len}</span>` : ""}<span class="moon" title="${moon.name}, ${moon.pct}% lit">${moon.glyph} ${moon.pct}%</span></div>` : ""}
-          <div class="vs-normal" id="normal-slot" hidden></div>
         </div>
       </div>
       ${(() => { const t = summarise(d, i); return t ? `<p class="summary"><i>forecast outlook</i>${t}${window.WXStatic ? "" : `<button class="why-btn" id="why-btn">Discussion ›</button>`}</p><div id="why" class="why" hidden></div>` : ""; })()}
@@ -1319,7 +1335,7 @@
   }
 
   // ── vs normal: the day against its 1991–2020 ERA5 climatology ──────────
-  // Quiet by design: one muted line under the sunrise, "+4° vs normal", the
+  // Quiet by design: one muted reading beside the low, "+4° vs normal", the
   // normal high/low on hover. Fetched once per pin (30-day server cache per
   // 0.25° cell); nothing is drawn until it lands.
   const CUM366 = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
@@ -1366,9 +1382,10 @@
     const { speed, speedUnit, arrow } = W();
     svg.addEventListener("pointermove", (e) => {
       const r = svg.getBoundingClientRect();
-      const k = Math.max(0, Math.min(rows.length - 1, Math.round((e.clientX - r.left) / r.width * (rows.length - 1))));
+      const x = rows[0][0] + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (rows[rows.length - 1][0] - rows[0][0]);
+      const k = rows.reduce((best, row, j) => Math.abs(row[0] - x) < Math.abs(rows[best][0] - x) ? j : best, 0);
       const [t, w, g, dir] = rows[k];
-      const when = k === 0 ? "now" : new Date(t).toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }));
+      const when = t === W().validDate.getTime() ? "now" : new Date(t).toLocaleString(undefined, W().units.timeOpts({ weekday: "short", hour: "numeric" }));
       tip.innerHTML = `<i class="when">${when}</i><span><b>${Math.round(speed(w))}<small> ${speedUnit()}</small></b>${g != null ? `<i>gusts ${Math.round(speed(g))}</i>` : ""}${dir != null ? `<i>${arrow(dir)} ${Math.round(dir)}°</i>` : ""}</span>`;
       tip.hidden = false;
       tip.style.left = `${Math.max(40, Math.min(r.width - 40, (e.clientX - r.left)))}px`;
@@ -1846,8 +1863,8 @@
         <div class="tides">${turns.map((e) => `<span class="tide ${e.type}"><b>${e.type === "H" ? "▲" : "▼"} ${W().units.alt(e.height_m, 1).txt}</b><small>${W().units.dateTime(e.time, { weekday: "short", hour: "numeric", minute: "2-digit" })}</small></span>`).join("")}</div>
         ${range != null ? `<div class="tide-foot"><span>range <b>${W().units.alt(range, 1).txt}</b></span><span>${turns.length} turns ahead</span></div>` : ""}</div>`;
     }
-    // Each group of readings gets the graphic that explains it, drawn over
-    // the same 48 h: the strips share one clock, so the eye lines them up.
+    // Sky and sun share a two-day clock; wind gets a week to expose the
+    // fronts and lulls that a handful of six-hour samples cannot show.
     const H = 48;
     const uv = hourStrip(d, i, H, (k) => {
       const v = s.uvi ? s.uvi[k] : null;
@@ -1858,7 +1875,7 @@
       return { bg: c == null ? "transparent" : `rgba(127,140,160,${(0.1 + 0.55 * c).toFixed(2)})`, bar: r > 0.05 ? Math.min(1, r / 8) : 0,
         v: `${c == null ? "" : `cloud ${Math.round(c * 100)}%`}${r > 0.05 ? ` · ${W().units.precip(r).txt}` : ""}` };
     }, () => "");
-    const gust = windCard(d, i, H);
+    const windForecast = windRows(d, i), gust = windCard(d, i, 168);
     const take = (...keys) => rows.filter((r) => keys.some((k) => r[0].startsWith(k)));
     // The number leads, its unit and qualifier trail small, the label sits
     // under it in plain words: one glance says 28, the next says km/h, the
@@ -1890,7 +1907,7 @@
     $("#outdoors").innerHTML = `<div class="verdict ${verdict[1]}"><b>${verdict[0]}</b>${why ? `<span class="why">${why}</span>` : ""}${winHtml}${brief ? `<p class="brief">${brief}</p>` : ""}</div>
       ${section("Sky &amp; rain", sky, take("Precip", "Next 24 h rain", "Cloud", "Visibility", "Thunder"), "cloud cover · rain bars, 48 h")}
       ${section("Sun", uv, take("UV"), "uv index, 48 h · daily peaks labelled")}
-      ${section("Wind", gust, take("Wind", "Max gust", "Feels like", "Dry, calm"), "gusts, 48 h")}
+      ${section("Wind", gust, take("Wind", "Max gust", "Feels like", "Dry, calm"), `${windForecast.some((r) => r[2] != null) ? "wind / gusts" : "wind"}, ${windPeriod(windForecast)}`)}
       ${cold ? section("Snow &amp; cold", "", take("Freezing", "Snow level")) : ""}
       ${take("Sea state").length ? section("Sea", marineCard(pt, d, i), take("Sea state")) : ""}
       ${tidesHtml}${airHtml(pt || {})}
@@ -2063,9 +2080,7 @@
     const { speed, speedUnit, arrow } = W(), s = d.series;
     if (!s.wind) return "";
     const unit = speedUnit();
-    const rows = [];
-    for (let k = i; k < d.steps.length && d.steps[k] <= d.steps[i] + hours; k++)
-      if (s.wind[k] != null) rows.push([new Date(d.valid[k]).getTime(), speed(s.wind[k]), s.gust && s.gust[k] != null ? speed(s.gust[k]) : null, s.wdir ? s.wdir[k] : null]);
+    const rows = windRows(d, i, hours).map(([time, wind, gust, dir]) => [time, speed(wind), gust == null ? null : speed(gust), dir]);
     if (rows.length < 4) return "";
     const x0 = rows[0][0], x1 = rows[rows.length - 1][0], span = Math.max(x1 - x0, 1);
     const mx = Math.max(1, ...rows.map((r) => Math.max(r[1], r[2] || 0)));
@@ -2088,7 +2103,7 @@
     for (let x = Math.ceil(x0 / 3600e3) * 3600e3; x <= x1; x += 3600e3) {
       const h = hourOf.format(new Date(x)).replace("24", "00");
       if (h === "00") xt.push(`<i class="day" style="left:${X(x).toFixed(1)}%">${new Date(x).toLocaleDateString(undefined, W().units.timeOpts({ weekday: "short" }))}</i>`);
-      else if (h === "12") xt.push(`<i style="left:${X(x).toFixed(1)}%">noon</i>`);
+      else if (h === "12" && span <= 72 * 3600e3) xt.push(`<i style="left:${X(x).toFixed(1)}%">noon</i>`);
     }
     const marker = `<i class="tdot now" style="left:0%;top:${Y(cur[1]).toFixed(1)}%"></i>`;
     const probe = `<i class="tdot hov" hidden></i><s class="tlab" hidden></s>`;
