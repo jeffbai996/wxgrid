@@ -71,6 +71,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); f
    over everything inside it — popups and the location pin included, which is
    how a fire report ended up with wind streaks drawn through its text. */
 #particles { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+body.aurora-active #particles { opacity: .28; }
 .maplibregl-marker { z-index: 3; }
 .maplibregl-popup { z-index: 4; }
 .maplibregl-ctrl-attrib { font-size: 10px; background: rgba(0,0,0,.45) !important; color: #aab; }

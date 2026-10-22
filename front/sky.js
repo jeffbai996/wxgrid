@@ -17,7 +17,7 @@
   const { $, API, state, url: U } = WX;
   const M = () => WX.map;
   const WORLD = [[-180, 85.05112878], [180, 85.05112878], [180, -85.05112878], [-180, -85.05112878]];
-  const SRC = "aurora", LAYER = "aurora";
+  const SRC = "aurora", LAYER = "aurora", DIM = "aurora-dim";
 
   // The overlays module owns the badge stack; fall back to a toast if it is
   // somehow not loaded, so sky.js never hard-depends on load order.
@@ -37,6 +37,7 @@
       toast("Aurora nowcast unavailable", 4500, "error");
       state.aurora = false;
       const b = $("#aurora-toggle"); if (b) b.classList.remove("on");
+      clearAurora();
       return;
     }
     if (my !== auroraReq || state.aurora === false) return;
@@ -45,6 +46,11 @@
     // same nowcast should reuse the browser's copy.
     const stamp = encodeURIComponent(meta.observation_time || String(Date.now()));
     const url = U(`${API}/radar/aurora.png?t=${stamp}`);
+    // Darken the rendered ground and weather together, keeping the aurora
+    // and the place labels above the shade. The user's opacity stays intact.
+    if (!M().getLayer(DIM)) M().addLayer({ id: DIM, type: "background",
+      paint: { "background-color": "#000000", "background-opacity": 0.45 } }, M().getLayer(LAYER) ? LAYER : WX.fn.firstSymbolId());
+    document.body.classList.add("aurora-active");
     if (M().getSource(SRC)) M().getSource(SRC).updateImage({ url, coordinates: WORLD });
     else {
       // No `attribution` here on purpose: MapLibre's source_image spec allows
@@ -83,6 +89,8 @@
     auroraReq++;
     clearInterval(auroraTimer); auroraTimer = null;
     if (M().getLayer(LAYER)) M().removeLayer(LAYER);
+    if (M().getLayer(DIM)) M().removeLayer(DIM);
+    document.body.classList.remove("aurora-active");
     if (M().getSource(SRC)) M().removeSource(SRC);
     state.auroraMeta = null;
     badge("aurora", null);
