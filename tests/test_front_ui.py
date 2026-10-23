@@ -949,3 +949,14 @@ def test_value_plates_share_one_face_and_the_chip_yields_to_the_point_flag():
     assert ".wx-marker .mflag b { font: 700 12.5px var(--font-display);" in css and ".wx-marker .mflag span { font: 600 10.5px var(--font-display);" in css
     assert "if (pt && nearPoint(ll, pt.lon, pt.lat, 36)) { chip.hidden = true; return; }" in probe
     assert "openPoint(e.lngLat.lat, e.lngLat.lng);\n      if (WX.probe) WX.probe.hover(null);" in app
+
+
+def test_changes_tab_and_evolution_pane_are_bundled_and_wired():
+    html = _read("index.html"); panes = _read("panes.js"); evo = _read("evolution.js"); css = _read("styles.css")
+    assert '<button data-tab="changes">Changes</button>' in html
+    assert '<section data-pane="changes" hidden><div id="changes"></div></section>' in html
+    assert "compare.js evolution.js panes.js" in html
+    assert 'else if (tab === "changes" && window.WXEvolution) window.WXEvolution.render(pt, i);' in panes
+    assert "window.WXEvolution = exported;" in evo
+    assert ".evo-context {" in css and "#evo-canvas {" in css
+

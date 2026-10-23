@@ -63,6 +63,7 @@
     else if (tab === "winter") renderWinter(pt, d, i);
     else if (tab === "out") renderOutdoors(d, i);
     else if (tab === "cmp") renderCompare(pt, d, i);
+    else if (tab === "changes" && window.WXEvolution) window.WXEvolution.render(pt, i);
     else if (tab === "spread") renderSpread(pt, d, i);
     else if (tab === "resort") renderResort(pt, d, i);
   }

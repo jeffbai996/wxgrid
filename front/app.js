@@ -490,6 +490,7 @@
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("wxgrid.theme", theme);
     document.querySelector('meta[name="theme-color"]').content = theme === "light" ? "#eef1f5" : "#000000";
+    if (state.point && state.tab === "changes" && window.WXEvolution) window.WXEvolution.syncStep();
     if (swapMap && map) {
       map.setStyle(mapStyle(), { diff: false });
       // style.load is what fires once the new style's sources exist; idle
@@ -1265,7 +1266,7 @@
     const closeMenusOutside = (e) => { if (!e.target.closest(".menu")) $$(".menu.open").forEach((x) => x.classList.remove("open")); };
     document.addEventListener("click", closeMenusOutside);
     document.addEventListener("touchend", closeMenusOutside, { passive: true });
-    $$(".point-tabs button").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; renderPoint(); });
+    $$(".point-tabs button").forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; if (b.scrollIntoView) b.scrollIntoView({ block: "nearest", inline: "nearest" }); renderPoint(); });
     document.addEventListener("keydown", (e) => {
       if (["SELECT", "INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
       if (e.key === "Escape" && $("#tstrip").classList.contains("more-open")) {
@@ -2099,6 +2100,7 @@
         state.point.outside = d;
         $("#point-now").innerHTML = `<div class="note">${d.reason || "This point is outside the selected model's forecast domain."}</div>`;
         $("#point-foot").textContent = `${modelEntry().short} · ${modelEntry().grid} regional domain`;
+        renderPoint();
         WX.tape.renderTape();
         return;
       }
@@ -2219,7 +2221,16 @@
     el.innerHTML = `<b>${v.text}</b>${v.sub ? `<span>${v.sub}${v.compass ? ` <small class="wind-compass">${v.compass}</small>` : ""}</span>` : ""}`;
   }
   function renderPoint() {
-    const d = state.point && state.point.data; if (!d || !window.WXPanes) return;
+    if (!state.point || !window.WXPanes) return;
+    const d = state.point.data;
+    if (!d) {
+      if (state.point.outside || state.tab === "changes") {
+        $$(".point-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === state.tab));
+        $$("#point-body section").forEach((s) => s.hidden = s.dataset.pane !== state.tab);
+        if (state.tab === "changes" && window.WXEvolution) window.WXEvolution.render(state.point);
+      }
+      return;
+    }
     // Winter has nothing to say where it cannot snow: a tab that answers
     // "n/a" nine rows deep is worse than no tab (see WXPanes.canSnow).
     const snow = !window.WXPanes.canSnow || window.WXPanes.canSnow(state.point, d);

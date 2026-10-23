@@ -137,7 +137,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
     <button id="point-close" class="icon" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
   </div>
   <div class="point-tabs seg small">
-    <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="air">Airgram</button><button data-tab="skewt">Skew-T</button><button data-tab="winter">Winter</button><button data-tab="out">Outdoors</button><button data-tab="cmp">Compare</button><button data-tab="spread">Spread</button><button data-tab="resort" hidden>Resort</button>
+    <button data-tab="now" class="on">Now</button><button data-tab="aloft">Aloft</button><button data-tab="air">Airgram</button><button data-tab="skewt">Skew-T</button><button data-tab="winter">Winter</button><button data-tab="out">Outdoors</button><button data-tab="cmp">Compare</button><button data-tab="changes">Changes</button><button data-tab="spread">Spread</button><button data-tab="resort" hidden>Resort</button>
   </div>
   <div id="point-body">
     <section data-pane="now">
@@ -150,6 +150,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
     <section data-pane="winter" hidden><div id="winter"></div></section>
     <section data-pane="out" hidden><div id="outdoors"></div></section>
     <section data-pane="cmp" hidden><div id="compare"></div></section>
+    <section data-pane="changes" hidden><div id="changes"></div></section>
     <section data-pane="spread" hidden>
       <div class="seg small spread-vars" id="spread-vars"></div>
       <canvas id="plume" width="640" height="240"></canvas>
@@ -171,7 +172,7 @@ for (const ev of ["gesturestart", "gesturechange", "gestureend"])
 <!-- the app scripts, one body: /bundle.js is the files below concatenated in
      this order. wxgrid/bundle.py reads this list; it lives here so the page
      stays the one owner of the load order. -->
-<script type="application/json" data-bundled>particles.js app.js toolstrip.js field-requests.js field.js units.js settings.js menu.js tour.js overlays.js tape.js search.js compare.js panes.js</script>
+<script type="application/json" data-bundled>particles.js app.js toolstrip.js field-requests.js field.js units.js settings.js menu.js tour.js overlays.js tape.js search.js compare.js evolution.js panes.js</script>
 <script defer src="bundle.js"></script>
 <script defer src="private/theme.js"></script>
 <!-- Feature modules are part of the offline shell, but they do not block the
