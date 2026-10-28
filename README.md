@@ -30,6 +30,16 @@ The raw model data behind weather apps is published keyless several times a day 
 | ![Globe view with MSLP isobars and H/L centres](docs/img/15-isobars.jpg) | ![Wind field and point card over Tagant, Mauritania](docs/img/05-air.jpg) |
 | MapLibre GL v5 globe projection at low zoom with mean sea-level pressure contours and synoptic `H` / `L` centres. | Surface wind particles, dust and aerosol overlays, and the resizable point card (a bottom sheet over the tape on mobile, `docs/img/07-mobile.jpg`). |
 
+| Winter mode | Wildfires |
+| :---: | :---: |
+| ![Winter mode with the Whistler Blackcomb resort card](docs/img/17-winter.jpg) | ![Wildfire incidents and perimeters with an incident card](docs/img/04-fires.jpg) |
+| New snow, snow depth, freezing level, precipitation type, terrain and avalanche regions. A resort gets an elevation-band forecast, its lift network and trail difficulty. | Active incidents and perimeters from CIFFC, CWFIS and NIFC/WFIGS, with the agency's fire number, size, stage of control and containment, over satellite hotspots. |
+
+| Route forecast | Light theme |
+| :---: | :---: |
+| ![Weather along a drive, read at each point's ETA](docs/img/14-route.jpg) | ![The map in the light theme](docs/img/08-light.jpg) |
+| Draw a route, set a departure time and a speed, and each sample is read at its own ETA: temperature, gusts, precipitation type, freezing level, hazardous stretches and any warning crossed. | Every layer, legend and readout also comes in a light theme. |
+
 ## What it does and how it is built
 
 ```
