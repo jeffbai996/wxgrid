@@ -2,10 +2,10 @@
 
 Weather maps from the open forecast models, drawn on the GPU in the browser.
 
-[![Python](https://img.shields.io/badge/Python-3.12-2f363d?style=flat-square&logo=python&logoColor=white)](wxgrid/)
-[![WebGL2](https://img.shields.io/badge/WebGL2-GLSL-2f363d?style=flat-square&logo=webgl&logoColor=white)](front/field.js)
-[![MapLibre GL](https://img.shields.io/badge/MapLibre_GL-v5-2f363d?style=flat-square&logo=maplibre&logoColor=white)](https://maplibre.org/)
-[![Live demo](https://img.shields.io/badge/demo-live-2f363d?style=flat-square&logo=githubpages&logoColor=white)](https://jeffbai996.github.io/wxgrid/)
+[![Python](https://img.shields.io/badge/Python-3.12-1d4e89?style=flat-square&logo=python&logoColor=white)](wxgrid/)
+[![WebGL2](https://img.shields.io/badge/WebGL2-GLSL-1d4e89?style=flat-square&logo=webgl&logoColor=white)](front/field.js)
+[![MapLibre GL](https://img.shields.io/badge/MapLibre_GL-v5-1d4e89?style=flat-square&logo=maplibre&logoColor=white)](https://maplibre.org/)
+[![Live demo](https://img.shields.io/badge/demo-live-1d4e89?style=flat-square&logo=githubpages&logoColor=white)](https://jeffbai996.github.io/wxgrid/)
 
 ![Hurricane Lala in the North Pacific with the point card and forecast tape](docs/img/01-hero.jpg)
 
